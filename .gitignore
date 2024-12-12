@@ -1,0 +1,12 @@
+
+*.pyc
+*.pth
+*.pt
+*.safetensors
+*.png
+/.idea
+/htmlcov
+.coverage
+.toml
+__pycache__
+.venv
