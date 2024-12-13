@@ -328,9 +328,10 @@ class App(tk.Tk):
             for image in ultimatesdupscale_250[0]:
                 i = 255.0 * image.cpu().numpy()
                 img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-        img = img.resize((int(w / 2), int(h / 2)))
-        img = ImageTk.PhotoImage(img)
-        self.image_label.after(0, self._update_image_label, img)
+        self.update_image(img)
+        global generated
+        generated = img
+        self.display_most_recent_image_flag = True
         try:
             app.title("LightDiffusion")
         except:
