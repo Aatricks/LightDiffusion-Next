@@ -2,7 +2,7 @@
 Tiny AutoEncoder for Stable Diffusion
 (DNN for encoding / decoding SD's latent space)
 """
-
+# TODO: Check if multiprocessing is possible for this module
 from PIL import Image
 import numpy as np
 import torch

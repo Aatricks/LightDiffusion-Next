@@ -8,6 +8,7 @@ from segment_anything import SamPredictor, sam_model_registry
 
 from modules import Device, VariationalAE, samplers, sampling, sampling_util, util
 
+# FIXME: Improve slow inference times
 
 def sam_predict(predictor, points, plabs, bbox, threshold):
     point_coords = None if not points else np.array(points)
@@ -73,7 +74,7 @@ class SafeToGPU:
 class SAMWrapper:
     def __init__(self, model, is_auto_mode, safe_to_gpu=None):
         self.model = model
-        self.safe_to_gpu = safe_to_gpu if safe_to_gpu is not None else SafeToGPU_stub()
+        self.safe_to_gpu = safe_to_gpu if safe_to_gpu is not None else SafeToGPU()
         self.is_auto_mode = is_auto_mode
 
     def prepare_device(self):
