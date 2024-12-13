@@ -116,3 +116,21 @@ def common_upscale(samples, width, height, upscale_method, crop):
     """
     s = samples
     return bislerp(s, width, height)
+
+
+class LatentUpscale:
+    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
+    crop_methods = ["disabled", "center"]
+
+    def upscale(self, samples, upscale_method, width, height, crop):
+        if width == 0 and height == 0:
+            s = samples
+        else:
+            s = samples.copy()
+            width = max(64, width)
+            height = max(64, height)
+
+            s["samples"] = common_upscale(
+                samples["samples"], width // 8, height // 8, upscale_method, crop
+            )
+        return (s,)

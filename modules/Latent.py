@@ -1,3 +1,7 @@
+import torch
+from modules import Device
+
+
 class LatentFormat:
     """#### Base class for latent formats.
     
@@ -48,3 +52,13 @@ class SD15(LatentFormat):
             [-0.2120, -0.2616, -0.7177],
         ]
         self.taesd_decoder_name = "taesd_decoder"
+        
+class EmptyLatentImage:
+    def __init__(self):
+        self.device = Device.intermediate_device()
+
+    def generate(self, width, height, batch_size=1):
+        latent = torch.zeros(
+            [batch_size, 4, height // 8, width // 8], device=self.device
+        )
+        return ({"samples": latent},)

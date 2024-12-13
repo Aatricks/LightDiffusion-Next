@@ -11,10 +11,14 @@ import glob
 
 import torch
 
+
 # Add the directory containing LightDiffusion.py to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from modules import Enhancer, LoRas, StableFast, VariationalAE, util
+from modules import ADetailer, Downloader, Enhancer, ImageSaver, Latent, LoRas, Loader, StableFast, VariationalAE, sampling, upscale, util, Clip
+from modules import UltimateSDUpscale as USDU
+
+Downloader.CheckAndDownload()
 
 files = glob.glob("./_internal/checkpoints/*.safetensors")
 loras = glob.glob("./_internal/loras/*.safetensors")
@@ -234,7 +238,6 @@ class App(tk.Tk):
         img_array = np.array(img)
         img_tensor = torch.from_numpy(img_array).float().to("cpu") / 255.0
         img_tensor = img_tensor.unsqueeze(0)
-        from LightDiffusion import CLIPSetLastLayer
         with torch.inference_mode():
             (
                 checkpointloadersimple_241,
@@ -272,7 +275,7 @@ class App(tk.Tk):
             else:
                 applystablefast_158 = loraloader_274
 
-            clipsetlastlayer = CLIPSetLastLayer()
+            clipsetlastlayer = Clip.CLIPSetLastLayer()
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
             )
@@ -356,22 +359,21 @@ class App(tk.Tk):
         threading.Thread(target=self._generate_image, daemon=True).start()
 
     def _prep(self):
-        from LightDiffusion import CLIPTextEncode, CheckpointLoaderSimple, EmptyLatentImage, KSampler2, LatentUpscale, SaveImage, UltimateSDUpscale, UpscaleModelLoader
         if self.dropdown.get() != self.ckpt:
             self.ckpt = self.dropdown.get()
             with torch.inference_mode():
-                self.checkpointloadersimple = CheckpointLoaderSimple()
+                self.checkpointloadersimple = Loader.CheckpointLoaderSimple()
                 self.checkpointloadersimple_241 = (
                     self.checkpointloadersimple.load_checkpoint(ckpt_name="./_internal/checkpoints/" + self.ckpt)
                 )
-                self.cliptextencode = CLIPTextEncode()
-                self.emptylatentimage = EmptyLatentImage()
-                self.ksampler_instance = KSampler2()
+                self.cliptextencode = Clip.CLIPTextEncode()
+                self.emptylatentimage = Latent.EmptyLatentImage()
+                self.ksampler_instance = sampling.KSampler2()
                 self.vaedecode = VariationalAE.VAEDecode()
-                self.saveimage = SaveImage()
-                self.latent_upscale = LatentUpscale()
-                self.upscalemodelloader = UpscaleModelLoader()
-                self.ultimatesdupscale = UltimateSDUpscale()
+                self.saveimage = ImageSaver.SaveImage()
+                self.latent_upscale = upscale.LatentUpscale()
+                self.upscalemodelloader = USDU.UpscaleModelLoader()
+                self.ultimatesdupscale = USDU.UltimateSDUpscale()
         return (
             self.checkpointloadersimple_241,
             self.cliptextencode,
@@ -385,7 +387,6 @@ class App(tk.Tk):
         )
 
     def _generate_image(self):
-        from LightDiffusion import BboxDetectorForEach, CLIPSetLastLayer, DetailerForEachTest, SAMDetectorCombined, SAMLoader, SegsBitwiseAndMask, UltralyticsDetectorProvider
         prompt = self.prompt_entry.get("1.0", tk.END)
         if self.enhancer_var.get() == True:
             prompt = Enhancer.enhance_prompt()
@@ -425,7 +426,7 @@ class App(tk.Tk):
             except:
                 loraloader_274 = checkpointloadersimple_241
             try:
-                samloader = SAMLoader()
+                samloader = ADetailer.SAMLoader()
                 samloader_87 = samloader.load_model(
                     model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
                 )
@@ -435,19 +436,19 @@ class App(tk.Tk):
                     clip=loraloader_274[1],
                 )
 
-                ultralyticsdetectorprovider = UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider = ADetailer.UltralyticsDetectorProvider()
                 ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                     # model_name="face_yolov8m.pt"
                     model_name="person_yolov8m-seg.pt"
                 )
 
-                bboxdetectorsegs = BboxDetectorForEach()
-                samdetectorcombined = SAMDetectorCombined()
-                impactsegsandmask = SegsBitwiseAndMask()
-                detailerforeachdebug = DetailerForEachTest()
+                bboxdetectorsegs = ADetailer.BboxDetectorForEach()
+                samdetectorcombined = ADetailer.SAMDetectorCombined()
+                impactsegsandmask = ADetailer.SegsBitwiseAndMask()
+                detailerforeachdebug = ADetailer.DetailerForEachTest()
             except:
                 pass
-            clipsetlastlayer = CLIPSetLastLayer()
+            clipsetlastlayer = Clip.CLIPSetLastLayer()
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
             )
@@ -577,7 +578,7 @@ class App(tk.Tk):
                     filename_prefix="LD-refined",
                     images=detailerforeachdebug_145[0],
                 )
-                ultralyticsdetectorprovider = UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider = ADetailer.UltralyticsDetectorProvider()
                 ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                     model_name="face_yolov9c.pt"
                 )

@@ -1,6 +1,7 @@
+from enum import Enum
 import torch
 
-from modules import Attention
+from modules import Attention, Device, ModelPatcher
 
 
 class CLIPAttention(torch.nn.Module):
@@ -223,3 +224,81 @@ class CLIPTextModel(torch.nn.Module):
         x = self.text_model(*args, **kwargs)
         out = self.text_projection(x[2])
         return (x[0], x[1], out, x[2])
+
+
+
+class CLIP:
+    def __init__(self, target=None, embedding_directory=None, no_init=False):
+        if no_init:
+            return
+        params = target.params.copy()
+        clip = target.clip
+        tokenizer = target.tokenizer
+
+        load_device = Device.text_encoder_device()
+        offload_device = Device.text_encoder_offload_device()
+        params["device"] = offload_device
+        params["dtype"] = Device.text_encoder_dtype(load_device)
+
+        self.cond_stage_model = clip(**(params))
+
+        self.tokenizer = tokenizer(embedding_directory=embedding_directory)
+        self.patcher = ModelPatcher.ModelPatcher(
+            self.cond_stage_model,
+            load_device=load_device,
+            offload_device=offload_device,
+        )
+        self.layer_idx = None
+
+    def clone(self):
+        n = CLIP(no_init=True)
+        n.patcher = self.patcher.clone()
+        n.cond_stage_model = self.cond_stage_model
+        n.tokenizer = self.tokenizer
+        n.layer_idx = self.layer_idx
+        return n
+
+    def add_patches(self, patches, strength_patch=1.0, strength_model=1.0):
+        return self.patcher.add_patches(patches, strength_patch, strength_model)
+
+    def clip_layer(self, layer_idx):
+        self.layer_idx = layer_idx
+
+    def tokenize(self, text, return_word_ids=False):
+        return self.tokenizer.tokenize_with_weights(text, return_word_ids)
+
+    def encode_from_tokens(self, tokens, return_pooled=False):
+        self.cond_stage_model.reset_clip_options()
+        if self.layer_idx is not None:
+            self.cond_stage_model.set_clip_options({"layer": self.layer_idx})
+        if return_pooled == "unprojected":
+            self.cond_stage_model.set_clip_options({"projected_pooled": False})
+        self.load_model()
+        cond, pooled = self.cond_stage_model.encode_token_weights(tokens)
+        if return_pooled:
+            return cond, pooled
+        return cond
+
+    def load_sd(self, sd, full_model=False):
+        return self.cond_stage_model.load_state_dict(sd, strict=False)
+
+    def load_model(self):
+        Device.load_model_gpu(self.patcher)
+        return self.patcher
+
+
+class CLIPType(Enum):
+    STABLE_DIFFUSION = 1
+    STABLE_CASCADE = 2
+    
+class CLIPTextEncode:
+    def encode(self, clip, text):
+        tokens = clip.tokenize(text)
+        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+        return ([[cond, {"pooled_output": pooled}]],)
+    
+class CLIPSetLastLayer:
+    def set_last_layer(self, clip, stop_at_clip_layer):
+        clip = clip.clone()
+        clip.clip_layer(stop_at_clip_layer)
+        return (clip,)

@@ -4,6 +4,7 @@ import os
 import safetensors.torch
 import torch
 
+
 def append_dims(x, target_dims):
     """#### Appends dimensions to the end of a tensor until it has target_dims dimensions.
 
@@ -241,3 +242,16 @@ def load_parameters_from_file():
         height = int(parameters["h"])
         cfg = int(parameters["cfg"])
     return prompt, neg, width, height, cfg
+
+
+PROGRESS_BAR_ENABLED = True
+PROGRESS_BAR_HOOK = None
+
+
+class ProgressBar:
+    """#### Class representing a progress bar."""
+    def __init__(self, total):
+        global PROGRESS_BAR_HOOK
+        self.total = total
+        self.current = 0
+        self.hook = PROGRESS_BAR_HOOK

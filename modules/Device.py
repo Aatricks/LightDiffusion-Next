@@ -2,8 +2,12 @@ import logging
 import sys
 from enum import Enum
 
+import packaging
 import psutil
 import torch
+
+if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):
+    torch.backends.cuda.matmul.allow_tf32 = True
 
 
 class VRAMState(Enum):
