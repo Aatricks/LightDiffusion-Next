@@ -2,7 +2,8 @@
 import logging
 import torch
 
-from modules import Device, Latent, unet
+from modules import Latent, unet
+from modules.Device import Device
 from modules.cond import cast, cond
 from modules.sample import sampling
 

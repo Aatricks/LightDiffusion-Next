@@ -6,14 +6,15 @@ import numpy as np
 from PIL import Image
 import torch
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+from modules.AutoDetailer import ADetailer
 from modules.AutoEncoders import VariationalAE
 from modules.StableFast import StableFast
 from modules.clip import Clip
 from modules.sample import sampling
 
-from modules import ADetailer, Downloader, Enhancer, ImageSaver, Latent, LoRas, Loader, upscale, util
+from modules import Downloader, Enhancer, ImageSaver, Latent, LoRas, Loader, upscale, util
 from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
 
 def pipeline(prompt, w, h):

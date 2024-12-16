@@ -5,6 +5,7 @@ import re
 import torch.nn as nn
 
 from modules.AutoEncoders import VariationalAE
+from modules.Device import Device
 from modules.sample import sampling
 
 
@@ -491,7 +492,7 @@ import logging as logger
 
 import torch
 
-from modules import Device, util
+from modules import util
 
 
 def load_state_dict(state_dict) -> PyTorchModel:

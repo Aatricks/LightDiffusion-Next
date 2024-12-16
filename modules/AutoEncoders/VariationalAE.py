@@ -2,10 +2,12 @@ import logging
 from typing import Tuple, Union
 import numpy as np
 import torch
-from modules import Device, ModelPatcher
+from modules import ModelPatcher
 import torch.nn as nn
 
 from modules.Attention import Attention
+from modules.AutoEncoders import ResBlock
+from modules.Device import Device
 from modules.cond import cast
 
 class DiagonalGaussianDistribution(object):
@@ -143,57 +145,6 @@ class Downsample(nn.Module):
         return x
 
 
-class ResnetBlock(nn.Module):
-    def __init__(
-        self,
-        *,
-        in_channels,
-        out_channels=None,
-        conv_shortcut=False,
-        dropout,
-        temb_channels=512,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-
-        self.swish = torch.nn.SiLU(inplace=True)
-        self.norm1 = Attention.Normalize(in_channels)
-        self.conv1 = ops.Conv2d(
-            in_channels, out_channels, kernel_size=3, stride=1, padding=1
-        )
-        self.norm2 = Attention.Normalize(out_channels)
-        self.dropout = torch.nn.Dropout(dropout, inplace=True)
-        self.conv2 = ops.Conv2d(
-            out_channels, out_channels, kernel_size=3, stride=1, padding=1
-        )
-        if self.in_channels != self.out_channels:
-            self.nin_shortcut = ops.Conv2d(
-                in_channels, out_channels, kernel_size=1, stride=1, padding=0
-            )
-
-    def forward(self, x, temb):
-        h = x
-        h = self.norm1(h)
-        h = self.swish(h)
-        h = self.conv1(h)
-
-        h = self.norm2(h)
-        h = self.swish(h)
-        h = self.dropout(h)
-        h = self.conv2(h)
-
-        if self.in_channels != self.out_channels:
-            x = self.nin_shortcut(x)
-
-        return x + h
-
-
-
-
-
 class Encoder(nn.Module):
     def __init__(
         self,
@@ -239,7 +190,7 @@ class Encoder(nn.Module):
             block_out = ch * ch_mult[i_level]
             for i_block in range(self.num_res_blocks):
                 block.append(
-                    ResnetBlock(
+                    ResBlock.ResnetBlock(
                         in_channels=block_in,
                         out_channels=block_out,
                         temb_channels=self.temb_ch,
@@ -257,14 +208,14 @@ class Encoder(nn.Module):
 
         # middle
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock(
+        self.mid.block_1 = ResBlock.ResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
             temb_channels=self.temb_ch,
             dropout=dropout,
         )
         self.mid.attn_1 = Attention.make_attn(block_in, attn_type=attn_type)
-        self.mid.block_2 = ResnetBlock(
+        self.mid.block_2 = ResBlock.ResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
             temb_channels=self.temb_ch,
@@ -324,7 +275,7 @@ class Decoder(nn.Module):
         tanh_out=False,
         use_linear_attn=False,
         conv_out_op=ops.Conv2d,
-        resnet_op=ResnetBlock,
+        resnet_op=ResBlock.ResnetBlock,
         attn_op=Attention.AttnBlock,
         **ignorekwargs,
     ):

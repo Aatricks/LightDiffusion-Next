@@ -35,7 +35,7 @@ fi
 
 # Launch the script
 echo "Launching LightDiffusion..."
-python3.10 ./modules/GUI.py
+python3.10 ./modules/user/GUI.py
 
 # Deactivate the virtual environment
 deactivate

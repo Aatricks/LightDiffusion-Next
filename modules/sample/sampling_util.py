@@ -7,8 +7,9 @@ import torchsde
 from torch import nn
 from tqdm.auto import trange, tqdm
 
-from modules import util, app_instance
+from modules import util
 from modules.AutoEncoders import taesd
+from modules.user import app_instance
 
 logging_level = logging.INFO
 

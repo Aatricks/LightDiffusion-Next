@@ -1,5 +1,5 @@
 import torch
-from modules import Device
+from modules.Device import Device
 
 
 class LatentFormat:

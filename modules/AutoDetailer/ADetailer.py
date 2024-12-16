@@ -6,8 +6,9 @@ import numpy as np
 import torch
 from segment_anything import SamPredictor, sam_model_registry
 
-from modules import Device, util
+from modules import util
 from modules.AutoEncoders import VariationalAE
+from modules.Device import Device
 from modules.sample import samplers, sampling, sampling_util
 
 # FIXME: Improve slow inference times

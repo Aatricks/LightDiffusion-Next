@@ -1,8 +1,9 @@
 
 import logging
 import torch
-from modules import Device, ModelPatcher, unet, util
+from modules import ModelPatcher, unet, util
 from modules.AutoEncoders import VariationalAE
+from modules.Device import Device
 from modules.clip import Clip
 
 def load_checkpoint_guess_config(

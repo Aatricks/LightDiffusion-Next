@@ -1,4 +1,4 @@
-from modules import Device
+from modules.Device import Device
 import torch
 
 def cast_bias_weight(s, input):

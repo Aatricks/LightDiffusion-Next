@@ -4,7 +4,8 @@ import uuid
 
 import torch
 
-from modules import Device, util
+from modules import util
+from modules.Device import Device
 
 
 

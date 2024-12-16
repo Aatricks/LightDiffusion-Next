@@ -1,4 +1,4 @@
-from modules import Device
+from modules.Device import Device
 
 
 def get_models_from_cond(cond, model_type):

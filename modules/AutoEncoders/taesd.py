@@ -6,10 +6,11 @@ Tiny AutoEncoder for Stable Diffusion
 from PIL import Image
 import numpy as np
 import torch
-from modules import util, app_instance
+from modules import util
 import torch.nn as nn
 
 from modules.cond import cast, cond
+from modules.user import app_instance
 
 def conv(n_in, n_out, **kwargs):
     """#### Create a convolutional layer.

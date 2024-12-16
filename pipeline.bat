@@ -28,7 +28,7 @@ IF EXIST requirements.txt (
 
 REM Launch the script
 echo Launching LightDiffusion...
-python .\modules\pipeline.py
+python .\modules\user\pipeline.py
 
 REM Deactivate the virtual environment
 deactivate

@@ -1,10 +1,11 @@
 from einops import rearrange
 
-from modules import Device, util
+from modules import util
 
 import torch.nn as nn
 
 from modules.Attention import Attention
+from modules.Device import Device
 from modules.cond import Activation
 from modules.cond import cast, cond
 from modules.sample import sampling_util

@@ -1,8 +1,11 @@
 from abc import abstractmethod
+
+import torch
 from modules import transformer
 import torch.nn as nn
 import torch.nn.functional as F
 
+from modules.Attention import Attention
 from modules.cond import cast, cond
 from modules.sample import sampling_util
 
@@ -215,3 +218,52 @@ class ResBlock1(TimestepBlock1):
             h = h + emb_out
         h = self.out_layers(h)
         return self.skip_connection(x) + h
+
+ops = cast.disable_weight_init
+
+class ResnetBlock(nn.Module):
+    def __init__(
+        self,
+        *,
+        in_channels,
+        out_channels=None,
+        conv_shortcut=False,
+        dropout,
+        temb_channels=512,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.use_conv_shortcut = conv_shortcut
+
+        self.swish = torch.nn.SiLU(inplace=True)
+        self.norm1 = Attention.Normalize(in_channels)
+        self.conv1 = ops.Conv2d(
+            in_channels, out_channels, kernel_size=3, stride=1, padding=1
+        )
+        self.norm2 = Attention.Normalize(out_channels)
+        self.dropout = torch.nn.Dropout(dropout, inplace=True)
+        self.conv2 = ops.Conv2d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1
+        )
+        if self.in_channels != self.out_channels:
+            self.nin_shortcut = ops.Conv2d(
+                in_channels, out_channels, kernel_size=1, stride=1, padding=0
+            )
+
+    def forward(self, x, temb):
+        h = x
+        h = self.norm1(h)
+        h = self.swish(h)
+        h = self.conv1(h)
+
+        h = self.norm2(h)
+        h = self.swish(h)
+        h = self.dropout(h)
+        h = self.conv2(h)
+
+        if self.in_channels != self.out_channels:
+            x = self.nin_shortcut(x)
+
+        return x + h

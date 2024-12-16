@@ -1,6 +1,7 @@
 from enum import Enum
 import torch.nn as nn
 
+from modules.Device import Device
 from modules.sample import ksampler_util, samplers, sampling_util
 from modules.sample import CFG
 
@@ -16,7 +17,7 @@ class TimestepEmbedSequential1(nn.Sequential, TimestepBlock1):
 import math
 import torch
 
-from modules import Device, util
+from modules import util
 
 
 class EPS:

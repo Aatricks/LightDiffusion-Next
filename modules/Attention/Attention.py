@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import logging
 
-from modules import Device, util
+from modules import util
 from modules.Attention import AttentionMethods
+from modules.Device import Device
 from modules.cond import cast, cond
 
 def Normalize(in_channels, dtype=None, device=None):

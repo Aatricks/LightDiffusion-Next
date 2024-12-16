@@ -1,7 +1,7 @@
 import json
 import logging
 import torch
-from modules import Device
+from modules.Device import Device
 from modules.clip import Clip
 from modules.cond import cast, cond
 

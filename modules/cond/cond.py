@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from modules import Device, util
+from modules import util
+from modules.Device import Device
 from modules.cond import cond_util
 from modules.sample import ksampler_util
 

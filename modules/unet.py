@@ -1,7 +1,8 @@
 import torch.nn as nn
 import torch as th
 
-from modules import ResBlock, transformer, util
+from modules import transformer, util
+from modules.AutoEncoders import ResBlock
 from modules.cond import cast, cond
 from modules.sample import sampling, sampling_util
 
