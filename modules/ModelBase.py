@@ -2,7 +2,9 @@
 import logging
 import torch
 
-from modules import Clip, Device, Latent, SDClip, SDToken, cond, sampling, unet, util
+from modules import Device, Latent, unet
+from modules.cond import cast, cond
+from modules.sample import sampling
 
 
 class BaseModel(torch.nn.Module):
@@ -18,9 +20,9 @@ class BaseModel(torch.nn.Module):
 
         if not unet_config.get("disable_unet_model_creation", False):
             if self.manual_cast_dtype is not None:
-                operations = cond.manual_cast
+                operations = cast.manual_cast
             else:
-                operations = cond.disable_weight_init
+                operations = cast.disable_weight_init
             self.diffusion_model = unet_model(
                 **unet_config, device=device, operations=operations
             )

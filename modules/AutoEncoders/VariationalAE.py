@@ -2,8 +2,11 @@ import logging
 from typing import Tuple, Union
 import numpy as np
 import torch
-from modules import Attention, Device, ModelPatcher, cond
+from modules import Device, ModelPatcher
 import torch.nn as nn
+
+from modules.Attention import Attention
+from modules.cond import cast
 
 class DiagonalGaussianDistribution(object):
     """#### Represents a diagonal Gaussian distribution parameterized by mean and log-variance.
@@ -78,8 +81,8 @@ class AutoencodingEngine(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.regularization = regularizer
-        self.post_quant_conv = cond.disable_weight_init.Conv2d(4, 4, 1)
-        self.quant_conv = cond.disable_weight_init.Conv2d(8, 8, 1)
+        self.post_quant_conv = cast.disable_weight_init.Conv2d(4, 4, 1)
+        self.quant_conv = cast.disable_weight_init.Conv2d(8, 8, 1)
 
     def decode(self, z: torch.Tensor, **decoder_kwargs) -> torch.Tensor:
         dec = self.post_quant_conv(z)
@@ -95,7 +98,7 @@ class AutoencodingEngine(nn.Module):
         return z
 
 
-ops = cond.disable_weight_init
+ops = cast.disable_weight_init
 
 if Device.xformers_enabled_vae():
     import xformers

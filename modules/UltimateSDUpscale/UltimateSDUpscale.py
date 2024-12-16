@@ -4,6 +4,9 @@ from typing import Literal, Union
 import re
 import torch.nn as nn
 
+from modules.AutoEncoders import VariationalAE
+from modules.sample import sampling
+
 
 def act(act_type: str, inplace=True, neg_slope=0.2, n_prelu=1):
     act_type = act_type.lower()
@@ -488,7 +491,7 @@ import logging as logger
 
 import torch
 
-from modules import Device, VariationalAE, sampling, util
+from modules import Device, util
 
 
 def load_state_dict(state_dict) -> PyTorchModel:

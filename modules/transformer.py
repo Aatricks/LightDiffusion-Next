@@ -1,15 +1,20 @@
 from einops import rearrange
 
-from modules import Attention, Device, cond, sampling_util, util
+from modules import Device, util
 
 import torch.nn as nn
+
+from modules.Attention import Attention
+from modules.cond import Activation
+from modules.cond import cast, cond
+from modules.sample import sampling_util
 
 
 if Device.xformers_enabled():
     import xformers
     import xformers.ops
 
-ops = cond.disable_weight_init
+ops = cast.disable_weight_init
 
 _ATTN_PRECISION = "fp32"
 
@@ -34,7 +39,7 @@ class FeedForward(nn.Module):
                 operations.Linear(dim, inner_dim, dtype=dtype, device=device), nn.GELU()
             )
             if not glu
-            else cond.GEGLU(dim, inner_dim)
+            else Activation.GEGLU(dim, inner_dim)
         )
 
         self.net = nn.Sequential(

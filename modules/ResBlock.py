@@ -1,10 +1,13 @@
 from abc import abstractmethod
-from modules import cond, sampling_util, transformer
+from modules import transformer
 import torch.nn as nn
 import torch.nn.functional as F
 
+from modules.cond import cast, cond
+from modules.sample import sampling_util
 
-oai_ops = cond.disable_weight_init
+
+oai_ops = cast.disable_weight_init
 
 
 class TimestepBlock1(nn.Module):

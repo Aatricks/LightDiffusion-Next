@@ -6,8 +6,10 @@ Tiny AutoEncoder for Stable Diffusion
 from PIL import Image
 import numpy as np
 import torch
-from modules import util, cond, app_instance
+from modules import util, app_instance
 import torch.nn as nn
+
+from modules.cond import cast, cond
 
 def conv(n_in, n_out, **kwargs):
     """#### Create a convolutional layer.
@@ -19,7 +21,7 @@ def conv(n_in, n_out, **kwargs):
     #### Returns:
         - `torch.nn.Module`: The convolutional layer.
     """
-    return cond.disable_weight_init.Conv2d(n_in, n_out, 3, padding=1, **kwargs)
+    return cast.disable_weight_init.Conv2d(n_in, n_out, 3, padding=1, **kwargs)
 
 class Clamp(nn.Module):
     """#### Class representing a clamping layer."""
@@ -31,7 +33,7 @@ class Block(nn.Module):
     def __init__(self, n_in, n_out):
         super().__init__()
         self.conv = nn.Sequential(conv(n_in, n_out), nn.ReLU(), conv(n_out, n_out), nn.ReLU(), conv(n_out, n_out))
-        self.skip = cond.disable_weight_init.Conv2d(n_in, n_out, 1, bias=False) if n_in != n_out else nn.Identity()
+        self.skip = cast.disable_weight_init.Conv2d(n_in, n_out, 1, bias=False) if n_in != n_out else nn.Identity()
         self.fuse = nn.ReLU()
     def forward(self, x):
         return self.fuse(self.conv(x) + self.skip(x))

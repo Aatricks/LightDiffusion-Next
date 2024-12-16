@@ -1,7 +1,9 @@
 import torch.nn as nn
 import torch as th
 
-from modules import ResBlock, cond, sampling, sampling_util, transformer, util
+from modules import ResBlock, transformer, util
+from modules.cond import cast, cond
+from modules.sample import sampling, sampling_util
 
 UNET_MAP_ATTENTIONS = {
     "proj_in.weight",
@@ -178,7 +180,7 @@ def unet_to_diffusers(unet_config):
 def apply_control1(h, control, name):
     return h
 
-oai_ops = cond.disable_weight_init
+oai_ops = cast.disable_weight_init
 
 class UNetModel1(nn.Module):
     def __init__(

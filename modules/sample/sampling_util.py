@@ -2,8 +2,13 @@
 import logging
 import math
 import threading
+import torch
+import torchsde
+from torch import nn
+from tqdm.auto import trange, tqdm
 
-from modules import util, taesd, app_instance
+from modules import util, app_instance
+from modules.AutoEncoders import taesd
 
 logging_level = logging.INFO
 
@@ -70,12 +75,6 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     args = timesteps[:, None].float() * freqs[None]
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
     return embedding
-
-
-import torch
-import torchsde
-from torch import nn
-from tqdm.auto import trange, tqdm
 
 
 def get_sigmas_karras(n, sigma_min, sigma_max, rho=7.0, device="cpu"):

@@ -1,7 +1,8 @@
 from enum import Enum
 import torch
 
-from modules import Attention, Device, ModelPatcher
+from modules import Device, ModelPatcher
+from modules.Attention import Attention
 
 
 class CLIPAttention(torch.nn.Module):

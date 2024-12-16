@@ -1,7 +1,9 @@
 import json
 import logging
 import torch
-from modules import Device, Clip, cond
+from modules import Device
+from modules.clip import Clip
+from modules.cond import cast, cond
 
 
 def gen_empty_tokens(special_tokens, length):
@@ -80,7 +82,7 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         with open(textmodel_json_config) as f:
             config = json.load(f)
 
-        self.transformer = model_class(config, dtype, device, cond.manual_cast)
+        self.transformer = model_class(config, dtype, device, cast.manual_cast)
         self.num_layers = self.transformer.num_layers
 
         self.max_length = max_length

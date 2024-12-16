@@ -1,9 +1,10 @@
 import threading
 import torch
 from tqdm.auto import trange, tqdm
-from modules import util, app_instance, taesd
+from modules import util, app_instance
 
-from modules import sampling_util
+from modules.AutoEncoders import taesd
+from modules.sample import sampling_util
 
 
 @torch.no_grad()

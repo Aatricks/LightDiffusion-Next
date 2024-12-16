@@ -1,7 +1,9 @@
 
 import logging
 import torch
-from modules import Device, ModelPatcher, VariationalAE, unet, util, Clip
+from modules import Device, ModelPatcher, unet, util
+from modules.AutoEncoders import VariationalAE
+from modules.clip import Clip
 
 def load_checkpoint_guess_config(
     ckpt_path,
