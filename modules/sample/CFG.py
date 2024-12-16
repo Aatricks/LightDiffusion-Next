@@ -143,7 +143,7 @@ class CFGGuider:
             seed,
         )
 
-        cond.cleanup_models(self.conds, self.loaded_models)
+        cond_util.cleanup_models(self.conds, self.loaded_models)
         del self.inner_model
         del self.conds
         del self.loaded_models

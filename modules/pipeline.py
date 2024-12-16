@@ -17,7 +17,7 @@ from modules import ADetailer, Downloader, Enhancer, ImageSaver, Latent, LoRas, 
 from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
 
 def pipeline(prompt, w, h):
-    ckpt = "./_internal/checkpoints/meinamix_meinaV11.safetensors"
+    ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         checkpointloadersimple = Loader.CheckpointLoaderSimple()
         checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
@@ -29,9 +29,12 @@ def pipeline(prompt, w, h):
         vaedecode = VariationalAE.VAEDecode()
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
-        upscalemodelloader = upscale.UpscaleModelLoader()
+        upscalemodelloader = USDU.UpscaleModelLoader()
         ultimatesdupscale = USDU.UltimateSDUpscale()
-    prompt = Enhancer.enhance_prompt(prompt)
+    try :
+        prompt = Enhancer.enhance_prompt(prompt)
+    except:
+        pass
     while prompt == None:
         pass
     with torch.inference_mode():
@@ -102,3 +105,5 @@ def pipeline(prompt, w, h):
         for image in vaedecode_240[0]:
             i = 255.0 * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+
+pipeline("a drawing of a cat", 256, 256)
