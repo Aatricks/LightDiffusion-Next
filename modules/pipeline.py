@@ -1,26 +1,37 @@
+import os
 import random
+import sys
 
 import numpy as np
 from PIL import Image
 import torch
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from modules.AutoEncoders import VariationalAE
+from modules.StableFast import StableFast
+from modules.clip import Clip
+from modules.sample import sampling
+
+from modules import ADetailer, Downloader, Enhancer, ImageSaver, Latent, LoRas, Loader, upscale, util
+from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
 
 def pipeline(prompt, w, h):
     ckpt = "./_internal/checkpoints/meinamix_meinaV11.safetensors"
     with torch.inference_mode():
-        checkpointloadersimple = CheckpointLoaderSimple()
+        checkpointloadersimple = Loader.CheckpointLoaderSimple()
         checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
             ckpt_name=ckpt
         )
-        cliptextencode = CLIPTextEncode()
-        emptylatentimage = EmptyLatentImage()
-        ksampler_instance = KSampler2()
-        vaedecode = VAEDecode()
-        saveimage = SaveImage()
-        latent_upscale = LatentUpscale()
-        upscalemodelloader = UpscaleModelLoader()
-        ultimatesdupscale = UltimateSDUpscale()
-    prompt = enhance_prompt(prompt)
+        cliptextencode = Clip.CLIPTextEncode()
+        emptylatentimage = Latent.EmptyLatentImage()
+        ksampler_instance = sampling.KSampler2()
+        vaedecode = VariationalAE.VAEDecode()
+        saveimage = ImageSaver.SaveImage()
+        latent_upscale = upscale.LatentUpscale()
+        upscalemodelloader = upscale.UpscaleModelLoader()
+        ultimatesdupscale = USDU.UltimateSDUpscale()
+    prompt = Enhancer.enhance_prompt(prompt)
     while prompt == None:
         pass
     with torch.inference_mode():
@@ -36,7 +47,7 @@ def pipeline(prompt, w, h):
             print("loading add_detail.safetensors")
         except:
             loraloader_274 = checkpointloadersimple_241
-        clipsetlastlayer = CLIPSetLastLayer()
+        clipsetlastlayer = Clip.CLIPSetLastLayer()
         clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
             stop_at_clip_layer=-2, clip=loraloader_274[1]
         )
