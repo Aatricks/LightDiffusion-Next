@@ -302,3 +302,9 @@ class CLIPSetLastLayer:
         clip = clip.clone()
         clip.clip_layer(stop_at_clip_layer)
         return (clip,)
+    
+class ClipTarget:
+    def __init__(self, tokenizer, clip):
+        self.clip = clip
+        self.tokenizer = tokenizer
+        self.params = {}
