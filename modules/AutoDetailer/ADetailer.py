@@ -9,7 +9,7 @@ from segment_anything import SamPredictor, sam_model_registry
 from modules import util
 from modules.AutoEncoders import VariationalAE
 from modules.Device import Device
-from modules.sample import samplers, sampling, sampling_util
+from modules.sample import ksampler_util, samplers, sampling, sampling_util
 
 # FIXME: Improve slow inference times
 
@@ -690,7 +690,7 @@ def to_latent_image(pixels, vae):
 
 
 def calculate_sigmas2(model, sampler, scheduler, steps):
-    return sampling.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, steps)
+    return ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, steps)
 
 
 def get_noise_sampler(x, cpu, total_sigmas, **kwargs):
@@ -728,7 +728,7 @@ class Noise_RandomNoise:
         batch_inds = (
             input_latent["batch_index"] if "batch_index" in input_latent else None
         )
-        return sampling.prepare_noise(latent_image, self.seed, batch_inds)
+        return ksampler_util.prepare_noise(latent_image, self.seed, batch_inds)
 
 
 def sample_with_custom_noise(

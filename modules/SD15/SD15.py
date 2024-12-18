@@ -1,6 +1,7 @@
 import torch
-from modules import Latent, ModelBase, SDToken, util
-from modules.clip import Clip, SDClip
+from modules import Latent, ModelBase, util
+from modules.SD15 import SDClip, SDToken
+from modules.clip import Clip
 
 
 class sm_SD15(ModelBase.BASE):

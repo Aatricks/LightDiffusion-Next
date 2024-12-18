@@ -779,7 +779,7 @@ def detect_unet_config(state_dict, key_prefix):
 
 
 def model_config_from_unet_config(unet_config, state_dict=None):
-    from modules import SD15
+    from modules.SD15 import SD15
     for model_config in SD15.models:
         if model_config.matches(unet_config, state_dict):
             return model_config(unet_config)

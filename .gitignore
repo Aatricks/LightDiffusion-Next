@@ -10,3 +10,4 @@
 .toml
 __pycache__
 .venv
+!HomeImage.png

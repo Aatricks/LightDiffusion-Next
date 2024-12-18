@@ -4,17 +4,15 @@ import sys
 
 import numpy as np
 from PIL import Image
-import torch
+import torch # FIXME: tkinter openining when running in pipeline only
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from modules.AutoDetailer import ADetailer
 from modules.AutoEncoders import VariationalAE
-from modules.StableFast import StableFast
 from modules.clip import Clip
 from modules.sample import sampling
 
-from modules import Downloader, Enhancer, ImageSaver, Latent, LoRas, Loader, upscale, util
+from modules import Enhancer, ImageSaver, Latent, LoRas, Loader, upscale
 from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
 
 def pipeline(prompt, w, h):
@@ -30,8 +28,6 @@ def pipeline(prompt, w, h):
         vaedecode = VariationalAE.VAEDecode()
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
-        upscalemodelloader = USDU.UpscaleModelLoader()
-        ultimatesdupscale = USDU.UltimateSDUpscale()
     try :
         prompt = Enhancer.enhance_prompt(prompt)
     except:
