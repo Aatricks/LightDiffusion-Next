@@ -7,7 +7,7 @@ import torchsde
 from torch import nn
 from tqdm.auto import trange, tqdm
 
-from modules import util
+from modules.Utilities import util
 from modules.AutoEncoders import taesd
 from modules.user import app_instance
 

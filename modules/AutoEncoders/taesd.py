@@ -6,7 +6,7 @@ Tiny AutoEncoder for Stable Diffusion
 from PIL import Image
 import numpy as np
 import torch
-from modules import util
+from modules.Utilities import util
 import torch.nn as nn
 
 from modules.cond import cast, cond

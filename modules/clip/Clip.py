@@ -1,7 +1,7 @@
 from enum import Enum
 import torch
 
-from modules import ModelPatcher
+from modules.Model import ModelPatcher
 from modules.Attention import Attention
 from modules.Device import Device
 

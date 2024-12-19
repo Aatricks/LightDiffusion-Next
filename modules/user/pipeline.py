@@ -13,8 +13,13 @@ from modules.AutoEncoders import VariationalAE
 from modules.clip import Clip
 from modules.sample import sampling
 
-from modules import Enhancer, ImageSaver, Latent, LoRas, Loader, upscale
+from modules.Utilities import upscale
 from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
+from modules.AutoDetailer import ADetailer
+
+from modules.FileManaging import ImageSaver, Loader
+from modules.Model import LoRas
+from modules.Utilities import Enhancer, Latent
 
 def pipeline(prompt, w, h, hires_fix = False):
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"

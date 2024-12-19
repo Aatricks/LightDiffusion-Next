@@ -1,4 +1,5 @@
-from modules import unet, util
+from modules.Utilities import util
+from modules.NeuralNetwork import unet
 
 
 LORA_CLIP_MAP = {

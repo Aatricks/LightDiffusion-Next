@@ -17,7 +17,7 @@ class TimestepEmbedSequential1(nn.Sequential, TimestepBlock1):
 import math
 import torch
 
-from modules import util
+from modules.Utilities import util
 
 
 class EPS:

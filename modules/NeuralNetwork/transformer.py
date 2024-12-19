@@ -1,6 +1,6 @@
 from einops import rearrange
 
-from modules import util
+from modules.Utilities import util
 
 import torch.nn as nn
 

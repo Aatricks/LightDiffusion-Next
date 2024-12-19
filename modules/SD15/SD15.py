@@ -1,6 +1,8 @@
 import torch
-from modules import Latent, ModelBase, util
+from modules.Utilities import util
+from modules.Model import ModelBase
 from modules.SD15 import SDClip, SDToken
+from modules.Utilities import Latent
 from modules.clip import Clip
 
 

@@ -492,7 +492,7 @@ import logging as logger
 
 import torch
 
-from modules import util
+from modules.Utilities import util
 
 
 def load_state_dict(state_dict) -> PyTorchModel:

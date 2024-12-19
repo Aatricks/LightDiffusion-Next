@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import logging
 
-from modules import util
+from modules.Utilities import util
 from modules.Attention import AttentionMethods
 from modules.Device import Device
 from modules.cond import cast, cond

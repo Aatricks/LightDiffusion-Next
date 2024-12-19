@@ -1,6 +1,6 @@
 import ollama
 
-from modules import util
+from modules.Utilities import util
 
 
 def enhance_prompt(p=None):

@@ -2,7 +2,7 @@ import logging
 from typing import Tuple, Union
 import numpy as np
 import torch
-from modules import ModelPatcher
+from modules.Model import ModelPatcher
 import torch.nn as nn
 
 from modules.Attention import Attention

@@ -10,6 +10,8 @@ import customtkinter as ctk
 import glob
 
 import torch
+
+
 # Add the directory containing LightDiffusion.py to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
@@ -19,8 +21,12 @@ from modules.StableFast import StableFast
 from modules.clip import Clip
 from modules.sample import sampling
 
-from modules import Downloader, Enhancer, ImageSaver, Latent, LoRas, Loader, upscale, util
+from modules.Utilities import util
 from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
+
+from modules.FileManaging import Downloader, ImageSaver, Loader
+from modules.Model import LoRas
+from modules.Utilities import Enhancer, Latent, upscale
 
 Downloader.CheckAndDownload()
 

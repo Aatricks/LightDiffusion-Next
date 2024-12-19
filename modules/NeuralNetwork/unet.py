@@ -1,8 +1,9 @@
 import torch.nn as nn
 import torch as th
 
-from modules import transformer, util
+from modules.Utilities import util
 from modules.AutoEncoders import ResBlock
+from modules.NeuralNetwork import transformer
 from modules.cond import cast, cond
 from modules.sample import sampling, sampling_util
 

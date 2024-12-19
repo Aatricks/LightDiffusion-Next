@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 import torch
-from modules import transformer
+from modules.NeuralNetwork import transformer
 import torch.nn as nn
 import torch.nn.functional as F
 
