@@ -1,10 +1,11 @@
 import os
 import random
 import sys
+import argparse
 
 import numpy as np
 from PIL import Image
-import torch # FIXME: tkinter openining when running in pipeline only
+import torch
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
@@ -15,7 +16,7 @@ from modules.sample import sampling
 from modules import Enhancer, ImageSaver, Latent, LoRas, Loader, upscale
 from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
 
-def pipeline(prompt, w, h):
+def pipeline(prompt, w, h, hires_fix = False):
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         checkpointloadersimple = Loader.CheckpointLoaderSimple()
@@ -28,11 +29,11 @@ def pipeline(prompt, w, h):
         vaedecode = VariationalAE.VAEDecode()
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
-    try :
+    try:
         prompt = Enhancer.enhance_prompt(prompt)
     except:
         pass
-    while prompt == None:
+    while prompt is None:
         pass
     with torch.inference_mode():
         try:
@@ -75,25 +76,28 @@ def pipeline(prompt, w, h):
             negative=cliptextencode_243[0],
             latent_image=emptylatentimage_244[0],
         )
-        latentupscale_254 = latent_upscale.upscale(
-            upscale_method="bislerp",
-            width=w * 2,
-            height=h * 2,
-            crop="disabled",
-            samples=ksampler_239[0],
-        )
-        ksampler_253 = ksampler_instance.sample(
-            seed=random.randint(1, 2**64),
-            steps=10,
-            cfg=8,
-            sampler_name="euler_ancestral",
-            scheduler="normal",
-            denoise=0.45,
-            model=applystablefast_158[0],
-            positive=cliptextencode_242[0],
-            negative=cliptextencode_243[0],
-            latent_image=latentupscale_254[0],
-        )
+        if hires_fix:
+            latentupscale_254 = latent_upscale.upscale(
+                upscale_method="bislerp",
+                width=w * 2,
+                height=h * 2,
+                crop="disabled",
+                samples=ksampler_239[0],
+            )
+            ksampler_253 = ksampler_instance.sample(
+                seed=random.randint(1, 2**64),
+                steps=10,
+                cfg=8,
+                sampler_name="euler_ancestral",
+                scheduler="normal",
+                denoise=0.45,
+                model=applystablefast_158[0],
+                positive=cliptextencode_242[0],
+                negative=cliptextencode_243[0],
+                latent_image=latentupscale_254[0],
+            )
+        else:
+            ksampler_253 = ksampler_239
         vaedecode_240 = vaedecode.decode(
             samples=ksampler_253[0],
             vae=checkpointloadersimple_241[2],
@@ -103,4 +107,12 @@ def pipeline(prompt, w, h):
             i = 255.0 * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
 
-pipeline("a drawing of a cat", 256, 256)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the LightDiffusion pipeline.")
+    parser.add_argument("prompt", type=str, help="The prompt for the pipeline.")
+    parser.add_argument("width", type=int, help="The width of the generated image.")
+    parser.add_argument("height", type=int, help="The height of the generated image.")
+    parser.add_argument("--hires-fix", action="store_true", help="Enable high-resolution fix.")
+    args = parser.parse_args()
+
+    pipeline(args.prompt, args.width, args.height, args.hires_fix)
