@@ -1,8 +1,8 @@
-# document every method
-# refactor code to be more readable
-# merge SD1.5 and flux pipelines
-# pass to pytorch 2.5
-# add optimizations
-# change frontend to pyqt5
-# add functionalities
-# improve pipeline
+*   TODO: document every method
+*   TODO: merge SD1.5 and flux pipelines
+*   TODO: pass to pytorch 2.5
+*   TODO: add optimizations
+*   TODO: change frontend to pyqt5
+*   TODO: add functionalities
+*   TODO: improve pipeline
+*   TODO: seed and batch control

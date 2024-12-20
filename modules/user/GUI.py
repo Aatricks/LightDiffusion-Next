@@ -15,7 +15,7 @@ import torch
 # Add the directory containing LightDiffusion.py to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from modules.AutoDetailer import ADetailer
+from modules.AutoDetailer import SAM, ADetailer, bbox, SEGS
 from modules.AutoEncoders import VariationalAE
 from modules.StableFast import StableFast
 from modules.clip import Clip
@@ -437,7 +437,7 @@ class App(tk.Tk):
             except:
                 loraloader_274 = checkpointloadersimple_241
             try:
-                samloader = ADetailer.SAMLoader()
+                samloader = SAM.SAMLoader()
                 samloader_87 = samloader.load_model(
                     model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
                 )
@@ -447,15 +447,15 @@ class App(tk.Tk):
                     clip=loraloader_274[1],
                 )
 
-                ultralyticsdetectorprovider = ADetailer.UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                 ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                     # model_name="face_yolov8m.pt"
                     model_name="person_yolov8m-seg.pt"
                 )
 
-                bboxdetectorsegs = ADetailer.BboxDetectorForEach()
-                samdetectorcombined = ADetailer.SAMDetectorCombined()
-                impactsegsandmask = ADetailer.SegsBitwiseAndMask()
+                bboxdetectorsegs = bbox.BboxDetectorForEach()
+                samdetectorcombined = SAM.SAMDetectorCombined()
+                impactsegsandmask = SEGS.SegsBitwiseAndMask()
                 detailerforeachdebug = ADetailer.DetailerForEachTest()
             except:
                 pass
@@ -589,7 +589,7 @@ class App(tk.Tk):
                     filename_prefix="LD-refined",
                     images=detailerforeachdebug_145[0],
                 )
-                ultralyticsdetectorprovider = ADetailer.UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                 ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                     model_name="face_yolov9c.pt"
                 )

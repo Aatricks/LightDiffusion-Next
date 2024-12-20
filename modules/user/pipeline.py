@@ -14,8 +14,7 @@ from modules.clip import Clip
 from modules.sample import sampling
 
 from modules.Utilities import upscale
-from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
-from modules.AutoDetailer import ADetailer
+from modules.AutoDetailer import SAM, ADetailer, bbox, SEGS
 
 from modules.FileManaging import ImageSaver, Loader
 from modules.Model import LoRas
@@ -105,7 +104,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
             ksampler_253 = ksampler_239
         if adetailer:
             try:
-                samloader = ADetailer.SAMLoader()
+                samloader = SAM.SAMLoader()
                 samloader_87 = samloader.load_model(
                     model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
                 )
@@ -121,9 +120,9 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
                     model_name="person_yolov8m-seg.pt"
                 )
 
-                bboxdetectorsegs = ADetailer.BboxDetectorForEach()
-                samdetectorcombined = ADetailer.SAMDetectorCombined()
-                impactsegsandmask = ADetailer.SegsBitwiseAndMask()
+                bboxdetectorsegs = bbox.BboxDetectorForEach()
+                samdetectorcombined = SAM.SAMDetectorCombined()
+                impactsegsandmask = SEGS.SegsBitwiseAndMask()
                 detailerforeachdebug = ADetailer.DetailerForEachTest()
                 
                 bboxdetectorsegs_132 = bboxdetectorsegs.doit(

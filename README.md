@@ -18,7 +18,7 @@ For more information, check the [documentation](https://aatrick.github.io/LightD
 - DPM Adaptive Karras
 - Clip Skip
 - LoRa and textual inversion (embeddings) support
-- Automatic Prompt-Enhancing with llama3.1 (ollama)
+- Automatic Prompt-Enhancing with llama3.2 (ollama)
 - Discord bot integration with the installation of [Boubou](https://github.com/Aatrick/Boubou) and the usage of LightDiffusion's pipeline
 - Automatic Face and body Detailer (based on [Impact pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack))
 - TAESD image previewing at the cost of a 10% performance hit
@@ -28,6 +28,10 @@ For more information, check the [documentation](https://aatrick.github.io/LightD
 ## Installation
 
 To install, please download a release or clone this repo and execute the run.bat file in a cmd and you should be good to go.
+
+### Pipeline
+
+You can also use the `pipeline.bat <prompt> <width> <height>` to install and run without graphical interface, use `pipeline.bat -h` to get the usage information.
 
 #### From Source
 
