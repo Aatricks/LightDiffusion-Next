@@ -102,8 +102,13 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
             )
         else:
             ksampler_253 = ksampler_239
+            
+        vaedecode_240 = vaedecode.decode(
+                samples=ksampler_253[0],
+                vae=checkpointloadersimple_241[2],
+            )
+        
         if adetailer:
-            try:
                 samloader = SAM.SAMLoader()
                 samloader_87 = samloader.load_model(
                     model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
@@ -178,7 +183,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
                     filename_prefix="LD-refined",
                     images=detailerforeachdebug_145[0],
                 )
-                ultralyticsdetectorprovider = ADetailer.UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                 ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                     model_name="face_yolov9c.pt"
                 )
@@ -235,13 +240,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
                     filename_prefix="lD-2ndrefined",
                     images=detailerforeachdebug_145[0],
                 )
-            except:
-                pass
         else:
-            vaedecode_240 = vaedecode.decode(
-                samples=ksampler_253[0],
-                vae=checkpointloadersimple_241[2],
-            )
             saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
             for image in vaedecode_240[0]:
                 i = 255.0 * image.cpu().numpy()
