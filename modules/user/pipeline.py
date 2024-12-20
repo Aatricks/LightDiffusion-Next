@@ -114,7 +114,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
                     clip=loraloader_274[1],
                 )
 
-                ultralyticsdetectorprovider = ADetailer.UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                 ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                     # model_name="face_yolov8m.pt"
                     model_name="person_yolov8m-seg.pt"

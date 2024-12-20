@@ -1,14 +1,11 @@
-orig_torch_load = torch.load
-
 import re
 import cv2
 import numpy as np
 import torch
-import torchvision
 from ultralytics import YOLO
 from PIL import Image
 
-from modules.Device import Device
+orig_torch_load = torch.load
 
 # HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities

@@ -1,4 +1,4 @@
-from modules.AutoDetailer import SEGS, AD_util
+from modules.AutoDetailer import SEGS, AD_util, tensor_util
 
 
 class UltraBBoxDetector:
@@ -12,7 +12,7 @@ class UltraBBoxDetector:
     ):
         drop_size = max(drop_size, 1)
         detected_results = AD_util.inference_bbox(
-            self.bbox_model, AD_util.tensor2pil(image), threshold
+            self.bbox_model, tensor_util.tensor2pil(image), threshold
         )
         segmasks = AD_util.create_segmasks(detected_results)
 

@@ -22,7 +22,7 @@ from modules.clip import Clip
 from modules.sample import sampling
 
 from modules.Utilities import util
-from modules.UltimateSDUpscale import UltimateSDUpscale as USDU
+from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale as USDU
 
 from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
@@ -383,7 +383,7 @@ class App(tk.Tk):
                 self.vaedecode = VariationalAE.VAEDecode()
                 self.saveimage = ImageSaver.SaveImage()
                 self.latent_upscale = upscale.LatentUpscale()
-                self.upscalemodelloader = USDU.UpscaleModelLoader()
+                self.upscalemodelloader = USDU_upscaler.UpscaleModelLoader()
                 self.ultimatesdupscale = USDU.UltimateSDUpscale()
         return (
             self.checkpointloadersimple_241,
