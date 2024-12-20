@@ -5,4 +5,4 @@
 # add optimizations
 # change frontend to pyqt5
 # add functionalities
-# make pipeline only with arg parser
+# improve pipeline
