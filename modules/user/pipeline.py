@@ -20,7 +20,7 @@ from modules.FileManaging import ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 
-def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
+def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt = False):
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         checkpointloadersimple = Loader.CheckpointLoaderSimple()
@@ -33,10 +33,11 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False):
         vaedecode = VariationalAE.VAEDecode()
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
-    try:
-        prompt = Enhancer.enhance_prompt(prompt)
-    except:
-        pass
+    if enhance_prompt:
+        try:
+            prompt = Enhancer.enhance_prompt(prompt)
+        except:
+            pass
     while prompt is None:
         pass
     with torch.inference_mode():
@@ -253,6 +254,7 @@ if __name__ == "__main__":
     parser.add_argument("height", type=int, help="The height of the generated image.")
     parser.add_argument("--hires-fix", action="store_true", help="Enable high-resolution fix.")
     parser.add_argument("--adetailer", action="store_true", help="Enable automatic face and body enhancing")
+    parser.add_argument("--enhance-prompt", action="store_true", help="Enable llama3.2 prompt enhancement. Make sure to have ollama with llama3.2 installed.")
     args = parser.parse_args()
 
-    pipeline(args.prompt, args.width, args.height, args.hires_fix, args.adetailer)
+    pipeline(args.prompt, args.width, args.height, args.hires_fix, args.adetailer, args.enhance_prompt)
