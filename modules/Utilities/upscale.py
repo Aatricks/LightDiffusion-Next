@@ -13,7 +13,16 @@ def bislerp(samples, width, height):
         - `torch.Tensor`: The interpolated samples.
     """
     def slerp(b1, b2, r):
-        """slerps batches b1, b2 according to ratio r, batches should be flat e.g. NxC"""
+        """#### Perform spherical linear interpolation between two vectors.
+        
+        #### Args:
+            - `b1` (torch.Tensor): The first vector.
+            - `b2` (torch.Tensor): The second vector.
+            - `r` (torch.Tensor): The interpolation ratio.
+        
+        #### Returns:
+            - `torch.Tensor`: The interpolated vector.
+        """
 
         c = b1.shape[-1]
 
@@ -48,6 +57,18 @@ def bislerp(samples, width, height):
         return res
 
     def generate_bilinear_data(length_old, length_new, device):
+        """#### Generate bilinear data for interpolation.
+        
+        #### Args:
+            - `length_old` (int): The old length.
+            - `length_new` (int): The new length.
+            - `device` (torch.device): The device to use.
+        
+        #### Returns:
+            - `torch.Tensor`: The ratios.
+            - `torch.Tensor`: The first coordinates.
+            - `torch.Tensor`: The second coordinates.
+        """
         coords_1 = torch.arange(length_old, dtype=torch.float32, device=device).reshape(
             (1, 1, 1, -1)
         )
@@ -119,10 +140,24 @@ def common_upscale(samples, width, height, upscale_method, crop):
 
 
 class LatentUpscale:
+    """#### A class to upscale latent codes.
+    """
     upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
     crop_methods = ["disabled", "center"]
 
     def upscale(self, samples, upscale_method, width, height, crop):
+        """#### Upscales the given latent codes.
+        
+        #### Args:
+            - `samples` (dict): The latent codes to be upscaled.
+            - `upscale_method` (str): The method to use for upscaling.
+            - `width` (int): The target width for the upscaled samples.
+            - `height` (int): The target height for the upscaled samples.
+            - `crop` (str): The crop method to use.
+        
+        #### Returns:
+            - `tuple`: The upscaled samples.
+        """
         if width == 0 and height == 0:
             s = samples
         else:

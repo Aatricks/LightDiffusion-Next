@@ -4,7 +4,15 @@ from modules.Utilities import util
 
 
 def enhance_prompt(p=None):
-    prompt, neg, width, height, cfg = util.load_parameters_from_file()
+    """#### Enhance a text-to-image prompt using Ollama.
+    
+    #### Args:
+        - `p` (str, optional): The prompt. Defaults to `None`.
+    
+    #### Returns:
+        - `str`: The enhanced prompt
+    """
+    prompt = util.load_parameters_from_file()[0]
     if p is None:
         pass
     else:

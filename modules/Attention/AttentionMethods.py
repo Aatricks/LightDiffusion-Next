@@ -1,6 +1,18 @@
 import xformers, torch
 
 def attention_xformers(q, k, v, heads, mask=None):
+    """#### Make an attention call using xformers. Fastest attention implementation.
+
+    #### Args:
+        - `q` (torch.Tensor): The query tensor.
+        - `k` (torch.Tensor): The key tensor, must have the same shape as `q`.
+        - `v` (torch.Tensor): The value tensor, must have the same shape as `q`.
+        - `heads` (int): The number of heads, must be a divisor of the hidden dimension.
+        - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
+    
+    #### Returns:
+        - `torch.Tensor`: The output tensor.
+    """
     b, _, dim_head = q.shape
     dim_head //= heads
 
@@ -25,6 +37,18 @@ def attention_xformers(q, k, v, heads, mask=None):
 
 
 def attention_pytorch(q, k, v, heads, mask=None):
+    """#### Make an attention call using PyTorch.
+    
+    #### Args:
+        - `q` (torch.Tensor): The query tensor.
+        - `k` (torch.Tensor): The key tensor, must have the same shape as `q.
+        - `v` (torch.Tensor): The value tensor, must have the same shape as `q.
+        - `heads` (int): The number of heads, must be a divisor of the hidden dimension.
+        - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
+        
+    #### Returns:
+        - `torch.Tensor`: The output tensor.
+    """
     b, _, dim_head = q.shape
     dim_head //= heads
     q, k, v = map(
@@ -40,7 +64,16 @@ def attention_pytorch(q, k, v, heads, mask=None):
 
 
 def xformers_attention(q, k, v):
-    # compute attention
+    """#### Compute attention using xformers.
+
+    #### Args:
+        - `q` (torch.Tensor): The query tensor.
+        - `k` (torch.Tensor): The key tensor, must have the same shape as `q`.
+        - `v` (torch.Tensor): The value tensor, must have the same shape as `q`.
+
+    Returns:
+        - `torch.Tensor`: The output tensor.
+    """
     B, C, H, W = q.shape
     q, k, v = map(
         lambda t: t.view(B, C, -1).transpose(1, 2).contiguous(),
@@ -52,7 +85,16 @@ def xformers_attention(q, k, v):
 
 
 def pytorch_attention(q, k, v):
-    # compute attention
+    """#### Compute attention using PyTorch.
+    
+    #### Args:
+        - `q` (torch.Tensor): The query tensor.
+        - `k` (torch.Tensor): The key tensor, must have the same shape as `q.
+        - `v` (torch.Tensor): The value tensor, must have the same shape as `q.
+        
+    #### Returns:
+        - `torch.Tensor`: The output tensor.
+    """
     B, C, H, W = q.shape
     q, k, v = map(
         lambda t: t.view(B, 1, C, -1).transpose(2, 3).contiguous(),

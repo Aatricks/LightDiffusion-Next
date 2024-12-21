@@ -175,6 +175,15 @@ def lcm(a, b):
     return abs(a * b) // math.gcd(a, b)
 
 def get_full_path(folder_name, filename):
+    """#### Get the full path of a file in a folder.
+
+    Args:
+        folder_name (str): The folder name.
+        filename (str): The filename.
+
+    Returns:
+        str: The full path of the file.
+    """
     global folder_names_and_paths
     folders = folder_names_and_paths[folder_name]
     filename = os.path.relpath(os.path.join("/", filename), "/")
@@ -209,15 +218,41 @@ def append_zero(x):
     return torch.cat([x, x.new_zeros([1])])
 
 def exists(val):
+    """#### Check if a value exists.
+
+    #### Args:
+        - `val` (any): The value.
+    
+    #### Returns:
+        - `bool`: Whether the value exists.
+    """
     return val is not None
 
 
 def default(val, d):
+    """#### Get the default value of a variable.
+    
+    #### Args:
+        - `val` (any): The value.
+        - `d` (any): The default value.
+    
+    #### Returns:
+        - `any`: The default value if the value does not exist.
+    """
     if exists(val):
         return val
     return d() if isfunction(d) else d
 
 def write_parameters_to_file(prompt_entry, neg, width, height, cfg):
+    """#### Write parameters to a file.
+
+    #### Args:
+        - `prompt_entry` (str): The prompt entry.
+        - `neg` (str): The negative prompt entry.
+        - `width` (int): The width.
+        - `height` (int): The height.
+        - `cfg` (int): The CFG.
+    """
     with open("./_internal/prompt.txt", "w") as f:
         f.write(f"prompt: {prompt_entry}")
         f.write(f"neg: {neg}")
@@ -227,6 +262,15 @@ def write_parameters_to_file(prompt_entry, neg, width, height, cfg):
 
 
 def load_parameters_from_file():
+    """#### Load parameters from a file.
+    
+    #### Returns:
+        - `str`: The prompt entry.
+        - `str`: The negative prompt entry.
+        - `int`: The width.
+        - `int`: The height.
+        - `int`: The CFG.
+    """
     with open("./_internal/prompt.txt", "r") as f:
         lines = f.readlines()
         parameters = {}

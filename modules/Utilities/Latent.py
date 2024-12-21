@@ -54,10 +54,25 @@ class SD15(LatentFormat):
         self.taesd_decoder_name = "taesd_decoder"
         
 class EmptyLatentImage:
+    """#### A class to generate an empty latent image.
+    
+    #### Args:
+        - `Device` (Device): The device to use for the latent image.
+    """
     def __init__(self):
         self.device = Device.intermediate_device()
 
     def generate(self, width, height, batch_size=1):
+        """#### Generate an empty latent image
+
+        #### Args:
+            - `width` (int): The width of the latent image.
+            - `height` (int): The height of the latent image.
+            - `batch_size` (int, optional): _description_. Defaults to 1.
+
+        #### Returns:
+            - `Tuple[Dict[str, torch.Tensor]]`: The generated latent image.
+        """
         latent = torch.zeros(
             [batch_size, 4, height // 8, width // 8], device=self.device
         )

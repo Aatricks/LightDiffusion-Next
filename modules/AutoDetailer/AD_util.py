@@ -7,12 +7,19 @@ from PIL import Image
 
 orig_torch_load = torch.load
 
-# HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities
 torch.load = orig_torch_load
 
 
 def load_yolo(model_path: str):
+    """#### Load YOLO model.
+
+    #### Args:
+        - `model_path` (str): The path to the YOLO model.
+
+    #### Returns:
+        - `YOLO`: The YOLO model initialized with the specified model path.
+    """
     try:
         return YOLO(model_path)
     except ModuleNotFoundError:
