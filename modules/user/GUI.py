@@ -556,6 +556,8 @@ class App(tk.Tk):
                     segs=bboxdetectorsegs_132[0],
                     image=vaedecode_240[0],
                 )
+                if samdetectorcombined_139[0] is None:
+                    return
                 impactsegsandmask_152 = impactsegsandmask.doit(
                     segs=bboxdetectorsegs_132[0],
                     mask=samdetectorcombined_139[0],

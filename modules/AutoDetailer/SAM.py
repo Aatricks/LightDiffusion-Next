@@ -162,12 +162,15 @@ def make_sam_mask(
     finally:
         sam_obj.release_device()
 
-    mask = mask.float()
-    mask = mask_util.dilate_mask(mask.cpu().numpy(), dilation)
-    mask = torch.from_numpy(mask)
+    if mask is not None:
+        mask = mask.float()
+        mask = mask_util.dilate_mask(mask.cpu().numpy(), dilation)
+        mask = torch.from_numpy(mask)
 
-    mask = mask_util.make_3d_mask(mask)
-    return mask
+        mask = mask_util.make_3d_mask(mask)
+        return mask
+    else:
+        return None
 
 
 class SAMDetectorCombined:
@@ -183,8 +186,7 @@ class SAMDetectorCombined:
         mask_hint_threshold,
         mask_hint_use_negative,
     ):
-        return (
-            make_sam_mask(
+        sam = make_sam_mask(
                 sam_model,
                 segs,
                 image,
@@ -194,5 +196,8 @@ class SAMDetectorCombined:
                 bbox_expansion,
                 mask_hint_threshold,
                 mask_hint_use_negative,
-            ),
-        )
+            )
+        if sam is not None:
+            return (sam,)
+        else:
+            return None

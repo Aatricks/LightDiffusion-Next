@@ -151,6 +151,8 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
                     segs=bboxdetectorsegs_132[0],
                     image=vaedecode_240[0],
                 )
+                if samdetectorcombined_139 is None:
+                    return
                 impactsegsandmask_152 = impactsegsandmask.doit(
                     segs=bboxdetectorsegs_132[0],
                     mask=samdetectorcombined_139[0],
