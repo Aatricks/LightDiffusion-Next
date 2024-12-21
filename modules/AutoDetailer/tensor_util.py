@@ -16,6 +16,7 @@ def tensor2pil(image):
         np.clip(255.0 * image.cpu().numpy().squeeze(0), 0, 255).astype(np.uint8)
     )
 
+
 def general_tensor_resize(image, w: int, h: int):
     _tensor_check_image(image)
     image = image.permute(0, 3, 1, 2)
@@ -23,8 +24,10 @@ def general_tensor_resize(image, w: int, h: int):
     image = image.permute(0, 2, 3, 1)
     return image
 
+
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+
 
 class TensorBatchBuilder:
     def __init__(self):
@@ -33,7 +36,9 @@ class TensorBatchBuilder:
     def concat(self, new_tensor):
         self.tensor = new_tensor
 
+
 LANCZOS = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+
 
 def tensor_resize(image, w: int, h: int):
     _tensor_check_image(image)
@@ -50,6 +55,7 @@ def tensor_resize(image, w: int, h: int):
         return scaled_images.tensor
     else:
         return general_tensor_resize(image, w, h)
+
 
 def tensor_paste(image1, image2, left_top, mask):
     """Mask and image2 has to be the same size"""
@@ -96,7 +102,8 @@ def tensor_putalpha(image, mask):
     _tensor_check_image(image)
     _tensor_check_mask(mask)
     image[..., -1] = mask[..., 0]
-    
+
+
 def _tensor_check_mask(mask):
     return
 
@@ -127,6 +134,7 @@ def tensor_gaussian_blur_mask(mask, kernel_size, sigma=10.0):
     blurred_mask.to(prev_device)
 
     return blurred_mask
+
 
 def to_tensor(image):
     return torch.from_numpy(image)

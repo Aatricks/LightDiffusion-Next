@@ -280,7 +280,9 @@ def enhance_detail(
 ):
 
     if noise_mask is not None:
-        noise_mask = tensor_util.tensor_gaussian_blur_mask(noise_mask, noise_mask_feather)
+        noise_mask = tensor_util.tensor_gaussian_blur_mask(
+            noise_mask, noise_mask_feather
+        )
         noise_mask = noise_mask.squeeze(3)
 
     h = image.shape[1]
@@ -550,7 +552,9 @@ class DetailerForEach:
                 enhanced_image.numpy()
             )  # alpha should not be applied to seg_image
             # Apply the mask
-            mask = tensor_util.tensor_resize(mask, *tensor_util.tensor_get_size(enhanced_image))
+            mask = tensor_util.tensor_resize(
+                mask, *tensor_util.tensor_get_size(enhanced_image)
+            )
             tensor_util.tensor_putalpha(enhanced_image_alpha, mask)
             enhanced_alpha_list.append(enhanced_image_alpha)
 

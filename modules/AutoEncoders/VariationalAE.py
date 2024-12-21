@@ -10,9 +10,10 @@ from modules.AutoEncoders import ResBlock
 from modules.Device import Device
 from modules.cond import cast
 
+
 class DiagonalGaussianDistribution(object):
     """#### Represents a diagonal Gaussian distribution parameterized by mean and log-variance.
-    
+
     #### Attributes:
         - `parameters` (torch.Tensor): The concatenated mean and log-variance of the distribution.
         - `mean` (torch.Tensor): The mean of the distribution.
@@ -20,7 +21,7 @@ class DiagonalGaussianDistribution(object):
         - `std` (torch.Tensor): The standard deviation of the distribution, computed as exp(0.5 * logvar).
         - `var` (torch.Tensor): The variance of the distribution, computed as exp(logvar).
         - `deterministic` (bool): If True, the distribution is deterministic.
-        
+
     #### Methods:
         - `sample() -> torch.Tensor`:
             Samples from the distribution using the reparameterization trick.
@@ -28,6 +29,7 @@ class DiagonalGaussianDistribution(object):
             Computes the Kullback-Leibler divergence between this distribution and a standard normal distribution.
             If `other` is provided, computes the KL divergence between this distribution and `other`.
     """
+
     def __init__(self, parameters, deterministic=False):
         self.parameters = parameters
         self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
@@ -38,7 +40,7 @@ class DiagonalGaussianDistribution(object):
 
     def sample(self):
         """#### Samples from the distribution using the reparameterization trick.
-        
+
         #### Returns:
             - `torch.Tensor`: A sample from the distribution.
         """
@@ -49,9 +51,9 @@ class DiagonalGaussianDistribution(object):
 
     def kl(self, other=None):
         """#### Computes the Kullback-Leibler divergence between this distribution and a standard normal distribution.
-        
+
         If `other` is provided, computes the KL divergence between this distribution and `other`.
-        
+
         #### Args:
             - `other` (DiagonalGaussianDistribution, optional): Another distribution to compute the KL divergence with.
         #### Returns:
@@ -61,6 +63,7 @@ class DiagonalGaussianDistribution(object):
             torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
             dim=[1, 2, 3],
         )
+
 
 class DiagonalGaussianRegularizer(torch.nn.Module):
     def __init__(self, sample: bool = True):
@@ -380,6 +383,7 @@ class Decoder(nn.Module):
         h = self.conv_out(h, **kwargs)
         return h
 
+
 class VAE:
     def __init__(self, sd=None, device=None, config=None, dtype=None):
         self.memory_used_encode = lambda shape, dtype: (
@@ -509,7 +513,8 @@ class VAE:
             )
 
         return samples
-    
+
+
 class VAEDecode:
     def decode(self, vae, samples):
         return (vae.decode(samples["samples"]),)

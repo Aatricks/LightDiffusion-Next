@@ -16,7 +16,7 @@ def make_2d_mask(mask):
 
 
 def combine_masks2(masks):
-    try :
+    try:
         mask = torch.from_numpy(np.array(masks[0]).astype(np.uint8))
     except:
         print("No Human Detected")

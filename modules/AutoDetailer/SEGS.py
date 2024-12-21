@@ -17,6 +17,7 @@ SEG = namedtuple(
     defaults=[None],
 )
 
+
 def segs_bitwise_and_mask(segs, mask):
     mask = mask_util.make_2d_mask(mask)
     items = []
@@ -51,7 +52,8 @@ def segs_bitwise_and_mask(segs, mask):
 class SegsBitwiseAndMask:
     def doit(self, segs, mask):
         return (segs_bitwise_and_mask(segs, mask),)
-    
+
+
 class SEGSLabelFilter:
     @staticmethod
     def filter(segs, labels):

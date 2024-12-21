@@ -219,7 +219,9 @@ class ResBlock1(TimestepBlock1):
         h = self.out_layers(h)
         return self.skip_connection(x) + h
 
+
 ops = cast.disable_weight_init
+
 
 class ResnetBlock(nn.Module):
     def __init__(

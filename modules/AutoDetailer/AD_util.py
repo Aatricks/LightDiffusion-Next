@@ -32,6 +32,17 @@ def inference_bbox(
     confidence: float = 0.3,
     device: str = "",
 ):
+    """#### Perform inference on an image and return bounding boxes.
+    
+    #### Args:
+        - `model` (YOLO): The YOLO model.
+        - `image` (Image.Image): The image to perform inference on.
+        - `confidence` (float): The confidence threshold for the bounding boxes.
+        - `device` (str): The device to run the model on.
+        
+    #### Returns:
+        - `List[List[str, List[int], np.ndarray, float]]`: The list of bounding boxes.
+    """
     pred = model(image, conf=confidence, device=device)
 
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
@@ -57,6 +68,14 @@ def inference_bbox(
 
 
 def create_segmasks(results):
+    """#### Create segmentation masks from the results of the inference.
+    
+    #### Args:
+        - `results` (List[List[str, List[int], np.ndarray, float]]): The results of the inference.
+    
+    #### Returns:
+        - `List[List[int], np.ndarray, float]`: The list of segmentation masks.
+    """
     bboxs = results[1]
     segms = results[2]
     confidence = results[3]
@@ -69,6 +88,16 @@ def create_segmasks(results):
 
 
 def dilate_masks(segmasks, dilation_factor, iter=1):
+    """#### Dilate the segmentation masks.
+    
+    #### Args:
+        - `segmasks` (List[List[int], np.ndarray, float]): The segmentation masks.
+        - `dilation_factor` (int): The dilation factor.
+        - `iter` (int): The number of iterations.
+        
+    #### Returns:
+        - `List[List[int], np.ndarray, float]`: The dilated segmentation masks.
+    """
     dilated_masks = []
     kernel = np.ones((abs(dilation_factor), abs(dilation_factor)), np.uint8)
 
@@ -84,6 +113,16 @@ def dilate_masks(segmasks, dilation_factor, iter=1):
 
 
 def normalize_region(limit, startp, size):
+    """#### Normalize the region.
+    
+    #### Args:
+        - `limit` (int): The limit.
+        - `startp` (int): The start point.
+        - `size` (int): The size.
+        
+    #### Returns:
+        - `int, int`: The normalized start and end points.
+    """
     if startp < 0:
         new_endp = min(limit, size)
         new_startp = 0
@@ -98,6 +137,18 @@ def normalize_region(limit, startp, size):
 
 
 def make_crop_region(w, h, bbox, crop_factor, crop_min_size=None):
+    """#### Make the crop region.
+    
+    #### Args:
+        - `w` (int): The width.
+        - `h` (int): The height.
+        - `bbox` (List[int]): The bounding box.
+        - `crop_factor` (float): The crop factor.
+        - `crop_min_size` (int): The crop minimum size.
+        
+    #### Returns:
+        - `List[x1: int, y1: int, x2: int, y2: int]`: The crop region.
+    """
     x1 = bbox[0]
     y1 = bbox[1]
     x2 = bbox[2]
@@ -123,6 +174,15 @@ def make_crop_region(w, h, bbox, crop_factor, crop_min_size=None):
 
 
 def crop_ndarray2(npimg, crop_region):
+    """#### Crop the ndarray in 2 dimensions.
+    
+    #### Args:
+        - `npimg` (np.ndarray): The ndarray to crop.
+        - `crop_region` (List[int]): The crop region.
+        
+    #### Returns:
+        - `np.ndarray`: The cropped ndarray.
+    """
     x1 = crop_region[0]
     y1 = crop_region[1]
     x2 = crop_region[2]
@@ -134,6 +194,15 @@ def crop_ndarray2(npimg, crop_region):
 
 
 def crop_ndarray4(npimg, crop_region):
+    """#### Crop the ndarray in 4 dimensions.
+    
+    #### Args:
+        - `npimg` (np.ndarray): The ndarray to crop.
+        - `crop_region` (List[int]): The crop region.
+        
+    #### Returns:
+        - `np.ndarray`: The cropped ndarray.
+    """
     x1 = crop_region[0]
     y1 = crop_region[1]
     x2 = crop_region[2]
@@ -144,19 +213,29 @@ def crop_ndarray4(npimg, crop_region):
     return cropped
 
 
-crop_tensor4 = crop_ndarray4
-
-
 def crop_image(image, crop_region):
-    return crop_tensor4(image, crop_region)
-
-
-
-
-
+    """#### Crop the image.
+    
+    #### Args:
+        - `image` (Image.Image): The image to crop.
+        - `crop_region` (List[int]): The crop region.
+        
+    #### Returns:
+        - `Image.Image`: The cropped image.
+    """
+    return crop_ndarray4(image, crop_region)
 
 
 def segs_scale_match(segs, target_shape):
+    """#### Match the scale of the segmentation masks.
+    
+    #### Args:
+        - `segs` (List[np.ndarray]): The segmentation masks.
+        - `target_shape` (List[int]): The target shape.
+        
+    #### Returns:
+        - `List[np.ndarray]`: The matched segmentation masks.
+    """
     h = segs[0][0]
     w = segs[0][1]
 
@@ -165,8 +244,3 @@ def segs_scale_match(segs, target_shape):
 
     if (h == th and w == tw) or h == 0 or w == 0:
         return segs
-
-
-def starts_with_regex(pattern, text):
-    regex = re.compile(pattern)
-    return regex.match(text)

@@ -8,6 +8,7 @@ from modules.Attention import AttentionMethods
 from modules.Device import Device
 from modules.cond import cast, cond
 
+
 def Normalize(in_channels, dtype=None, device=None):
     """#### Normalize the input channels.
 
@@ -27,7 +28,6 @@ def Normalize(in_channels, dtype=None, device=None):
         dtype=dtype,
         device=device,
     )
-
 
 
 if Device.xformers_enabled():
@@ -56,7 +56,7 @@ def optimized_attention_for_device(device, mask=False, small_input=False):
 
 class CrossAttention(nn.Module):
     """#### Cross attention module, which applies attention across the query and context.
-    
+
     #### Args:
         - `query_dim` (_type_): The query dimension.
         - `context_dim` (_type_, optional): The context dimension. Defaults to `None`.
@@ -67,6 +67,7 @@ class CrossAttention(nn.Module):
         - `device` (_type_, optional): The device. Defaults to `None`.
         - `operations` (_type_, optional): The operations. Defaults to `cast.disable_weight_init`.
     """
+
     def __init__(
         self,
         query_dim,
@@ -102,13 +103,13 @@ class CrossAttention(nn.Module):
 
     def forward(self, x, context=None, value=None, mask=None):
         """#### Forward pass of the cross attention module.
-        
+
         #### Args:
             - `x` (_type_): The input tensor.
             - `context` (_type_, optional): The context tensor. Defaults to `None`.
             - `value` (_type_, optional): The value tensor. Defaults to `None`.
             - `mask` (_type_, optional): The mask tensor. Defaults to `None`.
-            
+
         #### Returns:
             - `_type_`: The output tensor.
         """
@@ -119,15 +120,15 @@ class CrossAttention(nn.Module):
 
         out = optimized_attention(q, k, v, self.heads)
         return self.to_out(out)
-    
 
 
 class AttnBlock(nn.Module):
     """#### Attention block, which applies attention to the input tensor.
-    
+
     #### Args:
         - `in_channels` (int): The input channels.
     """
+
     def __init__(self, in_channels):
         super().__init__()
         self.in_channels = in_channels
@@ -155,10 +156,10 @@ class AttnBlock(nn.Module):
 
     def forward(self, x):
         """#### Forward pass of the attention block.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """

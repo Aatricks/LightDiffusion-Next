@@ -1,5 +1,6 @@
 import xformers, torch
 
+
 def attention_xformers(q, k, v, heads, mask=None):
     """#### Make an attention call using xformers. Fastest attention implementation.
 
@@ -9,7 +10,7 @@ def attention_xformers(q, k, v, heads, mask=None):
         - `v` (torch.Tensor): The value tensor, must have the same shape as `q`.
         - `heads` (int): The number of heads, must be a divisor of the hidden dimension.
         - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
-    
+
     #### Returns:
         - `torch.Tensor`: The output tensor.
     """
@@ -38,14 +39,14 @@ def attention_xformers(q, k, v, heads, mask=None):
 
 def attention_pytorch(q, k, v, heads, mask=None):
     """#### Make an attention call using PyTorch.
-    
+
     #### Args:
         - `q` (torch.Tensor): The query tensor.
         - `k` (torch.Tensor): The key tensor, must have the same shape as `q.
         - `v` (torch.Tensor): The value tensor, must have the same shape as `q.
         - `heads` (int): The number of heads, must be a divisor of the hidden dimension.
         - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
-        
+
     #### Returns:
         - `torch.Tensor`: The output tensor.
     """
@@ -86,12 +87,12 @@ def xformers_attention(q, k, v):
 
 def pytorch_attention(q, k, v):
     """#### Compute attention using PyTorch.
-    
+
     #### Args:
         - `q` (torch.Tensor): The query tensor.
         - `k` (torch.Tensor): The key tensor, must have the same shape as `q.
         - `v` (torch.Tensor): The value tensor, must have the same shape as `q.
-        
+
     #### Returns:
         - `torch.Tensor`: The output tensor.
     """

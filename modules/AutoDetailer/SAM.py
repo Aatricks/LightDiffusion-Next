@@ -6,6 +6,7 @@ import torch
 from modules.AutoDetailer import mask_util
 from modules.Device import Device
 
+
 def sam_predict(predictor, points, plabs, bbox, threshold):
     point_coords = None if not points else np.array(points)
     point_labels = None if not plabs else np.array(plabs)
@@ -187,16 +188,16 @@ class SAMDetectorCombined:
         mask_hint_use_negative,
     ):
         sam = make_sam_mask(
-                sam_model,
-                segs,
-                image,
-                detection_hint,
-                dilation,
-                threshold,
-                bbox_expansion,
-                mask_hint_threshold,
-                mask_hint_use_negative,
-            )
+            sam_model,
+            segs,
+            image,
+            detection_hint,
+            dilation,
+            threshold,
+            bbox_expansion,
+            mask_hint_threshold,
+            mask_hint_use_negative,
+        )
         if sam is not None:
             return (sam,)
         else:
