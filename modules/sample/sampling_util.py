@@ -8,8 +8,12 @@ from torch import nn
 from tqdm.auto import trange, tqdm
 
 from modules.Utilities import util
-from modules.AutoEncoders import taesd
-from modules.user import app_instance
+
+
+disable_gui = True
+if disable_gui == False:
+    from modules.AutoEncoders import taesd
+    from modules.user import app_instance
 
 logging_level = logging.INFO
 
@@ -481,6 +485,7 @@ class DPMSolver(nn.Module):
         eta=0.0,
         s_noise=1.0,
         noise_sampler=None,
+        pipeline=False,
     ):
         """#### Perform an adaptive DPM-Solver update with error control and step size adaptation.
         
@@ -503,6 +508,8 @@ class DPMSolver(nn.Module):
         #### Returns:
             - `tuple`: A tuple containing the updated tensor and information about the solver's progress.
         """
+        global disable_gui
+        disable_gui = True if pipeline == True else False
         noise_sampler = (
             default_noise_sampler(x) if noise_sampler is None else noise_sampler
         )
@@ -519,12 +526,13 @@ class DPMSolver(nn.Module):
         info = {"steps": 0, "nfe": 0, "n_accept": 0, "n_reject": 0}
 
         while s < t_end - 1e-5 if forward else s > t_end + 1e-5:
-            try:
-                app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
-            except:
-                pass
-            if app_instance.app.interrupt_flag == True:
-                break
+            if pipeline == False:
+                try:
+                    app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
+                except:
+                    pass
+                if app_instance.app.interrupt_flag == True:
+                    break
             eps_cache = {}
             t = (
                 torch.minimum(t_end, s + pid.h)
@@ -552,13 +560,14 @@ class DPMSolver(nn.Module):
                 info["n_reject"] += 1
             info["nfe"] += order
             info["steps"] += 1
-            if app_instance.app.previewer_checkbox.get() == True:
-                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
-            else:
+            if pipeline == False:
+                if app_instance.app.previewer_checkbox.get() == True:
+                    threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+                else:
+                    pass
+        if pipeline == False:
+            try:
+                app_instance.app.title("LightDiffusion")
+            except:
                 pass
-            
-        try:
-            app_instance.app.title("LightDiffusion")
-        except:
-            pass
         return x, info

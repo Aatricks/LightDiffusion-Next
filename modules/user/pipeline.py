@@ -26,7 +26,6 @@ from modules.FileManaging import ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 
-#FIXME: bug launching the gui in pipeline call
 
 @torch.compile
 def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt = False):
@@ -95,6 +94,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
             positive=cliptextencode_242[0],
             negative=cliptextencode_243[0],
             latent_image=emptylatentimage_244[0],
+            pipeline=True
         )
         if hires_fix:
             latentupscale_254 = latent_upscale.upscale(

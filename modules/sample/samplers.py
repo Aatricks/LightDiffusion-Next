@@ -3,9 +3,13 @@ import torch
 from tqdm.auto import trange, tqdm
 from modules.Utilities import util
 
-from modules.AutoEncoders import taesd
+
 from modules.sample import sampling_util
-from modules.user import app_instance
+disable_gui = True
+
+if disable_gui == False:
+    from modules.AutoEncoders import taesd
+    from modules.user import app_instance
 
 
 @torch.no_grad()
@@ -85,6 +89,7 @@ def sample_dpm_adaptive(
     s_noise=1.0,
     noise_sampler=None,
     return_info=False,
+    pipeline=False,
 ):
     """
     #### Samples from a diffusion probabilistic model using an adaptive step size solver.
@@ -120,6 +125,8 @@ def sample_dpm_adaptive(
     #### Raises:
         - `ValueError`: If sigma_min or sigma_max is less than or equal to 0.
     """
+    global disable_gui
+    disable_gui = True if pipeline == True else False
     if sigma_min <= 0 or sigma_max <= 0:
         raise ValueError("sigma_min and sigma_max must not be 0")
     with tqdm(disable=disable) as pbar:
@@ -147,6 +154,7 @@ def sample_dpm_adaptive(
             eta,
             s_noise,
             noise_sampler,
+            pipeline,
         )
     if return_info:
         return x, info

@@ -198,7 +198,7 @@ class KSAMPLER(Sampler):
         return samples
 
 
-def ksampler(sampler_name, extra_options={}, inpaint_options={}):
+def ksampler(sampler_name, extra_options={}, inpaint_options={}, pipeline=False):
     if sampler_name == "dpm_adaptive":
 
         def dpm_adaptive_function(
@@ -219,6 +219,7 @@ def ksampler(sampler_name, extra_options={}, inpaint_options={}):
                 callback=callback,
                 disable=disable,
                 **extra_options,
+                pipeline=pipeline,
             )
 
         sampler_function = dpm_adaptive_function
@@ -296,8 +297,8 @@ SCHEDULER_NAMES = [
 SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
 
-def sampler_object(name):
-    sampler = ksampler(name)
+def sampler_object(name, pipeline=False):
+    sampler = ksampler(name, pipeline)
     return sampler
 
 
@@ -317,6 +318,7 @@ class KSampler1:
         scheduler=None,
         denoise=None,
         model_options={},
+        pipeline=False,
     ):
         self.model = model
         self.device = device
@@ -325,6 +327,7 @@ class KSampler1:
         self.set_steps(steps, denoise)
         self.denoise = denoise
         self.model_options = model_options
+        self.pipeline = pipeline
 
     def calculate_sigmas(self, steps):
         sigmas = None
@@ -364,7 +367,7 @@ class KSampler1:
         if sigmas is None:
             sigmas = self.sigmas
 
-        sampler = sampler_object(self.sampler)
+        sampler = sampler_object(self.sampler, self.pipeline)
 
         return sample(
             self.model,
@@ -404,6 +407,7 @@ def sample1(
     callback=None,
     disable_pbar=False,
     seed=None,
+    pipeline=False,
 ):
     sampler = KSampler1(
         model,
@@ -413,6 +417,7 @@ def sample1(
         scheduler=scheduler,
         denoise=denoise,
         model_options=model.model_options,
+        pipeline=pipeline,
     )
 
     samples = sampler.sample(
@@ -449,6 +454,7 @@ def common_ksampler(
     start_step=None,
     last_step=None,
     force_full_denoise=False,
+    pipeline=False,
 ):
     latent_image = latent["samples"]
     batch_inds = latent["batch_index"] if "batch_index" in latent else None
@@ -475,6 +481,7 @@ def common_ksampler(
         noise_mask=noise_mask,
         disable_pbar=disable_pbar,
         seed=seed,
+        pipeline=pipeline,
     )
     out = latent.copy()
     out["samples"] = samples
@@ -494,6 +501,7 @@ class KSampler2:
         negative,
         latent_image,
         denoise=1.0,
+        pipeline=False,
     ):
         return common_ksampler(
             model,
@@ -506,6 +514,7 @@ class KSampler2:
             negative,
             latent_image,
             denoise=denoise,
+            pipeline=pipeline,
         )
 
 
