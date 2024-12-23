@@ -5,6 +5,15 @@ from enum import Enum
 import psutil
 import torch
 
+# Only this extra line of code is required to use oneDNN Graph
+torch.jit.enable_onednn_fusion(True)
+# torch.optimizer.zero_grad(set_to_none=True)
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.emit_nvtx(enabled=False)
+torch.autograd.profiler.profile(enabled=False)
+
+
+
 # FIXME: This is a workaround for the torch.backends.cuda.matmul.allow_tf32 attribute error
 
 # if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):

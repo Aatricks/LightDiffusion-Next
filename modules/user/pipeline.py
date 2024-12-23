@@ -6,8 +6,14 @@ import argparse
 import numpy as np
 from PIL import Image
 import torch
+import torch._dynamo
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from modules.Device import Device
+torch._dynamo.config.suppress_errors = True
+torch.compiler.allow_in_graph
+
 
 from modules.AutoEncoders import VariationalAE
 from modules.clip import Clip
@@ -20,6 +26,9 @@ from modules.FileManaging import ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 
+#FIXME: bug launching the gui in pipeline call
+
+@torch.compile
 def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt = False):
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
@@ -40,7 +49,13 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
             pass
     while prompt is None:
         pass
-    with torch.inference_mode():
+    if Device.should_use_bf16():
+        dtype = torch.bfloat16
+    elif Device.should_use_fp16():
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+    with torch.inference_mode(), torch.autocast(device_type='cuda', dtype=dtype), torch.no_grad():
         try:
             loraloader = LoRas.LoraLoader()
             loraloader_274 = loraloader.load_lora(
