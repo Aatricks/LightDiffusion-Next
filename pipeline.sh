@@ -33,6 +33,14 @@ else
     echo "requirements.txt not found, skipping..."
 fi
 
+REM Check for enhance-prompt argument
+echo Checking for enhance-prompt argument...
+if [[ " $* " == *" --enhance-prompt "* ]]; then
+    echo "Installing ollama..."
+    curl -fsSL https://ollama.com/install.sh | sh
+    ollama pull llama3.2
+fi
+
 # Launch the script
 echo "Launching LightDiffusion..."
 python3.10 "./modules/user/pipeline.py" %*

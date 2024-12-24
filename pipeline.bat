@@ -31,7 +31,7 @@ echo Checking for enhance-prompt argument...
 echo %* | findstr /i /c:"--enhance-prompt" >nul
 IF %ERRORLEVEL% EQU 0 (
     echo Installing ollama with winget...
-    winget install ollama
+    winget install --id ollama.ollama
     ollama pull llama3.2
 )
 
