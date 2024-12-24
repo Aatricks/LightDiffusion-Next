@@ -26,6 +26,15 @@ IF EXIST requirements.txt (
     echo requirements.txt not found, skipping...
 )
 
+REM Check for enhance-prompt argument
+echo Checking for enhance-prompt argument...
+echo %* | findstr /i /c:"--enhance-prompt" >nul
+IF %ERRORLEVEL% EQU 0 (
+    echo Installing ollama with winget...
+    winget install ollama
+    ollama pull llama3.2
+)
+
 REM Launch the script
 echo Launching LightDiffusion...
 python .\modules\user\pipeline.py %*
