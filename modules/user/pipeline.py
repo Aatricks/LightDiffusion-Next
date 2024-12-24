@@ -27,7 +27,7 @@ from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 
 
-@torch.compile
+# @torch.compile
 def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt = False):
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
@@ -90,11 +90,11 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
             sampler_name="dpm_adaptive",
             scheduler="karras",
             denoise=1,
+            pipeline=True,
             model=applystablefast_158[0],
             positive=cliptextencode_242[0],
             negative=cliptextencode_243[0],
             latent_image=emptylatentimage_244[0],
-            pipeline=True
         )
         if hires_fix:
             latentupscale_254 = latent_upscale.upscale(

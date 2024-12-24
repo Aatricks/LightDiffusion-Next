@@ -198,7 +198,7 @@ class KSAMPLER(Sampler):
         return samples
 
 
-def ksampler(sampler_name, extra_options={}, inpaint_options={}, pipeline=False):
+def ksampler(sampler_name, pipeline=False, extra_options={}, inpaint_options={}):
     if sampler_name == "dpm_adaptive":
 
         def dpm_adaptive_function(
@@ -218,8 +218,8 @@ def ksampler(sampler_name, extra_options={}, inpaint_options={}, pipeline=False)
                 extra_args=extra_args,
                 callback=callback,
                 disable=disable,
-                **extra_options,
                 pipeline=pipeline,
+                **extra_options,
             )
 
         sampler_function = dpm_adaptive_function
