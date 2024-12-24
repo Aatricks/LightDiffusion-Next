@@ -120,7 +120,6 @@ class CLIPEncoder(torch.nn.Module):
 
     def forward(self, x, mask=None, intermediate_output=None):
         optimized_attention = Attention.optimized_attention_for_device(
-            x.device, mask=mask is not None, small_input=True
         )
 
         if intermediate_output is not None:

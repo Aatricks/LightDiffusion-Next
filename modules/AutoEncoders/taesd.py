@@ -14,7 +14,7 @@ from modules.cond import cast, cond
 from modules.user import app_instance
 
 
-def conv(n_in, n_out, **kwargs):
+def conv(n_in: int, n_out: int, **kwargs) -> cast.disable_weight_init.Conv2d:
     """#### Create a convolutional layer.
 
     #### Args:
@@ -30,14 +30,31 @@ def conv(n_in, n_out, **kwargs):
 class Clamp(nn.Module):
     """#### Class representing a clamping layer."""
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass of the clamping layer.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            
+        #### Returns:
+            - `torch.Tensor`: The clamped tensor.
+        """
         return torch.tanh(x / 3) * 3
 
 
 class Block(nn.Module):
     """#### Class representing a block layer."""
 
-    def __init__(self, n_in, n_out):
+    def __init__(self, n_in: int, n_out: int):
+        """#### Initialize the block layer.
+        
+        #### Args:
+            - `n_in` (int): The number of input channels.
+            - `n_out` (int): The number of output channels.
+            
+        #### Returns:
+            - `Block`: The block layer.
+        """
         super().__init__()
         self.conv = nn.Sequential(
             conv(n_in, n_out),
@@ -53,11 +70,11 @@ class Block(nn.Module):
         )
         self.fuse = nn.ReLU()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.fuse(self.conv(x) + self.skip(x))
 
 
-def Encoder2(latent_channels=4):
+def Encoder2(latent_channels: int = 4) -> nn.Sequential:
     """#### Create an encoder.
 
     #### Args:
@@ -85,7 +102,7 @@ def Encoder2(latent_channels=4):
     )
 
 
-def Decoder2(latent_channels=4):
+def Decoder2(latent_channels: int = 4) -> nn.Sequential:
     """#### Create a decoder.
 
     #### Args:
@@ -148,7 +165,14 @@ class TAESD(nn.Module):
     latent_magnitude = 3
     latent_shift = 0.5
 
-    def __init__(self, encoder_path=None, decoder_path=None, latent_channels=4):
+    def __init__(self, encoder_path: str = None, decoder_path: str = None, latent_channels: int = 4):
+        """#### Initialize the TAESD model.
+        
+        #### Args:
+            - `encoder_path` (str, optional): Path to the encoder model file. Defaults to None.
+            - `decoder_path` (str, optional): Path to the decoder model file. Defaults to "./_internal/vae_approx/taesd_decoder.safetensors".
+            - `latent_channels` (int, optional): Number of channels in the latent space. Defaults to 4.
+        """
         super().__init__()
         self.vae_shift = torch.nn.Parameter(torch.tensor(0.0))
         self.vae_scale = torch.nn.Parameter(torch.tensor(1.0))
@@ -169,7 +193,7 @@ class TAESD(nn.Module):
             )
 
     @staticmethod
-    def scale_latents(x):
+    def scale_latents(x: torch.Tensor) -> torch.Tensor:
         """#### Scales raw latents to the range [0, 1].
 
         #### Args:
@@ -181,7 +205,7 @@ class TAESD(nn.Module):
         return x.div(2 * TAESD.latent_magnitude).add(TAESD.latent_shift).clamp(0, 1)
 
     @staticmethod
-    def unscale_latents(x):
+    def unscale_latents(x: torch.Tensor) -> torch.Tensor:
         """#### Unscales latents from the range [0, 1] to raw latents.
 
         #### Args:
@@ -192,7 +216,7 @@ class TAESD(nn.Module):
         """
         return x.sub(TAESD.latent_shift).mul(2 * TAESD.latent_magnitude)
 
-    def decode(self, x):
+    def decode(self, x: torch.Tensor) -> torch.Tensor:
         """#### Decodes the given latent representation to the original space.
 
         #### Args:
@@ -207,7 +231,7 @@ class TAESD(nn.Module):
         x_sample = x_sample.sub(0.5).mul(2)
         return x_sample
 
-    def encode(self, x):
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
         """#### Encodes the given input to the latent space.
 
         #### Args:
@@ -221,7 +245,7 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
-def taesd_preview(x):
+def taesd_preview(x: torch.Tensor):
     """#### Preview the input latent as an image.
 
     Uses the TAESD model to decode the latent and updates the image in the App.

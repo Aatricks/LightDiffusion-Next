@@ -9,13 +9,13 @@ from modules.Device import Device
 from modules.cond import cast, cond
 
 
-def Normalize(in_channels, dtype=None, device=None):
+def Normalize(in_channels: int, dtype: torch.dtype = None, device: torch.device =None) -> torch.nn.GroupNorm:
     """#### Normalize the input channels.
 
     #### Args:
-        - `in_channels` (_type_): The input channels.
-        - `dtype` (_type_, optional): The data type. Defaults to `None`.
-        - `device` (_type_, optional): The device. Defaults to `None`.
+        - `in_channels` (int): The input channels.
+        - `dtype` (torch.dtype, optional): The data type. Defaults to `None`.
+        - `device` (torch.device, optional): The device. Defaults to `None`.
 
     #### Returns:
         - `torch.nn.GroupNorm`: The normalized input channels
@@ -40,13 +40,8 @@ else:
 optimized_attention_masked = optimized_attention
 
 
-def optimized_attention_for_device(device, mask=False, small_input=False):
+def optimized_attention_for_device() -> AttentionMethods.attention_pytorch:
     """#### Get the optimized attention for a device.
-
-    #### Args:
-        - `device` (torch.device): The device.
-        - `mask` (bool, optional): Whether to mask the attention. Defaults to `False`.
-        - `small_input` (bool, optional): Whether the input is small. Defaults to `False`.
 
     #### Returns:
         - `function`: The optimized attention function.
@@ -58,26 +53,26 @@ class CrossAttention(nn.Module):
     """#### Cross attention module, which applies attention across the query and context.
 
     #### Args:
-        - `query_dim` (_type_): The query dimension.
-        - `context_dim` (_type_, optional): The context dimension. Defaults to `None`.
-        - `heads` (_type_, optional): The number of heads. Defaults to `8`.
-        - `dim_head` (_type_, optional): The head dimension. Defaults to `64`.
-        - `dropout` (_type_, optional): The dropout. Defaults to `0.0`.
-        - `dtype` (_type_, optional): The data type. Defaults to `None`.
-        - `device` (_type_, optional): The device. Defaults to `None`.
-        - `operations` (_type_, optional): The operations. Defaults to `cast.disable_weight_init`.
+        - `query_dim` (int): The query dimension.
+        - `context_dim` (int, optional): The context dimension. Defaults to `None`.
+        - `heads` (int, optional): The number of heads. Defaults to `8`.
+        - `dim_head` (int, optional): The head dimension. Defaults to `64`.
+        - `dropout` (float, optional): The dropout rate. Defaults to `0.0`.
+        - `dtype` (torch.dtype, optional): The data type. Defaults to `None`.
+        - `device` (torch.device, optional): The device. Defaults to `None`.
+        - `operations` (cast.disable_weight_init, optional): The operations. Defaults to `cast.disable_weight_init`.
     """
 
     def __init__(
         self,
-        query_dim,
-        context_dim=None,
-        heads=8,
-        dim_head=64,
-        dropout=0.0,
-        dtype=None,
-        device=None,
-        operations=cast.disable_weight_init,
+        query_dim: int,
+        context_dim: int = None,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        operations: cast.disable_weight_init = cast.disable_weight_init,
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -101,17 +96,17 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x, context=None, value=None, mask=None):
+    def forward(self, x: torch.Tensor, context: torch.Tensor = None, value: torch.Tensor = None, mask: torch.Tensor = None) -> torch.Tensor:
         """#### Forward pass of the cross attention module.
 
         #### Args:
-            - `x` (_type_): The input tensor.
-            - `context` (_type_, optional): The context tensor. Defaults to `None`.
-            - `value` (_type_, optional): The value tensor. Defaults to `None`.
-            - `mask` (_type_, optional): The mask tensor. Defaults to `None`.
-
+            - `x` (torch.Tensor): The input tensor.
+            - `context` (torch.Tensor, optional): The context tensor. Defaults to `None`.
+            - `value` (torch.Tensor, optional): The value tensor. Defaults to `None`.
+            - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
+        
         #### Returns:
-            - `_type_`: The output tensor.
+            - `torch.Tensor`: The output tensor.
         """
         q = self.to_q(x)
         context = util.default(context, x)
@@ -129,7 +124,7 @@ class AttnBlock(nn.Module):
         - `in_channels` (int): The input channels.
     """
 
-    def __init__(self, in_channels):
+    def __init__(self, in_channels: int):
         super().__init__()
         self.in_channels = in_channels
 
@@ -154,7 +149,7 @@ class AttnBlock(nn.Module):
             logging.info("Using pytorch attention in VAE")
             self.optimized_attention = AttentionMethods.pytorch_attention
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """#### Forward pass of the attention block.
 
         #### Args:
@@ -176,7 +171,7 @@ class AttnBlock(nn.Module):
         return x + h_
 
 
-def make_attn(in_channels, attn_type="vanilla"):
+def make_attn(in_channels: int, attn_type: str = "vanilla") -> AttnBlock:
     """#### Make an attention block.
 
     #### Args:

@@ -3,7 +3,7 @@ import ollama
 from modules.Utilities import util
 
 
-def enhance_prompt(p=None):
+def enhance_prompt(p: str = None) -> str:
     """#### Enhance a text-to-image prompt using Ollama.
     
     #### Args:

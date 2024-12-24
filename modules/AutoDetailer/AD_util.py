@@ -1,4 +1,5 @@
 import re
+from typing import List
 import cv2
 import numpy as np
 import torch
@@ -11,7 +12,7 @@ orig_torch_load = torch.load
 torch.load = orig_torch_load
 
 
-def load_yolo(model_path: str):
+def load_yolo(model_path: str) -> YOLO:
     """#### Load YOLO model.
 
     #### Args:
@@ -27,11 +28,11 @@ def load_yolo(model_path: str):
 
 
 def inference_bbox(
-    model,
+    model: YOLO,
     image: Image.Image,
     confidence: float = 0.3,
     device: str = "",
-):
+) -> List:
     """#### Perform inference on an image and return bounding boxes.
     
     #### Args:
@@ -67,7 +68,7 @@ def inference_bbox(
     return results
 
 
-def create_segmasks(results):
+def create_segmasks(results: List) -> List:
     """#### Create segmentation masks from the results of the inference.
     
     #### Args:
@@ -87,7 +88,7 @@ def create_segmasks(results):
     return results
 
 
-def dilate_masks(segmasks, dilation_factor, iter=1):
+def dilate_masks(segmasks: List, dilation_factor: int, iter: int = 1) -> List:
     """#### Dilate the segmentation masks.
     
     #### Args:
@@ -112,7 +113,7 @@ def dilate_masks(segmasks, dilation_factor, iter=1):
     return dilated_masks
 
 
-def normalize_region(limit, startp, size):
+def normalize_region(limit: int, startp: int, size: int) -> List:
     """#### Normalize the region.
     
     #### Args:
@@ -121,7 +122,7 @@ def normalize_region(limit, startp, size):
         - `size` (int): The size.
         
     #### Returns:
-        - `int, int`: The normalized start and end points.
+        - `List[int]`: The normalized start and end points.
     """
     if startp < 0:
         new_endp = min(limit, size)
@@ -136,7 +137,7 @@ def normalize_region(limit, startp, size):
     return int(new_startp), int(new_endp)
 
 
-def make_crop_region(w, h, bbox, crop_factor, crop_min_size=None):
+def make_crop_region(w: int, h: int, bbox: List, crop_factor: float) -> List:
     """#### Make the crop region.
     
     #### Args:
@@ -144,7 +145,6 @@ def make_crop_region(w, h, bbox, crop_factor, crop_min_size=None):
         - `h` (int): The height.
         - `bbox` (List[int]): The bounding box.
         - `crop_factor` (float): The crop factor.
-        - `crop_min_size` (int): The crop minimum size.
         
     #### Returns:
         - `List[x1: int, y1: int, x2: int, y2: int]`: The crop region.
@@ -173,7 +173,7 @@ def make_crop_region(w, h, bbox, crop_factor, crop_min_size=None):
     return [new_x1, new_y1, new_x2, new_y2]
 
 
-def crop_ndarray2(npimg, crop_region):
+def crop_ndarray2(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     """#### Crop the ndarray in 2 dimensions.
     
     #### Args:
@@ -193,7 +193,7 @@ def crop_ndarray2(npimg, crop_region):
     return cropped
 
 
-def crop_ndarray4(npimg, crop_region):
+def crop_ndarray4(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     """#### Crop the ndarray in 4 dimensions.
     
     #### Args:
@@ -213,7 +213,7 @@ def crop_ndarray4(npimg, crop_region):
     return cropped
 
 
-def crop_image(image, crop_region):
+def crop_image(image: Image.Image, crop_region: List) -> Image.Image:
     """#### Crop the image.
     
     #### Args:
@@ -226,7 +226,7 @@ def crop_image(image, crop_region):
     return crop_ndarray4(image, crop_region)
 
 
-def segs_scale_match(segs, target_shape):
+def segs_scale_match(segs: List[np.ndarray], target_shape: List) -> List:
     """#### Match the scale of the segmentation masks.
     
     #### Args:

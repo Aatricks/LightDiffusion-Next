@@ -5,7 +5,7 @@ import safetensors.torch
 import torch
 
 
-def append_dims(x, target_dims):
+def append_dims(x: torch.Tensor, target_dims: int) -> torch.Tensor:
     """#### Appends dimensions to the end of a tensor until it has target_dims dimensions.
 
     #### Args:
@@ -19,11 +19,20 @@ def append_dims(x, target_dims):
     expanded = x[(...,) + (None,) * dims_to_append]
     return expanded.detach().clone() if expanded.device.type == "mps" else expanded
 
-def to_d(x, sigma, denoised):
-    """#### Convert a tensor to a denoised tensor."""
+def to_d(x: torch.Tensor, sigma: torch.Tensor, denoised: torch.Tensor) -> torch.Tensor:
+    """#### Convert a tensor to a denoised tensor.
+    
+    #### Args:
+        - `x` (torch.Tensor): The input tensor.
+        - `sigma` (torch.Tensor): The noise level.
+        - `denoised` (torch.Tensor): The denoised tensor.
+    
+    #### Returns:
+        - `torch.Tensor`: The converted tensor.
+    """
     return (x - denoised) / append_dims(sigma, x.ndim)
 
-def load_torch_file(ckpt, safe_load=False, device=None):
+def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> dict:
     """#### Load a PyTorch checkpoint file.
 
     #### Args:
@@ -43,7 +52,7 @@ def load_torch_file(ckpt, safe_load=False, device=None):
     return sd
 
 
-def calculate_parameters(sd, prefix=""):
+def calculate_parameters(sd: dict, prefix: str = "") -> dict:
     """#### Calculate the parameters of a state dictionary.
 
     #### Args:
@@ -60,7 +69,7 @@ def calculate_parameters(sd, prefix=""):
     return params
 
 
-def state_dict_prefix_replace(state_dict, replace_prefix, filter_keys=False):
+def state_dict_prefix_replace(state_dict: dict, replace_prefix: str, filter_keys: bool = False) -> dict:
     """#### Replace the prefix of keys in a state dictionary.
 
     #### Args:
@@ -86,7 +95,7 @@ def state_dict_prefix_replace(state_dict, replace_prefix, filter_keys=False):
 
 
 
-def repeat_to_batch_size(tensor, batch_size):
+def repeat_to_batch_size(tensor: torch.Tensor, batch_size: int) -> torch.Tensor:
     """#### Repeat a tensor to match a specific batch size.
 
     #### Args:
@@ -99,7 +108,7 @@ def repeat_to_batch_size(tensor, batch_size):
     return tensor
 
 
-def set_attr(obj, attr, value):
+def set_attr(obj: object, attr: str, value: any) -> any:
     """#### Set an attribute of an object.
 
     #### Args:
@@ -118,7 +127,7 @@ def set_attr(obj, attr, value):
     return prev
 
 
-def set_attr_param(obj, attr, value):
+def set_attr_param(obj: object, attr: str, value: any) -> any:
     """#### Set an attribute parameter of an object.
     
     #### Args:
@@ -131,7 +140,7 @@ def set_attr_param(obj, attr, value):
     """
     return set_attr(obj, attr, torch.nn.Parameter(value, requires_grad=False))
 
-def copy_to_param(obj, attr, value):
+def copy_to_param(obj: object, attr: str, value: any) -> None:
     """#### Copy a value to a parameter of an object.
     
     #### Args:
@@ -146,7 +155,7 @@ def copy_to_param(obj, attr, value):
     prev.data.copy_(value)
 
 
-def get_attr(obj, attr):
+def get_attr(obj: object, attr: str) -> any:
     """#### Get an attribute of an object.
     
     #### Args:
@@ -162,7 +171,7 @@ def get_attr(obj, attr):
     return obj
 
 
-def lcm(a, b):
+def lcm(a: int, b: int) -> int:
     """#### Calculate the least common multiple (LCM) of two numbers.
 
     #### Args:
@@ -174,7 +183,7 @@ def lcm(a, b):
     """
     return abs(a * b) // math.gcd(a, b)
 
-def get_full_path(folder_name, filename):
+def get_full_path(folder_name: str, filename: str) -> str:
     """#### Get the full path of a file in a folder.
 
     Args:
@@ -192,7 +201,7 @@ def get_full_path(folder_name, filename):
         if os.path.isfile(full_path):
             return full_path
         
-def zero_module(module):
+def zero_module(module: torch.nn.Module) -> torch.nn.Module:
     """#### Zero out the parameters of a module.
 
     #### Args:
@@ -206,7 +215,7 @@ def zero_module(module):
     return module
 
 
-def append_zero(x):
+def append_zero(x: torch.Tensor) -> torch.Tensor:
     """#### Append a zero to the end of a tensor.
 
     #### Args:
@@ -217,7 +226,7 @@ def append_zero(x):
     """
     return torch.cat([x, x.new_zeros([1])])
 
-def exists(val):
+def exists(val: any) -> bool:
     """#### Check if a value exists.
 
     #### Args:
@@ -229,7 +238,7 @@ def exists(val):
     return val is not None
 
 
-def default(val, d):
+def default(val: any, d: any) -> any:
     """#### Get the default value of a variable.
     
     #### Args:
@@ -243,7 +252,7 @@ def default(val, d):
         return val
     return d() if isfunction(d) else d
 
-def write_parameters_to_file(prompt_entry, neg, width, height, cfg):
+def write_parameters_to_file(prompt_entry: str, neg: str, width: int, height: int, cfg: int) -> None:
     """#### Write parameters to a file.
 
     #### Args:
@@ -261,7 +270,7 @@ def write_parameters_to_file(prompt_entry, neg, width, height, cfg):
         f.write(f"cfg: {int(cfg)}\n")
 
 
-def load_parameters_from_file():
+def load_parameters_from_file() -> tuple:
     """#### Load parameters from a file.
     
     #### Returns:
@@ -294,7 +303,7 @@ PROGRESS_BAR_HOOK = None
 
 class ProgressBar:
     """#### Class representing a progress bar."""
-    def __init__(self, total):
+    def __init__(self, total: int):
         global PROGRESS_BAR_HOOK
         self.total = total
         self.current = 0

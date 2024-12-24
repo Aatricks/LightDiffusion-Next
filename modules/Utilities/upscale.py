@@ -1,7 +1,8 @@
+from typing import List
 import torch
 
 
-def bislerp(samples, width, height):
+def bislerp(samples: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """#### Perform bilinear interpolation on samples.
 
     #### Args:
@@ -12,7 +13,7 @@ def bislerp(samples, width, height):
     #### Returns:
         - `torch.Tensor`: The interpolated samples.
     """
-    def slerp(b1, b2, r):
+    def slerp(b1: torch.Tensor, b2: torch.Tensor, r: torch.Tensor) -> torch.Tensor:
         """#### Perform spherical linear interpolation between two vectors.
         
         #### Args:
@@ -56,7 +57,7 @@ def bislerp(samples, width, height):
         res[dot < 1e-5 - 1] = (b1 * (1.0 - r) + b2 * r)[dot < 1e-5 - 1]
         return res
 
-    def generate_bilinear_data(length_old, length_new, device):
+    def generate_bilinear_data(length_old: int, length_new: int, device: torch.device) -> List[torch.Tensor]:
         """#### Generate bilinear data for interpolation.
         
         #### Args:
@@ -124,16 +125,14 @@ def bislerp(samples, width, height):
     return result.to(orig_dtype)
 
 
-def common_upscale(samples, width, height, upscale_method, crop):
+def common_upscale(samples: List, width: int, height: int) -> torch.Tensor:
     """#### Upscales the given samples to the specified width and height using the specified method and crop settings.
     #### Args:
         - `samples` (list): The list of samples to be upscaled.
         - `width` (int): The target width for the upscaled samples.
         - `height` (int): The target height for the upscaled samples.
-        - `upscale_method` (str): The method to use for upscaling.
-        - `crop` (bool): Whether to crop the samples after upscaling.
     #### Returns:
-        - `list`: The upscaled samples.
+        - `torch.Tensor`: The upscaled samples.
     """
     s = samples
     return bislerp(s, width, height)
@@ -142,18 +141,14 @@ def common_upscale(samples, width, height, upscale_method, crop):
 class LatentUpscale:
     """#### A class to upscale latent codes.
     """
-    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
-    crop_methods = ["disabled", "center"]
 
-    def upscale(self, samples, upscale_method, width, height, crop):
+    def upscale(self, samples: dict, width: int, height: int) -> tuple:
         """#### Upscales the given latent codes.
         
         #### Args:
             - `samples` (dict): The latent codes to be upscaled.
-            - `upscale_method` (str): The method to use for upscaling.
             - `width` (int): The target width for the upscaled samples.
             - `height` (int): The target height for the upscaled samples.
-            - `crop` (str): The crop method to use.
         
         #### Returns:
             - `tuple`: The upscaled samples.
@@ -166,6 +161,6 @@ class LatentUpscale:
             height = max(64, height)
 
             s["samples"] = common_upscale(
-                samples["samples"], width // 8, height // 8, upscale_method, crop
+                samples["samples"], width // 8, height // 8
             )
         return (s,)

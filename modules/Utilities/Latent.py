@@ -1,3 +1,4 @@
+from typing import Dict, Tuple
 import torch
 from modules.Device import Device
 
@@ -13,7 +14,7 @@ class LatentFormat:
     """
     scale_factor = 1.0
 
-    def process_in(self, latent):
+    def process_in(self, latent: torch.Tensor) -> torch.Tensor:
         """#### Process the latent input, by multiplying it by the scale factor.
 
         #### Args:
@@ -24,7 +25,7 @@ class LatentFormat:
         """
         return latent * self.scale_factor
 
-    def process_out(self, latent):
+    def process_out(self, latent: torch.Tensor) -> torch.Tensor:
         """#### Process the latent output, by dividing it by the scale factor.
         
         #### Args:
@@ -42,7 +43,7 @@ class SD15(LatentFormat):
     #### Args:
         - `LatentFormat` (LatentFormat): The base latent format class.
     """
-    def __init__(self, scale_factor=0.18215):
+    def __init__(self, scale_factor: float = 0.18215):
         self.scale_factor = scale_factor
         self.latent_rgb_factors = [
             #   R        G        B
@@ -62,7 +63,7 @@ class EmptyLatentImage:
     def __init__(self):
         self.device = Device.intermediate_device()
 
-    def generate(self, width, height, batch_size=1):
+    def generate(self, width: int, height: int, batch_size: int = 1) -> Tuple[Dict[str, torch.Tensor]]:
         """#### Generate an empty latent image
 
         #### Args:
