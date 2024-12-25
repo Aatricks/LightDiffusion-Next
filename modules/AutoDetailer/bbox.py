@@ -1,15 +1,43 @@
+import torch
+from ultralytics import YOLO
 from modules.AutoDetailer import SEGS, AD_util, tensor_util
+from typing import List, Tuple, Optional
 
 
 class UltraBBoxDetector:
-    bbox_model = None
+    """#### Class to detect bounding boxes using a YOLO model."""
+    bbox_model: Optional[YOLO] = None
 
-    def __init__(self, bbox_model):
+    def __init__(self, bbox_model: YOLO):
+        """#### Initialize the UltraBBoxDetector with a YOLO model.
+
+        #### Args:
+            - `bbox_model` (YOLO): The YOLO model to use for detection.
+        """
         self.bbox_model = bbox_model
 
     def detect(
-        self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None
-    ):
+        self, 
+        image: torch.Tensor, 
+        threshold: float, 
+        dilation: int, 
+        crop_factor: float, 
+        drop_size: int = 1, 
+        detailer_hook: Optional[callable] = None
+    ) -> Tuple[Tuple[int, int], List[SEGS.SEG]]:
+        """#### Detect bounding boxes in an image.
+
+        #### Args:
+            - `image` (torch.Tensor): The input image tensor.
+            - `threshold` (float): The detection threshold.
+            - `dilation` (int): The dilation factor for masks.
+            - `crop_factor` (float): The crop factor for bounding boxes.
+            - `drop_size` (int, optional): The minimum size of bounding boxes to keep. Defaults to 1.
+            - `detailer_hook` (callable, optional): A hook function for additional processing. Defaults to None.
+
+        #### Returns:
+            - `Tuple[Tuple[int, int], List[SEGS.SEG]]`: The shape of the image and a list of detected segments.
+        """
         drop_size = max(drop_size, 1)
         detected_results = AD_util.inference_bbox(
             self.bbox_model, tensor_util.tensor2pil(image), threshold
@@ -37,7 +65,6 @@ class UltraBBoxDetector:
                 cropped_image = AD_util.crop_image(image, crop_region)
                 cropped_mask = AD_util.crop_ndarray2(item_mask, crop_region)
                 confidence = x[2]
-                # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
                 item = SEGS.SEG(
                     cropped_image,
@@ -58,34 +85,66 @@ class UltraBBoxDetector:
 
 
 class UltraSegmDetector:
-    bbox_model = None
+    """#### Class to detect segments using a YOLO model."""
+    bbox_model: Optional[YOLO] = None
 
-    def __init__(self, bbox_model):
+    def __init__(self, bbox_model: YOLO):
+        """#### Initialize the UltraSegmDetector with a YOLO model.
+
+        #### Args:
+            - `bbox_model` (YOLO): The YOLO model to use for detection.
+        """
         self.bbox_model = bbox_model
 
 
 class NO_SEGM_DETECTOR:
+    """#### Placeholder class for no segment detector."""
     pass
 
 
 class UltralyticsDetectorProvider:
-    def doit(self, model_name):
+    """#### Class to provide YOLO models for detection."""
+    def doit(self, model_name: str) -> Tuple[UltraBBoxDetector, UltraSegmDetector]:
+        """#### Load a YOLO model and return detectors.
+
+        #### Args:
+            - `model_name` (str): The name of the YOLO model to load.
+
+        #### Returns:
+            - `Tuple[UltraBBoxDetector, UltraSegmDetector]`: The bounding box and segment detectors.
+        """
         model = AD_util.load_yolo("./_internal/yolos/" + model_name)
         return UltraBBoxDetector(model), UltraSegmDetector(model)
 
 
 class BboxDetectorForEach:
+    """#### Class to detect bounding boxes for each segment."""
     def doit(
         self,
-        bbox_detector,
-        image,
-        threshold,
-        dilation,
-        crop_factor,
-        drop_size,
-        labels=None,
-        detailer_hook=None,
-    ):
+        bbox_detector: UltraBBoxDetector,
+        image: torch.Tensor,
+        threshold: float,
+        dilation: int,
+        crop_factor: float,
+        drop_size: int,
+        labels: Optional[str] = None,
+        detailer_hook: Optional[callable] = None,
+    ) -> Tuple[Tuple[int, int], List[SEGS.SEG]]:
+        """#### Detect bounding boxes for each segment in an image.
+
+        #### Args:
+            - `bbox_detector` (UltraBBoxDetector): The bounding box detector.
+            - `image` (torch.Tensor): The input image tensor.
+            - `threshold` (float): The detection threshold.
+            - `dilation` (int): The dilation factor for masks.
+            - `crop_factor` (float): The crop factor for bounding boxes.
+            - `drop_size` (int): The minimum size of bounding boxes to keep.
+            - `labels` (str, optional): The labels to filter. Defaults to None.
+            - `detailer_hook` (callable, optional): A hook function for additional processing. Defaults to None.
+
+        #### Returns:
+            - `Tuple[Tuple[int, int], List[SEGS.SEG]]`: The shape of the image and a list of detected segments.
+        """
         segs = bbox_detector.detect(
             image, threshold, dilation, crop_factor, drop_size, detailer_hook
         )
@@ -95,21 +154,44 @@ class BboxDetectorForEach:
             if len(labels) > 0:
                 segs, _ = SEGS.SEGSLabelFilter.filter(segs, labels)
 
-        return (segs,)
+        return segs
 
 
 class WildcardChooser:
-    def __init__(self, items, randomize_when_exhaust):
+    """#### Class to choose wildcards for segments."""
+    def __init__(self, items: List[Tuple[None, str]], randomize_when_exhaust: bool):
+        """#### Initialize the WildcardChooser.
+
+        #### Args:
+            - `items` (List[Tuple[None, str]]): The list of items to choose from.
+            - `randomize_when_exhaust` (bool): Whether to randomize when the list is exhausted.
+        """
         self.i = 0
         self.items = items
         self.randomize_when_exhaust = randomize_when_exhaust
 
-    def get(self, seg):
+    def get(self, seg: SEGS.SEG) -> Tuple[None, str]:
+        """#### Get the next item from the list.
+
+        #### Args:
+            - `seg` (SEGS.SEG): The segment.
+
+        #### Returns:
+            - `Tuple[None, str]`: The next item from the list.
+        """
         item = self.items[self.i]
         self.i += 1
 
         return item
 
 
-def process_wildcard_for_segs(wildcard):
+def process_wildcard_for_segs(wildcard: str) -> Tuple[None, WildcardChooser]:
+    """#### Process a wildcard for segments.
+
+    #### Args:
+        - `wildcard` (str): The wildcard.
+
+    #### Returns:
+        - `Tuple[None, WildcardChooser]`: The processed wildcard and a WildcardChooser.
+    """
     return None, WildcardChooser([(None, wildcard)], False)

@@ -77,6 +77,7 @@ class CFGGuider:
         callback,
         disable_pbar,
         seed,
+        pipeline=False,
     ):
         if (
             latent_image is not None and torch.count_nonzero(latent_image) > 0
@@ -104,6 +105,7 @@ class CFGGuider:
             latent_image,
             denoise_mask,
             disable_pbar,
+            pipeline=pipeline,
         )
         return self.inner_model.process_latent_out(samples.to(torch.float32))
 
@@ -117,6 +119,7 @@ class CFGGuider:
         callback=None,
         disable_pbar=False,
         seed=None,
+        pipeline=False,
     ):
         self.conds = {}
         for k in self.original_conds:
@@ -141,6 +144,7 @@ class CFGGuider:
             callback,
             disable_pbar,
             seed,
+            pipeline=pipeline,
         )
 
         cond_util.cleanup_models(self.conds, self.loaded_models)

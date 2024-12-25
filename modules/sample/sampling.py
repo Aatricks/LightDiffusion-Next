@@ -170,6 +170,7 @@ class KSAMPLER(Sampler):
         latent_image=None,
         denoise_mask=None,
         disable_pbar=False,
+        pipeline=False,
     ):
         extra_args["denoise_mask"] = denoise_mask
         model_k = KSamplerX0Inpaint(model_wrap, sigmas)
@@ -190,6 +191,7 @@ class KSAMPLER(Sampler):
             extra_args=extra_args,
             callback=k_callback,
             disable=disable_pbar,
+            pipeline=pipeline,
             **self.extra_options,
         )
         samples = model_wrap.inner_model.model_sampling.inverse_noise_scaling(
@@ -202,7 +204,7 @@ def ksampler(sampler_name, pipeline=False, extra_options={}, inpaint_options={})
     if sampler_name == "dpm_adaptive":
 
         def dpm_adaptive_function(
-            model, noise, sigmas, extra_args, callback, disable, **extra_options
+            model, noise, sigmas, extra_args, callback, disable, pipeline, **extra_options
         ):
             if len(sigmas) <= 1:
                 return noise
@@ -226,7 +228,7 @@ def ksampler(sampler_name, pipeline=False, extra_options={}, inpaint_options={})
     elif sampler_name == "dpmpp_2m_sde":
 
         def dpmpp_sde_function(
-            model, noise, sigmas, extra_args, callback, disable, **extra_options
+            model, noise, sigmas, extra_args, callback, disable, pipeline, **extra_options
         ):
             sigma_min = sigmas[-1]
             if sigma_min == 0:
@@ -238,6 +240,7 @@ def ksampler(sampler_name, pipeline=False, extra_options={}, inpaint_options={})
                 extra_args=extra_args,
                 callback=callback,
                 disable=disable,
+                pipeline=pipeline,
                 **extra_options,
             )
 
@@ -277,12 +280,13 @@ def sample(
     callback=None,
     disable_pbar=False,
     seed=None,
+    pipeline=False,
 ):
     cfg_guider = CFG.CFGGuider(model)
     cfg_guider.set_conds(positive, negative)
     cfg_guider.set_cfg(cfg)
     return cfg_guider.sample(
-        noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed
+        noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed, pipeline=pipeline
     )
 
 
@@ -298,7 +302,7 @@ SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
 
 def sampler_object(name, pipeline=False):
-    sampler = ksampler(name, pipeline)
+    sampler = ksampler(name, pipeline=pipeline)
     return sampler
 
 
@@ -363,11 +367,12 @@ class KSampler1:
         callback=None,
         disable_pbar=False,
         seed=None,
+        pipeline=False,
     ):
         if sigmas is None:
             sigmas = self.sigmas
 
-        sampler = sampler_object(self.sampler, self.pipeline)
+        sampler = sampler_object(self.sampler, pipeline)
 
         return sample(
             self.model,
@@ -384,6 +389,7 @@ class KSampler1:
             callback=callback,
             disable_pbar=disable_pbar,
             seed=seed,
+            pipeline=pipeline,
         )
 
 
@@ -434,6 +440,7 @@ def sample1(
         callback=callback,
         disable_pbar=disable_pbar,
         seed=seed,
+        pipeline=pipeline,
     )
     samples = samples.to(Device.intermediate_device())
     return samples
@@ -550,6 +557,7 @@ def sample_custom(
     callback=None,
     disable_pbar=False,
     seed=None,
+    pipeline=False,
 ):
     samples = sample(
         model,
@@ -566,6 +574,7 @@ def sample_custom(
         callback=callback,
         disable_pbar=disable_pbar,
         seed=seed,
+        pipeline=pipeline,
     )
     samples = samples.to(Device.intermediate_device())
     return samples

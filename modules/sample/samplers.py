@@ -23,6 +23,7 @@ def sample_euler_ancestral(
     eta=1.0,
     s_noise=1.0,
     noise_sampler=None,
+    pipeline=False,
 ):
     """#### Perform ancestral sampling using the Euler method.
     
@@ -44,12 +45,13 @@ def sample_euler_ancestral(
     noise_sampler = sampling_util.default_noise_sampler(x) if noise_sampler is None else noise_sampler
     s_in = x.new_ones([x.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
-        if app_instance.app.interrupt_flag == True:
-                break
-        try:
-            app_instance.app.title(f"LightDiffusion - {i}it")
-        except:
-            pass
+        if pipeline == False:
+            if app_instance.app.interrupt_flag == True:
+                    break
+            try:
+                app_instance.app.title(f"LightDiffusion - {i}it")
+            except:
+                pass
         
         denoised = model(x, sigmas[i] * s_in, **extra_args)
         sigma_down, sigma_up = sampling_util.get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
@@ -59,10 +61,11 @@ def sample_euler_ancestral(
         x = x + d * dt
         if sigmas[i + 1] > 0:
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
-        if app_instance.app.previewer_checkbox.get() == True:
-                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
-        else:
-            pass
+        if pipeline == False:
+            if app_instance.app.previewer_checkbox.get() == True:
+                    threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+            else:
+                pass
     return x
 
 
@@ -173,6 +176,7 @@ def sample_dpmpp_2m_sde(
     s_noise=1.0,
     noise_sampler=None,
     solver_type="midpoint",
+    pipeline=False,
 ):
     """
     #### Samples from a model using the DPM-Solver++(2M) SDE method.
@@ -188,6 +192,7 @@ def sample_dpmpp_2m_sde(
         - `s_noise` (float, optional): The noise scale parameter. Default is 1.0.
         - `noise_sampler` (callable, optional): A noise sampler function. Default is None.
         - `solver_type` (str, optional): The type of solver to use ('midpoint' or 'heun'). Default is "midpoint".
+        - `pipeline` (bool, optional): If True, disables the progress bar. Default is False.
 
     #### Returns:
         - `torch.Tensor`: The final sampled tensor.
@@ -207,8 +212,9 @@ def sample_dpmpp_2m_sde(
     h = None
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        if app_instance.app.interrupt_flag == True:
-                break
+        if pipeline == False:
+            if app_instance.app.interrupt_flag == True:
+                    break
         denoised = model(x, sigmas[i] * s_in, **extra_args)
         if sigmas[i + 1] == 0:
             # Denoising step
@@ -243,10 +249,11 @@ def sample_dpmpp_2m_sde(
                     * (-2 * eta_h).expm1().neg().sqrt()
                     * s_noise
                 )
-        if app_instance.app.previewer_checkbox.get() == True:
-                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
-        else:
-            pass
+        if pipeline == False:
+            if app_instance.app.previewer_checkbox.get() == True:
+                    threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+            else:
+                pass
 
         old_denoised = denoised
         h_last = h

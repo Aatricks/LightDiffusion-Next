@@ -163,13 +163,13 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
                     mask_hint_threshold=0.7,
                     mask_hint_use_negative="False",
                     sam_model=samloader_87[0],
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     image=vaedecode_240[0],
                 )
                 if samdetectorcombined_139 is None:
                     return
                 impactsegsandmask_152 = impactsegsandmask.doit(
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     mask=samdetectorcombined_139[0],
                 )
                 detailerforeachdebug_145 = detailerforeachdebug.doit(
@@ -196,6 +196,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
                     vae=checkpointloadersimple_241[2],
                     positive=cliptextencode_124[0],
                     negative=cliptextencode_243[0],
+                    pipeline=True,
                 )
                 saveimage.save_images(
                     filename_prefix="LD-refined",
@@ -222,11 +223,11 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
                     mask_hint_threshold=0.7,
                     mask_hint_use_negative="False",
                     sam_model=samloader_87[0],
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     image=detailerforeachdebug_145[0],
                 )
                 impactsegsandmask_152 = impactsegsandmask.doit(
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     mask=samdetectorcombined_139[0],
                 )
                 detailerforeachdebug_145 = detailerforeachdebug.doit(
@@ -253,6 +254,7 @@ def pipeline(prompt, w, h, hires_fix = False, adetailer = False, enhance_prompt 
                     vae=checkpointloadersimple_241[2],
                     positive=cliptextencode_124[0],
                     negative=cliptextencode_243[0],
+                    pipeline=True,
                 )
                 saveimage.save_images(
                     filename_prefix="lD-2ndrefined",

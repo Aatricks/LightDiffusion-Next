@@ -7,7 +7,19 @@ from modules.AutoDetailer import mask_util
 from modules.Device import Device
 
 
-def sam_predict(predictor, points, plabs, bbox, threshold):
+def sam_predict(predictor: SamPredictor, points: list, plabs: list, bbox: list, threshold: float) -> list:
+    """#### Predict masks using SAM.
+
+    #### Args:
+        - `predictor` (SamPredictor): The SAM predictor.
+        - `points` (list): List of points.
+        - `plabs` (list): List of point labels.
+        - `bbox` (list): Bounding box.
+        - `threshold` (float): Threshold for mask selection.
+
+    #### Returns:
+        - `list`: List of predicted masks.
+    """
     point_coords = None if not points else np.array(points)
     point_labels = None if not plabs else np.array(plabs)
 
@@ -39,17 +51,33 @@ def sam_predict(predictor, points, plabs, bbox, threshold):
     return total_masks
 
 
-def is_same_device(a, b):
+def is_same_device(a: torch.device, b: torch.device) -> bool:
+    """#### Check if two devices are the same.
+
+    #### Args:
+        - `a` (torch.device): The first device.
+        - `b` (torch.device): The second device.
+
+    #### Returns:
+        - `bool`: Whether the devices are the same.
+    """
     a_device = torch.device(a) if isinstance(a, str) else a
     b_device = torch.device(b) if isinstance(b, str) else b
     return a_device.type == b_device.type and a_device.index == b_device.index
 
 
 class SafeToGPU:
-    def __init__(self, size):
+    """#### Class to safely move objects to GPU."""
+    def __init__(self, size: int):
         self.size = size
 
-    def to_device(self, obj, device):
+    def to_device(self, obj: torch.nn.Module, device: torch.device) -> None:
+        """#### Move an object to a device.
+
+        #### Args:
+            - `obj` (torch.nn.Module): The object to move.
+            - `device` (torch.device): The target device.
+        """
         if is_same_device(device, "cpu"):
             obj.to(device)
         else:
@@ -69,21 +97,36 @@ class SafeToGPU:
 
 
 class SAMWrapper:
-    def __init__(self, model, is_auto_mode, safe_to_gpu=None):
+    """#### Wrapper class for SAM model."""
+    def __init__(self, model: torch.nn.Module, is_auto_mode: bool, safe_to_gpu: SafeToGPU = None):
         self.model = model
         self.safe_to_gpu = safe_to_gpu if safe_to_gpu is not None else SafeToGPU()
         self.is_auto_mode = is_auto_mode
 
-    def prepare_device(self):
+    def prepare_device(self) -> None:
+        """#### Prepare the device for the model."""
         if self.is_auto_mode:
             device = Device.get_torch_device()
             self.safe_to_gpu.to_device(self.model, device=device)
 
-    def release_device(self):
+    def release_device(self) -> None:
+        """#### Release the device from the model."""
         if self.is_auto_mode:
             self.model.to(device="cpu")
 
-    def predict(self, image, points, plabs, bbox, threshold):
+    def predict(self, image: np.ndarray, points: list, plabs: list, bbox: list, threshold: float) -> list:
+        """#### Predict masks using the SAM model.
+
+        #### Args:
+            - `image` (np.ndarray): The input image.
+            - `points` (list): List of points.
+            - `plabs` (list): List of point labels.
+            - `bbox` (list): Bounding box.
+            - `threshold` (float): Threshold for mask selection.
+
+        #### Returns:
+            - `list`: List of predicted masks.
+        """
         predictor = SamPredictor(self.model)
         predictor.set_image(image, "RGB")
 
@@ -91,7 +134,17 @@ class SAMWrapper:
 
 
 class SAMLoader:
-    def load_model(self, model_name, device_mode="auto"):
+    """#### Class to load SAM models."""
+    def load_model(self, model_name: str, device_mode: str = "auto") -> tuple:
+        """#### Load a SAM model.
+
+        #### Args:
+            - `model_name` (str): The name of the model.
+            - `device_mode` (str, optional): The device mode. Defaults to "auto".
+
+        #### Returns:
+            - `tuple`: The loaded SAM model.
+        """
         modelname = "./_internal/yolos/" + model_name
 
         if "vit_h" in model_name:
@@ -121,16 +174,32 @@ class SAMLoader:
 
 
 def make_sam_mask(
-    sam,
-    segs,
-    image,
-    detection_hint,
-    dilation,
-    threshold,
-    bbox_expansion,
-    mask_hint_threshold,
-    mask_hint_use_negative,
-):
+    sam: SAMWrapper,
+    segs: tuple,
+    image: torch.Tensor,
+    detection_hint: bool,
+    dilation: int,
+    threshold: float,
+    bbox_expansion: int,
+    mask_hint_threshold: float,
+    mask_hint_use_negative: bool,
+) -> torch.Tensor:
+    """#### Create a SAM mask.
+
+    #### Args:
+        - `sam` (SAMWrapper): The SAM wrapper.
+        - `segs` (tuple): Segmentation information.
+        - `image` (torch.Tensor): The input image.
+        - `detection_hint` (bool): Whether to use detection hint.
+        - `dilation` (int): Dilation value.
+        - `threshold` (float): Threshold for mask selection.
+        - `bbox_expansion` (int): Bounding box expansion value.
+        - `mask_hint_threshold` (float): Mask hint threshold.
+        - `mask_hint_use_negative` (bool): Whether to use negative mask hint.
+
+    #### Returns:
+        - `torch.Tensor`: The created SAM mask.
+    """
     sam_obj = sam.sam_wrapper
     sam_obj.prepare_device()
 
@@ -175,18 +244,35 @@ def make_sam_mask(
 
 
 class SAMDetectorCombined:
+    """#### Class to combine SAM detection."""
     def doit(
         self,
-        sam_model,
-        segs,
-        image,
-        detection_hint,
-        dilation,
-        threshold,
-        bbox_expansion,
-        mask_hint_threshold,
-        mask_hint_use_negative,
-    ):
+        sam_model: SAMWrapper,
+        segs: tuple,
+        image: torch.Tensor,
+        detection_hint: bool,
+        dilation: int,
+        threshold: float,
+        bbox_expansion: int,
+        mask_hint_threshold: float,
+        mask_hint_use_negative: bool,
+    ) -> tuple:
+        """#### Combine SAM detection.
+
+        #### Args:
+            - `sam_model` (SAMWrapper): The SAM wrapper.
+            - `segs` (tuple): Segmentation information.
+            - `image` (torch.Tensor): The input image.
+            - `detection_hint` (bool): Whether to use detection hint.
+            - `dilation` (int): Dilation value.
+            - `threshold` (float): Threshold for mask selection.
+            - `bbox_expansion` (int): Bounding box expansion value.
+            - `mask_hint_threshold` (float): Mask hint threshold.
+            - `mask_hint_use_negative` (bool): Whether to use negative mask hint.
+
+        #### Returns:
+            - `tuple`: The combined SAM detection result.
+        """
         sam = make_sam_mask(
             sam_model,
             segs,
