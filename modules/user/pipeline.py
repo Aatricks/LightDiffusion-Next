@@ -6,6 +6,8 @@ import argparse
 import torch
 import torch._dynamo
 
+import hidiffusion
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from modules.Device import Device
@@ -20,6 +22,8 @@ from modules.FileManaging import ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 
+from modules.hidiffusion import msw_msa_attention
+
 torch._dynamo.config.suppress_errors = True
 torch.compiler.allow_in_graph
 
@@ -32,6 +36,7 @@ def pipeline(prompt, w, h, hires_fix=False, adetailer=False, enhance_prompt=Fals
         checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
             ckpt_name=ckpt
         )
+        hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
         cliptextencode = Clip.CLIPTextEncode()
         emptylatentimage = Latent.EmptyLatentImage()
         ksampler_instance = sampling.KSampler2()
@@ -92,7 +97,7 @@ def pipeline(prompt, w, h, hires_fix=False, adetailer=False, enhance_prompt=Fals
             scheduler="karras",
             denoise=1,
             pipeline=True,
-            model=applystablefast_158[0],
+            model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
             positive=cliptextencode_242[0],
             negative=cliptextencode_243[0],
             latent_image=emptylatentimage_244[0],
@@ -112,7 +117,7 @@ def pipeline(prompt, w, h, hires_fix=False, adetailer=False, enhance_prompt=Fals
                 sampler_name="euler_ancestral",
                 scheduler="normal",
                 denoise=0.45,
-                model=applystablefast_158[0],
+                model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
                 positive=cliptextencode_242[0],
                 negative=cliptextencode_243[0],
                 latent_image=latentupscale_254[0],

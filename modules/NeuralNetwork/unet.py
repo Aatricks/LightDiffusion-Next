@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch as th
+import torch
 
 from modules.Utilities import util
 from modules.AutoEncoders import ResBlock
@@ -78,7 +79,7 @@ UNET_MAP_BASIC = {
 # taken from https://github.com/TencentARC/T2I-Adapter
 
 
-def unet_to_diffusers(unet_config):
+def unet_to_diffusers(unet_config: dict) -> dict:
     """#### Convert a UNet configuration to a diffusers configuration.
 
     #### Args:
@@ -181,7 +182,17 @@ def unet_to_diffusers(unet_config):
     return diffusers_unet_map
 
 
-def apply_control1(h, control, name):
+def apply_control1(h: th.Tensor, control: any, name: str) -> th.Tensor:
+    """#### Apply control to a tensor.
+
+    #### Args:
+        - `h` (torch.Tensor): The input tensor.
+        - `control` (any): The control to apply.
+        - `name` (str): The name of the control.
+
+    #### Returns:
+        - `torch.Tensor`: The controlled tensor.
+    """
     return h
 
 
@@ -189,58 +200,103 @@ oai_ops = cast.disable_weight_init
 
 
 class UNetModel1(nn.Module):
+    """#### UNet Model class."""
+
     def __init__(
         self,
-        image_size,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        num_classes=None,
-        use_checkpoint=False,
-        dtype=th.float32,
-        num_heads=-1,
-        num_head_channels=-1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
-        resblock_updown=False,
-        use_new_attention_order=False,
-        use_spatial_transformer=False,  # custom transformer support
-        transformer_depth=1,  # custom transformer support
-        context_dim=None,  # custom transformer support
-        n_embed=None,  # custom support for prediction of discrete ids into codebook of first stage vq model
-        legacy=True,
-        disable_self_attentions=None,
-        num_attention_blocks=None,
-        disable_middle_self_attn=False,
-        use_linear_in_transformer=False,
-        adm_in_channels=None,
-        transformer_depth_middle=None,
-        transformer_depth_output=None,
-        use_temporal_resblock=False,
-        use_temporal_attention=False,
-        time_context_dim=None,
-        extra_ff_mix_layer=False,
-        use_spatial_context=False,
-        merge_strategy=None,
-        merge_factor=0.0,
-        video_kernel_size=None,
-        disable_temporal_crossattention=False,
-        max_ddpm_temb_period=10000,
-        device=None,
-        operations=oai_ops,
+        image_size: int,
+        in_channels: int,
+        model_channels: int,
+        out_channels: int,
+        num_res_blocks: list,
+        dropout: float = 0,
+        channel_mult: tuple = (1, 2, 4, 8),
+        conv_resample: bool = True,
+        dims: int = 2,
+        num_classes: int = None,
+        use_checkpoint: bool = False,
+        dtype: th.dtype = th.float32,
+        num_heads: int = -1,
+        num_head_channels: int = -1,
+        num_heads_upsample: int = -1,
+        use_scale_shift_norm: bool = False,
+        resblock_updown: bool = False,
+        use_new_attention_order: bool = False,
+        use_spatial_transformer: bool = False,  # custom transformer support
+        transformer_depth: int = 1,  # custom transformer support
+        context_dim: int = None,  # custom transformer support
+        n_embed: int = None,  # custom support for prediction of discrete ids into codebook of first stage vq model
+        legacy: bool = True,
+        disable_self_attentions: list = None,
+        num_attention_blocks: list = None,
+        disable_middle_self_attn: bool = False,
+        use_linear_in_transformer: bool = False,
+        adm_in_channels: int = None,
+        transformer_depth_middle: int = None,
+        transformer_depth_output: list = None,
+        use_temporal_resblock: bool = False,
+        use_temporal_attention: bool = False,
+        time_context_dim: int = None,
+        extra_ff_mix_layer: bool = False,
+        use_spatial_context: bool = False,
+        merge_strategy: any = None,
+        merge_factor: float = 0.0,
+        video_kernel_size: int = None,
+        disable_temporal_crossattention: bool = False,
+        max_ddpm_temb_period: int = 10000,
+        device: th.device = None,
+        operations: any = oai_ops,
     ):
+        """#### Initialize the UNetModel1 class.
+
+        #### Args:
+            - `image_size` (int): The size of the input image.
+            - `in_channels` (int): The number of input channels.
+            - `model_channels` (int): The number of model channels.
+            - `out_channels` (int): The number of output channels.
+            - `num_res_blocks` (list): The number of residual blocks.
+            - `dropout` (float, optional): The dropout rate. Defaults to 0.
+            - `channel_mult` (tuple, optional): The channel multiplier. Defaults to (1, 2, 4, 8).
+            - `conv_resample` (bool, optional): Whether to use convolutional resampling. Defaults to True.
+            - `dims` (int, optional): The number of dimensions. Defaults to 2.
+            - `num_classes` (int, optional): The number of classes. Defaults to None.
+            - `use_checkpoint` (bool, optional): Whether to use checkpointing. Defaults to False.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to torch.float32.
+            - `num_heads` (int, optional): The number of heads. Defaults to -1.
+            - `num_head_channels` (int, optional): The number of head channels. Defaults to -1.
+            - `num_heads_upsample` (int, optional): The number of heads for upsampling. Defaults to -1.
+            - `use_scale_shift_norm` (bool, optional): Whether to use scale-shift normalization. Defaults to False.
+            - `resblock_updown` (bool, optional): Whether to use residual blocks for up/down sampling. Defaults to False.
+            - `use_new_attention_order` (bool, optional): Whether to use a new attention order. Defaults to False.
+            - `use_spatial_transformer` (bool, optional): Whether to use a spatial transformer. Defaults to False.
+            - `transformer_depth` (int, optional): The depth of the transformer. Defaults to 1.
+            - `context_dim` (int, optional): The context dimension. Defaults to None.
+            - `n_embed` (int, optional): The number of embeddings. Defaults to None.
+            - `legacy` (bool, optional): Whether to use legacy mode. Defaults to True.
+            - `disable_self_attentions` (list, optional): The list of self-attentions to disable. Defaults to None.
+            - `num_attention_blocks` (list, optional): The number of attention blocks. Defaults to None.
+            - `disable_middle_self_attn` (bool, optional): Whether to disable middle self-attention. Defaults to False.
+            - `use_linear_in_transformer` (bool, optional): Whether to use linear in transformer. Defaults to False.
+            - `adm_in_channels` (int, optional): The number of ADM input channels. Defaults to None.
+            - `transformer_depth_middle` (int, optional): The depth of the middle transformer. Defaults to None.
+            - `transformer_depth_output` (list, optional): The depth of the output transformer. Defaults to None.
+            - `use_temporal_resblock` (bool, optional): Whether to use temporal residual blocks. Defaults to False.
+            - `use_temporal_attention` (bool, optional): Whether to use temporal attention. Defaults to False.
+            - `time_context_dim` (int, optional): The time context dimension. Defaults to None.
+            - `extra_ff_mix_layer` (bool, optional): Whether to use an extra feed-forward mix layer. Defaults to False.
+            - `use_spatial_context` (bool, optional): Whether to use spatial context. Defaults to False.
+            - `merge_strategy` (any, optional): The merge strategy. Defaults to None.
+            - `merge_factor` (float, optional): The merge factor. Defaults to 0.0.
+            - `video_kernel_size` (int, optional): The video kernel size. Defaults to None.
+            - `disable_temporal_crossattention` (bool, optional): Whether to disable temporal cross-attention. Defaults to False.
+            - `max_ddpm_temb_period` (int, optional): The maximum DDPM temporal embedding period. Defaults to 10000.
+            - `device` (torch.device, optional): The device to use. Defaults to None.
+            - `operations` (any, optional): The operations to use. Defaults to oai_ops.
+        """
         super().__init__()
 
         if context_dim is not None:
             assert use_spatial_transformer, "Fool!! You forgot to use the spatial transformer for your cross-attention conditioning..."
-            # from omegaconf.listconfig import ListConfig
-            # if type(context_dim) == ListConfig:
-            #     context_dim = list(context_dim)
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
@@ -303,14 +359,28 @@ class UNetModel1(nn.Module):
         ds = 1
 
         def get_attention_layer(
-            ch,
-            num_heads,
-            dim_head,
-            depth=1,
-            context_dim=None,
-            use_checkpoint=False,
-            disable_self_attn=False,
-        ):
+            ch: int,
+            num_heads: int,
+            dim_head: int,
+            depth: int = 1,
+            context_dim: int = None,
+            use_checkpoint: bool = False,
+            disable_self_attn: bool = False,
+        ) -> transformer.SpatialTransformer:
+            """#### Get an attention layer.
+
+            #### Args:
+                - `ch` (int): The number of channels.
+                - `num_heads` (int): The number of heads.
+                - `dim_head` (int): The dimension of each head.
+                - `depth` (int, optional): The depth of the transformer. Defaults to 1.
+                - `context_dim` (int, optional): The context dimension. Defaults to None.
+                - `use_checkpoint` (bool, optional): Whether to use checkpointing. Defaults to False.
+                - `disable_self_attn` (bool, optional): Whether to disable self-attention. Defaults to False.
+
+            #### Returns:
+                - `transformer.SpatialTransformer`: The attention layer.
+            """
             return transformer.SpatialTransformer(
                 ch,
                 num_heads,
@@ -326,22 +396,44 @@ class UNetModel1(nn.Module):
             )
 
         def get_resblock(
-            merge_factor,
-            merge_strategy,
-            video_kernel_size,
-            ch,
-            time_embed_dim,
-            dropout,
-            out_channels,
-            dims,
-            use_checkpoint,
-            use_scale_shift_norm,
-            down=False,
-            up=False,
-            dtype=None,
-            device=None,
-            operations=oai_ops,
-        ):
+            merge_factor: float,
+            merge_strategy: any,
+            video_kernel_size: int,
+            ch: int,
+            time_embed_dim: int,
+            dropout: float,
+            out_channels: int,
+            dims: int,
+            use_checkpoint: bool,
+            use_scale_shift_norm: bool,
+            down: bool = False,
+            up: bool = False,
+            dtype: th.dtype = None,
+            device: th.device = None,
+            operations: any = oai_ops,
+        ) -> ResBlock.ResBlock1:
+            """#### Get a residual block.
+
+            #### Args:
+                - `merge_factor` (float): The merge factor.
+                - `merge_strategy` (any): The merge strategy.
+                - `video_kernel_size` (int): The video kernel size.
+                - `ch` (int): The number of channels.
+                - `time_embed_dim` (int): The time embedding dimension.
+                - `dropout` (float): The dropout rate.
+                - `out_channels` (int): The number of output channels.
+                - `dims` (int): The number of dimensions.
+                - `use_checkpoint` (bool): Whether to use checkpointing.
+                - `use_scale_shift_norm` (bool): Whether to use scale-shift normalization.
+                - `down` (bool, optional): Whether to use downsampling. Defaults to False.
+                - `up` (bool, optional): Whether to use upsampling. Defaults to False.
+                - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+                - `device` (torch.device, optional): The device. Defaults to None.
+                - `operations` (any, optional): The operations to use. Defaults to oai_ops.
+
+            #### Returns:
+                - `ResBlock.ResBlock1`: The residual block.
+            """
             return ResBlock.ResBlock1(
                 channels=ch,
                 emb_channels=time_embed_dim,
@@ -582,7 +674,7 @@ class UNetModel1(nn.Module):
 
     def forward(
         self,
-        x,
+        x: torch.Tensor,
         timesteps=None,
         context=None,
         y=None,
