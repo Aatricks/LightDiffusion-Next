@@ -5,10 +5,10 @@ from modules.Utilities import util
 
 def enhance_prompt(p: str = None) -> str:
     """#### Enhance a text-to-image prompt using Ollama.
-    
+
     #### Args:
         - `p` (str, optional): The prompt. Defaults to `None`.
-    
+
     #### Returns:
         - `str`: The enhanced prompt
     """
@@ -61,5 +61,3 @@ def enhance_prompt(p: str = None) -> str:
     )
     print("here's the enhanced prompt :", response["message"]["content"])
     return response["message"]["content"]
-
-

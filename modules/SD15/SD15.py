@@ -53,7 +53,7 @@ class sm_SD15(ModelBase.BASE):
         )
         return state_dict
 
-    def clip_target(self):
+    def clip_target(self) -> Clip.ClipTarget:
         return Clip.ClipTarget(SDToken.SD1Tokenizer, SDClip.SD1ClipModel)
 
 

@@ -48,7 +48,9 @@ def combine_masks2(masks: list) -> torch.Tensor | None:
     return mask
 
 
-def dilate_mask(mask: torch.Tensor, dilation_factor: int, iter: int = 1) -> torch.Tensor:
+def dilate_mask(
+    mask: torch.Tensor, dilation_factor: int, iter: int = 1
+) -> torch.Tensor:
     """#### Dilate a mask.
 
     #### Args:

@@ -1,6 +1,11 @@
 from enum import Enum
+import threading
 import torch.nn as nn
 
+import math
+import torch
+
+from modules.Utilities import util
 from modules.Device import Device
 from modules.sample import ksampler_util, samplers, sampling_util
 from modules.sample import CFG
@@ -12,12 +17,6 @@ class TimestepBlock1(nn.Module):
 
 class TimestepEmbedSequential1(nn.Sequential, TimestepBlock1):
     pass
-
-
-import math
-import torch
-
-from modules.Utilities import util
 
 
 class EPS:
@@ -116,9 +115,6 @@ class ModelSamplingDiscrete(torch.nn.Module):
         return log_sigma.exp().to(timestep.device)
 
 
-import threading
-
-
 class InterruptProcessingException(Exception):
     pass
 
@@ -126,8 +122,6 @@ class InterruptProcessingException(Exception):
 interrupt_processing_mutex = threading.RLock()
 
 interrupt_processing = False
-
-import torch
 
 
 class KSamplerX0Inpaint:
@@ -182,7 +176,6 @@ class KSAMPLER(Sampler):
         )
 
         k_callback = None
-        total_steps = len(sigmas) - 1
 
         samples = self.sampler_function(
             model_k,
@@ -204,7 +197,14 @@ def ksampler(sampler_name, pipeline=False, extra_options={}, inpaint_options={})
     if sampler_name == "dpm_adaptive":
 
         def dpm_adaptive_function(
-            model, noise, sigmas, extra_args, callback, disable, pipeline, **extra_options
+            model,
+            noise,
+            sigmas,
+            extra_args,
+            callback,
+            disable,
+            pipeline,
+            **extra_options,
         ):
             if len(sigmas) <= 1:
                 return noise
@@ -228,7 +228,14 @@ def ksampler(sampler_name, pipeline=False, extra_options={}, inpaint_options={})
     elif sampler_name == "dpmpp_2m_sde":
 
         def dpmpp_sde_function(
-            model, noise, sigmas, extra_args, callback, disable, pipeline, **extra_options
+            model,
+            noise,
+            sigmas,
+            extra_args,
+            callback,
+            disable,
+            pipeline,
+            **extra_options,
         ):
             sigma_min = sigmas[-1]
             if sigma_min == 0:
@@ -286,7 +293,15 @@ def sample(
     cfg_guider.set_conds(positive, negative)
     cfg_guider.set_cfg(cfg)
     return cfg_guider.sample(
-        noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed, pipeline=pipeline
+        noise,
+        latent_image,
+        sampler,
+        sigmas,
+        denoise_mask,
+        callback,
+        disable_pbar,
+        seed,
+        pipeline=pipeline,
     )
 
 
@@ -336,7 +351,6 @@ class KSampler1:
     def calculate_sigmas(self, steps):
         sigmas = None
 
-        discard_penultimate_sigma = False
         sigmas = ksampler_util.calculate_sigmas(
             self.model.get_model_object("model_sampling"), self.scheduler, steps
         )

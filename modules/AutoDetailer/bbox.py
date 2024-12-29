@@ -6,6 +6,7 @@ from typing import List, Tuple, Optional
 
 class UltraBBoxDetector:
     """#### Class to detect bounding boxes using a YOLO model."""
+
     bbox_model: Optional[YOLO] = None
 
     def __init__(self, bbox_model: YOLO):
@@ -17,13 +18,13 @@ class UltraBBoxDetector:
         self.bbox_model = bbox_model
 
     def detect(
-        self, 
-        image: torch.Tensor, 
-        threshold: float, 
-        dilation: int, 
-        crop_factor: float, 
-        drop_size: int = 1, 
-        detailer_hook: Optional[callable] = None
+        self,
+        image: torch.Tensor,
+        threshold: float,
+        dilation: int,
+        crop_factor: float,
+        drop_size: int = 1,
+        detailer_hook: Optional[callable] = None,
     ) -> Tuple[Tuple[int, int], List[SEGS.SEG]]:
         """#### Detect bounding boxes in an image.
 
@@ -86,6 +87,7 @@ class UltraBBoxDetector:
 
 class UltraSegmDetector:
     """#### Class to detect segments using a YOLO model."""
+
     bbox_model: Optional[YOLO] = None
 
     def __init__(self, bbox_model: YOLO):
@@ -99,11 +101,13 @@ class UltraSegmDetector:
 
 class NO_SEGM_DETECTOR:
     """#### Placeholder class for no segment detector."""
+
     pass
 
 
 class UltralyticsDetectorProvider:
     """#### Class to provide YOLO models for detection."""
+
     def doit(self, model_name: str) -> Tuple[UltraBBoxDetector, UltraSegmDetector]:
         """#### Load a YOLO model and return detectors.
 
@@ -119,6 +123,7 @@ class UltralyticsDetectorProvider:
 
 class BboxDetectorForEach:
     """#### Class to detect bounding boxes for each segment."""
+
     def doit(
         self,
         bbox_detector: UltraBBoxDetector,
@@ -159,6 +164,7 @@ class BboxDetectorForEach:
 
 class WildcardChooser:
     """#### Class to choose wildcards for segments."""
+
     def __init__(self, items: List[Tuple[None, str]], randomize_when_exhaust: bool):
         """#### Initialize the WildcardChooser.
 

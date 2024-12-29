@@ -1,17 +1,15 @@
-
 import logging
 import math
 import threading
 import torch
 import torchsde
 from torch import nn
-from tqdm.auto import trange, tqdm
 
 from modules.Utilities import util
 
 
 disable_gui = True
-if disable_gui == False:
+if disable_gui is False:
     from modules.AutoEncoders import taesd
     from modules.user import app_instance
 
@@ -86,7 +84,7 @@ def get_sigmas_karras(n, sigma_min, sigma_max, rho=7.0, device="cpu"):
     """#### Get the sigmas for Karras sampling.
 
     constructs the noise schedule of Karras et al. (2022).
-    
+
     #### Args:
         - `n` (int): The number of sigmas.
         - `sigma_min` (float): The minimum sigma value.
@@ -104,15 +102,12 @@ def get_sigmas_karras(n, sigma_min, sigma_max, rho=7.0, device="cpu"):
     return util.append_zero(sigmas).to(device)
 
 
-
-
-
 def get_ancestral_step(sigma_from, sigma_to, eta=1.0):
     """
     #### Calculate the ancestral step in a diffusion process.
 
-    This function computes the values of `sigma_down` and `sigma_up` based on the 
-    input parameters `sigma_from`, `sigma_to`, and `eta`. These values are used 
+    This function computes the values of `sigma_down` and `sigma_up` based on the
+    input parameters `sigma_from`, `sigma_to`, and `eta`. These values are used
     in the context of diffusion models to determine the next step in the process.
 
     #### Parameters:
@@ -149,7 +144,7 @@ def default_noise_sampler(x):
 
 class BatchedBrownianTree:
     """#### A class to represent a batched Brownian tree for stochastic differential equations.
-    
+
     #### Attributes:
         - `cpu_tree` : bool
             Indicates if the tree is on CPU.
@@ -159,7 +154,7 @@ class BatchedBrownianTree:
             Indicates if the tree is batched.
         - `trees` : list
             List of BrownianTree instances.
-            
+
     #### Methods:
         - `__init__(x, t0, t1, seed=None, **kwargs)`:
             Initializes the BatchedBrownianTree with given parameters.
@@ -168,6 +163,7 @@ class BatchedBrownianTree:
         - `__call__(t0, t1)`:
             Calls the Brownian tree with given time points t0 and t1.
     """
+
     def __init__(self, x, t0, t1, seed=None, **kwargs):
         self.cpu_tree = True
         if "cpu" in kwargs:
@@ -191,7 +187,7 @@ class BatchedBrownianTree:
         #### Args:
             - `a` (float): The first value.
             - `b` (float): The second value.
-        
+
         #### Returns:
             - `tuple`: A tuple containing the sorted values and a sign:
         """
@@ -199,11 +195,11 @@ class BatchedBrownianTree:
 
     def __call__(self, t0, t1):
         """#### Call the Brownian tree with given time points t0 and t1.
-        
+
         #### Args:
             - `t0` (torch.Tensor): The starting time point.
             - `t1` (torch.Tensor): The target time point.
-        
+
         #### Returns:
             - `torch.Tensor`: The Brownian tree values.
         """
@@ -219,22 +215,23 @@ class BatchedBrownianTree:
 
 class BrownianTreeNoiseSampler:
     """#### A class to sample noise using a Brownian tree approach.
-    
+
     #### Attributes:
         - `transform` (callable): A function to transform the sigma values.
         - `tree` (BatchedBrownianTree): An instance of the BatchedBrownianTree class.
-        
+
     #### Methods:
         - `__init__(self, x, sigma_min, sigma_max, seed=None, transform=lambda x: x, cpu=False)`:
             Initializes the BrownianTreeNoiseSampler with the given parameters.
         - `__call__(self, sigma, sigma_next)`:
             Samples noise between the given sigma values.
     """
+
     def __init__(
         self, x, sigma_min, sigma_max, seed=None, transform=lambda x: x, cpu=False
     ):
         """#### Initializes the BrownianTreeNoiseSampler with the given parameters.
-        
+
         #### Args:
             - `x` (Tensor): The initial tensor.
             - `sigma_min` (float): The minimum sigma value.
@@ -244,30 +241,32 @@ class BrownianTreeNoiseSampler:
             - `cpu` (bool, optional): Whether to use CPU for computations. Defaults to False.
         """
         self.transform = transform
-        t0, t1 = self.transform(torch.as_tensor(sigma_min)), self.transform(
-            torch.as_tensor(sigma_max)
+        t0, t1 = (
+            self.transform(torch.as_tensor(sigma_min)),
+            self.transform(torch.as_tensor(sigma_max)),
         )
         self.tree = BatchedBrownianTree(x, t0, t1, seed, cpu=cpu)
 
     def __call__(self, sigma, sigma_next):
         """#### Samples noise between the given sigma values.
-        
+
         #### Args:
             - `sigma` (float): The current sigma value.
             - `sigma_next` (float): The next sigma value.
-            
+
         #### Returns:
             - `Tensor`: The sampled noise.
         """
-        t0, t1 = self.transform(torch.as_tensor(sigma)), self.transform(
-            torch.as_tensor(sigma_next)
+        t0, t1 = (
+            self.transform(torch.as_tensor(sigma)),
+            self.transform(torch.as_tensor(sigma_next)),
         )
         return self.tree(t0, t1) / (t1 - t0).abs().sqrt()
-    
+
 
 class PIDStepSizeController:
     """#### A PID (Proportional-Integral-Derivative) Step Size Controller for adaptive step size selection.
-    
+
     #### Attributes:
         - `h` (float): Initial step size.
         - `b1` (float): Coefficient for the proportional term.
@@ -276,7 +275,7 @@ class PIDStepSizeController:
         - `accept_safety` (float): Safety factor for accepting a proposed step size.
         - `eps` (float): Small value to prevent division by zero.
         - `errs` (list): List to store inverse errors for PID control.
-    
+
     #### Methods:
         - `__init__(self, h, pcoeff, icoeff, dcoeff, order=1, accept_safety=0.81, eps=1e-8)`:
             Initializes the PIDStepSizeController with given parameters.
@@ -285,6 +284,7 @@ class PIDStepSizeController:
         - `propose_step(self, error)`:
             Proposes a new step size based on the given error and updates internal state.
     """
+
     def __init__(
         self, h, pcoeff, icoeff, dcoeff, order=1, accept_safety=0.81, eps=1e-8
     ):
@@ -334,13 +334,13 @@ class PIDStepSizeController:
 
 class DPMSolver(nn.Module):
     """#### DPMSolver is a class for solving differential equations using the DPM-Solver algorithm.
-    
+
     #### Args:
         - `model` (nn.Module): The model to be used for solving the differential equations.
         - `extra_args` (dict, optional): Additional arguments to be passed to the model. Defaults to None.
         - `eps_callback` (callable, optional): A callback function to be called after computing epsilon. Defaults to None.
         - `info_callback` (callable, optional): A callback function to be called with information about the solver's progress. Defaults to None.
-        
+
     #### Methods:
         - `t(sigma)`:
             Converts sigma to time t.
@@ -355,6 +355,7 @@ class DPMSolver(nn.Module):
         - `dpm_solver_adaptive(x, t_start, t_end, order=3, rtol=0.05, atol=0.0078, h_init=0.05, pcoeff=0.0, icoeff=1.0, dcoeff=0.0, accept_safety=0.81, eta=0.0, s_noise=1.0, noise_sampler=None)`:
             Performs an adaptive DPM-Solver update with error control and step size adaptation.
     """
+
     def __init__(self, model, extra_args=None, eps_callback=None, info_callback=None):
         super().__init__()
         self.model = model
@@ -364,10 +365,10 @@ class DPMSolver(nn.Module):
 
     def t(self, sigma):
         """#### Convert sigma to time t.
-        
+
         #### Args:
             - `sigma` (torch.Tensor): The sigma value.
-            
+
         #### Returns:
             - `torch.Tensor`: The time t.
         """
@@ -375,10 +376,10 @@ class DPMSolver(nn.Module):
 
     def sigma(self, t):
         """#### Convert time t to sigma.
-        
+
         #### Args:
             - `t` (torch.Tensor): The time t.
-        
+
         #### Returns:
             - `torch.Tensor`: The sigma value.
         """
@@ -386,13 +387,13 @@ class DPMSolver(nn.Module):
 
     def eps(self, eps_cache, key, x, t, *args, **kwargs):
         """#### Compute the epsilon value for the given inputs and cache the result.
-        
+
         #### Args:
             - `eps_cache` (dict): The cache for epsilon values.
             - `key` (str): The key for the cache.
             - `x` (torch.Tensor): The input tensor.
             - `t` (torch.Tensor): The time t.
-        
+
         #### Returns:
             - `tuple`: A tuple containing the epsilon value and the updated cache.
         """
@@ -408,14 +409,14 @@ class DPMSolver(nn.Module):
 
     def dpm_solver_2_step(self, x, t, t_next, r1=1 / 2, eps_cache=None):
         """#### Perform a 2-step DPM-Solver update.
-        
+
         #### Args:
             -`x` (torch.Tensor): The input tensor.
             -`t` (torch.Tensor): The current time t.
             -`t_next` (torch.Tensor): The target time t.
             -`r1` (float, optional): The ratio for the first step. Defaults to 1/2.
             -`eps_cache` (dict, optional): The cache for epsilon values. Defaults to None.
-        
+
         #### Returns:
             - `tuple`: A tuple containing the updated tensor and the updated cache.
         """
@@ -434,7 +435,7 @@ class DPMSolver(nn.Module):
 
     def dpm_solver_3_step(self, x, t, t_next, r1=1 / 3, r2=2 / 3, eps_cache=None):
         """#### Perform a 3-step DPM-Solver update.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `t` (torch.Tensor): The current time t.
@@ -442,7 +443,7 @@ class DPMSolver(nn.Module):
             - `r1` (float, optional): The ratio for the first step. Defaults to 1/3.
             - `r2` (float, optional): The ratio for the second step. Defaults to 2/3.
             - `eps_cache` (dict, optional): The cache for epsilon values. Defaults to None.
-            
+
         #### Returns:
             - `tuple`: A tuple containing the updated tensor and the updated cache.
         """
@@ -488,7 +489,7 @@ class DPMSolver(nn.Module):
         pipeline=False,
     ):
         """#### Perform an adaptive DPM-Solver update with error control and step size adaptation.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `t_start` (torch.Tensor): The starting time t.
@@ -504,12 +505,12 @@ class DPMSolver(nn.Module):
             - `eta` (float, optional): The eta parameter for the ancestral step. Defaults to 0.0.
             - `s_noise` (float, optional): The noise scaling factor. Defaults to 1.0.
             - `noise_sampler` (callable, optional): A function to sample noise. Defaults to None.
-        
+
         #### Returns:
             - `tuple`: A tuple containing the updated tensor and information about the solver's progress.
         """
         global disable_gui
-        disable_gui = True if pipeline == True else False
+        disable_gui = True if pipeline is True else False
         noise_sampler = (
             default_noise_sampler(x) if noise_sampler is None else noise_sampler
         )
@@ -526,12 +527,12 @@ class DPMSolver(nn.Module):
         info = {"steps": 0, "nfe": 0, "n_accept": 0, "n_reject": 0}
 
         while s < t_end - 1e-5 if forward else s > t_end + 1e-5:
-            if pipeline == False:
+            if pipeline is False:
                 try:
                     app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
                 except:
                     pass
-                if app_instance.app.interrupt_flag == True:
+                if app_instance.app.interrupt_flag is True:
                     break
             eps_cache = {}
             t = (
@@ -542,7 +543,7 @@ class DPMSolver(nn.Module):
             t_, su = t, 0.0
 
             eps, eps_cache = self.eps(eps_cache, "eps", x, s)
-            denoised = x - self.sigma(s) * eps
+            x - self.sigma(s) * eps
 
             x_low, eps_cache = self.dpm_solver_2_step(
                 x, s, t_, r1=1 / 3, eps_cache=eps_cache
@@ -560,12 +561,12 @@ class DPMSolver(nn.Module):
                 info["n_reject"] += 1
             info["nfe"] += order
             info["steps"] += 1
-            if pipeline == False:
-                if app_instance.app.previewer_checkbox.get() == True:
+            if pipeline is False:
+                if app_instance.app.previewer_checkbox.get() is True:
                     threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
                 else:
                     pass
-        if pipeline == False:
+        if pipeline is False:
             try:
                 app_instance.app.title("LightDiffusion")
             except:

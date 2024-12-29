@@ -4,13 +4,6 @@ from modules.StableFast.ModuleFactory import ModuleFactory
 
 try:
     from sfast.compilers.diffusion_pipeline_compiler import CompilationConfig
-    from sfast.compilers.diffusion_pipeline_compiler import (
-        _enable_xformers,
-        _modify_model,
-    )
-    from sfast.cuda.graphs import make_dynamic_graphed_callable
-    from sfast.jit import utils as jit_utils
-    from sfast.jit.trace_helper import trace_with_kwargs
 except:
     pass
 
@@ -55,7 +48,7 @@ class StableFastPatch:
         )
 
     def to(self, device):
-        if type(device) == torch.device:
+        if type(device) is torch.device:
             if self.config.enable_cuda_graph or self.config.enable_jit_freeze:
                 if device.type == "cpu":
                     del self.stable_fast_model

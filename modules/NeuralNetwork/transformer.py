@@ -1,19 +1,15 @@
 from einops import rearrange
-
+import torch
 from modules.Utilities import util
-
 import torch.nn as nn
-
 from modules.Attention import Attention
 from modules.Device import Device
 from modules.cond import Activation
-from modules.cond import cast, cond
+from modules.cond import cast
 from modules.sample import sampling_util
 
-
 if Device.xformers_enabled():
-    import xformers
-    import xformers.ops
+    pass
 
 ops = cast.disable_weight_init
 
@@ -21,16 +17,29 @@ _ATTN_PRECISION = "fp32"
 
 
 class FeedForward(nn.Module):
+    """#### FeedForward neural network module.
+
+    #### Args:
+        - `dim` (int): The input dimension.
+        - `dim_out` (int, optional): The output dimension. Defaults to None.
+        - `mult` (int, optional): The multiplier for the inner dimension. Defaults to 4.
+        - `glu` (bool, optional): Whether to use Gated Linear Units. Defaults to False.
+        - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
+        - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+        - `device` (torch.device, optional): The device. Defaults to None.
+        - `operations` (object, optional): The operations module. Defaults to `ops`.
+    """
+
     def __init__(
         self,
-        dim,
-        dim_out=None,
-        mult=4,
-        glu=False,
-        dropout=0.0,
-        dtype=None,
-        device=None,
-        operations=ops,
+        dim: int,
+        dim_out: int = None,
+        mult: int = 4,
+        glu: bool = False,
+        dropout: float = 0.0,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        operations: object = ops,
     ):
         super().__init__()
         inner_dim = int(dim * mult)
@@ -49,28 +58,56 @@ class FeedForward(nn.Module):
             operations.Linear(inner_dim, dim_out, dtype=dtype, device=device),
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass of the FeedForward network.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         return self.net(x)
 
 
 class BasicTransformerBlock(nn.Module):
+    """#### Basic Transformer block.
+
+    #### Args:
+        - `dim` (int): The input dimension.
+        - `n_heads` (int): The number of attention heads.
+        - `d_head` (int): The dimension of each attention head.
+        - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
+        - `context_dim` (int, optional): The context dimension. Defaults to None.
+        - `gated_ff` (bool, optional): Whether to use Gated FeedForward. Defaults to True.
+        - `checkpoint` (bool, optional): Whether to use checkpointing. Defaults to True.
+        - `ff_in` (bool, optional): Whether to use FeedForward input. Defaults to False.
+        - `inner_dim` (int, optional): The inner dimension. Defaults to None.
+        - `disable_self_attn` (bool, optional): Whether to disable self-attention. Defaults to False.
+        - `disable_temporal_crossattention` (bool, optional): Whether to disable temporal cross-attention. Defaults to False.
+        - `switch_temporal_ca_to_sa` (bool, optional): Whether to switch temporal cross-attention to self-attention. Defaults to False.
+        - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+        - `device` (torch.device, optional): The device. Defaults to None.
+        - `operations` (object, optional): The operations module. Defaults to `ops`.
+    """
+
     def __init__(
         self,
-        dim,
-        n_heads,
-        d_head,
-        dropout=0.0,
-        context_dim=None,
-        gated_ff=True,
-        checkpoint=True,
-        ff_in=False,
-        inner_dim=None,
-        disable_self_attn=False,
-        disable_temporal_crossattention=False,
-        switch_temporal_ca_to_sa=False,
-        dtype=None,
-        device=None,
-        operations=ops,
+        dim: int,
+        n_heads: int,
+        d_head: int,
+        dropout: float = 0.0,
+        context_dim: int = None,
+        gated_ff: bool = True,
+        checkpoint: bool = True,
+        ff_in: bool = False,
+        inner_dim: int = None,
+        disable_self_attn: bool = False,
+        disable_temporal_crossattention: bool = False,
+        switch_temporal_ca_to_sa: bool = False,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        operations: object = ops,
     ):
         super().__init__()
 
@@ -123,7 +160,22 @@ class BasicTransformerBlock(nn.Module):
         self.d_head = d_head
         self.switch_temporal_ca_to_sa = switch_temporal_ca_to_sa
 
-    def forward(self, x, context=None, transformer_options={}):
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor = None,
+        transformer_options: dict = {},
+    ) -> torch.Tensor:
+        """#### Forward pass of the Basic Transformer block.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `context` (torch.Tensor, optional): The context tensor. Defaults to None.
+            - `transformer_options` (dict, optional): Additional transformer options. Defaults to {}.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         return sampling_util.checkpoint(
             self._forward,
             (x, context, transformer_options),
@@ -131,11 +183,25 @@ class BasicTransformerBlock(nn.Module):
             self.checkpoint,
         )
 
-    def _forward(self, x, context=None, transformer_options={}):
+    def _forward(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor = None,
+        transformer_options: dict = {},
+    ) -> torch.Tensor:
+        """#### Internal forward pass of the Basic Transformer block.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `context` (torch.Tensor, optional): The context tensor. Defaults to None.
+            - `transformer_options` (dict, optional): Additional transformer options. Defaults to {}.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         extra_options = {}
         block = transformer_options.get("block", None)
         block_index = transformer_options.get("block_index", 0)
-        transformer_patches = {}
         transformer_patches_replace = {}
 
         for k in transformer_options:
@@ -180,20 +246,37 @@ class BasicTransformerBlock(nn.Module):
 
 
 class SpatialTransformer(nn.Module):
+    """#### Spatial Transformer module.
+
+    #### Args:
+        - `in_channels` (int): The number of input channels.
+        - `n_heads` (int): The number of attention heads.
+        - `d_head` (int): The dimension of each attention head.
+        - `depth` (int, optional): The depth of the transformer. Defaults to 1.
+        - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
+        - `context_dim` (int, optional): The context dimension. Defaults to None.
+        - `disable_self_attn` (bool, optional): Whether to disable self-attention. Defaults to False.
+        - `use_linear` (bool, optional): Whether to use linear projections. Defaults to False.
+        - `use_checkpoint` (bool, optional): Whether to use checkpointing. Defaults to True.
+        - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+        - `device` (torch.device, optional): The device. Defaults to None.
+        - `operations` (object, optional): The operations module. Defaults to `ops`.
+    """
+
     def __init__(
         self,
-        in_channels,
-        n_heads,
-        d_head,
-        depth=1,
-        dropout=0.0,
-        context_dim=None,
-        disable_self_attn=False,
-        use_linear=False,
-        use_checkpoint=True,
-        dtype=None,
-        device=None,
-        operations=ops,
+        in_channels: int,
+        n_heads: int,
+        d_head: int,
+        depth: int = 1,
+        dropout: float = 0.0,
+        context_dim: int = None,
+        disable_self_attn: bool = False,
+        use_linear: bool = False,
+        use_checkpoint: bool = True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        operations: object = ops,
     ):
         super().__init__()
         if util.exists(context_dim) and not isinstance(context_dim, list):
@@ -256,7 +339,22 @@ class SpatialTransformer(nn.Module):
             )
         self.use_linear = use_linear
 
-    def forward(self, x, context=None, transformer_options={}):
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor = None,
+        transformer_options: dict = {},
+    ) -> torch.Tensor:
+        """#### Forward pass of the Spatial Transformer.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `context` (torch.Tensor, optional): The context tensor. Defaults to None.
+            - `transformer_options` (dict, optional): Additional transformer options. Defaults to {}.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         # note: if no context is given, cross-attention defaults to self-attention
         if not isinstance(context, list):
             context = [context] * len(self.transformer_blocks)
@@ -278,7 +376,17 @@ class SpatialTransformer(nn.Module):
             x = self.proj_out(x)
         return x + x_in
 
-def count_blocks(state_dict_keys, prefix_string):
+
+def count_blocks(state_dict_keys: list, prefix_string: str) -> int:
+    """#### Count the number of blocks in a state dictionary.
+
+    #### Args:
+        - `state_dict_keys` (list): The list of state dictionary keys.
+        - `prefix_string` (str): The prefix string to match.
+
+    #### Returns:
+        - `int`: The number of blocks.
+    """
     count = 0
     while True:
         c = False
@@ -286,13 +394,25 @@ def count_blocks(state_dict_keys, prefix_string):
             if k.startswith(prefix_string.format(count)):
                 c = True
                 break
-        if c == False:
+        if c is False:
             break
         count += 1
     return count
 
 
-def calculate_transformer_depth(prefix, state_dict_keys, state_dict):
+def calculate_transformer_depth(
+    prefix: str, state_dict_keys: list, state_dict: dict
+) -> tuple:
+    """#### Calculate the depth of a transformer.
+
+    #### Args:
+        - `prefix` (str): The prefix string.
+        - `state_dict_keys` (list): The list of state dictionary keys.
+        - `state_dict` (dict): The state dictionary.
+
+    #### Returns:
+        - `tuple`: The transformer depth, context dimension, use of linear in transformer, and time stack.
+    """
     context_dim = None
     use_linear_in_transformer = False
 

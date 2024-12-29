@@ -1,18 +1,36 @@
 import os
-
 import numpy as np
 from PIL import Image
 
-
 output_directory = "./_internal/output"
 
-def get_output_directory():
+
+def get_output_directory() -> str:
+    """#### Get the output directory.
+
+    #### Returns:
+        - `str`: The output directory.
+    """
     global output_directory
     return output_directory
 
 
-def get_save_image_path(filename_prefix, output_dir, image_width=0, image_height=0):
-    def map_filename(filename):
+def get_save_image_path(
+    filename_prefix: str, output_dir: str, image_width: int = 0, image_height: int = 0
+) -> tuple:
+    """#### Get the save image path.
+
+    #### Args:
+        - `filename_prefix` (str): The filename prefix.
+        - `output_dir` (str): The output directory.
+        - `image_width` (int, optional): The image width. Defaults to 0.
+        - `image_height` (int, optional): The image height. Defaults to 0.
+
+    #### Returns:
+        - `tuple`: The full output folder, filename, counter, subfolder, and filename prefix.
+    """
+
+    def map_filename(filename: str) -> tuple:
         prefix_len = len(os.path.basename(filename_prefix))
         prefix = filename[: prefix_len + 1]
         try:
@@ -21,7 +39,7 @@ def get_save_image_path(filename_prefix, output_dir, image_width=0, image_height
             digits = 0
         return (digits, prefix)
 
-    def compute_vars(input, image_width, image_height):
+    def compute_vars(input: str, image_width: int, image_height: int) -> str:
         input = input.replace("%width%", str(image_width))
         input = input.replace("%height%", str(image_height))
         return input
@@ -54,15 +72,33 @@ MAX_RESOLUTION = 16384
 
 
 class SaveImage:
+    """#### Class for saving images."""
+
     def __init__(self):
+        """#### Initialize the SaveImage class."""
         self.output_dir = get_output_directory()
         self.type = "output"
         self.prefix_append = ""
         self.compress_level = 4
 
     def save_images(
-        self, images, filename_prefix="LD", prompt=None, extra_pnginfo=None
-    ):
+        self,
+        images: list,
+        filename_prefix: str = "LD",
+        prompt: str = None,
+        extra_pnginfo: dict = None,
+    ) -> dict:
+        """#### Save images to the output directory.
+
+        #### Args:
+            - `images` (list): The list of images.
+            - `filename_prefix` (str, optional): The filename prefix. Defaults to "LD".
+            - `prompt` (str, optional): The prompt. Defaults to None.
+            - `extra_pnginfo` (dict, optional): Additional PNG info. Defaults to None.
+
+        #### Returns:
+            - `dict`: The saved images information.
+        """
         filename_prefix += self.prefix_append
         full_output_folder, filename, counter, subfolder, filename_prefix = (
             get_save_image_path(

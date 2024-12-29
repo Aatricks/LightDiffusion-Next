@@ -1,4 +1,3 @@
-import re
 from typing import List
 import cv2
 import numpy as np
@@ -34,13 +33,13 @@ def inference_bbox(
     device: str = "",
 ) -> List:
     """#### Perform inference on an image and return bounding boxes.
-    
+
     #### Args:
         - `model` (YOLO): The YOLO model.
         - `image` (Image.Image): The image to perform inference on.
         - `confidence` (float): The confidence threshold for the bounding boxes.
         - `device` (str): The device to run the model on.
-        
+
     #### Returns:
         - `List[List[str, List[int], np.ndarray, float]]`: The list of bounding boxes.
     """
@@ -70,10 +69,10 @@ def inference_bbox(
 
 def create_segmasks(results: List) -> List:
     """#### Create segmentation masks from the results of the inference.
-    
+
     #### Args:
         - `results` (List[List[str, List[int], np.ndarray, float]]): The results of the inference.
-    
+
     #### Returns:
         - `List[List[int], np.ndarray, float]`: The list of segmentation masks.
     """
@@ -90,12 +89,12 @@ def create_segmasks(results: List) -> List:
 
 def dilate_masks(segmasks: List, dilation_factor: int, iter: int = 1) -> List:
     """#### Dilate the segmentation masks.
-    
+
     #### Args:
         - `segmasks` (List[List[int], np.ndarray, float]): The segmentation masks.
         - `dilation_factor` (int): The dilation factor.
         - `iter` (int): The number of iterations.
-        
+
     #### Returns:
         - `List[List[int], np.ndarray, float]`: The dilated segmentation masks.
     """
@@ -115,12 +114,12 @@ def dilate_masks(segmasks: List, dilation_factor: int, iter: int = 1) -> List:
 
 def normalize_region(limit: int, startp: int, size: int) -> List:
     """#### Normalize the region.
-    
+
     #### Args:
         - `limit` (int): The limit.
         - `startp` (int): The start point.
         - `size` (int): The size.
-        
+
     #### Returns:
         - `List[int]`: The normalized start and end points.
     """
@@ -139,13 +138,13 @@ def normalize_region(limit: int, startp: int, size: int) -> List:
 
 def make_crop_region(w: int, h: int, bbox: List, crop_factor: float) -> List:
     """#### Make the crop region.
-    
+
     #### Args:
         - `w` (int): The width.
         - `h` (int): The height.
         - `bbox` (List[int]): The bounding box.
         - `crop_factor` (float): The crop factor.
-        
+
     #### Returns:
         - `List[x1: int, y1: int, x2: int, y2: int]`: The crop region.
     """
@@ -175,11 +174,11 @@ def make_crop_region(w: int, h: int, bbox: List, crop_factor: float) -> List:
 
 def crop_ndarray2(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     """#### Crop the ndarray in 2 dimensions.
-    
+
     #### Args:
         - `npimg` (np.ndarray): The ndarray to crop.
         - `crop_region` (List[int]): The crop region.
-        
+
     #### Returns:
         - `np.ndarray`: The cropped ndarray.
     """
@@ -195,11 +194,11 @@ def crop_ndarray2(npimg: np.ndarray, crop_region: List) -> np.ndarray:
 
 def crop_ndarray4(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     """#### Crop the ndarray in 4 dimensions.
-    
+
     #### Args:
         - `npimg` (np.ndarray): The ndarray to crop.
         - `crop_region` (List[int]): The crop region.
-        
+
     #### Returns:
         - `np.ndarray`: The cropped ndarray.
     """
@@ -215,11 +214,11 @@ def crop_ndarray4(npimg: np.ndarray, crop_region: List) -> np.ndarray:
 
 def crop_image(image: Image.Image, crop_region: List) -> Image.Image:
     """#### Crop the image.
-    
+
     #### Args:
         - `image` (Image.Image): The image to crop.
         - `crop_region` (List[int]): The crop region.
-        
+
     #### Returns:
         - `Image.Image`: The cropped image.
     """
@@ -228,11 +227,11 @@ def crop_image(image: Image.Image, crop_region: List) -> Image.Image:
 
 def segs_scale_match(segs: List[np.ndarray], target_shape: List) -> List:
     """#### Match the scale of the segmentation masks.
-    
+
     #### Args:
         - `segs` (List[np.ndarray]): The segmentation masks.
         - `target_shape` (List[int]): The target shape.
-        
+
     #### Returns:
         - `List[np.ndarray]`: The matched segmentation masks.
     """

@@ -7,7 +7,9 @@ from modules.AutoDetailer import mask_util
 from modules.Device import Device
 
 
-def sam_predict(predictor: SamPredictor, points: list, plabs: list, bbox: list, threshold: float) -> list:
+def sam_predict(
+    predictor: SamPredictor, points: list, plabs: list, bbox: list, threshold: float
+) -> list:
     """#### Predict masks using SAM.
 
     #### Args:
@@ -68,6 +70,7 @@ def is_same_device(a: torch.device, b: torch.device) -> bool:
 
 class SafeToGPU:
     """#### Class to safely move objects to GPU."""
+
     def __init__(self, size: int):
         self.size = size
 
@@ -98,7 +101,10 @@ class SafeToGPU:
 
 class SAMWrapper:
     """#### Wrapper class for SAM model."""
-    def __init__(self, model: torch.nn.Module, is_auto_mode: bool, safe_to_gpu: SafeToGPU = None):
+
+    def __init__(
+        self, model: torch.nn.Module, is_auto_mode: bool, safe_to_gpu: SafeToGPU = None
+    ):
         self.model = model
         self.safe_to_gpu = safe_to_gpu if safe_to_gpu is not None else SafeToGPU()
         self.is_auto_mode = is_auto_mode
@@ -114,7 +120,9 @@ class SAMWrapper:
         if self.is_auto_mode:
             self.model.to(device="cpu")
 
-    def predict(self, image: np.ndarray, points: list, plabs: list, bbox: list, threshold: float) -> list:
+    def predict(
+        self, image: np.ndarray, points: list, plabs: list, bbox: list, threshold: float
+    ) -> list:
         """#### Predict masks using the SAM model.
 
         #### Args:
@@ -135,6 +143,7 @@ class SAMWrapper:
 
 class SAMLoader:
     """#### Class to load SAM models."""
+
     def load_model(self, model_name: str, device_mode: str = "auto") -> tuple:
         """#### Load a SAM model.
 
@@ -245,6 +254,7 @@ def make_sam_mask(
 
 class SAMDetectorCombined:
     """#### Class to combine SAM detection."""
+
     def doit(
         self,
         sam_model: SAMWrapper,

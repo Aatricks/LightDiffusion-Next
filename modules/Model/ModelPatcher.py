@@ -8,17 +8,26 @@ from modules.Utilities import util
 from modules.Device import Device
 
 
-
 class ModelPatcher:
     def __init__(
         self,
-        model,
-        load_device,
-        offload_device,
-        size=0,
-        current_device=None,
-        weight_inplace_update=False,
+        model: torch.nn.Module,
+        load_device: torch.device,
+        offload_device: torch.device,
+        size: int = 0,
+        current_device: torch.device = None,
+        weight_inplace_update: bool = False,
     ):
+        """#### Initialize the ModelPatcher class.
+
+        #### Args:
+            - `model` (torch.nn.Module): The model.
+            - `load_device` (torch.device): The device to load the model on.
+            - `offload_device` (torch.device): The device to offload the model to.
+            - `size` (int, optional): The size of the model. Defaults to 0.
+            - `current_device` (torch.device, optional): The current device. Defaults to None.
+            - `weight_inplace_update` (bool, optional): Whether to update weights in place. Defaults to False.
+        """
         self.size = size
         self.model = model
         self.patches = {}
@@ -39,7 +48,12 @@ class ModelPatcher:
         self.lowvram_patch_counter = 0
         self.patches_uuid = uuid.uuid4()
 
-    def model_size(self):
+    def model_size(self) -> int:
+        """#### Get the size of the model.
+
+        #### Returns:
+            - `int`: The size of the model.
+        """
         if self.size > 0:
             return self.size
         model_sd = self.model.state_dict()
@@ -47,7 +61,12 @@ class ModelPatcher:
         self.model_keys = set(model_sd.keys())
         return self.size
 
-    def clone(self):
+    def clone(self) -> "ModelPatcher":
+        """#### Clone the ModelPatcher object.
+
+        #### Returns:
+            - `ModelPatcher`: The cloned ModelPatcher object.
+        """
         n = ModelPatcher(
             self.model,
             self.load_device,
@@ -68,35 +87,91 @@ class ModelPatcher:
         n.object_patches_backup = self.object_patches_backup
         return n
 
-    def is_clone(self, other):
+    def is_clone(self, other: object) -> bool:
+        """#### Check if the object is a clone.
+
+        #### Args:
+            - `other` (object): The other object.
+
+        #### Returns:
+            - `bool`: Whether the object is a clone.
+        """
         if hasattr(other, "model") and self.model is other.model:
             return True
         return False
 
-    def memory_required(self, input_shape):
+    def memory_required(self, input_shape: tuple) -> float:
+        """#### Calculate the memory required for the model.
+
+        #### Args:
+            - `input_shape` (tuple): The input shape.
+
+        #### Returns:
+            - `float`: The memory required.
+        """
         return self.model.memory_required(input_shape=input_shape)
 
-    def set_model_unet_function_wrapper(self, unet_wrapper_function):
+    def set_model_unet_function_wrapper(self, unet_wrapper_function: callable) -> None:
+        """#### Set the UNet function wrapper for the model.
+
+        #### Args:
+            - `unet_wrapper_function` (callable): The UNet function wrapper.
+        """
         self.model_options["model_function_wrapper"] = unet_wrapper_function
 
-    def set_model_denoise_mask_function(self, denoise_mask_function):
+    def set_model_denoise_mask_function(self, denoise_mask_function: callable) -> None:
+        """#### Set the denoise mask function for the model.
+
+        #### Args:
+            - `denoise_mask_function` (callable): The denoise mask function.
+        """
         self.model_options["denoise_mask_function"] = denoise_mask_function
 
-    def get_model_object(self, name):
+    def get_model_object(self, name: str) -> object:
+        """#### Get an object from the model.
+
+        #### Args:
+            - `name` (str): The name of the object.
+
+        #### Returns:
+            - `object`: The object.
+        """
         return util.get_attr(self.model, name)
 
-    def model_patches_to(self, device):
-        to = self.model_options["transformer_options"]
+    def model_patches_to(self, device: torch.device) -> None:
+        """#### Move model patches to a device.
+
+        #### Args:
+            - `device` (torch.device): The device.
+        """
+        self.model_options["transformer_options"]
         if "model_function_wrapper" in self.model_options:
             wrap_func = self.model_options["model_function_wrapper"]
             if hasattr(wrap_func, "to"):
                 self.model_options["model_function_wrapper"] = wrap_func.to(device)
 
-    def model_dtype(self):
+    def model_dtype(self) -> torch.dtype:
+        """#### Get the data type of the model.
+
+        #### Returns:
+            - `torch.dtype`: The data type.
+        """
         if hasattr(self.model, "get_dtype"):
             return self.model.get_dtype()
 
-    def add_patches(self, patches, strength_patch=1.0, strength_model=1.0):
+    def add_patches(
+        self, patches: dict, strength_patch: float = 1.0, strength_model: float = 1.0
+    ) -> list:
+        """#### Add patches to the model.
+
+        #### Args:
+            - `patches` (dict): The patches to add.
+            - `strength_patch` (float, optional): The strength of the patches. Defaults to 1.0.
+            - `strength_model` (float, optional): The strength of the model. Defaults to 1.0.
+
+        #### Returns:
+            - `list`: The list of patched keys.
+        """
         p = set()
         for k in patches:
             if k in self.model_keys:
@@ -108,12 +183,26 @@ class ModelPatcher:
         self.patches_uuid = uuid.uuid4()
         return list(p)
 
-    def model_state_dict(self, filter_prefix=None):
+    def model_state_dict(self, filter_prefix: str = None) -> dict:
+        """#### Get the state dictionary of the model.
+
+        #### Args:
+            - `filter_prefix` (str, optional): The prefix to filter. Defaults to None.
+
+        #### Returns:
+            - `dict`: The state dictionary.
+        """
         sd = self.model.state_dict()
-        keys = list(sd.keys())
+        list(sd.keys())
         return sd
 
-    def patch_weight_to_device(self, key, device_to=None):
+    def patch_weight_to_device(self, key: str, device_to: torch.device = None) -> None:
+        """#### Patch the weight of a key to a device.
+
+        #### Args:
+            - `key` (str): The key.
+            - `device_to` (torch.device, optional): The device to patch to. Defaults to None.
+        """
         if key not in self.patches:
             return
 
@@ -122,19 +211,36 @@ class ModelPatcher:
         inplace_update = self.weight_inplace_update
 
         if key not in self.backup:
-            self.backup[key] = weight.to(device=self.offload_device, copy=inplace_update)
+            self.backup[key] = weight.to(
+                device=self.offload_device, copy=inplace_update
+            )
 
         if device_to is not None:
-            temp_weight = Device.cast_to_device(weight, device_to, torch.float32, copy=True)
+            temp_weight = Device.cast_to_device(
+                weight, device_to, torch.float32, copy=True
+            )
         else:
             temp_weight = weight.to(torch.float32, copy=True)
-        out_weight = self.calculate_weight(self.patches[key], temp_weight, key).to(weight.dtype)
+        out_weight = self.calculate_weight(self.patches[key], temp_weight, key).to(
+            weight.dtype
+        )
         if inplace_update:
             util.copy_to_param(self.model, key, out_weight)
         else:
             util.set_attr_param(self.model, key, out_weight)
-    
-    def patch_model(self, device_to=None, patch_weights=True):
+
+    def patch_model(
+        self, device_to: torch.device = None, patch_weights: bool = True
+    ) -> torch.nn.Module:
+        """#### Patch the model.
+
+        #### Args:
+            - `device_to` (torch.device, optional): The device to patch to. Defaults to None.
+            - `patch_weights` (bool, optional): Whether to patch weights. Defaults to True.
+
+        #### Returns:
+            - `torch.nn.Module`: The patched model.
+        """
         for k in self.object_patches:
             old = util.set_attr(self.model, k, self.object_patches[k])
             if k not in self.object_patches_backup:
@@ -144,7 +250,9 @@ class ModelPatcher:
             model_sd = self.model_state_dict()
             for key in self.patches:
                 if key not in model_sd:
-                    logging.warning("could not patch. key doesn't exist in model: {}".format(key))
+                    logging.warning(
+                        "could not patch. key doesn't exist in model: {}".format(key)
+                    )
                     continue
 
                 self.patch_weight_to_device(key, device_to)
@@ -155,16 +263,37 @@ class ModelPatcher:
 
         return self.model
 
-    def patch_model_lowvram(self, device_to=None, lowvram_model_memory=0, force_patch_weights=False):
+    def patch_model_lowvram(
+        self,
+        device_to: torch.device = None,
+        lowvram_model_memory: int = 0,
+        force_patch_weights: bool = False,
+    ) -> torch.nn.Module:
+        """#### Patch the model for low VRAM.
+
+        #### Args:
+            - `device_to` (torch.device, optional): The device to patch to. Defaults to None.
+            - `lowvram_model_memory` (int, optional): The low VRAM model memory. Defaults to 0.
+            - `force_patch_weights` (bool, optional): Whether to force patch weights. Defaults to False.
+
+        #### Returns:
+            - `torch.nn.Module`: The patched model.
+        """
         self.patch_model(device_to, patch_weights=False)
 
-        logging.info("loading in lowvram mode {}".format(lowvram_model_memory/(1024 * 1024)))
+        logging.info(
+            "loading in lowvram mode {}".format(lowvram_model_memory / (1024 * 1024))
+        )
+
         class LowVramPatch:
-            def __init__(self, key, model_patcher):
+            def __init__(self, key: str, model_patcher: "ModelPatcher"):
                 self.key = key
                 self.model_patcher = model_patcher
-            def __call__(self, weight):
-                return self.model_patcher.calculate_weight(self.model_patcher.patches[self.key], weight, self.key)
+
+            def __call__(self, weight: torch.Tensor) -> torch.Tensor:
+                return self.model_patcher.calculate_weight(
+                    self.model_patcher.patches[self.key], weight, self.key
+                )
 
         mem_counter = 0
         patch_counter = 0
@@ -206,16 +335,28 @@ class ModelPatcher:
         self.lowvram_patch_counter = patch_counter
         return self.model
 
-    def calculate_weight(self, patches, weight, key):
+    def calculate_weight(
+        self, patches: list, weight: torch.Tensor, key: str
+    ) -> torch.Tensor:
+        """#### Calculate the weight of a key.
+
+        #### Args:
+            - `patches` (list): The list of patches.
+            - `weight` (torch.Tensor): The weight tensor.
+            - `key` (str): The key.
+
+        #### Returns:
+            - `torch.Tensor`: The calculated weight.
+        """
         for p in patches:
             alpha = p[0]
             v = p[1]
-            strength_model = p[2]
-            patch_type = v[0]
+            p[2]
+            v[0]
             v = v[1]
             mat1 = Device.cast_to_device(v[0], weight.device, torch.float32)
             mat2 = Device.cast_to_device(v[1], weight.device, torch.float32)
-            dora_scale = v[4]
+            v[4]
             if v[2] is not None:
                 alpha *= v[2] / mat2.shape[0]
             weight += (
@@ -225,7 +366,15 @@ class ModelPatcher:
             )
         return weight
 
-    def unpatch_model(self, device_to=None, unpatch_weights=True):
+    def unpatch_model(
+        self, device_to: torch.device = None, unpatch_weights: bool = True
+    ) -> None:
+        """#### Unpatch the model.
+
+        #### Args:
+            - `device_to` (torch.device, optional): The device to unpatch to. Defaults to None.
+            - `unpatch_weights` (bool, optional): Whether to unpatch weights. Defaults to True.
+        """
         if unpatch_weights:
             keys = list(self.backup.keys())
             for k in keys:

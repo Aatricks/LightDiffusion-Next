@@ -1,9 +1,10 @@
-
 from modules.AutoEncoders import VariationalAE
 from modules.sample import sampling
 from modules.UltimateSDUpscale import USDU_upscaler, image_util
 import torch
-from PIL import ImageFilter
+from PIL import ImageFilter, ImageDraw, Image
+from enum import Enum
+import math
 
 
 class UnsupportedModel(Exception):
@@ -11,7 +12,6 @@ class UnsupportedModel(Exception):
 
 
 class StableDiffusionProcessing:
-
     def __init__(
         self,
         init_img,
@@ -57,7 +57,6 @@ class StableDiffusionProcessing:
 
 
 class Processed:
-
     def __init__(
         self, p: StableDiffusionProcessing, images: list, seed: int, info: str
     ):
@@ -186,11 +185,6 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
     return processed
 
 
-from enum import Enum
-
-from PIL import ImageDraw
-
-
 class USDUMode(Enum):
     LINEAR = 0
     CHESS = 1
@@ -205,7 +199,6 @@ class USDUSFMode(Enum):
 
 
 class USDUpscaler:
-
     def __init__(
         self,
         p,
@@ -337,7 +330,6 @@ class USDUpscaler:
 
 
 class USDURedraw:
-
     def init_draw(self, p, width, height):
         p.inpaint_full_res = True
         p.inpaint_full_res_padding = self.padding
@@ -382,7 +374,6 @@ class USDURedraw:
 
 
 class USDUSeamsFix:
-
     def init_draw(self, p):
         self.initial_info = None
         p.width = math.ceil((self.tile_width + self.padding) / 64) * 64
@@ -500,7 +491,6 @@ class Script(USDU_upscaler.Script):
         custom_height,
         custom_scale,
     ):
-
         # Init
         fix_seed(p)
         USDU_upscaler.torch_gc()
@@ -517,7 +507,9 @@ class Script(USDU_upscaler.Script):
 
         # Init image
         init_img = p.init_images[0]
-        init_img = image_util.flatten(init_img, USDU_upscaler.opts.img2img_background_color)
+        init_img = image_util.flatten(
+            init_img, USDU_upscaler.opts.img2img_background_color
+        )
 
         p.width = math.ceil((init_img.width * custom_scale) / 64) * 64
         p.height = math.ceil((init_img.height * custom_scale) / 64) * 64
@@ -555,11 +547,6 @@ class Script(USDU_upscaler.Script):
             upscaler.initial_info if upscaler.initial_info is not None else "",
         )
 
-
-# Make some patches to the script
-import math
-
-from PIL import Image
 
 #
 # Instead of using multiples of 64, use multiples of 8

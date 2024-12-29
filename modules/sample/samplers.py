@@ -5,9 +5,10 @@ from modules.Utilities import util
 
 
 from modules.sample import sampling_util
+
 disable_gui = True
 
-if disable_gui == False:
+if disable_gui is False:
     from modules.AutoEncoders import taesd
     from modules.user import app_instance
 
@@ -26,7 +27,7 @@ def sample_euler_ancestral(
     pipeline=False,
 ):
     """#### Perform ancestral sampling using the Euler method.
-    
+
     #### Args:
         - `model` (torch.nn.Module): The model to use for denoising.
         - `x` (torch.Tensor): The input tensor to be denoised.
@@ -37,38 +38,42 @@ def sample_euler_ancestral(
         - `eta` (float, optional): The eta parameter for the ancestral step. Defaults to 1.0.
         - `s_noise` (float, optional): The noise scaling factor. Defaults to 1.0.
         - `noise_sampler` (callable, optional): A function to sample noise. Defaults to None.
-        
+
     #### Returns:
         - `torch.Tensor`: The denoised tensor after ancestral sampling.
     """
     extra_args = {} if extra_args is None else extra_args
-    noise_sampler = sampling_util.default_noise_sampler(x) if noise_sampler is None else noise_sampler
+    noise_sampler = (
+        sampling_util.default_noise_sampler(x)
+        if noise_sampler is None
+        else noise_sampler
+    )
     s_in = x.new_ones([x.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
-        if pipeline == False:
-            if app_instance.app.interrupt_flag == True:
-                    break
+        if pipeline is False:
+            if app_instance.app.interrupt_flag is True:
+                break
             try:
                 app_instance.app.title(f"LightDiffusion - {i}it")
             except:
                 pass
-        
+
         denoised = model(x, sigmas[i] * s_in, **extra_args)
-        sigma_down, sigma_up = sampling_util.get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
+        sigma_down, sigma_up = sampling_util.get_ancestral_step(
+            sigmas[i], sigmas[i + 1], eta=eta
+        )
         d = util.to_d(x, sigmas[i], denoised)
         # Euler method
         dt = sigma_down - sigmas[i]
         x = x + d * dt
         if sigmas[i + 1] > 0:
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
-        if pipeline == False:
-            if app_instance.app.previewer_checkbox.get() == True:
-                    threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+        if pipeline is False:
+            if app_instance.app.previewer_checkbox.get() is True:
+                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
             else:
                 pass
     return x
-
-
 
 
 @torch.no_grad()
@@ -129,11 +134,13 @@ def sample_dpm_adaptive(
         - `ValueError`: If sigma_min or sigma_max is less than or equal to 0.
     """
     global disable_gui
-    disable_gui = True if pipeline == True else False
+    disable_gui = True if pipeline is True else False
     if sigma_min <= 0 or sigma_max <= 0:
         raise ValueError("sigma_min and sigma_max must not be 0")
     with tqdm(disable=disable) as pbar:
-        dpm_solver = sampling_util.DPMSolver(model, extra_args, eps_callback=pbar.update)
+        dpm_solver = sampling_util.DPMSolver(
+            model, extra_args, eps_callback=pbar.update
+        )
         if callback is not None:
             dpm_solver.info_callback = lambda info: callback(
                 {
@@ -200,7 +207,9 @@ def sample_dpmpp_2m_sde(
     seed = extra_args.get("seed", None)
     sigma_min, sigma_max = sigmas[sigmas > 0].min(), sigmas.max()
     noise_sampler = (
-        sampling_util.BrownianTreeNoiseSampler(x, sigma_min, sigma_max, seed=seed, cpu=True)
+        sampling_util.BrownianTreeNoiseSampler(
+            x, sigma_min, sigma_max, seed=seed, cpu=True
+        )
         if noise_sampler is None
         else noise_sampler
     )
@@ -212,9 +221,9 @@ def sample_dpmpp_2m_sde(
     h = None
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        if pipeline == False:
-            if app_instance.app.interrupt_flag == True:
-                    break
+        if pipeline is False:
+            if app_instance.app.interrupt_flag is True:
+                break
         denoised = model(x, sigmas[i] * s_in, **extra_args)
         if sigmas[i + 1] == 0:
             # Denoising step
@@ -249,9 +258,9 @@ def sample_dpmpp_2m_sde(
                     * (-2 * eta_h).expm1().neg().sqrt()
                     * s_noise
                 )
-        if pipeline == False:
-            if app_instance.app.previewer_checkbox.get() == True:
-                    threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+        if pipeline is False:
+            if app_instance.app.previewer_checkbox.get() is True:
+                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
             else:
                 pass
 

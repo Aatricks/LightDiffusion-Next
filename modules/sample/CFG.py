@@ -2,6 +2,7 @@ import torch
 from modules.Model import ModelPatcher
 from modules.cond import cond, cond_util
 
+
 def cfg_function(
     model: torch.nn.Module,
     cond_pred: torch.Tensor,
@@ -31,6 +32,7 @@ def cfg_function(
     """
     cfg_result = uncond_pred + (cond_pred - uncond_pred) * cond_scale
     return cfg_result
+
 
 def sampling_function(
     model: torch.nn.Module,
@@ -73,8 +75,10 @@ def sampling_function(
         uncond=uncond_,
     )
 
+
 class CFGGuider:
     """#### Class for guiding the sampling process with CFG."""
+
     def __init__(self, model_patcher: ModelPatcher.ModelPatcher) -> None:
         """#### Initialize the CFGGuider.
 

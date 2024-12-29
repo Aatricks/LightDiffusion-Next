@@ -1,4 +1,3 @@
-
 import logging
 import torch
 from modules.Utilities import util
@@ -8,16 +7,30 @@ from modules.Model import ModelPatcher
 from modules.NeuralNetwork import unet
 from modules.clip import Clip
 
+
 def load_checkpoint_guess_config(
-    ckpt_path,
-    output_vae=True,
-    output_clip=True,
-    output_clipvision=False,
-    embedding_directory=None,
-    output_model=True,
-):
+    ckpt_path: str,
+    output_vae: bool = True,
+    output_clip: bool = True,
+    output_clipvision: bool = False,
+    embedding_directory: str = None,
+    output_model: bool = True,
+) -> tuple:
+    """#### Load a checkpoint and guess the configuration.
+
+    #### Args:
+        - `ckpt_path` (str): The path to the checkpoint file.
+        - `output_vae` (bool, optional): Whether to output the VAE. Defaults to True.
+        - `output_clip` (bool, optional): Whether to output the CLIP. Defaults to True.
+        - `output_clipvision` (bool, optional): Whether to output the CLIP vision. Defaults to False.
+        - `embedding_directory` (str, optional): The embedding directory. Defaults to None.
+        - `output_model` (bool, optional): Whether to output the model. Defaults to True.
+
+    #### Returns:
+        - `tuple`: The model patcher, CLIP, VAE, and CLIP vision.
+    """
     sd = util.load_torch_file(ckpt_path)
-    sd_keys = sd.keys()
+    sd.keys()
     clip = None
     clipvision = None
     vae = None
@@ -40,7 +53,7 @@ def load_checkpoint_guess_config(
 
     if output_model:
         inital_load_device = Device.unet_inital_load_device(parameters, unet_dtype)
-        offload_device = Device.unet_offload_device()
+        Device.unet_offload_device()
         model = model_config.get_model(
             sd, "model.diffusion_model.", device=inital_load_device
         )
@@ -97,13 +110,28 @@ def load_checkpoint_guess_config(
 
     return (model_patcher, clip, vae, clipvision)
 
+
 class CheckpointLoaderSimple:
-    def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
+    """#### Class for loading checkpoints."""
+
+    def load_checkpoint(
+        self, ckpt_name: str, output_vae: bool = True, output_clip: bool = True
+    ) -> tuple:
+        """#### Load a checkpoint.
+
+        #### Args:
+            - `ckpt_name` (str): The name of the checkpoint.
+            - `output_vae` (bool, optional): Whether to output the VAE. Defaults to True.
+            - `output_clip` (bool, optional): Whether to output the CLIP. Defaults to True.
+
+        #### Returns:
+            - `tuple`: The model patcher, CLIP, and VAE.
+        """
         ckpt_path = f"{ckpt_name}"
         out = load_checkpoint_guess_config(
             ckpt_path,
-            output_vae=True,
-            output_clip=True,
+            output_vae=output_vae,
+            output_clip=output_clip,
             embedding_directory="./_internal/embeddings/",
         )
         print("loading", ckpt_path)

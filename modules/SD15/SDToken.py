@@ -4,6 +4,7 @@ import traceback
 import torch
 from transformers import CLIPTokenizer
 
+
 def parse_parentheses(string):
     result = []
     current_item = ""
@@ -119,7 +120,7 @@ def load_embed(embedding_name, embedding_directory, embedding_size, embed_key=No
                 embed = torch.load(embed_path, weights_only=True, map_location="cpu")
             else:
                 embed = torch.load(embed_path, map_location="cpu")
-    except Exception as e:
+    except Exception:
         logging.warning(
             "{}\n\nerror loading embedding, skipping loading: {}".format(
                 traceback.format_exc(), embedding_name

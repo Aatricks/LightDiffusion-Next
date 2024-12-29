@@ -3,6 +3,7 @@ import torch.nn as nn
 
 ConvMode = Literal["CNA", "NAC", "CNAC"]
 
+
 def act(act_type: str, inplace=True, neg_slope=0.2, n_prelu=1):
     act_type = act_type.lower()
     layer = nn.LeakyReLU(neg_slope, inplace)
@@ -14,6 +15,7 @@ def get_valid_padding(kernel_size, dilation):
     padding = (kernel_size - 1) // 2
     return padding
 
+
 def sequential(*args):
     modules = []
     for module in args:
@@ -23,7 +25,6 @@ def sequential(*args):
         elif isinstance(module, nn.Module):
             modules.append(module)
     return nn.Sequential(*modules)
-
 
 
 def conv_block(

@@ -4,7 +4,7 @@ import torch as th
 from modules.Utilities import util
 from modules.AutoEncoders import ResBlock
 from modules.NeuralNetwork import transformer
-from modules.cond import cast, cond
+from modules.cond import cast
 from modules.sample import sampling, sampling_util
 
 UNET_MAP_ATTENTIONS = {
@@ -77,6 +77,7 @@ UNET_MAP_BASIC = {
 
 # taken from https://github.com/TencentARC/T2I-Adapter
 
+
 def unet_to_diffusers(unet_config):
     """#### Convert a UNet configuration to a diffusers configuration.
 
@@ -143,8 +144,8 @@ def unet_to_diffusers(unet_config):
     num_res_blocks = list(reversed(num_res_blocks))
     for x in range(num_blocks):
         n = (num_res_blocks[x] + 1) * x
-        l = num_res_blocks[x] + 1
-        for i in range(l):
+        length = num_res_blocks[x] + 1
+        for i in range(length):
             c = 0
             for b in UNET_MAP_RESNET:
                 diffusers_unet_map[
@@ -167,7 +168,7 @@ def unet_to_diffusers(unet_config):
                         ] = "output_blocks.{}.1.transformer_blocks.{}.{}".format(
                             n, t, b
                         )
-            if i == l - 1:
+            if i == length - 1:
                 for k in ["weight", "bias"]:
                     diffusers_unet_map[
                         "up_blocks.{}.upsamplers.0.conv.{}".format(x, k)
@@ -179,10 +180,13 @@ def unet_to_diffusers(unet_config):
 
     return diffusers_unet_map
 
+
 def apply_control1(h, control, name):
     return h
 
+
 oai_ops = cast.disable_weight_init
+
 
 class UNetModel1(nn.Module):
     def __init__(
@@ -233,9 +237,7 @@ class UNetModel1(nn.Module):
         super().__init__()
 
         if context_dim is not None:
-            assert (
-                use_spatial_transformer
-            ), "Fool!! You forgot to use the spatial transformer for your cross-attention conditioning..."
+            assert use_spatial_transformer, "Fool!! You forgot to use the spatial transformer for your cross-attention conditioning..."
             # from omegaconf.listconfig import ListConfig
             # if type(context_dim) == ListConfig:
             #     context_dim = list(context_dim)
@@ -590,7 +592,7 @@ class UNetModel1(nn.Module):
     ):
         transformer_options["original_shape"] = list(x.shape)
         transformer_options["transformer_index"] = 0
-        transformer_patches = transformer_options.get("patches", {})
+        transformer_options.get("patches", {})
 
         num_video_frames = kwargs.get("num_video_frames", self.default_num_video_frames)
         image_only_indicator = kwargs.get("image_only_indicator", None)
@@ -659,6 +661,7 @@ class UNetModel1(nn.Module):
         h = h.type(x.dtype)
         return self.out(h)
 
+
 def detect_unet_config(state_dict, key_prefix):
     state_dict_keys = list(state_dict.keys())
 
@@ -669,7 +672,7 @@ def detect_unet_config(state_dict, key_prefix):
         "legacy": False,
     }
 
-    y_input = "{}label_emb.0.0.weight".format(key_prefix)
+    "{}label_emb.0.0.weight".format(key_prefix)
     unet_config["adm_in_channels"] = None
 
     model_channels = state_dict["{}input_blocks.0.0.weight".format(key_prefix)].shape[0]
@@ -680,13 +683,10 @@ def detect_unet_config(state_dict, key_prefix):
 
     num_res_blocks = []
     channel_mult = []
-    attention_resolutions = []
     transformer_depth = []
     transformer_depth_output = []
     context_dim = None
     use_linear_in_transformer = False
-
-    video_model = False
 
     current_res = 1
     count = 0
@@ -734,13 +734,15 @@ def detect_unet_config(state_dict, key_prefix):
                     // model_channels
                 )
 
-                out = transformer.calculate_transformer_depth(prefix, state_dict_keys, state_dict)
+                out = transformer.calculate_transformer_depth(
+                    prefix, state_dict_keys, state_dict
+                )
                 if out is not None:
                     transformer_depth.append(out[0])
                     if context_dim is None:
                         context_dim = out[1]
                         use_linear_in_transformer = out[2]
-                        video_model = out[3]
+                        out[3]
                 else:
                     transformer_depth.append(0)
 
@@ -781,6 +783,7 @@ def detect_unet_config(state_dict, key_prefix):
 
 def model_config_from_unet_config(unet_config, state_dict=None):
     from modules.SD15 import SD15
+
     for model_config in SD15.models:
         if model_config.matches(unet_config, state_dict):
             return model_config(unet_config)
@@ -790,6 +793,7 @@ def model_config_from_unet(state_dict, unet_key_prefix, use_base_if_no_match=Fal
     unet_config = detect_unet_config(state_dict, unet_key_prefix)
     model_config = model_config_from_unet_config(unet_config, state_dict)
     return model_config
+
 
 def unet_dtype1(
     device=None,

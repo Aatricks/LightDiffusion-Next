@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import logging
 
 from modules.Utilities import util
 from modules.Attention import AttentionMethods
 from modules.Device import Device
-from modules.cond import cast, cond
+from modules.cond import cast
 
 
-def Normalize(in_channels: int, dtype: torch.dtype = None, device: torch.device =None) -> torch.nn.GroupNorm:
+def Normalize(
+    in_channels: int, dtype: torch.dtype = None, device: torch.device = None
+) -> torch.nn.GroupNorm:
     """#### Normalize the input channels.
 
     #### Args:
@@ -96,7 +97,13 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x: torch.Tensor, context: torch.Tensor = None, value: torch.Tensor = None, mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor = None,
+        value: torch.Tensor = None,
+        mask: torch.Tensor = None,
+    ) -> torch.Tensor:
         """#### Forward pass of the cross attention module.
 
         #### Args:
@@ -104,7 +111,7 @@ class CrossAttention(nn.Module):
             - `context` (torch.Tensor, optional): The context tensor. Defaults to `None`.
             - `value` (torch.Tensor, optional): The value tensor. Defaults to `None`.
             - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """

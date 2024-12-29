@@ -7,7 +7,14 @@ from modules.Device import Device
 
 
 class CLIPAttention(torch.nn.Module):
-    def __init__(self, embed_dim: int, heads: int, dtype: torch.dtype, device: torch.device, operations: object):
+    def __init__(
+        self,
+        embed_dim: int,
+        heads: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        operations: object,
+    ):
         """#### Initialize the CLIPAttention module.
 
         #### Args:
@@ -34,7 +41,12 @@ class CLIPAttention(torch.nn.Module):
             embed_dim, embed_dim, bias=True, dtype=dtype, device=device
         )
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, optimized_attention: callable = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor = None,
+        optimized_attention: callable = None,
+    ) -> torch.Tensor:
         """#### Forward pass for the CLIPAttention module.
 
         #### Args:
@@ -60,7 +72,15 @@ ACTIVATIONS = {
 
 
 class CLIPMLP(torch.nn.Module):
-    def __init__(self, embed_dim: int, intermediate_size: int, activation: str, dtype: torch.dtype, device: torch.device, operations: object):
+    def __init__(
+        self,
+        embed_dim: int,
+        intermediate_size: int,
+        activation: str,
+        dtype: torch.dtype,
+        device: torch.device,
+        operations: object,
+    ):
         """#### Initialize the CLIPMLP module.
 
         #### Args:
@@ -96,7 +116,16 @@ class CLIPMLP(torch.nn.Module):
 
 
 class CLIPLayer(torch.nn.Module):
-    def __init__(self, embed_dim: int, heads: int, intermediate_size: int, intermediate_activation: str, dtype: torch.dtype, device: torch.device, operations: object):
+    def __init__(
+        self,
+        embed_dim: int,
+        heads: int,
+        intermediate_size: int,
+        intermediate_activation: str,
+        dtype: torch.dtype,
+        device: torch.device,
+        operations: object,
+    ):
         """#### Initialize the CLIPLayer module.
 
         #### Args:
@@ -121,7 +150,12 @@ class CLIPLayer(torch.nn.Module):
             operations,
         )
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, optimized_attention: callable = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor = None,
+        optimized_attention: callable = None,
+    ) -> torch.Tensor:
         """#### Forward pass for the CLIPLayer module.
 
         #### Args:
@@ -138,7 +172,17 @@ class CLIPLayer(torch.nn.Module):
 
 
 class CLIPEncoder(torch.nn.Module):
-    def __init__(self, num_layers: int, embed_dim: int, heads: int, intermediate_size: int, intermediate_activation: str, dtype: torch.dtype, device: torch.device, operations: object):
+    def __init__(
+        self,
+        num_layers: int,
+        embed_dim: int,
+        heads: int,
+        intermediate_size: int,
+        intermediate_activation: str,
+        dtype: torch.dtype,
+        device: torch.device,
+        operations: object,
+    ):
         """#### Initialize the CLIPEncoder module.
 
         #### Args:
@@ -167,7 +211,12 @@ class CLIPEncoder(torch.nn.Module):
             ]
         )
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, intermediate_output: int = None) -> tuple:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor = None,
+        intermediate_output: int = None,
+    ) -> tuple:
         """#### Forward pass for the CLIPEncoder module.
 
         #### Args:
@@ -185,15 +234,22 @@ class CLIPEncoder(torch.nn.Module):
                 intermediate_output = len(self.layers) + intermediate_output
 
         intermediate = None
-        for i, l in enumerate(self.layers):
-            x = l(x, mask, optimized_attention)
+        for i, length in enumerate(self.layers):
+            x = length(x, mask, optimized_attention)
             if i == intermediate_output:
                 intermediate = x.clone()
         return x, intermediate
 
 
 class CLIPEmbeddings(torch.nn.Module):
-    def __init__(self, embed_dim: int, vocab_size: int = 49408, num_positions: int = 77, dtype: torch.dtype = None, device: torch.device = None):
+    def __init__(
+        self,
+        embed_dim: int,
+        vocab_size: int = 49408,
+        num_positions: int = 77,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+    ):
         """#### Initialize the CLIPEmbeddings module.
 
         #### Args:
@@ -224,7 +280,13 @@ class CLIPEmbeddings(torch.nn.Module):
 
 
 class CLIPTextModel_(torch.nn.Module):
-    def __init__(self, config_dict: dict, dtype: torch.dtype, device: torch.device, operations: object):
+    def __init__(
+        self,
+        config_dict: dict,
+        dtype: torch.dtype,
+        device: torch.device,
+        operations: object,
+    ):
         """#### Initialize the CLIPTextModel_ module.
 
         #### Args:
@@ -255,7 +317,13 @@ class CLIPTextModel_(torch.nn.Module):
             embed_dim, dtype=dtype, device=device
         )
 
-    def forward(self, input_tokens: torch.Tensor, attention_mask: torch.Tensor = None, intermediate_output: int = None, final_layer_norm_intermediate: bool = True) -> tuple:
+    def forward(
+        self,
+        input_tokens: torch.Tensor,
+        attention_mask: torch.Tensor = None,
+        intermediate_output: int = None,
+        final_layer_norm_intermediate: bool = True,
+    ) -> tuple:
         """#### Forward pass for the CLIPTextModel_ module.
 
         #### Args:
@@ -290,7 +358,13 @@ class CLIPTextModel_(torch.nn.Module):
 
 
 class CLIPTextModel(torch.nn.Module):
-    def __init__(self, config_dict: dict, dtype: torch.dtype, device: torch.device, operations: object):
+    def __init__(
+        self,
+        config_dict: dict,
+        dtype: torch.dtype,
+        device: torch.device,
+        operations: object,
+    ):
         """#### Initialize the CLIPTextModel module.
 
         #### Args:
@@ -341,7 +415,12 @@ class CLIPTextModel(torch.nn.Module):
 
 
 class CLIP:
-    def __init__(self, target: object = None, embedding_directory: str = None, no_init: bool = False):
+    def __init__(
+        self,
+        target: object = None,
+        embedding_directory: str = None,
+        no_init: bool = False,
+    ):
         """#### Initialize the CLIP class.
 
         #### Args:
@@ -370,7 +449,7 @@ class CLIP:
         )
         self.layer_idx = None
 
-    def clone(self) -> 'CLIP':
+    def clone(self) -> "CLIP":
         """#### Clone the CLIP object.
 
         #### Returns:
@@ -383,7 +462,9 @@ class CLIP:
         n.layer_idx = self.layer_idx
         return n
 
-    def add_patches(self, patches: list, strength_patch: float = 1.0, strength_model: float = 1.0) -> None:
+    def add_patches(
+        self, patches: list, strength_patch: float = 1.0, strength_model: float = 1.0
+    ) -> None:
         """#### Add patches to the model.
 
         #### Args:
@@ -489,12 +570,13 @@ class CLIPSetLastLayer:
         clip.clip_layer(stop_at_clip_layer)
         return (clip,)
 
+
 class ClipTarget:
-    """#### Target class for the CLIP model.
-    """
+    """#### Target class for the CLIP model."""
+
     def __init__(self, tokenizer: object, clip: object):
         """#### Initialize the ClipTarget class.
-        
+
         #### Args:
             - `tokenizer` (object): The tokenizer.
             - `clip` (object): The CLIP model.

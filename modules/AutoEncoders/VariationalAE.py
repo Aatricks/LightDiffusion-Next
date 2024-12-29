@@ -49,14 +49,14 @@ class DiagonalGaussianDistribution(object):
         )
         return x
 
-    def kl(self, other: 'DiagonalGaussianDistribution' = None) -> torch.Tensor:
+    def kl(self, other: "DiagonalGaussianDistribution" = None) -> torch.Tensor:
         """#### Computes the Kullback-Leibler divergence between this distribution and a standard normal distribution.
 
         If `other` is provided, computes the KL divergence between this distribution and `other`.
 
         #### Args:
             - `other` (DiagonalGaussianDistribution, optional): Another distribution to compute the KL divergence with.
-        
+
         #### Returns:
             - `torch.Tensor`: The KL divergence.
         """
@@ -149,8 +149,7 @@ class AutoencodingEngine(nn.Module):
 ops = cast.disable_weight_init
 
 if Device.xformers_enabled_vae():
-    import xformers
-    import xformers.ops
+    pass
 
 
 def nonlinearity(x: torch.Tensor) -> torch.Tensor:
@@ -414,8 +413,6 @@ class Decoder(nn.Module):
             - `attn_op` (nn.Module, optional): The attention block operation. Defaults to Attention.AttnBlock.
         """
         super().__init__()
-        if use_linear_attn:
-            attn_type = "linear"
         self.ch = ch
         self.temb_ch = 0
         self.num_resolutions = len(ch_mult)
@@ -426,7 +423,7 @@ class Decoder(nn.Module):
         self.tanh_out = tanh_out
 
         # compute in_ch_mult, block_in and curr_res at lowest res
-        in_ch_mult = (1,) + tuple(ch_mult)
+        (1,) + tuple(ch_mult)
         block_in = ch * ch_mult[self.num_resolutions - 1]
         curr_res = resolution // 2 ** (self.num_resolutions - 1)
         self.z_shape = (1, z_channels, curr_res, curr_res)
@@ -488,15 +485,15 @@ class Decoder(nn.Module):
         )
 
     def forward(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
-        """ #### Forward pass for the decoder.
-        
+        """#### Forward pass for the decoder.
+
         #### Args:
             - `z` (torch.Tensor): The input tensor.
             - `**kwargs`: Additional arguments.
-            
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
-        
+
         """
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
@@ -524,10 +521,17 @@ class Decoder(nn.Module):
         h = self.conv_out(h, **kwargs)
         return h
 
+
 class VAE:
     """#### Class representing a Variational Autoencoder (VAE)."""
 
-    def __init__(self, sd: Optional[dict] = None, device: Optional[torch.device] = None, config: Optional[dict] = None, dtype: Optional[torch.dtype] = None):
+    def __init__(
+        self,
+        sd: Optional[dict] = None,
+        device: Optional[torch.device] = None,
+        config: Optional[dict] = None,
+        dtype: Optional[torch.dtype] = None,
+    ):
         """#### Initialize the VAE.
 
         #### Args:
@@ -538,7 +542,9 @@ class VAE:
         """
         self.memory_used_encode = lambda shape, dtype: (
             1767 * shape[2] * shape[3]
-        ) * Device.dtype_size(dtype)  # These are for AutoencoderKL and need tweaking (should be lower)
+        ) * Device.dtype_size(
+            dtype
+        )  # These are for AutoencoderKL and need tweaking (should be lower)
         self.memory_used_decode = lambda shape, dtype: (
             2178 * shape[2] * shape[3] * 64
         ) * Device.dtype_size(dtype)
@@ -546,7 +552,9 @@ class VAE:
         self.upscale_ratio = 8
         self.latent_channels = 4
         self.process_input = lambda image: image * 2.0 - 1.0
-        self.process_output = lambda image: torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
+        self.process_output = lambda image: torch.clamp(
+            (image + 1.0) / 2.0, min=0.0, max=1.0
+        )
         if config is None:
             config = {
                 "encoder": {
@@ -609,8 +617,8 @@ class VAE:
         #### Returns:
             - `torch.Tensor`: The cropped pixel tensor.
         """
-        x = (pixels.shape[1] // self.downscale_ratio) * self.downscale_ratio
-        y = (pixels.shape[2] // self.downscale_ratio) * self.downscale_ratio
+        (pixels.shape[1] // self.downscale_ratio) * self.downscale_ratio
+        (pixels.shape[2] // self.downscale_ratio) * self.downscale_ratio
         return pixels
 
     def decode(self, samples_in: torch.Tensor) -> torch.Tensor:
@@ -638,7 +646,9 @@ class VAE:
             device=self.output_device,
         )
         for x in range(0, samples_in.shape[0], batch_number):
-            samples = samples_in[x : x + batch_number].to(self.vae_dtype).to(self.device)
+            samples = (
+                samples_in[x : x + batch_number].to(self.vae_dtype).to(self.device)
+            )
             pixel_samples[x : x + batch_number] = self.process_output(
                 self.first_stage_model.decode(samples).to(self.output_device).float()
             )

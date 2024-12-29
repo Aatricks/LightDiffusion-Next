@@ -1,6 +1,7 @@
 from modules.Device import Device
 import torch
 
+
 def cast_bias_weight(s: torch.nn.Module, input: torch.Tensor) -> tuple:
     """#### Cast the bias and weight of a module to match the input tensor.
 
@@ -25,6 +26,7 @@ def cast_bias_weight(s: torch.nn.Module, input: torch.Tensor) -> tuple:
 
 class CastWeightBiasOp:
     """#### Class representing a cast weight and bias operation."""
+
     comfy_cast_weights: bool = False
     weight_function: callable = None
     bias_function: callable = None
@@ -32,8 +34,10 @@ class CastWeightBiasOp:
 
 class disable_weight_init:
     """#### Class representing a module with disabled weight initialization."""
+
     class Linear(torch.nn.Linear, CastWeightBiasOp):
         """#### Linear layer with disabled weight initialization."""
+
         def reset_parameters(self) -> None:
             """#### Reset the parameters of the linear layer."""
             return None
@@ -67,6 +71,7 @@ class disable_weight_init:
 
     class Conv2d(torch.nn.Conv2d, CastWeightBiasOp):
         """#### Conv2d layer with disabled weight initialization."""
+
         def reset_parameters(self) -> None:
             """#### Reset the parameters of the Conv2d layer."""
             return None
@@ -100,6 +105,7 @@ class disable_weight_init:
 
     class GroupNorm(torch.nn.GroupNorm, CastWeightBiasOp):
         """#### GroupNorm layer with disabled weight initialization."""
+
         def reset_parameters(self) -> None:
             """#### Reset the parameters of the GroupNorm layer."""
             return None
@@ -118,6 +124,7 @@ class disable_weight_init:
 
     class LayerNorm(torch.nn.LayerNorm, CastWeightBiasOp):
         """#### LayerNorm layer with disabled weight initialization."""
+
         def reset_parameters(self) -> None:
             """#### Reset the parameters of the LayerNorm layer."""
             return None
@@ -168,18 +175,23 @@ class disable_weight_init:
 
 class manual_cast(disable_weight_init):
     """#### Class representing a module with manual casting."""
+
     class Linear(disable_weight_init.Linear):
         """#### Linear layer with manual casting."""
+
         comfy_cast_weights: bool = True
 
     class Conv2d(disable_weight_init.Conv2d):
         """#### Conv2d layer with manual casting."""
+
         comfy_cast_weights: bool = True
 
     class GroupNorm(disable_weight_init.GroupNorm):
         """#### GroupNorm layer with manual casting."""
+
         comfy_cast_weights: bool = True
 
     class LayerNorm(disable_weight_init.LayerNorm):
         """#### LayerNorm layer with manual casting."""
+
         comfy_cast_weights: bool = True

@@ -1,6 +1,6 @@
+import torch
 from modules.Utilities import util
 from modules.NeuralNetwork import unet
-
 
 LORA_CLIP_MAP = {
     "mlp.fc1": "mlp_fc1",
@@ -11,12 +11,13 @@ LORA_CLIP_MAP = {
     "self_attn.out_proj": "self_attn_out_proj",
 }
 
-def load_lora(lora, to_load):
+
+def load_lora(lora: dict, to_load: dict) -> dict:
     """#### Load a LoRA model.
 
     #### Args:
-        - `lora` (str): The path to the LoRA model.
-        - `to_load` (str): The path to load the model.
+        - `lora` (dict): The LoRA model state dictionary.
+        - `to_load` (dict): The keys to load from the LoRA model.
 
     #### Returns:
         - `dict`: The loaded LoRA model.
@@ -30,18 +31,18 @@ def load_lora(lora, to_load):
             alpha = lora[alpha_name].item()
             loaded_keys.add(alpha_name)
 
-        dora_scale_name = "{}.dora_scale".format(x)
+        "{}.dora_scale".format(x)
         dora_scale = None
 
         regular_lora = "{}.lora_up.weight".format(x)
-        diffusers_lora = "{}_lora.up.weight".format(x)
-        transformers_lora = "{}.lora_linear_layer.up.weight".format(x)
+        "{}_lora.up.weight".format(x)
+        "{}.lora_linear_layer.up.weight".format(x)
         A_name = None
 
         if regular_lora in lora.keys():
             A_name = regular_lora
             B_name = "{}.lora_down.weight".format(x)
-            mid_name = "{}.lora_mid.weight".format(x)
+            "{}.lora_mid.weight".format(x)
 
         if A_name is not None:
             mid = None
@@ -54,7 +55,7 @@ def load_lora(lora, to_load):
     return patch_dict
 
 
-def model_lora_keys_clip(model, key_map={}):
+def model_lora_keys_clip(model: torch.nn.Module, key_map: dict = {}) -> dict:
     """#### Get the keys for a LoRA model's CLIP component.
 
     #### Args:
@@ -67,7 +68,6 @@ def model_lora_keys_clip(model, key_map={}):
     sdk = model.state_dict().keys()
 
     text_model_lora_key = "lora_te_text_model_encoder_layers_{}_{}"
-    clip_l_present = False
     for b in range(32):
         for c in LORA_CLIP_MAP:
             k = "clip_l.transformer.text_model.encoder.layers.{}.{}.weight".format(b, c)
@@ -78,7 +78,6 @@ def model_lora_keys_clip(model, key_map={}):
                     b, LORA_CLIP_MAP[c]
                 )  # SDXL base
                 key_map[lora_key] = k
-                clip_l_present = True
                 lora_key = "text_encoder.text_model.encoder.layers.{}.{}".format(
                     b, c
                 )  # diffusers lora
@@ -86,7 +85,7 @@ def model_lora_keys_clip(model, key_map={}):
     return key_map
 
 
-def model_lora_keys_unet(model, key_map={}):
+def model_lora_keys_unet(model: torch.nn.Module, key_map: dict = {}) -> dict:
     """#### Get the keys for a LoRA model's UNet component.
 
     #### Args:
@@ -121,7 +120,22 @@ def model_lora_keys_unet(model, key_map={}):
                 key_map[diffusers_lora_key] = unet_key
     return key_map
 
-def load_lora_for_models(model, clip, lora, strength_model, strength_clip):
+
+def load_lora_for_models(
+    model: object, clip: object, lora: dict, strength_model: float, strength_clip: float
+) -> tuple:
+    """#### Load a LoRA model for the given models.
+
+    #### Args:
+        - `model` (object): The model.
+        - `clip` (object): The CLIP model.
+        - `lora` (dict): The LoRA model state dictionary.
+        - `strength_model` (float): The strength of the model.
+        - `strength_clip` (float): The strength of the CLIP model.
+
+    #### Returns:
+        - `tuple`: The new model patcher and CLIP model.
+    """
     key_map = {}
     if model is not None:
         key_map = model_lora_keys_unet(model.model, key_map)
@@ -141,10 +155,32 @@ def load_lora_for_models(model, clip, lora, strength_model, strength_clip):
 
 
 class LoraLoader:
+    """#### Class for loading LoRA models."""
+
     def __init__(self):
+        """#### Initialize the LoraLoader class."""
         self.loaded_lora = None
 
-    def load_lora(self, model, clip, lora_name, strength_model, strength_clip):
+    def load_lora(
+        self,
+        model: object,
+        clip: object,
+        lora_name: str,
+        strength_model: float,
+        strength_clip: float,
+    ) -> tuple:
+        """#### Load a LoRA model.
+
+        #### Args:
+            - `model` (object): The model.
+            - `clip` (object): The CLIP model.
+            - `lora_name` (str): The name of the LoRA model.
+            - `strength_model` (float): The strength of the model.
+            - `strength_clip` (float): The strength of the CLIP model.
+
+        #### Returns:
+            - `tuple`: The new model patcher and CLIP model.
+        """
         lora_path = util.get_full_path("loras", lora_name)
         lora = None
         if lora is None:

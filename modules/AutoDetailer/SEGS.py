@@ -60,7 +60,7 @@ def segs_bitwise_and_mask(segs: tuple, mask: torch.Tensor) -> tuple:
 
 class SegsBitwiseAndMask:
     """#### Class to apply bitwise AND operation between segmentation masks and a given mask."""
-    
+
     def doit(self, segs: tuple, mask: torch.Tensor) -> tuple:
         """#### Apply bitwise AND operation between segmentation masks and a given mask.
 
@@ -76,7 +76,7 @@ class SegsBitwiseAndMask:
 
 class SEGSLabelFilter:
     """#### Class to filter segmentation labels."""
-    
+
     @staticmethod
     def filter(segs: tuple, labels: list) -> tuple:
         """#### Filter segmentation labels.

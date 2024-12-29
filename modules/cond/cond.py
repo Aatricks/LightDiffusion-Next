@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 from modules.Utilities import util
 from modules.Device import Device
 from modules.cond import cond_util
@@ -8,6 +7,7 @@ from modules.sample import ksampler_util
 
 class CONDRegular:
     """#### Class representing a regular condition."""
+
     def __init__(self, cond: torch.Tensor):
         """#### Initialize the CONDRegular class.
 
@@ -16,32 +16,37 @@ class CONDRegular:
         """
         self.cond = cond
 
-    def _copy_with(self, cond: torch.Tensor) -> 'CONDRegular':
+    def _copy_with(self, cond: torch.Tensor) -> "CONDRegular":
         """#### Copy the condition with a new condition.
-        
+
         #### Args:
             - `cond` (torch.Tensor): The new condition.
-        
+
         #### Returns:
             - `CONDRegular`: The copied condition.
         """
         return self.__class__(cond)
 
-    def process_cond(self, batch_size: int, device: torch.device, **kwargs) -> 'CONDRegular':
+    def process_cond(
+        self, batch_size: int, device: torch.device, **kwargs
+    ) -> "CONDRegular":
         """#### Process the condition.
-        
+
         #### Args:
             - `batch_size` (int): The batch size.
             - `device` (torch.device): The device.
-            
+
         #### Returns:
             - `CONDRegular`: The processed condition.
         """
-        return self._copy_with(util.repeat_to_batch_size(self.cond, batch_size).to(device))
+        return self._copy_with(
+            util.repeat_to_batch_size(self.cond, batch_size).to(device)
+        )
 
 
 class CONDCrossAttn(CONDRegular):
     """#### Class representing a cross-attention condition."""
+
     def concat(self, others: list) -> torch.Tensor:
         """#### Concatenate cross-attention conditions.
 
@@ -88,7 +93,14 @@ def convert_cond(cond: list) -> list:
         out.append(temp)
     return out
 
-def calc_cond_batch(model: object, conds: list, x_in: torch.Tensor, timestep: torch.Tensor, model_options: dict) -> list:
+
+def calc_cond_batch(
+    model: object,
+    conds: list,
+    x_in: torch.Tensor,
+    timestep: torch.Tensor,
+    model_options: dict,
+) -> list:
     """#### Calculate the condition batch.
 
     #### Args:
@@ -139,8 +151,6 @@ def calc_cond_batch(model: object, conds: list, x_in: torch.Tensor, timestep: to
         c = []
         cond_or_uncond = []
         area = []
-        control = None
-        patches = None
         for x in to_batch:
             o = to_run.pop(x)
             p = o[0]
@@ -149,8 +159,6 @@ def calc_cond_batch(model: object, conds: list, x_in: torch.Tensor, timestep: to
             c.append(p.conditioning)
             area.append(p.area)
             cond_or_uncond.append(o[1])
-            control = p.control
-            patches = p.patches
 
         batch_chunks = len(cond_or_uncond)
         input_x = torch.cat(input_x)
@@ -186,9 +194,7 @@ def calc_cond_batch(model: object, conds: list, x_in: torch.Tensor, timestep: to
                 :,
                 area[o][2] : area[o][0] + area[o][2],
                 area[o][3] : area[o][1] + area[o][3],
-            ] += (
-                output[o] * mult[o]
-            )
+            ] += output[o] * mult[o]
             out_counts[cond_index][
                 :,
                 :,
@@ -201,7 +207,15 @@ def calc_cond_batch(model: object, conds: list, x_in: torch.Tensor, timestep: to
 
     return out_conds
 
-def encode_model_conds(model_function: callable, conds: list, noise: torch.Tensor, device: torch.device, prompt_type: str, **kwargs) -> list:
+
+def encode_model_conds(
+    model_function: callable,
+    conds: list,
+    noise: torch.Tensor,
+    device: torch.device,
+    prompt_type: str,
+    **kwargs,
+) -> list:
     """#### Encode model conditions.
 
     #### Args:
@@ -236,8 +250,15 @@ def encode_model_conds(model_function: callable, conds: list, noise: torch.Tenso
         conds[t] = x
     return conds
 
+
 def process_conds(
-    model: object, noise: torch.Tensor, conds: dict, device: torch.device, latent_image: torch.Tensor = None, denoise_mask: torch.Tensor = None, seed: int = None
+    model: object,
+    noise: torch.Tensor,
+    conds: dict,
+    device: torch.device,
+    latent_image: torch.Tensor = None,
+    denoise_mask: torch.Tensor = None,
+    seed: int = None,
 ) -> dict:
     """#### Process conditions.
 
@@ -253,13 +274,6 @@ def process_conds(
     #### Returns:
         - `dict`: The processed conditions.
     """
-    for k in conds:
-        conds[k] = conds[k][:]
-        cond_util.resolve_areas_and_cond_masks(conds[k], noise.shape[2], noise.shape[3], device)
-
-    for k in conds:
-        ksampler_util.calculate_start_end_timesteps(model, conds[k])
-
     if hasattr(model, "extra_conds"):
         for k in conds:
             conds[k] = encode_model_conds(
@@ -290,7 +304,7 @@ def process_conds(
                 ksampler_util.apply_empty_x_to_equal_area(
                     list(
                         filter(
-                            lambda c: c.get("control_apply_to_uncond", False) == True,
+                            lambda c: c.get("control_apply_to_uncond", False) is True,
                             positive,
                         )
                     ),

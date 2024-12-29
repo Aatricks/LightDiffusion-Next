@@ -13,7 +13,6 @@ torch.autograd.profiler.emit_nvtx(enabled=False)
 torch.autograd.profiler.profile(enabled=False)
 
 
-
 # FIXME: This is a workaround for the torch.backends.cuda.matmul.allow_tf32 attribute error
 
 # if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):
@@ -47,8 +46,6 @@ xpu_available = False
 
 directml_enabled = False
 try:
-    import intel_extension_for_pytorch as ipex
-
     if torch.xpu.is_available():
         xpu_available = True
 except:
@@ -172,7 +169,7 @@ try:
     if is_nvidia():
         torch_version = torch.version.__version__
         if int(torch_version[0]) >= 2:
-            if ENABLE_PYTORCH_ATTENTION == False:
+            if ENABLE_PYTORCH_ATTENTION is False:
                 ENABLE_PYTORCH_ATTENTION = True
             if (
                 torch.cuda.is_bf16_supported()
@@ -330,7 +327,7 @@ def unload_model_clones(model, unload_weights_only=True, force_unload=True):
         unload_weight = True
 
     if not force_unload:
-        if unload_weights_only and unload_weight == False:
+        if unload_weights_only and unload_weight is False:
             return None
 
     for i in to_unload:
@@ -425,7 +422,7 @@ def load_models_gpu(models, memory_required=0, force_patch_weights=False):
             unload_model_clones(
                 loaded_model.model, unload_weights_only=True, force_unload=False
             )
-            == True
+            is True
         ):  # unload clones where the weights are different
             total_memory_required[loaded_model.device] = total_memory_required.get(
                 loaded_model.device, 0
@@ -473,7 +470,7 @@ def load_models_gpu(models, memory_required=0, force_patch_weights=False):
         if vram_set_state == VRAMState.NO_VRAM:
             lowvram_model_memory = 64 * 1024 * 1024
 
-        cur_loaded_model = loaded_model.model_load(
+        loaded_model.model_load(
             lowvram_model_memory, force_patch_weights=force_patch_weights
         )
         current_loaded_models.insert(0, loaded_model)

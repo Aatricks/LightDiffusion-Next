@@ -1,5 +1,4 @@
 import math
-import numpy as np
 import torch
 from typing import Any, Dict, Optional, Tuple
 
@@ -11,6 +10,7 @@ from modules.Device import Device
 from modules.sample import ksampler_util, samplers, sampling, sampling_util
 
 # FIXME: Improve slow inference times
+
 
 class DifferentialDiffusion:
     """#### Class for applying differential diffusion to a model."""
@@ -29,7 +29,10 @@ class DifferentialDiffusion:
         return (model,)
 
     def forward(
-        self, sigma: torch.Tensor, denoise_mask: torch.Tensor, extra_options: Dict[str, Any]
+        self,
+        sigma: torch.Tensor,
+        denoise_mask: torch.Tensor,
+        extra_options: Dict[str, Any],
     ) -> torch.Tensor:
         """#### Forward function for differential diffusion.
 
@@ -65,12 +68,14 @@ def to_latent_image(pixels: torch.Tensor, vae: VariationalAE) -> torch.Tensor:
     #### Returns:
         - `torch.Tensor`: The latent image tensor.
     """
-    x = pixels.shape[1]
-    y = pixels.shape[2]
+    pixels.shape[1]
+    pixels.shape[2]
     return VariationalAE.VAEEncode().encode(vae, pixels)[0]
 
 
-def calculate_sigmas2(model: torch.nn.Module, sampler: str, scheduler: str, steps: int) -> torch.Tensor:
+def calculate_sigmas2(
+    model: torch.nn.Module, sampler: str, scheduler: str, steps: int
+) -> torch.Tensor:
     """#### Calculate sigmas for a model.
 
     #### Args:
@@ -87,7 +92,9 @@ def calculate_sigmas2(model: torch.nn.Module, sampler: str, scheduler: str, step
     )
 
 
-def get_noise_sampler(x: torch.Tensor, cpu: bool, total_sigmas: torch.Tensor, **kwargs) -> Optional[sampling_util.BrownianTreeNoiseSampler]:
+def get_noise_sampler(
+    x: torch.Tensor, cpu: bool, total_sigmas: torch.Tensor, **kwargs
+) -> Optional[sampling_util.BrownianTreeNoiseSampler]:
     """#### Get a noise sampler.
 
     #### Args:
@@ -108,7 +115,13 @@ def get_noise_sampler(x: torch.Tensor, cpu: bool, total_sigmas: torch.Tensor, **
     return None
 
 
-def ksampler2(sampler_name: str, total_sigmas: torch.Tensor, extra_options: Dict[str, Any] = {}, inpaint_options: Dict[str, Any] = {}, pipeline: bool = False) -> sampling.KSAMPLER:
+def ksampler2(
+    sampler_name: str,
+    total_sigmas: torch.Tensor,
+    extra_options: Dict[str, Any] = {},
+    inpaint_options: Dict[str, Any] = {},
+    pipeline: bool = False,
+) -> sampling.KSAMPLER:
     """#### Get a ksampler.
 
     #### Args:
@@ -128,7 +141,9 @@ def ksampler2(sampler_name: str, total_sigmas: torch.Tensor, extra_options: Dict
             if noise_sampler is not None:
                 kwargs["noise_sampler"] = noise_sampler
 
-            return samplers.sample_dpmpp_2m_sde(model, x, sigmas, pipeline=pipeline, **kwargs)
+            return samplers.sample_dpmpp_2m_sde(
+                model, x, sigmas, pipeline=pipeline, **kwargs
+            )
 
         sampler_function = sample_dpmpp_sde
 
@@ -210,8 +225,6 @@ def sample_with_custom_noise(
     noise_mask = None
     if "noise_mask" in latent:
         noise_mask = latent["noise_mask"]
-
-    x0_output = {}
 
     disable_pbar = not util.PROGRESS_BAR_ENABLED
 
@@ -488,7 +501,7 @@ def enhance_detail(
         new_h = int(h * upscale)
 
     if upscale <= 1.0 or new_w == 0 or new_h == 0:
-        print(f"Detailer: force inpaint")
+        print("Detailer: force inpaint")
         upscale = 1.0
         new_w = w
         new_h = h
@@ -520,7 +533,7 @@ def enhance_detail(
             scheduler2,
             positive2,
             negative2,
-            upscaled_latent2,
+            _upscaled_latent2,
             denoise2,
         ) = (
             model,
@@ -561,7 +574,7 @@ def enhance_detail(
     try:
         # try to decode image normally
         refined_image = vae.decode(refined_latent["samples"])
-    except Exception as e:
+    except Exception:
         # usually an out-of-memory exception from the decode, so try a tiled approach
         refined_image = vae.decode_tiled(
             refined_latent["samples"],
@@ -685,7 +698,7 @@ class DetailerForEach:
 
             is_mask_all_zeros = (seg.cropped_mask == 0).all().item()
             if is_mask_all_zeros:
-                print(f"Detailer: segment skip [empty mask]")
+                print("Detailer: segment skip [empty mask]")
                 continue
 
             cropped_mask = seg.cropped_mask
@@ -760,7 +773,7 @@ class DetailerForEach:
                 pipeline=pipeline,
             )
 
-            if not (enhanced_image is None):
+            if enhanced_image is not None:
                 # don't latent composite-> converting to latent caused poor quality
                 # use image paste
                 image = image.cpu()

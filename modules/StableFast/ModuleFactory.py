@@ -2,6 +2,7 @@ import contextlib
 import torch
 from modules.StableFast import SF_util
 
+
 class ModuleFactory:
     def get_converted_kwargs(self):
         return self.converted_kwargs
@@ -63,7 +64,7 @@ class BaseModelApplyModelModuleFactory(ModuleFactory):
                 converted_kwargs[arg_name] = arg
 
         transformer_options = self.kwargs.get("transformer_options", {})
-        patches = transformer_options.get("patches", {})
+        transformer_options.get("patches", {})
 
         patch_module = {}
         patch_module_parameter = {}

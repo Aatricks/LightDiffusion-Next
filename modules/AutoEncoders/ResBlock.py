@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from modules.Attention import Attention
-from modules.cond import cast, cond
+from modules.cond import cast
 from modules.sample import sampling_util
 
 
@@ -16,15 +16,15 @@ oai_ops = cast.disable_weight_init
 
 class TimestepBlock1(nn.Module):
     """#### Abstract class representing a timestep block."""
-    
+
     @abstractmethod
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         """#### Forward pass for the timestep block.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `emb` (torch.Tensor): The embedding tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """
@@ -43,7 +43,7 @@ def forward_timestep_embed1(
     image_only_indicator: Optional[bool] = None,
 ) -> torch.Tensor:
     """#### Forward pass for timestep embedding.
-    
+
     #### Args:
         - `ts` (nn.ModuleList): The list of timestep blocks.
         - `x` (torch.Tensor): The input tensor.
@@ -54,7 +54,7 @@ def forward_timestep_embed1(
         - `time_context` (torch.Tensor, optional): The time context tensor. Defaults to None.
         - `num_video_frames` (int, optional): The number of video frames. Defaults to None.
         - `image_only_indicator` (bool, optional): The image only indicator. Defaults to None.
-    
+
     #### Returns:
         - `torch.Tensor`: The output tensor.
     """
@@ -74,7 +74,7 @@ def forward_timestep_embed1(
 
 class Upsample1(nn.Module):
     """#### Class representing an upsample layer."""
-    
+
     def __init__(
         self,
         channels: int,
@@ -87,7 +87,7 @@ class Upsample1(nn.Module):
         operations: Any = oai_ops,
     ):
         """#### Initialize the upsample layer.
-        
+
         #### Args:
             - `channels` (int): The number of input channels.
             - `use_conv` (bool): Whether to use convolution.
@@ -114,13 +114,15 @@ class Upsample1(nn.Module):
                 device=device,
             )
 
-    def forward(self, x: torch.Tensor, output_shape: Optional[torch.Size] = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, output_shape: Optional[torch.Size] = None
+    ) -> torch.Tensor:
         """#### Forward pass for the upsample layer.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `output_shape` (torch.Size, optional): The output shape. Defaults to None.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """
@@ -138,7 +140,7 @@ class Upsample1(nn.Module):
 
 class Downsample1(nn.Module):
     """#### Class representing a downsample layer."""
-    
+
     def __init__(
         self,
         channels: int,
@@ -151,7 +153,7 @@ class Downsample1(nn.Module):
         operations: Any = oai_ops,
     ):
         """#### Initialize the downsample layer.
-        
+
         #### Args:
             - `channels` (int): The number of input channels.
             - `use_conv` (bool): Whether to use convolution.
@@ -181,10 +183,10 @@ class Downsample1(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """#### Forward pass for the downsample layer.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """
@@ -194,7 +196,7 @@ class Downsample1(nn.Module):
 
 class ResBlock1(TimestepBlock1):
     """#### Class representing a residual block layer."""
-    
+
     def __init__(
         self,
         channels: int,
@@ -215,7 +217,7 @@ class ResBlock1(TimestepBlock1):
         operations: Any = oai_ops,
     ):
         """#### Initialize the residual block layer.
-        
+
         #### Args:
             - `channels` (int): The number of input channels.
             - `emb_channels` (int): The number of embedding channels.
@@ -298,11 +300,11 @@ class ResBlock1(TimestepBlock1):
 
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         """#### Forward pass for the residual block layer.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `emb` (torch.Tensor): The embedding tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """
@@ -312,11 +314,11 @@ class ResBlock1(TimestepBlock1):
 
     def _forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         """#### Internal forward pass for the residual block layer.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `emb` (torch.Tensor): The embedding tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """
@@ -338,7 +340,7 @@ ops = cast.disable_weight_init
 
 class ResnetBlock(nn.Module):
     """#### Class representing a ResNet block layer."""
-    
+
     def __init__(
         self,
         *,
@@ -349,7 +351,7 @@ class ResnetBlock(nn.Module):
         temb_channels: int = 512,
     ):
         """#### Initialize the ResNet block layer.
-        
+
         #### Args:
             - `in_channels` (int): The number of input channels.
             - `out_channels` (int, optional): The number of output channels. Defaults to None.
@@ -380,11 +382,11 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         """#### Forward pass for the ResNet block layer.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
             - `temb` (torch.Tensor): The embedding tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """

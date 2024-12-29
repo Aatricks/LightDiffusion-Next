@@ -9,7 +9,6 @@ from modules.StableFast.ModuleFactory import ModuleFactory
 logger = logging.getLogger()
 
 try:
-    from sfast.compilers.diffusion_pipeline_compiler import CompilationConfig
     from sfast.compilers.diffusion_pipeline_compiler import (
         _enable_xformers,
         _modify_model,
@@ -63,7 +62,9 @@ class LazyTraceModule:
         return m
 
     def __call__(self, model_function, /, **kwargs):
-        module_factory = ModuleFactory.BaseModelApplyModelModuleFactory(model_function, kwargs)
+        module_factory = ModuleFactory.BaseModelApplyModelModuleFactory(
+            model_function, kwargs
+        )
         kwargs = module_factory.get_converted_kwargs()
         key = module_factory.gen_cache_key()
 

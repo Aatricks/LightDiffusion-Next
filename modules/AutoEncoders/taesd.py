@@ -10,7 +10,7 @@ import torch
 from modules.Utilities import util
 import torch.nn as nn
 
-from modules.cond import cast, cond
+from modules.cond import cast
 from modules.user import app_instance
 
 
@@ -32,10 +32,10 @@ class Clamp(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """#### Forward pass of the clamping layer.
-        
+
         #### Args:
             - `x` (torch.Tensor): The input tensor.
-            
+
         #### Returns:
             - `torch.Tensor`: The clamped tensor.
         """
@@ -47,11 +47,11 @@ class Block(nn.Module):
 
     def __init__(self, n_in: int, n_out: int):
         """#### Initialize the block layer.
-        
+
         #### Args:
             - `n_in` (int): The number of input channels.
             - `n_out` (int): The number of output channels.
-            
+
         #### Returns:
             - `Block`: The block layer.
         """
@@ -165,9 +165,14 @@ class TAESD(nn.Module):
     latent_magnitude = 3
     latent_shift = 0.5
 
-    def __init__(self, encoder_path: str = None, decoder_path: str = None, latent_channels: int = 4):
+    def __init__(
+        self,
+        encoder_path: str = None,
+        decoder_path: str = None,
+        latent_channels: int = 4,
+    ):
         """#### Initialize the TAESD model.
-        
+
         #### Args:
             - `encoder_path` (str, optional): Path to the encoder model file. Defaults to None.
             - `decoder_path` (str, optional): Path to the decoder model file. Defaults to "./_internal/vae_approx/taesd_decoder.safetensors".
@@ -253,7 +258,7 @@ def taesd_preview(x: torch.Tensor):
     #### Args:
         - `x` (torch.Tensor): The input latent.
     """
-    if app_instance.app.previewer_checkbox.get() == True:
+    if app_instance.app.previewer_checkbox.get() is True:
         taesd_instance = TAESD()
         for image in taesd_instance.decode(x[0].unsqueeze(0))[0]:
             i = 255.0 * image.cpu().detach().numpy()

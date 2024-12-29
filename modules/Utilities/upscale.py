@@ -13,14 +13,15 @@ def bislerp(samples: torch.Tensor, width: int, height: int) -> torch.Tensor:
     #### Returns:
         - `torch.Tensor`: The interpolated samples.
     """
+
     def slerp(b1: torch.Tensor, b2: torch.Tensor, r: torch.Tensor) -> torch.Tensor:
         """#### Perform spherical linear interpolation between two vectors.
-        
+
         #### Args:
             - `b1` (torch.Tensor): The first vector.
             - `b2` (torch.Tensor): The second vector.
             - `r` (torch.Tensor): The interpolation ratio.
-        
+
         #### Returns:
             - `torch.Tensor`: The interpolated vector.
         """
@@ -57,14 +58,16 @@ def bislerp(samples: torch.Tensor, width: int, height: int) -> torch.Tensor:
         res[dot < 1e-5 - 1] = (b1 * (1.0 - r) + b2 * r)[dot < 1e-5 - 1]
         return res
 
-    def generate_bilinear_data(length_old: int, length_new: int, device: torch.device) -> List[torch.Tensor]:
+    def generate_bilinear_data(
+        length_old: int, length_new: int, device: torch.device
+    ) -> List[torch.Tensor]:
         """#### Generate bilinear data for interpolation.
-        
+
         #### Args:
             - `length_old` (int): The old length.
             - `length_new` (int): The new length.
             - `device` (torch.device): The device to use.
-        
+
         #### Returns:
             - `torch.Tensor`: The ratios.
             - `torch.Tensor`: The first coordinates.
@@ -139,17 +142,16 @@ def common_upscale(samples: List, width: int, height: int) -> torch.Tensor:
 
 
 class LatentUpscale:
-    """#### A class to upscale latent codes.
-    """
+    """#### A class to upscale latent codes."""
 
     def upscale(self, samples: dict, width: int, height: int) -> tuple:
         """#### Upscales the given latent codes.
-        
+
         #### Args:
             - `samples` (dict): The latent codes to be upscaled.
             - `width` (int): The target width for the upscaled samples.
             - `height` (int): The target height for the upscaled samples.
-        
+
         #### Returns:
             - `tuple`: The upscaled samples.
         """
@@ -160,7 +162,5 @@ class LatentUpscale:
             width = max(64, width)
             height = max(64, height)
 
-            s["samples"] = common_upscale(
-                samples["samples"], width // 8, height // 8
-            )
+            s["samples"] = common_upscale(samples["samples"], width // 8, height // 8)
         return (s,)

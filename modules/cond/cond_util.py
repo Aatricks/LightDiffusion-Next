@@ -1,6 +1,7 @@
 from modules.Device import Device
 import torch
-from typing import List, Dict, Tuple, Any
+from typing import List, Tuple, Any
+
 
 def get_models_from_cond(cond: dict, model_type: str) -> List[object]:
     """#### Get models from a condition.
@@ -14,6 +15,7 @@ def get_models_from_cond(cond: dict, model_type: str) -> List[object]:
     """
     models = []
     return models
+
 
 def get_additional_models(conds: dict, dtype: torch.dtype) -> Tuple[List[object], int]:
     """#### Load additional models in conditioning.
@@ -44,7 +46,10 @@ def get_additional_models(conds: dict, dtype: torch.dtype) -> Tuple[List[object]
     models = control_models + gligen
     return models, inference_memory
 
-def prepare_sampling(model: object, noise_shape: Tuple[int], conds: dict) -> Tuple[object, dict, List[object]]:
+
+def prepare_sampling(
+    model: object, noise_shape: Tuple[int], conds: dict
+) -> Tuple[object, dict, List[object]]:
     """#### Prepare the model for sampling.
 
     #### Args:
@@ -55,7 +60,6 @@ def prepare_sampling(model: object, noise_shape: Tuple[int], conds: dict) -> Tup
     #### Returns:
         - `Tuple[object, dict, List[object]]`: The prepared model, conditions, and additional models.
     """
-    device = model.load_device
     real_model = None
     models, inference_memory = get_additional_models(conds, model.model_dtype())
     Device.load_models_gpu(
@@ -67,6 +71,7 @@ def prepare_sampling(model: object, noise_shape: Tuple[int], conds: dict) -> Tup
 
     return real_model, conds, models
 
+
 def cleanup_models(conds: dict, models: List[object]) -> None:
     """#### Clean up the models after sampling.
 
@@ -77,6 +82,7 @@ def cleanup_models(conds: dict, models: List[object]) -> None:
     control_cleanup = []
     for k in conds:
         control_cleanup += get_models_from_cond(conds[k], "control")
+
 
 def cond_equal_size(c1: Any, c2: Any) -> bool:
     """#### Check if two conditions have equal size.
@@ -92,6 +98,7 @@ def cond_equal_size(c1: Any, c2: Any) -> bool:
         return True
     return True
 
+
 def can_concat_cond(c1: Any, c2: Any) -> bool:
     """#### Check if two conditions can be concatenated.
 
@@ -104,6 +111,7 @@ def can_concat_cond(c1: Any, c2: Any) -> bool:
     """
     return cond_equal_size(c1.conditioning, c2.conditioning)
 
+
 def cond_cat(c_list: List[dict]) -> dict:
     """#### Concatenate a list of conditions.
 
@@ -113,11 +121,6 @@ def cond_cat(c_list: List[dict]) -> dict:
     #### Returns:
         - `dict`: The concatenated conditions.
     """
-    c_crossattn = []
-    c_concat = []
-    c_adm = []
-    crossattn_max_len = 0
-
     temp = {}
     for x in c_list:
         for k in x:
@@ -132,17 +135,6 @@ def cond_cat(c_list: List[dict]) -> dict:
 
     return out
 
-def resolve_areas_and_cond_masks(conditions: List[dict], h: int, w: int, device: torch.device) -> None:
-    """#### Resolve areas and condition masks.
-
-    #### Args:
-        - `conditions` (List[dict]): The list of conditions.
-        - `h` (int): The height.
-        - `w` (int): The width.
-        - `device` (torch.device): The device.
-    """
-    for i in range(len(conditions)):
-        c = conditions[i]
 
 def create_cond_with_same_area_if_none(conds: List[dict], c: dict) -> None:
     """#### Create a condition with the same area if none exists.

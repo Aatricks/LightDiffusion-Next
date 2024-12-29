@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 from modules.cond import cast
 
+
 class GEGLU(nn.Module):
     """#### Class representing the GEGLU activation function.
-    
+
     GEGLU is a gated activation function that is a combination of GELU and ReLU,
     used to fire the neurons in the network.
 
@@ -12,6 +13,7 @@ class GEGLU(nn.Module):
         - `dim_in` (int): The input dimension.
         - `dim_out` (int): The output dimension.
     """
+
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
         self.proj = cast.manual_cast.Linear(dim_in, dim_out * 2)

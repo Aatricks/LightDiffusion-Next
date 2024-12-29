@@ -1,4 +1,3 @@
-
 import math
 import numpy as np
 import torch
@@ -72,9 +71,7 @@ def tiled_scale(
                     :,
                     round(y * upscale_amount) : round((y + tile_y) * upscale_amount),
                     round(x * upscale_amount) : round((x + tile_x) * upscale_amount),
-                ] += (
-                    ps * mask
-                )
+                ] += ps * mask
                 out_div[
                     :,
                     :,
@@ -85,6 +82,7 @@ def tiled_scale(
         output[b : b + 1] = out / out_div
     return output
 
+
 def flatten(img, bgcolor):
     # Replace transparency with bgcolor
     if img.mode in ("RGB"):
@@ -92,7 +90,8 @@ def flatten(img, bgcolor):
     return Image.alpha_composite(Image.new("RGBA", img.size, bgcolor), img).convert(
         "RGB"
     )
-    
+
+
 BLUR_KERNEL_SIZE = 15
 
 

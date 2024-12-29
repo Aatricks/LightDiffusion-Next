@@ -3,7 +3,7 @@ import logging
 import torch
 from modules.Device import Device
 from modules.clip import Clip
-from modules.cond import cast, cond
+from modules.cond import cast
 
 
 def gen_empty_tokens(special_tokens, length):
@@ -211,7 +211,7 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
 
     def load_sd(self, sd):
         return self.transformer.load_state_dict(sd, strict=False)
-    
+
 
 class SD1ClipModel(torch.nn.Module):
     def __init__(

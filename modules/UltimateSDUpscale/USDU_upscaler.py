@@ -1,6 +1,6 @@
-import math
 import logging as logger
 import torch
+from PIL import Image
 
 from modules.Device import Device
 from modules.UltimateSDUpscale import RDRB
@@ -9,7 +9,7 @@ from modules.Utilities import util
 
 
 def load_state_dict(state_dict) -> RDRB.PyTorchModel:
-    logger.debug(f"Loading state dict into pytorch model arch")
+    logger.debug("Loading state dict into pytorch model arch")
     state_dict_keys = list(state_dict.keys())
     if "params_ema" in state_dict_keys:
         state_dict = state_dict["params_ema"]
@@ -32,10 +32,7 @@ class UpscaleModelLoader:
         return (out,)
 
 
-
-
 class ImageUpscaleWithModel:
-
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "upscale"
 
@@ -45,7 +42,7 @@ class ImageUpscaleWithModel:
         device = torch.device(torch.cuda.current_device())
         upscale_model.to(device)
         in_img = image.movedim(-1, -3).to(device)
-        free_memory = Device.get_free_memory(device)
+        Device.get_free_memory(device)
 
         tile = 512
         overlap = 32
@@ -108,18 +105,12 @@ actual_upscaler = None
 # Batch of images to upscale
 batch = None
 
-import numpy as np
-import torch.nn.functional as F
-
-
-from PIL import Image
 
 if not hasattr(Image, "Resampling"):  # For older versions of Pillow
     Image.Resampling = Image
 
 
 class Upscaler:
-
     def _upscale(self, img: Image, scale):
         global actual_upscaler
         tensor = image_util.pil_to_tensor(img)
@@ -139,4 +130,3 @@ class UpscalerData:
 
     def __init__(self):
         self.scaler = Upscaler()
-        

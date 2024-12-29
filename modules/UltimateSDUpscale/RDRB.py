@@ -9,7 +9,6 @@ from modules.UltimateSDUpscale import USDU_util
 
 
 class RRDB(nn.Module):
-
     def __init__(
         self,
         nf,
@@ -162,7 +161,7 @@ class ResidualDenseBlock_5C(nn.Module):
         x4 = self.conv4(torch.cat((x, x1, x2, x3), 1))
         x5 = self.conv5(torch.cat((x, x1, x2, x3, x4), 1))
         return x5 * 0.2 + x
-    
+
 
 class RRDBNet(nn.Module):
     def __init__(

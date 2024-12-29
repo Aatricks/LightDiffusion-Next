@@ -1,7 +1,10 @@
-import xformers, torch
+import xformers
+import torch
 
 
-def attention_xformers(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int, mask=None) -> torch.Tensor:
+def attention_xformers(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int, mask=None
+) -> torch.Tensor:
     """#### Make an attention call using xformers. Fastest attention implementation.
 
     #### Args:
@@ -37,7 +40,9 @@ def attention_xformers(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads:
     return out
 
 
-def attention_pytorch(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int, mask=None) -> torch.Tensor:
+def attention_pytorch(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int, mask=None
+) -> torch.Tensor:
     """#### Make an attention call using PyTorch.
 
     #### Args:
@@ -64,7 +69,9 @@ def attention_pytorch(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: 
     return out
 
 
-def xformers_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+def xformers_attention(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
+) -> torch.Tensor:
     """#### Compute attention using xformers.
 
     #### Args:
@@ -85,7 +92,9 @@ def xformers_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> tor
     return out
 
 
-def pytorch_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+def pytorch_attention(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
+) -> torch.Tensor:
     """#### Compute attention using PyTorch.
 
     #### Args:

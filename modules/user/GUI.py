@@ -13,7 +13,7 @@ import torch
 
 
 # Add the directory containing LightDiffusion.py to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from modules.AutoDetailer import SAM, ADetailer, bbox, SEGS
 from modules.AutoEncoders import VariationalAE
@@ -35,12 +35,13 @@ loras = glob.glob("./_internal/loras/*.safetensors")
 loras += glob.glob("./_internal/loras/*.pt")
 generated = 0
 
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("LightDiffusion")
         self.geometry("800x700")
-        
+
         file_names = [os.path.basename(file) for file in files]
         lora_names = [os.path.basename(lora) for lora in loras]
 
@@ -148,16 +149,17 @@ class App(tk.Tk):
         # centered Label to display the generated image
         self.image_label = tk.Label(self.display, bg="black")
         self.image_label.pack(expand=True, padx=10, pady=10)
-        
+
         self.previewer_checkbox = ctk.CTkCheckBox(
-            self.display, text="Previewer", variable=tk.BooleanVar())
+            self.display, text="Previewer", variable=tk.BooleanVar()
+        )
         self.previewer_checkbox.pack(pady=10)
 
         self.ckpt = None
 
         # load the checkpoint on an another thread
         threading.Thread(target=self._prep, daemon=True).start()
-        
+
         self.button_frame = tk.Frame(self.sidebar, bg="black")
         self.button_frame.pack(pady=10)
 
@@ -166,10 +168,12 @@ class App(tk.Tk):
             self.button_frame, text="img2img", command=self.img2img
         )
         self.img2img_button.grid(row=0, column=0, padx=5)
-        
+
         self.interrupt_flag = False
-        
-        self.interrupt_button = ctk.CTkButton(self.button_frame, text="Interrupt", command=self.interrupt_generation)
+
+        self.interrupt_button = ctk.CTkButton(
+            self.button_frame, text="Interrupt", command=self.interrupt_generation
+        )
         self.interrupt_button.grid(row=0, column=1, padx=5)
 
         prompt, neg, width, height, cfg = util.load_parameters_from_file()
@@ -236,14 +240,10 @@ class App(tk.Tk):
         self.bind("<Configure>", self.on_resize)
         self.display_most_recent_image_flag = False
         self.display_most_recent_image()
-       
 
     def _img2img(self, file_path):
         prompt = self.prompt_entry.get("1.0", tk.END)
         neg = self.neg.get("1.0", tk.END)
-        w = int(self.width_slider.get())
-        h = int(self.height_slider.get())
-        cfg = int(self.cfg_slider.get())
         img = Image.open(file_path)
         img_array = np.array(img)
         img_tensor = torch.from_numpy(img_array).float().to("cpu") / 255.0
@@ -272,7 +272,7 @@ class App(tk.Tk):
             except:
                 loraloader_274 = checkpointloadersimple_241
 
-            if self.stable_fast_var.get() == True:
+            if self.stable_fast_var.get() is True:
                 try:
                     app.title("LigtDiffusion - Generating StableFast model")
                 except:
@@ -355,13 +355,13 @@ class App(tk.Tk):
             ).start()
 
     def print_hires_fix(self):
-        if self.hires_fix_var.get() == True:
+        if self.hires_fix_var.get() is True:
             print("Hires fix is ON")
         else:
             print("Hires fix is OFF")
-            
+
     def print_adetailer(self):
-        if self.adetailer_var.get() == True:
+        if self.adetailer_var.get() is True:
             print("Adetailer is ON")
         else:
             print("Adetailer is OFF")
@@ -375,7 +375,9 @@ class App(tk.Tk):
             with torch.inference_mode():
                 self.checkpointloadersimple = Loader.CheckpointLoaderSimple()
                 self.checkpointloadersimple_241 = (
-                    self.checkpointloadersimple.load_checkpoint(ckpt_name="./_internal/checkpoints/" + self.ckpt)
+                    self.checkpointloadersimple.load_checkpoint(
+                        ckpt_name="./_internal/checkpoints/" + self.ckpt
+                    )
                 )
                 self.cliptextencode = Clip.CLIPTextEncode()
                 self.emptylatentimage = Latent.EmptyLatentImage()
@@ -399,9 +401,9 @@ class App(tk.Tk):
 
     def _generate_image(self):
         prompt = self.prompt_entry.get("1.0", tk.END)
-        if self.enhancer_var.get() == True:
+        if self.enhancer_var.get() is True:
             prompt = Enhancer.enhance_prompt()
-            while prompt == None:
+            while prompt is None:
                 pass
         neg = self.neg.get("1.0", tk.END)
         w = int(self.width_slider.get())
@@ -463,7 +465,7 @@ class App(tk.Tk):
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
             )
-            if self.stable_fast_var.get() == True:
+            if self.stable_fast_var.get() is True:
                 try:
                     self.title("LightDiffusion - Generating StableFast model")
                 except:
@@ -498,7 +500,7 @@ class App(tk.Tk):
                 negative=cliptextencode_243[0],
                 latent_image=emptylatentimage_244[0],
             )
-            if self.hires_fix_var.get() == True:
+            if self.hires_fix_var.get() is True:
                 latentupscale_254 = latentupscale.upscale(
                     upscale_method="bislerp",
                     width=w * 2,
@@ -522,7 +524,9 @@ class App(tk.Tk):
                     samples=ksampler_253[0],
                     vae=checkpointloadersimple_241[2],
                 )
-                saveimage.save_images(filename_prefix="LD-HiresFix", images=vaedecode_240[0])
+                saveimage.save_images(
+                    filename_prefix="LD-HiresFix", images=vaedecode_240[0]
+                )
                 for image in vaedecode_240[0]:
                     i = 255.0 * image.cpu().numpy()
                     img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
@@ -535,7 +539,7 @@ class App(tk.Tk):
                 for image in vaedecode_240[0]:
                     i = 255.0 * image.cpu().numpy()
                     img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            if self.adetailer_var.get() == True:
+            if self.adetailer_var.get() is True:
                 bboxdetectorsegs_132 = bboxdetectorsegs.doit(
                     threshold=0.5,
                     dilation=10,
@@ -587,7 +591,7 @@ class App(tk.Tk):
                     positive=cliptextencode_124[0],
                     negative=cliptextencode_243[0],
                 )
-                saveimage_115 = saveimage.save_images(
+                saveimage.save_images(
                     filename_prefix="LD-refined",
                     images=detailerforeachdebug_145[0],
                 )
@@ -644,7 +648,7 @@ class App(tk.Tk):
                     positive=cliptextencode_124[0],
                     negative=cliptextencode_243[0],
                 )
-                saveimage_115 = saveimage.save_images(
+                saveimage.save_images(
                     filename_prefix="lD-2ndrefined",
                     images=detailerforeachdebug_145[0],
                 )
@@ -652,13 +656,12 @@ class App(tk.Tk):
         global generated
         generated = img
         self.display_most_recent_image_flag = True
-            
 
     def update_labels(self):
         self.width_label.configure(text=f"Width: {int(self.width_slider.get())}")
         self.height_label.configure(text=f"Height: {int(self.height_slider.get())}")
         self.cfg_label.configure(text=f"CFG: {int(self.cfg_slider.get())}")
-        
+
     def update_image(self, img):
         global generated
         # Calculate the aspect ratio of the original image
@@ -678,7 +681,7 @@ class App(tk.Tk):
         # Resize the image to the new dimensions
         img = img.resize((new_width, new_height), Image.LANCZOS)
         self.image_label.after(0, self._update_image_label, img)
-        if self.display_most_recent_image_flag == True:
+        if self.display_most_recent_image_flag is True:
             self.update_image(generated)
             self.display_most_recent_image_flag = False
 
@@ -705,14 +708,15 @@ class App(tk.Tk):
         img = Image.open(image_files[0])
         self.update_image(img)
 
-
     def on_resize(self, event):
-        if hasattr(self, 'img'):
+        if hasattr(self, "img"):
             self.update_image(self.img)
-    
+
     def interrupt_generation(self):
         self.interrupt_flag = True
 
+
 if __name__ == "__main__":
     from modules.user.app_instance import app
+
     app.mainloop()

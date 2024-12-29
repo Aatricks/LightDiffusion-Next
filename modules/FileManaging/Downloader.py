@@ -1,6 +1,8 @@
 import glob
 
+
 def CheckAndDownload():
+    """#### Check and download all the necessary safetensors and checkpoints models"""
     if glob.glob("./_internal/checkpoints/*.safetensors") == []:
         from huggingface_hub import hf_hub_download
 
@@ -63,7 +65,7 @@ def CheckAndDownload():
         # )
     if glob.glob("./_internal/vae_approx/*.pth") == []:
         from huggingface_hub import hf_hub_download
-        
+
         hf_hub_download(
             repo_id="madebyollin/taesd",
             filename="taesd_decoder.safetensors",

@@ -62,6 +62,7 @@ def pil2tensor(image: Image.Image) -> torch.Tensor:
 
 class TensorBatchBuilder:
     """#### Class for building a batch of tensors."""
+
     def __init__(self):
         self.tensor: torch.Tensor | None = None
 
@@ -104,7 +105,12 @@ def tensor_resize(image: torch.Tensor, w: int, h: int) -> torch.Tensor:
         return general_tensor_resize(image, w, h)
 
 
-def tensor_paste(image1: torch.Tensor, image2: torch.Tensor, left_top: tuple[int, int], mask: torch.Tensor) -> None:
+def tensor_paste(
+    image1: torch.Tensor,
+    image2: torch.Tensor,
+    left_top: tuple[int, int],
+    mask: torch.Tensor,
+) -> None:
     """#### Paste one tensor image onto another using a mask.
 
     #### Args:
@@ -126,7 +132,9 @@ def tensor_paste(image1: torch.Tensor, image2: torch.Tensor, left_top: tuple[int
     h = min(h1, y + h2) - y
 
     mask = mask[:, :h, :w, :]
-    image1[:, y : y + h, x : x + w, :] = (1 - mask) * image1[:, y : y + h, x : x + w, :] + mask * image2[:, :h, :w, :]
+    image1[:, y : y + h, x : x + w, :] = (1 - mask) * image1[
+        :, y : y + h, x : x + w, :
+    ] + mask * image2[:, :h, :w, :]
     return
 
 
@@ -194,7 +202,9 @@ def _tensor_check_mask(mask: torch.Tensor) -> None:
     return
 
 
-def tensor_gaussian_blur_mask(mask: torch.Tensor | np.ndarray, kernel_size: int, sigma: float = 10.0) -> torch.Tensor:
+def tensor_gaussian_blur_mask(
+    mask: torch.Tensor | np.ndarray, kernel_size: int, sigma: float = 10.0
+) -> torch.Tensor:
     """#### Apply Gaussian blur to a tensor mask.
 
     #### Args:
@@ -221,7 +231,9 @@ def tensor_gaussian_blur_mask(mask: torch.Tensor | np.ndarray, kernel_size: int,
 
     # apply gaussian blur
     mask = mask[:, None, ..., 0]
-    blurred_mask = torchvision.transforms.GaussianBlur(kernel_size=kernel_size, sigma=sigma)(mask)
+    blurred_mask = torchvision.transforms.GaussianBlur(
+        kernel_size=kernel_size, sigma=sigma
+    )(mask)
     blurred_mask = blurred_mask[:, 0, ..., None]
 
     blurred_mask.to(prev_device)

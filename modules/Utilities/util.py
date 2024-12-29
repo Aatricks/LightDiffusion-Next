@@ -19,18 +19,20 @@ def append_dims(x: torch.Tensor, target_dims: int) -> torch.Tensor:
     expanded = x[(...,) + (None,) * dims_to_append]
     return expanded.detach().clone() if expanded.device.type == "mps" else expanded
 
+
 def to_d(x: torch.Tensor, sigma: torch.Tensor, denoised: torch.Tensor) -> torch.Tensor:
     """#### Convert a tensor to a denoised tensor.
-    
+
     #### Args:
         - `x` (torch.Tensor): The input tensor.
         - `sigma` (torch.Tensor): The noise level.
         - `denoised` (torch.Tensor): The denoised tensor.
-    
+
     #### Returns:
         - `torch.Tensor`: The converted tensor.
     """
     return (x - denoised) / append_dims(sigma, x.ndim)
+
 
 def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> dict:
     """#### Load a PyTorch checkpoint file.
@@ -69,7 +71,9 @@ def calculate_parameters(sd: dict, prefix: str = "") -> dict:
     return params
 
 
-def state_dict_prefix_replace(state_dict: dict, replace_prefix: str, filter_keys: bool = False) -> dict:
+def state_dict_prefix_replace(
+    state_dict: dict, replace_prefix: str, filter_keys: bool = False
+) -> dict:
     """#### Replace the prefix of keys in a state dictionary.
 
     #### Args:
@@ -94,7 +98,6 @@ def state_dict_prefix_replace(state_dict: dict, replace_prefix: str, filter_keys
     return out
 
 
-
 def repeat_to_batch_size(tensor: torch.Tensor, batch_size: int) -> torch.Tensor:
     """#### Repeat a tensor to match a specific batch size.
 
@@ -115,7 +118,7 @@ def set_attr(obj: object, attr: str, value: any) -> any:
         - `obj` (object): The object.
         - `attr` (str): The attribute name.
         - `value` (any): The value to set.
-        
+
     #### Returns:
         - `prev`: The previous attribute value.
     """
@@ -129,20 +132,21 @@ def set_attr(obj: object, attr: str, value: any) -> any:
 
 def set_attr_param(obj: object, attr: str, value: any) -> any:
     """#### Set an attribute parameter of an object.
-    
+
     #### Args:
         - `obj` (object): The object.
         - `attr` (str): The attribute name.
         - `value` (any): The value to set.
-        
+
     #### Returns:
         - `prev`: The previous attribute value.
     """
     return set_attr(obj, attr, torch.nn.Parameter(value, requires_grad=False))
 
+
 def copy_to_param(obj: object, attr: str, value: any) -> None:
     """#### Copy a value to a parameter of an object.
-    
+
     #### Args:
         - `obj` (object): The object.
         - `attr` (str): The attribute name.
@@ -157,11 +161,11 @@ def copy_to_param(obj: object, attr: str, value: any) -> None:
 
 def get_attr(obj: object, attr: str) -> any:
     """#### Get an attribute of an object.
-    
+
     #### Args:
         - `obj` (object): The object.
         - `attr` (str): The attribute name.
-        
+
     #### Returns:
         - `obj`: The attribute value.
     """
@@ -183,6 +187,7 @@ def lcm(a: int, b: int) -> int:
     """
     return abs(a * b) // math.gcd(a, b)
 
+
 def get_full_path(folder_name: str, filename: str) -> str:
     """#### Get the full path of a file in a folder.
 
@@ -200,7 +205,8 @@ def get_full_path(folder_name: str, filename: str) -> str:
         full_path = os.path.join(x, filename)
         if os.path.isfile(full_path):
             return full_path
-        
+
+
 def zero_module(module: torch.nn.Module) -> torch.nn.Module:
     """#### Zero out the parameters of a module.
 
@@ -226,12 +232,13 @@ def append_zero(x: torch.Tensor) -> torch.Tensor:
     """
     return torch.cat([x, x.new_zeros([1])])
 
+
 def exists(val: any) -> bool:
     """#### Check if a value exists.
 
     #### Args:
         - `val` (any): The value.
-    
+
     #### Returns:
         - `bool`: Whether the value exists.
     """
@@ -240,11 +247,11 @@ def exists(val: any) -> bool:
 
 def default(val: any, d: any) -> any:
     """#### Get the default value of a variable.
-    
+
     #### Args:
         - `val` (any): The value.
         - `d` (any): The default value.
-    
+
     #### Returns:
         - `any`: The default value if the value does not exist.
     """
@@ -252,7 +259,10 @@ def default(val: any, d: any) -> any:
         return val
     return d() if isfunction(d) else d
 
-def write_parameters_to_file(prompt_entry: str, neg: str, width: int, height: int, cfg: int) -> None:
+
+def write_parameters_to_file(
+    prompt_entry: str, neg: str, width: int, height: int, cfg: int
+) -> None:
     """#### Write parameters to a file.
 
     #### Args:
@@ -272,7 +282,7 @@ def write_parameters_to_file(prompt_entry: str, neg: str, width: int, height: in
 
 def load_parameters_from_file() -> tuple:
     """#### Load parameters from a file.
-    
+
     #### Returns:
         - `str`: The prompt entry.
         - `str`: The negative prompt entry.
@@ -303,6 +313,7 @@ PROGRESS_BAR_HOOK = None
 
 class ProgressBar:
     """#### Class representing a progress bar."""
+
     def __init__(self, total: int):
         global PROGRESS_BAR_HOOK
         self.total = total
