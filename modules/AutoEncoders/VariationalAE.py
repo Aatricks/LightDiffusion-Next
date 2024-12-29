@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 from modules.Model import ModelPatcher
@@ -30,7 +30,7 @@ class DiagonalGaussianDistribution(object):
             If `other` is provided, computes the KL divergence between this distribution and `other`.
     """
 
-    def __init__(self, parameters, deterministic=False):
+    def __init__(self, parameters: torch.Tensor, deterministic: bool = False):
         self.parameters = parameters
         self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
         self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
@@ -38,7 +38,7 @@ class DiagonalGaussianDistribution(object):
         self.std = torch.exp(0.5 * self.logvar)
         self.var = torch.exp(self.logvar)
 
-    def sample(self):
+    def sample(self) -> torch.Tensor:
         """#### Samples from the distribution using the reparameterization trick.
 
         #### Returns:
@@ -49,13 +49,14 @@ class DiagonalGaussianDistribution(object):
         )
         return x
 
-    def kl(self, other=None):
+    def kl(self, other: 'DiagonalGaussianDistribution' = None) -> torch.Tensor:
         """#### Computes the Kullback-Leibler divergence between this distribution and a standard normal distribution.
 
         If `other` is provided, computes the KL divergence between this distribution and `other`.
 
         #### Args:
             - `other` (DiagonalGaussianDistribution, optional): Another distribution to compute the KL divergence with.
+        
         #### Returns:
             - `torch.Tensor`: The KL divergence.
         """
@@ -66,11 +67,26 @@ class DiagonalGaussianDistribution(object):
 
 
 class DiagonalGaussianRegularizer(torch.nn.Module):
+    """#### Regularizer for diagonal Gaussian distributions."""
+
     def __init__(self, sample: bool = True):
+        """#### Initialize the regularizer.
+
+        #### Args:
+            - `sample` (bool, optional): Whether to sample from the distribution. Defaults to True.
+        """
         super().__init__()
         self.sample = sample
 
     def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+        """#### Forward pass for the regularizer.
+
+        #### Args:
+            - `z` (torch.Tensor): The input tensor.
+
+        #### Returns:
+            - `Tuple[torch.Tensor, dict]`: The regularized tensor and a log dictionary.
+        """
         log = dict()
         posterior = DiagonalGaussianDistribution(z)
         z = posterior.sample()
@@ -81,7 +97,16 @@ class DiagonalGaussianRegularizer(torch.nn.Module):
 
 
 class AutoencodingEngine(nn.Module):
-    def __init__(self, encoder, decoder, regularizer):
+    """#### Class representing an autoencoding engine."""
+
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, regularizer: nn.Module):
+        """#### Initialize the autoencoding engine.
+
+        #### Args:
+            - `encoder` (nn.Module): The encoder module.
+            - `decoder` (nn.Module): The decoder module.
+            - `regularizer` (nn.Module): The regularizer module.
+        """
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -90,6 +115,15 @@ class AutoencodingEngine(nn.Module):
         self.quant_conv = cast.disable_weight_init.Conv2d(8, 8, 1)
 
     def decode(self, z: torch.Tensor, **decoder_kwargs) -> torch.Tensor:
+        """#### Decode the latent tensor.
+
+        #### Args:
+            - `z` (torch.Tensor): The latent tensor.
+            - `decoder_kwargs` (dict): Additional arguments for the decoder.
+
+        #### Returns:
+            - `torch.Tensor`: The decoded tensor.
+        """
         dec = self.post_quant_conv(z)
         dec = self.decoder(dec, **decoder_kwargs)
         return dec
@@ -97,6 +131,15 @@ class AutoencodingEngine(nn.Module):
     def encode(
         self, x: torch.Tensor, return_reg_log: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
+        """#### Encode the input tensor.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `return_reg_log` (bool, optional): Whether to return the regularization log. Defaults to False.
+
+        #### Returns:
+            - `Union[torch.Tensor, Tuple[torch.Tensor, dict]]`: The encoded tensor and optionally the regularization log.
+        """
         z = self.encoder(x)
         z = self.quant_conv(z)
         z, reg_log = self.regularization(z)
@@ -110,13 +153,28 @@ if Device.xformers_enabled_vae():
     import xformers.ops
 
 
-def nonlinearity(x):
-    # swish
+def nonlinearity(x: torch.Tensor) -> torch.Tensor:
+    """#### Apply the swish nonlinearity.
+
+    #### Args:
+        - `x` (torch.Tensor): The input tensor.
+
+    #### Returns:
+        - `torch.Tensor`: The output tensor.
+    """
     return x * torch.sigmoid(x)
 
 
 class Upsample(nn.Module):
-    def __init__(self, in_channels, with_conv):
+    """#### Class representing an upsample layer."""
+
+    def __init__(self, in_channels: int, with_conv: bool):
+        """#### Initialize the upsample layer.
+
+        #### Args:
+            - `in_channels` (int): The number of input channels.
+            - `with_conv` (bool): Whether to use convolution.
+        """
         super().__init__()
         self.with_conv = with_conv
         if self.with_conv:
@@ -124,7 +182,15 @@ class Upsample(nn.Module):
                 in_channels, in_channels, kernel_size=3, stride=1, padding=1
             )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the upsample layer.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         x = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="nearest")
         if self.with_conv:
             x = self.conv(x)
@@ -132,7 +198,15 @@ class Upsample(nn.Module):
 
 
 class Downsample(nn.Module):
-    def __init__(self, in_channels, with_conv):
+    """#### Class representing a downsample layer."""
+
+    def __init__(self, in_channels: int, with_conv: bool):
+        """#### Initialize the downsample layer.
+
+        #### Args:
+            - `in_channels` (int): The number of input channels.
+            - `with_conv` (bool): Whether to use convolution.
+        """
         super().__init__()
         self.with_conv = with_conv
         if self.with_conv:
@@ -141,7 +215,15 @@ class Downsample(nn.Module):
                 in_channels, in_channels, kernel_size=3, stride=2, padding=0
             )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the downsample layer.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         pad = (0, 1, 0, 1)
         x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
         x = self.conv(x)
@@ -149,24 +231,43 @@ class Downsample(nn.Module):
 
 
 class Encoder(nn.Module):
+    """#### Class representing an encoder."""
+
     def __init__(
         self,
         *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
-        double_z=True,
-        use_linear_attn=False,
-        attn_type="vanilla",
+        ch: int,
+        out_ch: int,
+        ch_mult: Tuple[int, ...] = (1, 2, 4, 8),
+        num_res_blocks: int,
+        attn_resolutions: Tuple[int, ...],
+        dropout: float = 0.0,
+        resamp_with_conv: bool = True,
+        in_channels: int,
+        resolution: int,
+        z_channels: int,
+        double_z: bool = True,
+        use_linear_attn: bool = False,
+        attn_type: str = "vanilla",
         **ignore_kwargs,
     ):
+        """#### Initialize the encoder.
+
+        #### Args:
+            - `ch` (int): The base number of channels.
+            - `out_ch` (int): The number of output channels.
+            - `ch_mult` (Tuple[int, ...], optional): Channel multiplier at each resolution. Defaults to (1, 2, 4, 8).
+            - `num_res_blocks` (int): The number of residual blocks.
+            - `attn_resolutions` (Tuple[int, ...]): The resolutions at which to apply attention.
+            - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
+            - `resamp_with_conv` (bool, optional): Whether to use convolution for resampling. Defaults to True.
+            - `in_channels` (int): The number of input channels.
+            - `resolution` (int): The resolution of the input.
+            - `z_channels` (int): The number of latent channels.
+            - `double_z` (bool, optional): Whether to double the latent channels. Defaults to True.
+            - `use_linear_attn` (bool, optional): Whether to use linear attention. Defaults to False.
+            - `attn_type` (str, optional): The type of attention. Defaults to "vanilla".
+        """
         super().__init__()
         if use_linear_attn:
             attn_type = "linear"
@@ -235,7 +336,15 @@ class Encoder(nn.Module):
             padding=1,
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the encoder.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: The encoded tensor.
+        """
         # timestep embedding
         temb = None
         # downsampling
@@ -261,27 +370,49 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
+    """#### Class representing a decoder."""
+
     def __init__(
         self,
         *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
-        give_pre_end=False,
-        tanh_out=False,
-        use_linear_attn=False,
-        conv_out_op=ops.Conv2d,
-        resnet_op=ResBlock.ResnetBlock,
-        attn_op=Attention.AttnBlock,
+        ch: int,
+        out_ch: int,
+        ch_mult: Tuple[int, ...] = (1, 2, 4, 8),
+        num_res_blocks: int,
+        attn_resolutions: Tuple[int, ...],
+        dropout: float = 0.0,
+        resamp_with_conv: bool = True,
+        in_channels: int,
+        resolution: int,
+        z_channels: int,
+        give_pre_end: bool = False,
+        tanh_out: bool = False,
+        use_linear_attn: bool = False,
+        conv_out_op: nn.Module = ops.Conv2d,
+        resnet_op: nn.Module = ResBlock.ResnetBlock,
+        attn_op: nn.Module = Attention.AttnBlock,
         **ignorekwargs,
     ):
+        """#### Initialize the decoder.
+
+        #### Args:
+            - `ch` (int): The base number of channels.
+            - `out_ch` (int): The number of output channels.
+            - `ch_mult` (Tuple[int, ...], optional): Channel multiplier at each resolution. Defaults to (1, 2, 4, 8).
+            - `num_res_blocks` (int): The number of residual blocks.
+            - `attn_resolutions` (Tuple[int, ...]): The resolutions at which to apply attention.
+            - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
+            - `resamp_with_conv` (bool, optional): Whether to use convolution for resampling. Defaults to True.
+            - `in_channels` (int): The number of input channels.
+            - `resolution` (int): The resolution of the input.
+            - `z_channels` (int): The number of latent channels.
+            - `give_pre_end` (bool, optional): Whether to give pre-end. Defaults to False.
+            - `tanh_out` (bool, optional): Whether to use tanh activation at the output. Defaults to False.
+            - `use_linear_attn` (bool, optional): Whether to use linear attention. Defaults to False.
+            - `conv_out_op` (nn.Module, optional): The convolution output operation. Defaults to ops.Conv2d.
+            - `resnet_op` (nn.Module, optional): The residual block operation. Defaults to ResBlock.ResnetBlock.
+            - `attn_op` (nn.Module, optional): The attention block operation. Defaults to Attention.AttnBlock.
+        """
         super().__init__()
         if use_linear_attn:
             attn_type = "linear"
@@ -356,7 +487,17 @@ class Decoder(nn.Module):
             block_in, out_ch, kernel_size=3, stride=1, padding=1
         )
 
-    def forward(self, z, **kwargs):
+    def forward(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
+        """ #### Forward pass for the decoder.
+        
+        #### Args:
+            - `z` (torch.Tensor): The input tensor.
+            - `**kwargs`: Additional arguments.
+            
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        
+        """
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
@@ -383,14 +524,21 @@ class Decoder(nn.Module):
         h = self.conv_out(h, **kwargs)
         return h
 
-
 class VAE:
-    def __init__(self, sd=None, device=None, config=None, dtype=None):
+    """#### Class representing a Variational Autoencoder (VAE)."""
+
+    def __init__(self, sd: Optional[dict] = None, device: Optional[torch.device] = None, config: Optional[dict] = None, dtype: Optional[torch.dtype] = None):
+        """#### Initialize the VAE.
+
+        #### Args:
+            - `sd` (dict, optional): The state dictionary. Defaults to None.
+            - `device` (torch.device, optional): The device to use. Defaults to None.
+            - `config` (dict, optional): The configuration dictionary. Defaults to None.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+        """
         self.memory_used_encode = lambda shape, dtype: (
             1767 * shape[2] * shape[3]
-        ) * Device.dtype_size(
-            dtype
-        )  # These are for AutoencoderKL and need tweaking (should be lower)
+        ) * Device.dtype_size(dtype)  # These are for AutoencoderKL and need tweaking (should be lower)
         self.memory_used_decode = lambda shape, dtype: (
             2178 * shape[2] * shape[3] * 64
         ) * Device.dtype_size(dtype)
@@ -398,9 +546,7 @@ class VAE:
         self.upscale_ratio = 8
         self.latent_channels = 4
         self.process_input = lambda image: image * 2.0 - 1.0
-        self.process_output = lambda image: torch.clamp(
-            (image + 1.0) / 2.0, min=0.0, max=1.0
-        )
+        self.process_output = lambda image: torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
         if config is None:
             config = {
                 "encoder": {
@@ -454,12 +600,28 @@ class VAE:
             offload_device=offload_device,
         )
 
-    def vae_encode_crop_pixels(self, pixels):
+    def vae_encode_crop_pixels(self, pixels: torch.Tensor) -> torch.Tensor:
+        """#### Crop the input pixels to be compatible with the VAE.
+
+        #### Args:
+            - `pixels` (torch.Tensor): The input pixel tensor.
+
+        #### Returns:
+            - `torch.Tensor`: The cropped pixel tensor.
+        """
         x = (pixels.shape[1] // self.downscale_ratio) * self.downscale_ratio
         y = (pixels.shape[2] // self.downscale_ratio) * self.downscale_ratio
         return pixels
 
-    def decode(self, samples_in):
+    def decode(self, samples_in: torch.Tensor) -> torch.Tensor:
+        """#### Decode the latent samples to pixel samples.
+
+        #### Args:
+            - `samples_in` (torch.Tensor): The input latent samples.
+
+        #### Returns:
+            - `torch.Tensor`: The decoded pixel samples.
+        """
         memory_used = self.memory_used_decode(samples_in.shape, self.vae_dtype)
         Device.load_models_gpu([self.patcher], memory_required=memory_used)
         free_memory = Device.get_free_memory(self.device)
@@ -476,16 +638,22 @@ class VAE:
             device=self.output_device,
         )
         for x in range(0, samples_in.shape[0], batch_number):
-            samples = (
-                samples_in[x : x + batch_number].to(self.vae_dtype).to(self.device)
-            )
+            samples = samples_in[x : x + batch_number].to(self.vae_dtype).to(self.device)
             pixel_samples[x : x + batch_number] = self.process_output(
                 self.first_stage_model.decode(samples).to(self.output_device).float()
             )
         pixel_samples = pixel_samples.to(self.output_device).movedim(1, -1)
         return pixel_samples
 
-    def encode(self, pixel_samples):
+    def encode(self, pixel_samples: torch.Tensor) -> torch.Tensor:
+        """#### Encode the pixel samples to latent samples.
+
+        #### Args:
+            - `pixel_samples` (torch.Tensor): The input pixel samples.
+
+        #### Returns:
+            - `torch.Tensor`: The encoded latent samples.
+        """
         pixel_samples = self.vae_encode_crop_pixels(pixel_samples)
         pixel_samples = pixel_samples.movedim(-1, 1)
         memory_used = self.memory_used_encode(pixel_samples.shape, self.vae_dtype)
@@ -516,11 +684,33 @@ class VAE:
 
 
 class VAEDecode:
-    def decode(self, vae, samples):
+    """#### Class for decoding VAE samples."""
+
+    def decode(self, vae: VAE, samples: dict) -> Tuple[torch.Tensor]:
+        """#### Decode the VAE samples.
+
+        #### Args:
+            - `vae` (VAE): The VAE instance.
+            - `samples` (dict): The samples dictionary.
+
+        #### Returns:
+            - `Tuple[torch.Tensor]`: The decoded samples.
+        """
         return (vae.decode(samples["samples"]),)
 
 
 class VAEEncode:
-    def encode(self, vae, pixels):
+    """#### Class for encoding VAE samples."""
+
+    def encode(self, vae: VAE, pixels: torch.Tensor) -> Tuple[dict]:
+        """#### Encode the VAE samples.
+
+        #### Args:
+            - `vae` (VAE): The VAE instance.
+            - `pixels` (torch.Tensor): The input pixel tensor.
+
+        #### Returns:
+            - `Tuple[dict]`: The encoded samples dictionary.
+        """
         t = vae.encode(pixels[:, :, :, :3])
         return ({"samples": t},)

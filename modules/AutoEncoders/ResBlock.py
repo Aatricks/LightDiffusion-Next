@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from typing import Optional, Any, Dict
 
 import torch
 from modules.NeuralNetwork import transformer
@@ -14,22 +15,49 @@ oai_ops = cast.disable_weight_init
 
 
 class TimestepBlock1(nn.Module):
+    """#### Abstract class representing a timestep block."""
+    
     @abstractmethod
-    def forward(self, x, emb):
+    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the timestep block.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `emb` (torch.Tensor): The embedding tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         pass
 
 
 def forward_timestep_embed1(
-    ts,
-    x,
-    emb,
-    context=None,
-    transformer_options={},
-    output_shape=None,
-    time_context=None,
-    num_video_frames=None,
-    image_only_indicator=None,
-):
+    ts: nn.ModuleList,
+    x: torch.Tensor,
+    emb: torch.Tensor,
+    context: Optional[torch.Tensor] = None,
+    transformer_options: Optional[Dict[str, Any]] = {},
+    output_shape: Optional[torch.Size] = None,
+    time_context: Optional[torch.Tensor] = None,
+    num_video_frames: Optional[int] = None,
+    image_only_indicator: Optional[bool] = None,
+) -> torch.Tensor:
+    """#### Forward pass for timestep embedding.
+    
+    #### Args:
+        - `ts` (nn.ModuleList): The list of timestep blocks.
+        - `x` (torch.Tensor): The input tensor.
+        - `emb` (torch.Tensor): The embedding tensor.
+        - `context` (torch.Tensor, optional): The context tensor. Defaults to None.
+        - `transformer_options` (dict, optional): The transformer options. Defaults to {}.
+        - `output_shape` (torch.Size, optional): The output shape. Defaults to None.
+        - `time_context` (torch.Tensor, optional): The time context tensor. Defaults to None.
+        - `num_video_frames` (int, optional): The number of video frames. Defaults to None.
+        - `image_only_indicator` (bool, optional): The image only indicator. Defaults to None.
+    
+    #### Returns:
+        - `torch.Tensor`: The output tensor.
+    """
     for layer in ts:
         if isinstance(layer, TimestepBlock1):
             x = layer(x, emb)
@@ -45,17 +73,31 @@ def forward_timestep_embed1(
 
 
 class Upsample1(nn.Module):
+    """#### Class representing an upsample layer."""
+    
     def __init__(
         self,
-        channels,
-        use_conv,
-        dims=2,
-        out_channels=None,
-        padding=1,
-        dtype=None,
-        device=None,
-        operations=oai_ops,
+        channels: int,
+        use_conv: bool,
+        dims: int = 2,
+        out_channels: Optional[int] = None,
+        padding: int = 1,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        operations: Any = oai_ops,
     ):
+        """#### Initialize the upsample layer.
+        
+        #### Args:
+            - `channels` (int): The number of input channels.
+            - `use_conv` (bool): Whether to use convolution.
+            - `dims` (int, optional): The number of dimensions. Defaults to 2.
+            - `out_channels` (int, optional): The number of output channels. Defaults to None.
+            - `padding` (int, optional): The padding size. Defaults to 1.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+            - `device` (torch.device, optional): The device. Defaults to None.
+            - `operations` (any, optional): The operations. Defaults to oai_ops.
+        """
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -72,7 +114,16 @@ class Upsample1(nn.Module):
                 device=device,
             )
 
-    def forward(self, x, output_shape=None):
+    def forward(self, x: torch.Tensor, output_shape: Optional[torch.Size] = None) -> torch.Tensor:
+        """#### Forward pass for the upsample layer.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `output_shape` (torch.Size, optional): The output shape. Defaults to None.
+        
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         assert x.shape[1] == self.channels
         shape = [x.shape[2] * 2, x.shape[3] * 2]
         if output_shape is not None:
@@ -86,17 +137,31 @@ class Upsample1(nn.Module):
 
 
 class Downsample1(nn.Module):
+    """#### Class representing a downsample layer."""
+    
     def __init__(
         self,
-        channels,
-        use_conv,
-        dims=2,
-        out_channels=None,
-        padding=1,
-        dtype=None,
-        device=None,
-        operations=oai_ops,
+        channels: int,
+        use_conv: bool,
+        dims: int = 2,
+        out_channels: Optional[int] = None,
+        padding: int = 1,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        operations: Any = oai_ops,
     ):
+        """#### Initialize the downsample layer.
+        
+        #### Args:
+            - `channels` (int): The number of input channels.
+            - `use_conv` (bool): Whether to use convolution.
+            - `dims` (int, optional): The number of dimensions. Defaults to 2.
+            - `out_channels` (int, optional): The number of output channels. Defaults to None.
+            - `padding` (int, optional): The padding size. Defaults to 1.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+            - `device` (torch.device, optional): The device. Defaults to None.
+            - `operations` (any, optional): The operations. Defaults to oai_ops.
+        """
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -114,31 +179,61 @@ class Downsample1(nn.Module):
             device=device,
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the downsample layer.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         assert x.shape[1] == self.channels
         return self.op(x)
 
 
 class ResBlock1(TimestepBlock1):
+    """#### Class representing a residual block layer."""
+    
     def __init__(
         self,
-        channels,
-        emb_channels,
-        dropout,
-        out_channels=None,
-        use_conv=False,
-        use_scale_shift_norm=False,
-        dims=2,
-        use_checkpoint=False,
-        up=False,
-        down=False,
-        kernel_size=3,
-        exchange_temb_dims=False,
-        skip_t_emb=False,
-        dtype=None,
-        device=None,
-        operations=oai_ops,
+        channels: int,
+        emb_channels: int,
+        dropout: float,
+        out_channels: Optional[int] = None,
+        use_conv: bool = False,
+        use_scale_shift_norm: bool = False,
+        dims: int = 2,
+        use_checkpoint: bool = False,
+        up: bool = False,
+        down: bool = False,
+        kernel_size: int = 3,
+        exchange_temb_dims: bool = False,
+        skip_t_emb: bool = False,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        operations: Any = oai_ops,
     ):
+        """#### Initialize the residual block layer.
+        
+        #### Args:
+            - `channels` (int): The number of input channels.
+            - `emb_channels` (int): The number of embedding channels.
+            - `dropout` (float): The dropout rate.
+            - `out_channels` (int, optional): The number of output channels. Defaults to None.
+            - `use_conv` (bool, optional): Whether to use convolution. Defaults to False.
+            - `use_scale_shift_norm` (bool, optional): Whether to use scale shift normalization. Defaults to False.
+            - `dims` (int, optional): The number of dimensions. Defaults to 2.
+            - `use_checkpoint` (bool, optional): Whether to use checkpointing. Defaults to False.
+            - `up` (bool, optional): Whether to use upsampling. Defaults to False.
+            - `down` (bool, optional): Whether to use downsampling. Defaults to False.
+            - `kernel_size` (int, optional): The kernel size. Defaults to 3.
+            - `exchange_temb_dims` (bool, optional): Whether to exchange embedding dimensions. Defaults to False.
+            - `skip_t_emb` (bool, optional): Whether to skip embedding. Defaults to False.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+            - `device` (torch.device, optional): The device. Defaults to None.
+            - `operations` (any, optional): The operations. Defaults to oai_ops.
+        """
         super().__init__()
         self.channels = channels
         self.emb_channels = emb_channels
@@ -201,12 +296,30 @@ class ResBlock1(TimestepBlock1):
                 dims, channels, self.out_channels, 1, dtype=dtype, device=device
             )
 
-    def forward(self, x, emb):
+    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the residual block layer.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `emb` (torch.Tensor): The embedding tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         return sampling_util.checkpoint(
             self._forward, (x, emb), self.parameters(), self.use_checkpoint
         )
 
-    def _forward(self, x, emb):
+    def _forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
+        """#### Internal forward pass for the residual block layer.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `emb` (torch.Tensor): The embedding tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         h = self.in_layers(x)
 
         emb_out = None
@@ -224,15 +337,26 @@ ops = cast.disable_weight_init
 
 
 class ResnetBlock(nn.Module):
+    """#### Class representing a ResNet block layer."""
+    
     def __init__(
         self,
         *,
-        in_channels,
-        out_channels=None,
-        conv_shortcut=False,
-        dropout,
-        temb_channels=512,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        conv_shortcut: bool = False,
+        dropout: float,
+        temb_channels: int = 512,
     ):
+        """#### Initialize the ResNet block layer.
+        
+        #### Args:
+            - `in_channels` (int): The number of input channels.
+            - `out_channels` (int, optional): The number of output channels. Defaults to None.
+            - `conv_shortcut` (bool, optional): Whether to use convolution shortcut. Defaults to False.
+            - `dropout` (float): The dropout rate.
+            - `temb_channels` (int, optional): The number of embedding channels. Defaults to 512.
+        """
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
@@ -254,7 +378,16 @@ class ResnetBlock(nn.Module):
                 in_channels, out_channels, kernel_size=1, stride=1, padding=0
             )
 
-    def forward(self, x, temb):
+    def forward(self, x: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the ResNet block layer.
+        
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `temb` (torch.Tensor): The embedding tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         h = x
         h = self.norm1(h)
         h = self.swish(h)

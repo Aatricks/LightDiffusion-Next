@@ -4,3 +4,4 @@
 *   TODO: change frontend to pyqt5
 *   TODO: add functionalities
 *   TODO: seed and batch control
+*   TODO: add testscases

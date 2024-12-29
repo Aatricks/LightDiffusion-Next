@@ -144,8 +144,8 @@ def sample_dpm_adaptive(
             )
         x, info = dpm_solver.dpm_solver_adaptive(
             x,
-            dpm_solver.t(torch.tensor(sigma_max)),
-            dpm_solver.t(torch.tensor(sigma_min)),
+            dpm_solver.t(sigma_max.clone().detach()),
+            dpm_solver.t(sigma_min.clone().detach()),
             order,
             rtol,
             atol,
