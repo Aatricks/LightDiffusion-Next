@@ -1,14 +1,18 @@
 import torch
-
 from modules.StableFast.ModuleFactory import ModuleFactory
 
 try:
     from sfast.compilers.diffusion_pipeline_compiler import CompilationConfig
-except:
+except ImportError:
     pass
 
 
-def gen_stable_fast_config():
+def gen_stable_fast_config() -> CompilationConfig:
+    """#### Generate the StableFast configuration.
+
+    #### Returns:
+        - `CompilationConfig`: The StableFast configuration.
+    """
     config = CompilationConfig.Default()
     try:
         import xformers
@@ -26,12 +30,29 @@ def gen_stable_fast_config():
 
 
 class StableFastPatch:
-    def __init__(self, model, config):
+    """#### Class representing a StableFast patch."""
+
+    def __init__(self, model: torch.nn.Module, config: CompilationConfig):
+        """#### Initialize the StableFastPatch.
+
+        #### Args:
+            - `model` (torch.nn.Module): The model.
+            - `config` (CompilationConfig): The configuration.
+        """
         self.model = model
         self.config = config
         self.stable_fast_model = None
 
-    def __call__(self, model_function, params):
+    def __call__(self, model_function: callable, params: dict) -> torch.Tensor:
+        """#### Call the StableFastPatch.
+
+        #### Args:
+            - `model_function` (callable): The model function.
+            - `params` (dict): The parameters.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         input_x = params.get("input")
         timestep_ = params.get("timestep")
         c = params.get("c")
@@ -47,20 +68,39 @@ class StableFastPatch:
             model_function, input_x=input_x, timestep=timestep_, **c
         )
 
-    def to(self, device):
-        if type(device) is torch.device:
+    def to(self, device: torch.device) -> StableFastPatch:
+        """#### Move the model to a specific device.
+
+        #### Args:
+            - `device` (torch.device): The device.
+
+        #### Returns:
+            - `StableFastPatch`: The StableFastPatch instance.
+        """
+        if isinstance(device, torch.device):
             if self.config.enable_cuda_graph or self.config.enable_jit_freeze:
                 if device.type == "cpu":
                     del self.stable_fast_model
                     self.stable_fast_model = None
                     print(
-                        "\33[93mWarning: Your graphics card doesn't have enough video memory to keep the model. If you experience a noticeable delay every time you start sampling, please consider disable enable_cuda_graph.\33[0m"
+                        "\33[93mWarning: Your graphics card doesn't have enough video memory to keep the model. If you experience a noticeable delay every time you start sampling, please consider disabling enable_cuda_graph.\33[0m"
                     )
         return self
 
 
 class ApplyStableFastUnet:
-    def apply_stable_fast(self, model, enable_cuda_graph):
+    """#### Class for applying StableFast to a UNet model."""
+
+    def apply_stable_fast(self, model: torch.nn.Module, enable_cuda_graph: bool) -> tuple:
+        """#### Apply StableFast to the model.
+
+        #### Args:
+            - `model` (torch.nn.Module): The model.
+            - `enable_cuda_graph` (bool): Whether to enable CUDA graph.
+
+        #### Returns:
+            - `tuple`: The StableFast model.
+        """
         config = gen_stable_fast_config()
 
         if config.memory_format is not None:

@@ -7,7 +7,13 @@ from modules.clip import Clip
 
 
 class sm_SD15(ModelBase.BASE):
-    unet_config = {
+    """#### Class representing the SD15 model.
+
+    #### Args:
+        - `ModelBase.BASE` (ModelBase.BASE): The base model class.
+    """
+
+    unet_config: dict = {
         "context_dim": 768,
         "model_channels": 320,
         "use_linear_in_transformer": False,
@@ -15,14 +21,22 @@ class sm_SD15(ModelBase.BASE):
         "use_temporal_attention": False,
     }
 
-    unet_extra_config = {
+    unet_extra_config: dict = {
         "num_heads": 8,
         "num_head_channels": -1,
     }
 
-    latent_format = Latent.SD15
+    latent_format: Latent.SD15 = Latent.SD15
 
-    def process_clip_state_dict(self, state_dict):
+    def process_clip_state_dict(self, state_dict: dict) -> dict:
+        """#### Process the state dictionary for the CLIP model.
+
+        #### Args:
+            - `state_dict` (dict): The state dictionary.
+
+        #### Returns:
+            - `dict`: The processed state dictionary.
+        """
         k = list(state_dict.keys())
         for x in k:
             if x.startswith("cond_stage_model.transformer.") and not x.startswith(
@@ -54,9 +68,13 @@ class sm_SD15(ModelBase.BASE):
         return state_dict
 
     def clip_target(self) -> Clip.ClipTarget:
+        """#### Get the target CLIP model.
+
+        #### Returns:
+            - `Clip.ClipTarget`: The target CLIP model.
+        """
         return Clip.ClipTarget(SDToken.SD1Tokenizer, SDClip.SD1ClipModel)
-
-
+    
 models = [
     sm_SD15,
 ]

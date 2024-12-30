@@ -6,7 +6,16 @@ from modules.clip import Clip
 from modules.cond import cast
 
 
-def gen_empty_tokens(special_tokens, length):
+def gen_empty_tokens(special_tokens: dict, length: int) -> list:
+    """#### Generate a list of empty tokens.
+
+    #### Args:
+        - `special_tokens` (dict): The special tokens.
+        - `length` (int): The length of the token list.
+
+    #### Returns:
+        - `list`: The list of empty tokens.
+    """
     start_token = special_tokens.get("start", None)
     end_token = special_tokens.get("end", None)
     pad_token = special_tokens.get("pad")
@@ -20,7 +29,17 @@ def gen_empty_tokens(special_tokens, length):
 
 
 class ClipTokenWeightEncoder:
-    def encode_token_weights(self, token_weight_pairs):
+    """#### Class representing a CLIP token weight encoder."""
+
+    def encode_token_weights(self, token_weight_pairs: list) -> tuple:
+        """#### Encode token weights.
+
+        #### Args:
+            - `token_weight_pairs` (list): The token weight pairs.
+
+        #### Returns:
+            - `tuple`: The encoded tokens and the pooled output.
+        """
         to_encode = list()
         max_token_len = 0
         has_weights = False
@@ -53,26 +72,43 @@ class ClipTokenWeightEncoder:
 
 
 class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
-    """Uses the CLIP transformer encoder for text (from huggingface)"""
+    """#### Uses the CLIP transformer encoder for text (from huggingface)."""
 
     LAYERS = ["last", "pooled", "hidden"]
 
     def __init__(
         self,
-        version="openai/clip-vit-large-patch14",
-        device="cpu",
-        max_length=77,
-        freeze=True,
-        layer="last",
-        layer_idx=None,
-        textmodel_json_config=None,
-        dtype=None,
-        model_class=Clip.CLIPTextModel,
-        special_tokens={"start": 49406, "end": 49407, "pad": 49407},
-        layer_norm_hidden_state=True,
-        enable_attention_masks=False,
-        return_projected_pooled=True,
-    ):  # clip-vit-base-patch32
+        version: str = "openai/clip-vit-large-patch14",
+        device: str = "cpu",
+        max_length: int = 77,
+        freeze: bool = True,
+        layer: str = "last",
+        layer_idx: int = None,
+        textmodel_json_config: str = None,
+        dtype: torch.dtype = None,
+        model_class: type = Clip.CLIPTextModel,
+        special_tokens: dict = {"start": 49406, "end": 49407, "pad": 49407},
+        layer_norm_hidden_state: bool = True,
+        enable_attention_masks: bool = False,
+        return_projected_pooled: bool = True,
+    ):
+        """#### Initialize the SDClipModel.
+
+        #### Args:
+            - `version` (str, optional): The version of the model. Defaults to "openai/clip-vit-large-patch14".
+            - `device` (str, optional): The device to use. Defaults to "cpu".
+            - `max_length` (int, optional): The maximum length of the input. Defaults to 77.
+            - `freeze` (bool, optional): Whether to freeze the model parameters. Defaults to True.
+            - `layer` (str, optional): The layer to use. Defaults to "last".
+            - `layer_idx` (int, optional): The index of the layer. Defaults to None.
+            - `textmodel_json_config` (str, optional): The path to the JSON config file. Defaults to None.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+            - `model_class` (type, optional): The model class. Defaults to Clip.CLIPTextModel.
+            - `special_tokens` (dict, optional): The special tokens. Defaults to {"start": 49406, "end": 49407, "pad": 49407}.
+            - `layer_norm_hidden_state` (bool, optional): Whether to normalize the hidden state. Defaults to True.
+            - `enable_attention_masks` (bool, optional): Whether to enable attention masks. Defaults to False.
+            - `return_projected_pooled` (bool, optional): Whether to return the projected pooled output. Defaults to True.
+        """
         super().__init__()
         assert layer in self.LAYERS
 
@@ -103,13 +139,18 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
             self.return_projected_pooled,
         )
 
-    def freeze(self):
+    def freeze(self) -> None:
+        """#### Freeze the model parameters."""
         self.transformer = self.transformer.eval()
-        # self.train = disabled_train
         for param in self.parameters():
             param.requires_grad = False
 
-    def set_clip_options(self, options):
+    def set_clip_options(self, options: dict) -> None:
+        """#### Set the CLIP options.
+
+        #### Args:
+            - `options` (dict): The options to set.
+        """
         layer_idx = options.get("layer", self.layer_idx)
         self.return_projected_pooled = options.get(
             "projected_pooled", self.return_projected_pooled
@@ -117,12 +158,22 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         self.layer = "hidden"
         self.layer_idx = layer_idx
 
-    def reset_clip_options(self):
+    def reset_clip_options(self) -> None:
+        """#### Reset the CLIP options to default."""
         self.layer = self.options_default[0]
         self.layer_idx = self.options_default[1]
         self.return_projected_pooled = self.options_default[2]
 
-    def set_up_textual_embeddings(self, tokens, current_embeds):
+    def set_up_textual_embeddings(self, tokens: list, current_embeds: torch.nn.Embedding) -> list:
+        """#### Set up the textual embeddings.
+
+        #### Args:
+            - `tokens` (list): The input tokens.
+            - `current_embeds` (torch.nn.Embedding): The current embeddings.
+
+        #### Returns:
+            - `list`: The processed tokens.
+        """
         out_tokens = []
         next_new_token = token_dict_size = current_embeds.weight.shape[0] - 1
         embedding_weights = []
@@ -172,7 +223,15 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
 
         return processed_tokens
 
-    def forward(self, tokens):
+    def forward(self, tokens: list) -> tuple:
+        """#### Forward pass of the model.
+
+        #### Args:
+            - `tokens` (list): The input tokens.
+
+        #### Returns:
+            - `tuple`: The output and the pooled output.
+        """
         backup_embeds = self.transformer.get_input_embeddings()
         device = backup_embeds.weight.device
         tokens = self.set_up_textual_embeddings(tokens, backup_embeds)
@@ -206,29 +265,67 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
 
         return z.float(), pooled_output
 
-    def encode(self, tokens):
+    def encode(self, tokens: list) -> tuple:
+        """#### Encode the input tokens.
+
+        #### Args:
+            - `tokens` (list): The input tokens.
+
+        #### Returns:
+            - `tuple`: The encoded tokens and the pooled output.
+        """
         return self(tokens)
 
-    def load_sd(self, sd):
+    def load_sd(self, sd: dict) -> None:
+        """#### Load the state dictionary.
+
+        #### Args:
+            - `sd` (dict): The state dictionary.
+        """
         return self.transformer.load_state_dict(sd, strict=False)
 
 
 class SD1ClipModel(torch.nn.Module):
+    """#### Class representing the SD1ClipModel."""
+
     def __init__(
-        self, device="cpu", dtype=None, clip_name="l", clip_model=SDClipModel, **kwargs
+        self, device: str = "cpu", dtype: torch.dtype = None, clip_name: str = "l", clip_model: type = SDClipModel, **kwargs
     ):
+        """#### Initialize the SD1ClipModel.
+
+        #### Args:
+            - `device` (str, optional): The device to use. Defaults to "cpu".
+            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
+            - `clip_name` (str, optional): The name of the CLIP model. Defaults to "l".
+            - `clip_model` (type, optional): The CLIP model class. Defaults to SDClipModel.
+            - `**kwargs`: Additional keyword arguments.
+        """
         super().__init__()
         self.clip_name = clip_name
         self.clip = "clip_{}".format(self.clip_name)
         setattr(self, self.clip, clip_model(device=device, dtype=dtype, **kwargs))
 
-    def set_clip_options(self, options):
+    def set_clip_options(self, options: dict) -> None:
+        """#### Set the CLIP options.
+
+        #### Args:
+            - `options` (dict): The options to set.
+        """
         getattr(self, self.clip).set_clip_options(options)
 
-    def reset_clip_options(self):
+    def reset_clip_options(self) -> None:
+        """#### Reset the CLIP options to default."""
         getattr(self, self.clip).reset_clip_options()
 
-    def encode_token_weights(self, token_weight_pairs):
+    def encode_token_weights(self, token_weight_pairs: dict) -> tuple:
+        """#### Encode token weights.
+
+        #### Args:
+            - `token_weight_pairs` (dict): The token weight pairs.
+
+        #### Returns:
+            - `tuple`: The encoded tokens and the pooled output.
+        """
         token_weight_pairs = token_weight_pairs[self.clip_name]
         out, pooled = getattr(self, self.clip).encode_token_weights(token_weight_pairs)
         return out, pooled

@@ -1,5 +1,12 @@
-def hash_arg(arg):
-    # micro optimization: bool obj is an instance of int
+def hash_arg(arg: any) -> any:
+    """#### Hash an argument.
+
+    #### Args:
+        - `arg` (any): The argument to hash.
+
+    #### Returns:
+        - `any`: The hashed argument.
+    """
     if isinstance(arg, (str, int, float, bytes)):
         return arg
     if isinstance(arg, (tuple, list)):

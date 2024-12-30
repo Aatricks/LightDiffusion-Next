@@ -183,22 +183,48 @@ class ModelPatcher:
         self.patches_uuid = uuid.uuid4()
         return list(p)
     
-    def set_model_patch(self, patch, name):
+    def set_model_patch(self, patch: list, name: str):
+        """#### Set a patch for the model.
+
+        #### Args:
+            - `patch` (list): The patch.
+            - `name` (str): The name of the patch.
+        """
         to = self.model_options["transformer_options"]
         if "patches" not in to:
             to["patches"] = {}
         to["patches"][name] = to["patches"].get(name, []) + [patch]
 
-    def set_model_attn1_patch(self, patch):
+    def set_model_attn1_patch(self, patch: list):
+        """#### Set the attention 1 patch for the model.
+        
+        #### Args:
+            - `patch` (list): The patch.
+        """
         self.set_model_patch(patch, "attn1_patch")
 
-    def set_model_attn2_patch(self, patch):
+    def set_model_attn2_patch(self, patch: list):
+        """#### Set the attention 2 patch for the model.
+        
+        #### Args:
+            - `patch` (list): The patch.
+        """
         self.set_model_patch(patch, "attn2_patch")
         
-    def set_model_attn1_output_patch(self, patch):
+    def set_model_attn1_output_patch(self, patch: list):
+        """#### Set the attention 1 output patch for the model.
+
+        #### Args:
+            - `patch` (list): The patch.
+        """
         self.set_model_patch(patch, "attn1_output_patch")
 
-    def set_model_attn2_output_patch(self, patch):
+    def set_model_attn2_output_patch(self, patch: list):
+        """#### Set the attention 2 output patch for the model.
+        
+        #### Args:
+            - `patch` (list): The patch.
+        """
         self.set_model_patch(patch, "attn2_output_patch")
     
     def model_state_dict(self, filter_prefix: str = None) -> dict:

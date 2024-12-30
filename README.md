@@ -1,6 +1,6 @@
 # LightDiffusion-Next
 
-The purpose of this repository and project is to be refactored version of the original LightDiffusion repository. The goal is to make the code more readable, maintainable, and to add new features to the project. The original repository can be found [here](https://github.com/Aatrick/LightDiffusion).
+The purpose of this repository and project is to be the refactored version of the original LightDiffusion repository. The goal is to make the code more readable, maintainable, and to add new features to the project. The original repository can be found [here](https://github.com/Aatrick/LightDiffusion).
 
 For more information, check the [documentation](https://aatrick.github.io/LightDiffusion/)
 
@@ -24,6 +24,17 @@ For more information, check the [documentation](https://aatrick.github.io/LightD
 - TAESD image previewing at the cost of a 10% performance hit
 
 ![Home Image](./HomeImage.png)
+
+# Inference benchmarks
+
+The following table compares the inference speeds of different image generation tools for a 512x512 image using MeinaMix-SD1.5 on an RTX 3060 laptop GPU with the dpmpp-2m-sde karras sampler:
+
+| Tool                               | Speed (it/s) |
+|------------------------------------|--------------|
+| LightDiffusion with Stable-Fast    | 9.2          |
+| LightDiffusion                     | 7.8          |
+| ComfyUI                            | 7.1          |
+| SDWebUI                            | 6.6          |
 
 ## Installation
 

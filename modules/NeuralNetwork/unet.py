@@ -1,3 +1,4 @@
+from typing import Any, Dict, List, Optional
 import torch.nn as nn
 import torch as th
 import torch
@@ -675,13 +676,27 @@ class UNetModel1(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        timesteps=None,
-        context=None,
-        y=None,
-        control=None,
-        transformer_options={},
-        **kwargs,
-    ):
+        timesteps: Optional[torch.Tensor] = None,
+        context: Optional[torch.Tensor] = None,
+        y: Optional[torch.Tensor] = None,
+        control: Optional[torch.Tensor] = None,
+        transformer_options: Dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> torch.Tensor:
+        """#### Forward pass of the UNet model.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `timesteps` (Optional[torch.Tensor], optional): The timesteps tensor. Defaults to None.
+            - `context` (Optional[torch.Tensor], optional): The context tensor. Defaults to None.
+            - `y` (Optional[torch.Tensor], optional): The class labels tensor. Defaults to None.
+            - `control` (Optional[torch.Tensor], optional): The control tensor. Defaults to None.
+            - `transformer_options` (Dict[str, Any], optional): Options for the transformer. Defaults to {}.
+            - `**kwargs` (Any): Additional keyword arguments.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         transformer_options["original_shape"] = list(x.shape)
         transformer_options["transformer_index"] = 0
         transformer_options.get("patches", {})
@@ -733,7 +748,7 @@ class UNetModel1(nn.Module):
             hsp = hs.pop()
             hsp = apply_control1(hsp, control, "output")
 
-            h = th.cat([h, hsp], dim=1)
+            h = torch.cat([h, hsp], dim=1)
             del hsp
             if len(hs) > 0:
                 output_shape = hs[-1].shape
@@ -754,7 +769,16 @@ class UNetModel1(nn.Module):
         return self.out(h)
 
 
-def detect_unet_config(state_dict, key_prefix):
+def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> Dict[str, Any]:
+    """#### Detect the UNet configuration from a state dictionary.
+
+    #### Args:
+        - `state_dict` (Dict[str, torch.Tensor]): The state dictionary.
+        - `key_prefix` (str): The key prefix.
+
+    #### Returns:
+        - `Dict[str, Any]`: The detected UNet configuration.
+    """
     state_dict_keys = list(state_dict.keys())
 
     unet_config = {
@@ -873,7 +897,16 @@ def detect_unet_config(state_dict, key_prefix):
     return unet_config
 
 
-def model_config_from_unet_config(unet_config, state_dict=None):
+def model_config_from_unet_config(unet_config: Dict[str, Any], state_dict: Optional[Dict[str, torch.Tensor]] = None) -> Any:
+    """#### Get the model configuration from a UNet configuration.
+
+    #### Args:
+        - `unet_config` (Dict[str, Any]): The UNet configuration.
+        - `state_dict` (Optional[Dict[str, torch.Tensor]], optional): The state dictionary. Defaults to None.
+
+    #### Returns:
+        - `Any`: The model configuration.
+    """
     from modules.SD15 import SD15
 
     for model_config in SD15.models:
@@ -881,15 +914,35 @@ def model_config_from_unet_config(unet_config, state_dict=None):
             return model_config(unet_config)
 
 
-def model_config_from_unet(state_dict, unet_key_prefix, use_base_if_no_match=False):
+def model_config_from_unet(state_dict: Dict[str, torch.Tensor], unet_key_prefix: str, use_base_if_no_match: bool = False) -> Any:
+    """#### Get the model configuration from a UNet state dictionary.
+
+    #### Args:
+        - `state_dict` (Dict[str, torch.Tensor]): The state dictionary.
+        - `unet_key_prefix` (str): The UNet key prefix.
+        - `use_base_if_no_match` (bool, optional): Whether to use the base configuration if no match is found. Defaults to False.
+
+    #### Returns:
+        - `Any`: The model configuration.
+    """
     unet_config = detect_unet_config(state_dict, unet_key_prefix)
     model_config = model_config_from_unet_config(unet_config, state_dict)
     return model_config
 
 
 def unet_dtype1(
-    device=None,
-    model_params=0,
-    supported_dtypes=[th.float16, th.bfloat16, th.float32],
-):
-    return th.float16
+    device: Optional[torch.device] = None,
+    model_params: int = 0,
+    supported_dtypes: List[torch.dtype] = [torch.float16, torch.bfloat16, torch.float32],
+) -> torch.dtype:
+    """#### Get the dtype for the UNet model.
+
+    #### Args:
+        - `device` (Optional[torch.device], optional): The device. Defaults to None.
+        - `model_params` (int, optional): The model parameters. Defaults to 0.
+        - `supported_dtypes` (List[torch.dtype], optional): The supported dtypes. Defaults to [torch.float16, torch.bfloat16, torch.float32].
+
+    #### Returns:
+        - `torch.dtype`: The dtype for the UNet model.
+    """
+    return torch.float16

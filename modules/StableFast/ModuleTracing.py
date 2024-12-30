@@ -16,24 +16,40 @@ try:
     from sfast.cuda.graphs import make_dynamic_graphed_callable
     from sfast.jit import utils as jit_utils
     from sfast.jit.trace_helper import trace_with_kwargs
-except:
+except ImportError:
     pass
 
 
 @dataclass
 class TracedModuleCacheItem:
+    """#### Data class for storing traced module cache items.
+
+    #### Attributes:
+        - `module` (object): The traced module.
+        - `patch_id` (int): The patch ID.
+        - `device` (str): The device.
+    """
     module: object
     patch_id: int
     device: str
 
 
 class LazyTraceModule:
-    traced_modules = {}
+    """#### Class for lazy tracing of modules."""
 
-    def __init__(self, config=None, patch_id=None, **kwargs_) -> None:
+    traced_modules: dict = {}
+
+    def __init__(self, config: object = None, patch_id: int = None, **kwargs) -> None:
+        """#### Initialize the LazyTraceModule.
+
+        #### Args:
+            - `config` (object, optional): The configuration object. Defaults to None.
+            - `patch_id` (int, optional): The patch ID. Defaults to None.
+            - `**kwargs`: Additional keyword arguments.
+        """
         self.config = config
         self.patch_id = patch_id
-        self.kwargs_ = kwargs_
+        self.kwargs = kwargs
         self.modify_model = functools.partial(
             _modify_model,
             enable_cnn_optimization=config.enable_cnn_optimization,
@@ -44,15 +60,17 @@ class LazyTraceModule:
         )
         self.cuda_graph_modules = {}
 
-    def ts_compiler(
-        self,
-        m,
-    ):
+    def ts_compiler(self, m: torch.nn.Module) -> torch.nn.Module:
+        """#### TorchScript compiler for the module.
+
+        #### Args:
+            - `m` (torch.nn.Module): The module to compile.
+
+        #### Returns:
+            - `torch.nn.Module`: The compiled module.
+        """
         with torch.jit.optimized_execution(True):
             if self.config.enable_jit_freeze:
-                # raw freeze causes Tensor reference leak
-                # because the constant Tensors in the GraphFunction of
-                # the compilation unit are never freed.
                 m.eval()
                 m = jit_utils.better_freeze(m)
             self.modify_model(m)
@@ -61,7 +79,16 @@ class LazyTraceModule:
             m = make_dynamic_graphed_callable(m)
         return m
 
-    def __call__(self, model_function, /, **kwargs):
+    def __call__(self, model_function: callable, **kwargs) -> callable:
+        """#### Call the LazyTraceModule.
+
+        #### Args:
+            - `model_function` (callable): The model function.
+            - `**kwargs`: Additional keyword arguments.
+
+        #### Returns:
+            - `callable`: The traced module.
+        """
         module_factory = ModuleFactory.BaseModelApplyModelModuleFactory(
             model_function, kwargs
         )
@@ -75,7 +102,7 @@ class LazyTraceModule:
                     f'Tracing {getattr(m_model, "__name__", m_model.__class__.__name__)}'
                 )
                 traced_m, call_helper = trace_with_kwargs(
-                    m_model, None, m_kwargs, **self.kwargs_
+                    m_model, None, m_kwargs, **self.kwargs
                 )
 
             traced_m = self.ts_compiler(traced_m)
@@ -85,7 +112,17 @@ class LazyTraceModule:
         return traced_module(**kwargs)
 
 
-def build_lazy_trace_module(config, device, patch_id):
+def build_lazy_trace_module(config: object, device: torch.device, patch_id: int) -> LazyTraceModule:
+    """#### Build a LazyTraceModule.
+
+    #### Args:
+        - `config` (object): The configuration object.
+        - `device` (torch.device): The device.
+        - `patch_id` (int): The patch ID.
+
+    #### Returns:
+        - `LazyTraceModule`: The LazyTraceModule instance.
+    """
     config.enable_cuda_graph = config.enable_cuda_graph and device.type == "cuda"
 
     if config.enable_xformers:
