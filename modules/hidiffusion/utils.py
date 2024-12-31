@@ -7,9 +7,7 @@ import logging
 import math
 import sys
 from functools import partial
-from typing import TYPE_CHECKING, Callable, NamedTuple, Any, Optional, Tuple, Dict, List, Union
-
-import torch
+from typing import TYPE_CHECKING, Callable, NamedTuple
 from modules.Utilities import Latent, upscale
 
 import torch.nn.functional as torchf
@@ -35,7 +33,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-UPSCALE_METHODS: Tuple[str, ...] = ("bicubic", "bislerp", "bilinear", "nearest-exact", "nearest", "area")
+UPSCALE_METHODS = ("bicubic", "bislerp", "bilinear", "nearest-exact", "nearest", "area")
 
 
 class TimeMode(StrEnum):
@@ -49,7 +47,7 @@ class ModelType(StrEnum):
     SDXL = "SDXL"
 
 
-def parse_blocks(name: str, val: Union[str, Sequence[int]]) -> set[tuple[str, int]]:
+def parse_blocks(name: str, val: str | Sequence[int]) -> set[tuple[str, int]]:
     """#### Parse block definitions.
 
     #### Args:
@@ -60,19 +58,22 @@ def parse_blocks(name: str, val: Union[str, Sequence[int]]) -> set[tuple[str, in
         - `set[tuple[str, int]]`: The parsed blocks.
     """
     if isinstance(val, (tuple, list)):
+        # Handle a sequence passed in via YAML parameters.
         if not all(isinstance(item, int) and item >= 0 for item in val):
-            raise ValueError("Bad blocks definition, must be comma separated string or sequence of positive int")
+            raise ValueError(
+                "Bad blocks definition, must be comma separated string or sequence of positive int",
+            )
         return {(name, item) for item in val}
     vals = (rawval.strip() for rawval in val.split(","))
     return {(name, int(val.strip())) for val in vals if val}
 
 
 def convert_time(
-    ms: Any,
+    ms: object,
     time_mode: TimeMode,
     start_time: float,
     end_time: float,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """#### Convert time based on the mode.
 
     #### Args:
@@ -91,16 +92,21 @@ def convert_time(
         end_time = 1.0 - (end_time / 999.0)
     else:
         if start_time > 1.0 or start_time < 0.0:
-            raise ValueError("invalid value for start percent")
+            raise ValueError(
+                "invalid value for start percent",
+            )
         if end_time > 1.0 or end_time < 0.0:
-            raise ValueError("invalid value for end percent")
+            raise ValueError(
+                "invalid value for end percent",
+            )
     return (
         round(ms.percent_to_sigma(start_time), 4),
         round(ms.percent_to_sigma(end_time), 4),
     )
+    raise ValueError("invalid time mode")
 
 
-def get_sigma(options: dict, key: str = "sigmas") -> Optional[float]:
+def get_sigma(options: dict, key: str = "sigmas") -> float | None:
     """#### Get the sigma value from options.
 
     #### Args:
@@ -120,7 +126,7 @@ def get_sigma(options: dict, key: str = "sigmas") -> Optional[float]:
     return sigmas.detach().cpu().max().item()
 
 
-def check_time(time_arg: Union[dict, float], start_sigma: float, end_sigma: float) -> bool:
+def check_time(time_arg: dict | float, start_sigma: float, end_sigma: float) -> bool:
     """#### Check if the time is within the sigma range.
 
     #### Args:
@@ -137,7 +143,10 @@ def check_time(time_arg: Union[dict, float], start_sigma: float, end_sigma: floa
     return sigma <= start_sigma and sigma >= end_sigma
 
 
-def block_to_num(block_type: str, block_id: int) -> Tuple[int, int]:
+__block_to_num_map = {"input": 0, "middle": 1, "output": 2}
+
+
+def block_to_num(block_type: str, block_id: int) -> tuple[int, int]:
     """#### Convert block type and id to numerical representation.
 
     #### Args:
@@ -147,20 +156,21 @@ def block_to_num(block_type: str, block_id: int) -> Tuple[int, int]:
     #### Returns:
         - `Tuple[int, int]`: The numerical representation of the block.
     """
-    __block_to_num_map = {"input": 0, "middle": 1, "output": 2}
     type_id = __block_to_num_map.get(block_type)
     if type_id is None:
-        raise ValueError(f"Got unexpected block type {block_type}!")
+        errstr = f"Got unexpected block type {block_type}!"
+        raise ValueError(errstr)
     return (type_id, block_id)
 
 
+# Naive and totally inaccurate way to factorize target_res into rescaled integer width/height
 def rescale_size(
     width: int,
     height: int,
     target_res: int,
     *,
-    tolerance: int = 1,
-) -> Tuple[int, int]:
+    tolerance=1,
+) -> tuple[int, int]:
     """#### Rescale size to fit target resolution.
 
     #### Args:
@@ -202,10 +212,11 @@ def rescale_size(
         w_adj = target_res / h
         if w_adj % 1 == 0:
             return (int(w_adj), h)
-    raise ValueError(f"Can't rescale {width} and {height} to fit {target_res}")
+    msg = f"Can't rescale {width} and {height} to fit {target_res}"
+    raise ValueError(msg)
 
 
-def guess_model_type(model: object) -> Optional[ModelType]:
+def guess_model_type(model: object) -> ModelType | None:
     """#### Guess the model type.
 
     #### Args:
@@ -220,7 +231,7 @@ def guess_model_type(model: object) -> Optional[ModelType]:
     return None
 
 
-def sigma_to_pct(ms: Any, sigma: float) -> float:
+def sigma_to_pct(ms, sigma):
     """#### Convert sigma to percentage.
 
     #### Args:
@@ -234,12 +245,12 @@ def sigma_to_pct(ms: Any, sigma: float) -> float:
 
 
 def fade_scale(
-    pct: float,
-    start_pct: float = 0.0,
-    end_pct: float = 1.0,
-    fade_start: float = 1.0,
-    fade_cap: float = 0.0,
-) -> float:
+    pct,
+    start_pct=0.0,
+    end_pct=1.0,
+    fade_start=1.0,
+    fade_cap=0.0,
+):
     """#### Calculate the fade scale.
 
     #### Args:
@@ -261,12 +272,12 @@ def fade_scale(
 
 
 def scale_samples(
-    samples: torch.Tensor,
-    width: int,
-    height: int,
-    mode: str = "bicubic",
-    sigma: Optional[float] = None,  # noqa: ARG001
-) -> torch.Tensor:
+    samples,
+    width,
+    height,
+    mode="bicubic",
+    sigma=None,  # noqa: ARG001
+):
     """#### Scale samples to the specified width and height.
 
     #### Args:
@@ -286,20 +297,19 @@ def scale_samples(
 
 class Integrations:
     """#### Class for managing integrations."""
-
     class Integration(NamedTuple):
         key: str
         module_name: str
-        handler: Optional[Callable] = None
+        handler: Callable | None = None
 
     def __init__(self):
         """#### Initialize the Integrations class."""
         self.initialized = False
-        self.modules: Dict[str, ModuleType] = {}
-        self.init_handlers: List[Callable] = []
-        self.handlers: List[Integrations.Integration] = []
+        self.modules = {}
+        self.init_handlers = []
+        self.handlers = []
 
-    def __getitem__(self, key: str) -> ModuleType:
+    def __getitem__(self, key):
         """#### Get a module by key.
 
         #### Args:
@@ -310,7 +320,7 @@ class Integrations:
         """
         return self.modules[key]
 
-    def __contains__(self, key: str) -> bool:
+    def __contains__(self, key):
         """#### Check if a module is in the integrations.
 
         #### Args:
@@ -321,7 +331,7 @@ class Integrations:
         """
         return key in self.modules
 
-    def __getattr__(self, key: str) -> Optional[ModuleType]:
+    def __getattr__(self, key):
         """#### Get a module by attribute.
 
         #### Args:
@@ -333,7 +343,7 @@ class Integrations:
         return self.modules.get(key)
 
     @staticmethod
-    def get_custom_node(name: str) -> Optional[ModuleType]:
+    def get_custom_node(name: str) -> ModuleType | None:
         """#### Get a custom node by name.
 
         #### Args:
@@ -356,7 +366,7 @@ class Integrations:
             )
         return None
 
-    def register_init_handler(self, handler: Callable) -> None:
+    def register_init_handler(self, handler):
         """#### Register an initialization handler.
 
         #### Args:
@@ -364,7 +374,7 @@ class Integrations:
         """
         self.init_handlers.append(handler)
 
-    def register_integration(self, key: str, module_name: str, handler: Optional[Callable] = None) -> None:
+    def register_integration(self, key: str, module_name: str, handler=None) -> None:
         """#### Register an integration.
 
         #### Args:
@@ -373,9 +383,14 @@ class Integrations:
             - `handler` (Optional[Callable], optional): The handler. Defaults to None.
         """
         if self.initialized:
-            raise ValueError("Internal error: Cannot register integration after initialization")
+            raise ValueError(
+                "Internal error: Cannot register integration after initialization",
+            )
         if any(item[0] == key or item[1] == module_name for item in self.handlers):
-            raise ValueError(f"Module {module_name} ({key}) already in integration handlers list!")
+            errstr = (
+                f"Module {module_name} ({key}) already in integration handlers list!"
+            )
+            raise ValueError(errstr)
         self.handlers.append(self.Integration(key, module_name, handler))
 
     def initialize(self) -> None:
@@ -398,7 +413,6 @@ class Integrations:
 
 class JHDIntegrations(Integrations):
     """#### Class for managing JHD integrations."""
-
     def __init__(self, *args: list, **kwargs: dict):
         """#### Initialize the JHDIntegrations class."""
         super().__init__(*args, **kwargs)
@@ -406,7 +420,7 @@ class JHDIntegrations(Integrations):
         self.register_integration("freeu_advanced", "FreeU_Advanced")
 
     @classmethod
-    def bleh_integration(cls, bleh: ModuleType) -> Optional[ModuleType]:
+    def bleh_integration(cls, bleh: ModuleType) -> ModuleType | None:
         """#### Integrate with BLEH.
 
         #### Args:
@@ -426,7 +440,6 @@ MODULES = JHDIntegrations()
 
 class IntegratedNode(type):
     """#### Metaclass for integrated nodes."""
-
     @staticmethod
     def wrap_INPUT_TYPES(orig_method: Callable, *args: list, **kwargs: dict) -> dict:
         """#### Wrap the INPUT_TYPES method to initialize modules.
@@ -459,7 +472,7 @@ class IntegratedNode(type):
         return obj
 
 
-def init_integrations(integrations: Integrations) -> None:
+def init_integrations(integrations) -> None:
     """#### Initialize integrations.
 
     #### Args:
@@ -478,7 +491,7 @@ def init_integrations(integrations: Integrations) -> None:
         scale_samples = bleh_latentutils.scale_samples
         return
 
-    def scale_samples_wrapped(*args: list, sigma: Optional[float] = None, **kwargs: dict) -> Any:  # noqa: ARG001
+    def scale_samples_wrapped(*args: list, sigma=None, **kwargs: dict):  # noqa: ARG001
         """#### Wrap the scale_samples method.
 
         #### Args:
