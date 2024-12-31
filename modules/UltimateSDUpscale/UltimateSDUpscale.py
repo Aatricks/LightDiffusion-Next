@@ -8,6 +8,7 @@ import math
 
 # taken from https://github.com/ssitu/ComfyUI_UltimateSDUpscale
 
+state = USDU_upscaler.state
 
 class UnsupportedModel(Exception):
     """#### Exception raised for unsupported models."""
@@ -122,7 +123,7 @@ def fix_seed(p: StableDiffusionProcessing) -> None:
     pass
 
 
-def process_images(p: StableDiffusionProcessing) -> Processed:
+def process_images(p: StableDiffusionProcessing, pipeline: bool = False) -> Processed:
     """
     #### Process the images.
 
@@ -166,8 +167,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
         image_mask = image_mask.filter(ImageFilter.GaussianBlur(p.mask_blur))
 
     # Crop the images to get the tiles that will be used for generation
-    global batch
-    tiles = [img.crop(crop_region) for img in batch]
+    tiles = [img.crop(crop_region) for img in USDU_upscaler.batch]
 
     # Assume the same size for all images in the batch
     initial_tile_size = tiles[0].size
@@ -202,6 +202,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
         negative_cropped,
         latent,
         denoise=p.denoise,
+        pipeline=pipeline
     )
 
     # Decode the sample
@@ -212,7 +213,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
     tiles_sampled = [image_util.tensor_to_pil(decoded, i) for i in range(len(decoded))]
 
     for i, tile_sampled in enumerate(tiles_sampled):
-        init_image = batch[i]
+        init_image = USDU_upscaler.batch[i]
 
         # Resize back to the original size
         if tile_sampled.size != initial_tile_size:
@@ -238,9 +239,9 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
 
         # Convert back to RGB
         result = result.convert("RGB")
-        batch[i] = result
+        USDU_upscaler.batch[i] = result
 
-    processed = Processed(p, [batch[0]], p.seed, None)
+    processed = Processed(p, [USDU_upscaler.batch[0]], p.seed, None)
     return processed
 
 
@@ -289,8 +290,7 @@ class USDUpscaler:
         self.scale_factor = math.ceil(
             max(p.width, p.height) / max(image.width, image.height)
         )
-        global sd_upscalers
-        self.upscaler = sd_upscalers[upscaler_index]
+        self.upscaler = USDU_upscaler.sd_upscalers[upscaler_index]
         self.redraw = USDURedraw()
         self.redraw.save = save_redraw
         self.redraw.tile_width = tile_width if tile_width > 0 else tile_height
@@ -430,24 +430,23 @@ class USDUpscaler:
             self.redraw.padding
         )
 
-    def process(self) -> None:
+    def process(self, pipeline) -> None:
         """
         #### Process the image.
         """
-        global state
-        state.begin()
+        USDU_upscaler.state.begin()
         self.calc_jobs_count()
         self.result_images = []
         if self.redraw.enabled:
-            self.image = self.redraw.start(self.p, self.image, self.rows, self.cols)
+            self.image = self.redraw.start(self.p, self.image, self.rows, self.cols, pipeline)
             self.initial_info = self.redraw.initial_info
         self.result_images.append(self.image)
 
         if self.seams_fix.enabled:
-            self.image = self.seams_fix.start(self.p, self.image, self.rows, self.cols)
+            self.image = self.seams_fix.start(self.p, self.image, self.rows, self.cols, pipeline)
             self.initial_info = self.seams_fix.initial_info
             self.result_images.append(self.image)
-        state.end()
+        USDU_upscaler.state.end()
 
 
 class USDURedraw:
@@ -492,7 +491,7 @@ class USDURedraw:
         return x1, y1, x2, y2
 
     def linear_process(
-        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int
+        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int, pipeline: bool = False
     ) -> Image.Image:
         """
         #### Perform linear processing.
@@ -515,7 +514,7 @@ class USDURedraw:
                 draw.rectangle(self.calc_rectangle(xi, yi), fill="white")
                 p.init_images = [image]
                 p.image_mask = mask
-                processed = process_images(p)
+                processed = process_images(p, pipeline)
                 draw.rectangle(self.calc_rectangle(xi, yi), fill="black")
                 if len(processed.images) > 0:
                     image = processed.images[0]
@@ -526,7 +525,7 @@ class USDURedraw:
 
         return image
 
-    def start(self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int) -> Image.Image:
+    def start(self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int, pipeline: bool = False) -> Image.Image:
         """#### Start the redraw.
 
         #### Args:
@@ -539,7 +538,7 @@ class USDURedraw:
             - `Image.Image`: The processed image.
         """
         self.initial_info = None
-        return self.linear_process(p, image, rows, cols)
+        return self.linear_process(p, image, rows, cols, pipeline=pipeline)
 
 
 class USDUSeamsFix:
@@ -556,7 +555,7 @@ class USDUSeamsFix:
         p.height = math.ceil((self.tile_height + self.padding) / 64) * 64
 
     def half_tile_process(
-        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int
+        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int, pipeline: bool = False
     ) -> Image.Image:
         """#### Perform half-tile processing.
 
@@ -621,7 +620,7 @@ class USDUSeamsFix:
 
                 p.init_images = [image]
                 p.image_mask = mask
-                processed = process_images(p)
+                processed = process_images(p, pipeline)
                 if len(processed.images) > 0:
                     image = processed.images[0]
 
@@ -642,7 +641,7 @@ class USDUSeamsFix:
 
                 p.init_images = [image]
                 p.image_mask = mask
-                processed = process_images(p)
+                processed = process_images(p, pipeline)
                 if len(processed.images) > 0:
                     image = processed.images[0]
 
@@ -654,7 +653,7 @@ class USDUSeamsFix:
         return image
 
     def start(
-        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int
+        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int, pipeline: bool = False
     ) -> Image.Image:
         """#### Start the seams fix process.
 
@@ -667,7 +666,7 @@ class USDUSeamsFix:
         #### Returns:
             - `Image.Image`: The processed image.
         """
-        return self.half_tile_process(p, image, rows, cols)
+        return self.half_tile_process(p, image, rows, cols, pipeline=pipeline)
 
 
 class Script(USDU_upscaler.Script):
@@ -694,6 +693,7 @@ class Script(USDU_upscaler.Script):
         custom_width: int,
         custom_height: int,
         custom_scale: float,
+        pipeline: bool = False,
     ) -> Processed:
         """#### Run the script.
 
@@ -767,7 +767,7 @@ class Script(USDU_upscaler.Script):
         )
         upscaler.print_info()
         upscaler.add_extra_info()
-        upscaler.process()
+        upscaler.process(pipeline=pipeline)
         result_images = upscaler.result_images
 
         return Processed(
@@ -875,10 +875,9 @@ def new_upscale(self: USDUpscaler) -> None:
         - `self` (USDUpscaler): The USDUpscaler instance.
     """
     old_upscale(self)
-    global batch
-    batch = [self.image] + [
+    USDU_upscaler.batch = [self.image] + [
         img.resize((self.p.width, self.p.height), resample=Image.LANCZOS)
-        for img in batch[1:]
+        for img in USDU_upscaler.batch[1:]
     ]
 
 
@@ -928,6 +927,7 @@ class UltimateSDUpscale:
         seam_fix_width: int,
         seam_fix_padding: int,
         force_uniform_tiles: bool,
+        pipeline: bool = False,
     ) -> tuple:
         """#### Upscale the image.
 
@@ -964,13 +964,12 @@ class UltimateSDUpscale:
 
         # Upscaler
         # An object that the script works with
-        global sd_upscalers, actual_upscaler, batch
-        sd_upscalers[0] = USDU_upscaler.UpscalerData()
+        USDU_upscaler.sd_upscalers[0] = USDU_upscaler.UpscalerData()
         # Where the actual upscaler is stored, will be used when the script upscales using the Upscaler in UpscalerData
-        actual_upscaler = upscale_model
+        USDU_upscaler.actual_upscaler = upscale_model
 
         # Set the batch of images
-        batch = [image_util.tensor_to_pil(image, i) for i in range(len(image))]
+        USDU_upscaler.batch = [image_util.tensor_to_pil(image, i) for i in range(len(image))]
 
         # Processing
         sdprocessing = StableDiffusionProcessing(
@@ -1011,9 +1010,10 @@ class UltimateSDUpscale:
             custom_width=None,
             custom_height=None,
             custom_scale=upscale_by,
+            pipeline=pipeline,
         )
 
         # Return the resulting images
-        images = [image_util.pil_to_tensor(img) for img in batch]
+        images = [image_util.pil_to_tensor(img) for img in USDU_upscaler.batch]
         tensor = torch.cat(images, dim=0)
         return (tensor,)

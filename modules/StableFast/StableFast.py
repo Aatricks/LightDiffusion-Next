@@ -70,14 +70,14 @@ class StableFastPatch:
             model_function, input_x=input_x, timestep=timestep_, **c
         )
 
-    def to(self, device: torch.device) -> StableFastPatch:
+    def to(self, device: torch.device) -> object:
         """#### Move the model to a specific device.
 
         #### Args:
             - `device` (torch.device): The device.
 
         #### Returns:
-            - `StableFastPatch`: The StableFastPatch instance.
+            - `object`: The StableFastPatch instance.
         """
         if isinstance(device, torch.device):
             if self.config.enable_cuda_graph or self.config.enable_jit_freeze:
