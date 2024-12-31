@@ -2,7 +2,6 @@ from typing import Dict, Tuple
 import torch
 from modules.Device import Device
 
-
 class LatentFormat:
     """#### Base class for latent formats.
 
@@ -13,7 +12,7 @@ class LatentFormat:
         - `LatentFormat`: A latent format object.
     """
 
-    scale_factor = 1.0
+    scale_factor: float = 1.0
 
     def process_in(self, latent: torch.Tensor) -> torch.Tensor:
         """#### Process the latent input, by multiplying it by the scale factor.
@@ -37,7 +36,6 @@ class LatentFormat:
         """
         return latent / self.scale_factor
 
-
 class SD15(LatentFormat):
     """#### SD15 latent format.
 
@@ -46,6 +44,11 @@ class SD15(LatentFormat):
     """
 
     def __init__(self, scale_factor: float = 0.18215):
+        """#### Initialize the SD15 latent format.
+
+        #### Args:
+            - `scale_factor` (float, optional): The scale factor. Defaults to 0.18215.
+        """
         self.scale_factor = scale_factor
         self.latent_rgb_factors = [
             #   R        G        B
@@ -56,7 +59,6 @@ class SD15(LatentFormat):
         ]
         self.taesd_decoder_name = "taesd_decoder"
 
-
 class EmptyLatentImage:
     """#### A class to generate an empty latent image.
 
@@ -65,6 +67,7 @@ class EmptyLatentImage:
     """
 
     def __init__(self):
+        """#### Initialize the EmptyLatentImage class."""
         self.device = Device.intermediate_device()
 
     def generate(
@@ -75,7 +78,7 @@ class EmptyLatentImage:
         #### Args:
             - `width` (int): The width of the latent image.
             - `height` (int): The height of the latent image.
-            - `batch_size` (int, optional): _description_. Defaults to 1.
+            - `batch_size` (int, optional): The batch size. Defaults to 1.
 
         #### Returns:
             - `Tuple[Dict[str, torch.Tensor]]`: The generated latent image.

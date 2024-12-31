@@ -6,6 +6,8 @@ try:
 except ImportError:
     pass
 
+# Taken from https://github.com/gameltb/ComfyUI_stable_fast
+
 
 def gen_stable_fast_config() -> CompilationConfig:
     """#### Generate the StableFast configuration.

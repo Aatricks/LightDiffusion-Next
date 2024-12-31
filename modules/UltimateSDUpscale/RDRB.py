@@ -2,29 +2,47 @@ from collections import OrderedDict
 import functools
 import math
 import re
-from typing import Union
+from typing import Union, Dict
 import torch
 import torch.nn as nn
 from modules.UltimateSDUpscale import USDU_util
 
 
 class RRDB(nn.Module):
+    """#### Residual in Residual Dense Block (RRDB) class.
+
+    #### Args:
+        - `nf` (int): Number of filters.
+        - `kernel_size` (int, optional): Kernel size. Defaults to 3.
+        - `gc` (int, optional): Growth channel. Defaults to 32.
+        - `stride` (int, optional): Stride. Defaults to 1.
+        - `bias` (bool, optional): Whether to use bias. Defaults to True.
+        - `pad_type` (str, optional): Padding type. Defaults to "zero".
+        - `norm_type` (str, optional): Normalization type. Defaults to None.
+        - `act_type` (str, optional): Activation type. Defaults to "leakyrelu".
+        - `mode` (USDU_util.ConvMode, optional): Convolution mode. Defaults to "CNA".
+        - `_convtype` (str, optional): Convolution type. Defaults to "Conv2D".
+        - `_spectral_norm` (bool, optional): Whether to use spectral normalization. Defaults to False.
+        - `plus` (bool, optional): Whether to use the plus variant. Defaults to False.
+        - `c2x2` (bool, optional): Whether to use 2x2 convolution. Defaults to False.
+    """
+
     def __init__(
         self,
-        nf,
-        kernel_size=3,
-        gc=32,
-        stride=1,
+        nf: int,
+        kernel_size: int = 3,
+        gc: int = 32,
+        stride: int = 1,
         bias: bool = True,
-        pad_type="zero",
-        norm_type=None,
-        act_type="leakyrelu",
+        pad_type: str = "zero",
+        norm_type: str = None,
+        act_type: str = "leakyrelu",
         mode: USDU_util.ConvMode = "CNA",
-        _convtype="Conv2D",
-        _spectral_norm=False,
-        plus=False,
-        c2x2=False,
-    ):
+        _convtype: str = "Conv2D",
+        _spectral_norm: bool = False,
+        plus: bool = False,
+        c2x2: bool = False,
+    ) -> None:
         super(RRDB, self).__init__()
         self.RDB1 = ResidualDenseBlock_5C(
             nf,
@@ -66,7 +84,15 @@ class RRDB(nn.Module):
             c2x2=c2x2,
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass of the RRDB.
+
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         out = self.RDB1(x)
         out = self.RDB2(out)
         out = self.RDB3(out)
@@ -74,20 +100,36 @@ class RRDB(nn.Module):
 
 
 class ResidualDenseBlock_5C(nn.Module):
+    """#### Residual Dense Block with 5 Convolutions (ResidualDenseBlock_5C) class.
+
+    #### Args:
+        - `nf` (int, optional): Number of filters. Defaults to 64.
+        - `kernel_size` (int, optional): Kernel size. Defaults to 3.
+        - `gc` (int, optional): Growth channel. Defaults to 32.
+        - `stride` (int, optional): Stride. Defaults to 1.
+        - `bias` (bool, optional): Whether to use bias. Defaults to True.
+        - `pad_type` (str, optional): Padding type. Defaults to "zero".
+        - `norm_type` (str, optional): Normalization type. Defaults to None.
+        - `act_type` (str, optional): Activation type. Defaults to "leakyrelu".
+        - `mode` (USDU_util.ConvMode, optional): Convolution mode. Defaults to "CNA".
+        - `plus` (bool, optional): Whether to use the plus variant. Defaults to False.
+        - `c2x2` (bool, optional): Whether to use 2x2 convolution. Defaults to False.
+    """
+
     def __init__(
         self,
-        nf=64,
-        kernel_size=3,
-        gc=32,
-        stride=1,
+        nf: int = 64,
+        kernel_size: int = 3,
+        gc: int = 32,
+        stride: int = 1,
         bias: bool = True,
-        pad_type="zero",
-        norm_type=None,
-        act_type="leakyrelu",
+        pad_type: str = "zero",
+        norm_type: str = None,
+        act_type: str = "leakyrelu",
         mode: USDU_util.ConvMode = "CNA",
-        plus=False,
-        c2x2=False,
-    ):
+        plus: bool = False,
+        c2x2: bool = False,
+    ) -> None:
         super(ResidualDenseBlock_5C, self).__init__()
 
         self.conv1x1 = None
@@ -154,7 +196,15 @@ class ResidualDenseBlock_5C(nn.Module):
             c2x2=c2x2,
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass of the ResidualDenseBlock_5C.
+
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         x1 = self.conv1(x)
         x2 = self.conv2(torch.cat((x, x1), 1))
         x3 = self.conv3(torch.cat((x, x1, x2), 1))
@@ -164,10 +214,20 @@ class ResidualDenseBlock_5C(nn.Module):
 
 
 class RRDBNet(nn.Module):
+    """#### Residual in Residual Dense Block Network (RRDBNet) class.
+
+    #### Args:
+        - `state_dict` (dict): State dictionary.
+        - `norm` (str, optional): Normalization type. Defaults to None.
+        - `act` (str, optional): Activation type. Defaults to "leakyrelu".
+        - `upsampler` (str, optional): Upsampler type. Defaults to "upconv".
+        - `mode` (USDU_util.ConvMode, optional): Convolution mode. Defaults to "CNA".
+    """
+
     def __init__(
         self,
-        state_dict,
-        norm=None,
+        state_dict: Dict[str, torch.Tensor],
+        norm: str = None,
         act: str = "leakyrelu",
         upsampler: str = "upconv",
         mode: USDU_util.ConvMode = "CNA",
@@ -292,7 +352,15 @@ class RRDBNet(nn.Module):
 
         self.load_state_dict(self.state, strict=False)
 
-    def new_to_old_arch(self, state):
+    def new_to_old_arch(self, state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """#### Convert new architecture state dictionary to old architecture.
+
+        #### Args:
+            - `state` (dict): State dictionary.
+
+        #### Returns:
+            - `dict`: Converted state dictionary.
+        """
         # add nb to state keys
         for kind in ("weight", "bias"):
             self.state_map[f"model.1.sub.{self.num_blocks}.{kind}"] = self.state_map[
@@ -333,7 +401,7 @@ class RRDBNet(nn.Module):
                 old_state[f"model.{max_upconv + 4}.bias"] = state[key]
 
         # Sort by first numeric value of each layer
-        def compare(item1, item2):
+        def compare(item1: str, item2: str) -> int:
             parts1 = item1.split(".")
             parts2 = item2.split(".")
             int1 = int(parts1[1])
@@ -348,6 +416,14 @@ class RRDBNet(nn.Module):
         return out_dict
 
     def get_scale(self, min_part: int = 6) -> int:
+        """#### Get the scale factor.
+
+        #### Args:
+            - `min_part` (int, optional): Minimum part. Defaults to 6.
+
+        #### Returns:
+            - `int`: Scale factor.
+        """
         n = 0
         for part in list(self.state):
             parts = part.split(".")[1:]
@@ -358,6 +434,11 @@ class RRDBNet(nn.Module):
         return 2**n
 
     def get_num_blocks(self) -> int:
+        """#### Get the number of blocks.
+
+        #### Returns:
+            - `int`: Number of blocks.
+        """
         nbs = []
         state_keys = self.state_map[r"model.1.sub.\1.RDB\2.conv\3.0.\4"] + (
             r"model\.\d+\.sub\.(\d+)\.RDB(\d+)\.conv(\d+)\.0\.(weight|bias)",
@@ -371,7 +452,15 @@ class RRDBNet(nn.Module):
                 break
         return max(*nbs) + 1
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass of the RRDBNet.
+
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         return self.model(x)
 
 

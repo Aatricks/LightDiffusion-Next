@@ -8,7 +8,15 @@ from modules.UltimateSDUpscale import image_util
 from modules.Utilities import util
 
 
-def load_state_dict(state_dict) -> RDRB.PyTorchModel:
+def load_state_dict(state_dict: dict) -> RDRB.PyTorchModel:
+    """#### Load a state dictionary into a PyTorch model.
+
+    #### Args:
+        - `state_dict` (dict): The state dictionary.
+
+    #### Returns:
+        - `RDRB.PyTorchModel`: The loaded PyTorch model.
+    """
     logger.debug("Loading state dict into pytorch model arch")
     state_dict_keys = list(state_dict.keys())
     if "params_ema" in state_dict_keys:
@@ -18,12 +26,17 @@ def load_state_dict(state_dict) -> RDRB.PyTorchModel:
 
 
 class UpscaleModelLoader:
-    RETURN_TYPES = ("UPSCALE_MODEL",)
-    FUNCTION = "load_model"
+    """#### Class for loading upscale models."""
 
-    CATEGORY = "loaders"
+    def load_model(self, model_name: str) -> tuple:
+        """#### Load an upscale model.
 
-    def load_model(self, model_name):
+        #### Args:
+            - `model_name` (str): The name of the model.
+
+        #### Returns:
+            - `tuple`: The loaded model.
+        """
         model_path = f"_internal/ESRGAN/{model_name}"
         sd = util.load_torch_file(model_path, safe_load=True)
         if "module.layers.0.residual_group.blocks.0.norm1.weight" in sd:
@@ -33,12 +46,18 @@ class UpscaleModelLoader:
 
 
 class ImageUpscaleWithModel:
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "upscale"
+    """#### Class for upscaling images with a model."""
 
-    CATEGORY = "image/upscaling"
+    def upscale(self, upscale_model: torch.nn.Module, image: torch.Tensor) -> tuple:
+        """#### Upscale an image using a model.
 
-    def upscale(self, upscale_model, image):
+        #### Args:
+            - `upscale_model` (torch.nn.Module): The upscale model.
+            - `image` (torch.Tensor): The input image tensor.
+
+        #### Returns:
+            - `tuple`: The upscaled image tensor.
+        """
         device = torch.device(torch.cuda.current_device())
         upscale_model.to(device)
         in_img = image.movedim(-1, -3).to(device)
@@ -73,25 +92,33 @@ class ImageUpscaleWithModel:
         return (s,)
 
 
-def torch_gc():
+def torch_gc() -> None:
+    """#### Perform garbage collection for PyTorch."""
     pass
 
 
 class Script:
+    """#### Class representing a script."""
     pass
 
 
 class Options:
-    img2img_background_color = "#ffffff"  # Set to white for now
+    """#### Class representing options."""
+
+    img2img_background_color: str = "#ffffff"  # Set to white for now
 
 
 class State:
-    interrupted = False
+    """#### Class representing the state."""
 
-    def begin(self):
+    interrupted: bool = False
+
+    def begin(self) -> None:
+        """#### Begin the state."""
         pass
 
-    def end(self):
+    def end(self) -> None:
+        """#### End the state."""
         pass
 
 
@@ -111,22 +138,45 @@ if not hasattr(Image, "Resampling"):  # For older versions of Pillow
 
 
 class Upscaler:
-    def _upscale(self, img: Image, scale):
+    """#### Class for upscaling images."""
+
+    def _upscale(self, img: Image.Image, scale: float) -> Image.Image:
+        """#### Upscale an image.
+
+        #### Args:
+            - `img` (Image.Image): The input image.
+            - `scale` (float): The scale factor.
+
+        #### Returns:
+            - `Image.Image`: The upscaled image.
+        """
         global actual_upscaler
         tensor = image_util.pil_to_tensor(img)
         image_upscale_node = ImageUpscaleWithModel()
         (upscaled,) = image_upscale_node.upscale(actual_upscaler, tensor)
         return image_util.tensor_to_pil(upscaled)
 
-    def upscale(self, img: Image, scale, selected_model: str = None):
+    def upscale(self, img: Image.Image, scale: float, selected_model: str = None) -> Image.Image:
+        """#### Upscale an image with a selected model.
+
+        #### Args:
+            - `img` (Image.Image): The input image.
+            - `scale` (float): The scale factor.
+            - `selected_model` (str, optional): The selected model. Defaults to None.
+
+        #### Returns:
+            - `Image.Image`: The upscaled image.
+        """
         global batch
         batch = [self._upscale(img, scale) for img in batch]
         return batch[0]
 
 
 class UpscalerData:
-    name = ""
-    data_path = ""
+    """#### Class for storing upscaler data."""
+
+    name: str = ""
+    data_path: str = ""
 
     def __init__(self):
         self.scaler = Upscaler()

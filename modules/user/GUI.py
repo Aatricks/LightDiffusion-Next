@@ -37,7 +37,10 @@ generated = 0
 
 
 class App(tk.Tk):
+    """Main application class for the LightDiffusion GUI."""
+
     def __init__(self):
+        """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
         self.geometry("800x700")
@@ -241,7 +244,12 @@ class App(tk.Tk):
         self.display_most_recent_image_flag = False
         self.display_most_recent_image()
 
-    def _img2img(self, file_path):
+    def _img2img(self, file_path: str) -> None:
+        """Perform img2img on the selected image.
+
+        Args:
+            file_path (str): The path to the selected image.
+        """
         prompt = self.prompt_entry.get("1.0", tk.END)
         neg = self.neg.get("1.0", tk.END)
         img = Image.open(file_path)
@@ -347,29 +355,38 @@ class App(tk.Tk):
         except:
             pass
 
-    def img2img(self):
+    def img2img(self) -> None:
+        """Open the file selector and run img2img on the selected image."""
         file_path = filedialog.askopenfilename()
         if file_path:
             threading.Thread(
                 target=self._img2img, args=(file_path,), daemon=True
             ).start()
 
-    def print_hires_fix(self):
+    def print_hires_fix(self) -> None:
+        """Print the status of the hires fix checkbox."""
         if self.hires_fix_var.get() is True:
             print("Hires fix is ON")
         else:
             print("Hires fix is OFF")
 
-    def print_adetailer(self):
+    def print_adetailer(self) -> None:
+        """Print the status of the adetailer checkbox."""
         if self.adetailer_var.get() is True:
             print("Adetailer is ON")
         else:
             print("Adetailer is OFF")
 
-    def generate_image(self):
+    def generate_image(self) -> None:
+        """Start the image generation process."""
         threading.Thread(target=self._generate_image, daemon=True).start()
 
-    def _prep(self):
+    def _prep(self) -> tuple:
+        """Prepare the necessary components for image generation.
+
+        Returns:
+            tuple: The prepared components.
+        """
         if self.dropdown.get() != self.ckpt:
             self.ckpt = self.dropdown.get()
             with torch.inference_mode():
@@ -399,7 +416,8 @@ class App(tk.Tk):
             self.ultimatesdupscale,
         )
 
-    def _generate_image(self):
+    def _generate_image(self) -> None:
+        """Generate an image based on the provided prompt and settings."""
         prompt = self.prompt_entry.get("1.0", tk.END)
         if self.enhancer_var.get() is True:
             prompt = Enhancer.enhance_prompt()
@@ -657,12 +675,18 @@ class App(tk.Tk):
         generated = img
         self.display_most_recent_image_flag = True
 
-    def update_labels(self):
+    def update_labels(self) -> None:
+        """Update the labels for the sliders."""
         self.width_label.configure(text=f"Width: {int(self.width_slider.get())}")
         self.height_label.configure(text=f"Height: {int(self.height_slider.get())}")
         self.cfg_label.configure(text=f"CFG: {int(self.cfg_slider.get())}")
 
-    def update_image(self, img):
+    def update_image(self, img: Image.Image) -> None:
+        """Update the displayed image.
+
+        Args:
+            img (Image.Image): The image to display.
+        """
         global generated
         # Calculate the aspect ratio of the original image
         aspect_ratio = img.width / img.height
@@ -685,7 +709,12 @@ class App(tk.Tk):
             self.update_image(generated)
             self.display_most_recent_image_flag = False
 
-    def _update_image_label(self, img):
+    def _update_image_label(self, img: Image.Image) -> None:
+        """Update the image label with the provided image.
+
+        Args:
+            img (Image.Image): The image to display.
+        """
         # Convert the PIL image to a Tkinter PhotoImage
         tk_image = ImageTk.PhotoImage(img)
         # Update the image label with the Tkinter PhotoImage
@@ -693,7 +722,8 @@ class App(tk.Tk):
         # Keep a reference to the image to prevent it from being garbage collected
         self.image_label.image = tk_image
 
-    def display_most_recent_image(self):
+    def display_most_recent_image(self) -> None:
+        """Display the most recent image from the output directory."""
         # Get a list of all image files in the output directory
         image_files = glob.glob("./_internal/output/*")
 
@@ -708,11 +738,17 @@ class App(tk.Tk):
         img = Image.open(image_files[0])
         self.update_image(img)
 
-    def on_resize(self, event):
+    def on_resize(self, event: tk.Event) -> None:
+        """Handle the window resize event.
+
+        Args:
+            event (tk.Event): The resize event.
+        """
         if hasattr(self, "img"):
             self.update_image(self.img)
 
-    def interrupt_generation(self):
+    def interrupt_generation(self) -> None:
+        """Interrupt the image generation process."""
         self.interrupt_flag = True
 
 

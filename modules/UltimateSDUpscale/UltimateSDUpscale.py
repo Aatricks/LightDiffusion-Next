@@ -6,28 +6,51 @@ from PIL import ImageFilter, ImageDraw, Image
 from enum import Enum
 import math
 
+# taken from https://github.com/ssitu/ComfyUI_UltimateSDUpscale
+
 
 class UnsupportedModel(Exception):
+    """#### Exception raised for unsupported models."""
     pass
 
 
 class StableDiffusionProcessing:
+    """#### Class representing the processing of Stable Diffusion images."""
+
     def __init__(
         self,
-        init_img,
-        model,
-        positive,
-        negative,
-        vae,
-        seed,
-        steps,
-        cfg,
-        sampler_name,
-        scheduler,
-        denoise,
-        upscale_by,
-        uniform_tile_mode,
+        init_img: Image.Image,
+        model: torch.nn.Module,
+        positive: str,
+        negative: str,
+        vae: VariationalAE,
+        seed: int,
+        steps: int,
+        cfg: float,
+        sampler_name: str,
+        scheduler: str,
+        denoise: float,
+        upscale_by: float,
+        uniform_tile_mode: bool,
     ):
+        """
+        #### Initialize the StableDiffusionProcessing class.
+
+        #### Args:
+            - `init_img` (Image.Image): The initial image.
+            - `model` (torch.nn.Module): The model.
+            - `positive` (str): The positive prompt.
+            - `negative` (str): The negative prompt.
+            - `vae` (VariationalAE): The variational autoencoder.
+            - `seed` (int): The seed.
+            - `steps` (int): The number of steps.
+            - `cfg` (float): The CFG scale.
+            - `sampler_name` (str): The sampler name.
+            - `scheduler` (str): The scheduler.
+            - `denoise` (float): The denoise strength.
+            - `upscale_by` (float): The upscale factor.
+            - `uniform_tile_mode` (bool): Whether to use uniform tile mode.
+        """
         # Variables used by the USDU script
         self.init_images = [init_img]
         self.image_mask = None
@@ -57,22 +80,58 @@ class StableDiffusionProcessing:
 
 
 class Processed:
+    """#### Class representing the processed images."""
+
     def __init__(
         self, p: StableDiffusionProcessing, images: list, seed: int, info: str
     ):
+        """
+        #### Initialize the Processed class.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `images` (list): The list of images.
+            - `seed` (int): The seed.
+            - `info` (str): The information string.
+        """
         self.images = images
         self.seed = seed
         self.info = info
 
-    def infotext(self, p: StableDiffusionProcessing, index):
+    def infotext(self, p: StableDiffusionProcessing, index: int) -> str:
+        """
+        #### Get the information text.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `index` (int): The index.
+
+        #### Returns:
+            - `str`: The information text.
+        """
         return None
 
 
-def fix_seed(p: StableDiffusionProcessing):
+def fix_seed(p: StableDiffusionProcessing) -> None:
+    """
+    #### Fix the seed for reproducibility.
+
+    #### Args:
+        - `p` (StableDiffusionProcessing): The processing object.
+    """
     pass
 
 
 def process_images(p: StableDiffusionProcessing) -> Processed:
+    """
+    #### Process the images.
+
+    #### Args:
+        - `p` (StableDiffusionProcessing): The processing object.
+
+    #### Returns:
+        - `Processed`: The processed images.
+    """
     # Where the main image generation happens in A1111
 
     # Setup
@@ -186,12 +245,14 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
 
 
 class USDUMode(Enum):
+    """#### Enum representing the modes for Ultimate SD Upscale."""
     LINEAR = 0
     CHESS = 1
     NONE = 2
 
 
 class USDUSFMode(Enum):
+    """#### Enum representing the seam fix modes for Ultimate SD Upscale."""
     NONE = 0
     BAND_PASS = 1
     HALF_TILE = 2
@@ -199,16 +260,30 @@ class USDUSFMode(Enum):
 
 
 class USDUpscaler:
+    """#### Class representing the Ultimate SD Upscaler."""
+
     def __init__(
         self,
-        p,
-        image,
+        p: StableDiffusionProcessing,
+        image: Image.Image,
         upscaler_index: int,
-        save_redraw,
-        save_seams_fix,
-        tile_width,
-        tile_height,
+        save_redraw: bool,
+        save_seams_fix: bool,
+        tile_width: int,
+        tile_height: int,
     ) -> None:
+        """
+        #### Initialize the USDUpscaler class.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `image` (Image.Image): The image.
+            - `upscaler_index` (int): The upscaler index.
+            - `save_redraw` (bool): Whether to save the redraw.
+            - `save_seams_fix` (bool): Whether to save the seams fix.
+            - `tile_width` (int): The tile width.
+            - `tile_height` (int): The tile height.
+        """
         self.p: StableDiffusionProcessing = p
         self.image: Image = image
         self.scale_factor = math.ceil(
@@ -228,8 +303,16 @@ class USDUpscaler:
         self.rows = math.ceil(self.p.height / self.redraw.tile_height)
         self.cols = math.ceil(self.p.width / self.redraw.tile_width)
 
-    def get_factor(self, num):
-        # Its just return, don't need elif
+    def get_factor(self, num: int) -> int:
+        """
+        #### Get the factor for a given number.
+
+        #### Args:
+            - `num` (int): The number.
+
+        #### Returns:
+            - `int`: The factor.
+        """
         if num == 1:
             return 2
         if num % 4 == 0:
@@ -240,7 +323,10 @@ class USDUpscaler:
             return 2
         return 0
 
-    def get_factors(self):
+    def get_factors(self) -> None:
+        """
+        #### Get the list of scale factors.
+        """
         scales = []
         current_scale = 1
         current_scale_factor = self.get_factor(self.scale_factor)
@@ -250,7 +336,10 @@ class USDUpscaler:
             current_scale = current_scale * current_scale_factor
         self.scales = enumerate(scales)
 
-    def upscale(self):
+    def upscale(self) -> None:
+        """
+        #### Upscale the image.
+        """
         # Log info
         print(f"Canva size: {self.p.width}x{self.p.height}")
         print(f"Image size: {self.image.width}x{self.image.height}")
@@ -268,13 +357,33 @@ class USDUpscaler:
             (self.p.width, self.p.height), resample=Image.LANCZOS
         )
 
-    def setup_redraw(self, redraw_mode, padding, mask_blur):
+    def setup_redraw(self, redraw_mode: int, padding: int, mask_blur: int) -> None:
+        """
+        #### Set up the redraw.
+
+        #### Args:
+            - `redraw_mode` (int): The redraw mode.
+            - `padding` (int): The padding.
+            - `mask_blur` (int): The mask blur.
+        """
         self.redraw.mode = USDUMode(redraw_mode)
         self.redraw.enabled = self.redraw.mode != USDUMode.NONE
         self.redraw.padding = padding
         self.p.mask_blur = mask_blur
 
-    def setup_seams_fix(self, padding, denoise, mask_blur, width, mode):
+    def setup_seams_fix(
+        self, padding: int, denoise: float, mask_blur: int, width: int, mode: int
+    ) -> None:
+        """
+        #### Set up the seams fix.
+
+        #### Args:
+            - `padding` (int): The padding.
+            - `denoise` (float): The denoise strength.
+            - `mask_blur` (int): The mask blur.
+            - `width` (int): The width.
+            - `mode` (int): The mode.
+        """
         self.seams_fix.padding = padding
         self.seams_fix.denoise = denoise
         self.seams_fix.mask_blur = mask_blur
@@ -282,20 +391,29 @@ class USDUpscaler:
         self.seams_fix.mode = USDUSFMode(mode)
         self.seams_fix.enabled = self.seams_fix.mode != USDUSFMode.NONE
 
-    def calc_jobs_count(self):
+    def calc_jobs_count(self) -> None:
+        """
+        #### Calculate the number of jobs.
+        """
         redraw_job_count = (self.rows * self.cols) if self.redraw.enabled else 0
         seams_job_count = self.rows * (self.cols - 1) + (self.rows - 1) * self.cols
         global state
         state.job_count = redraw_job_count + seams_job_count
 
-    def print_info(self):
+    def print_info(self) -> None:
+        """
+        #### Print the information.
+        """
         print(f"Tile size: {self.redraw.tile_width}x{self.redraw.tile_height}")
         print(f"Tiles amount: {self.rows * self.cols}")
         print(f"Grid: {self.rows}x{self.cols}")
         print(f"Redraw enabled: {self.redraw.enabled}")
         print(f"Seams fix mode: {self.seams_fix.mode.name}")
 
-    def add_extra_info(self):
+    def add_extra_info(self) -> None:
+        """
+        #### Add extra information.
+        """
         self.p.extra_generation_params["Ultimate SD upscale upscaler"] = (
             self.upscaler.name
         )
@@ -312,7 +430,10 @@ class USDUpscaler:
             self.redraw.padding
         )
 
-    def process(self):
+    def process(self) -> None:
+        """
+        #### Process the image.
+        """
         global state
         state.begin()
         self.calc_jobs_count()
@@ -330,7 +451,20 @@ class USDUpscaler:
 
 
 class USDURedraw:
-    def init_draw(self, p, width, height):
+    """#### Class representing the redraw functionality for Ultimate SD Upscale."""
+
+    def init_draw(self, p: StableDiffusionProcessing, width: int, height: int) -> tuple:
+        """
+        #### Initialize the draw.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `width` (int): The width.
+            - `height` (int): The height.
+
+        #### Returns:
+            - `tuple`: The mask and draw objects.
+        """
         p.inpaint_full_res = True
         p.inpaint_full_res_padding = self.padding
         p.width = math.ceil((self.tile_width + self.padding) / 64) * 64
@@ -339,7 +473,17 @@ class USDURedraw:
         draw = ImageDraw.Draw(mask)
         return mask, draw
 
-    def calc_rectangle(self, xi, yi):
+    def calc_rectangle(self, xi: int, yi: int) -> tuple:
+        """
+        #### Calculate the rectangle coordinates.
+
+        #### Args:
+            - `xi` (int): The x index.
+            - `yi` (int): The y index.
+
+        #### Returns:
+            - `tuple`: The rectangle coordinates.
+        """
         x1 = xi * self.tile_width
         y1 = yi * self.tile_height
         x2 = xi * self.tile_width + self.tile_width
@@ -347,7 +491,21 @@ class USDURedraw:
 
         return x1, y1, x2, y2
 
-    def linear_process(self, p, image, rows, cols):
+    def linear_process(
+        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int
+    ) -> Image.Image:
+        """
+        #### Perform linear processing.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `image` (Image.Image): The image.
+            - `rows` (int): The number of rows.
+            - `cols` (int): The number of columns.
+
+        #### Returns:
+            - `Image.Image`: The processed image.
+        """
         global state
         mask, draw = self.init_draw(p, image.width, image.height)
         for yi in range(rows):
@@ -368,18 +526,49 @@ class USDURedraw:
 
         return image
 
-    def start(self, p, image, rows, cols):
+    def start(self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int) -> Image.Image:
+        """#### Start the redraw.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `image` (Image.Image): The image.
+            - `rows` (int): The number of rows.
+            - `cols` (int): The number of columns.
+            
+        #### Returns:
+            - `Image.Image`: The processed image.
+        """
         self.initial_info = None
         return self.linear_process(p, image, rows, cols)
 
 
 class USDUSeamsFix:
-    def init_draw(self, p):
+    """#### Class representing the seams fix functionality for Ultimate SD Upscale."""
+
+    def init_draw(self, p: StableDiffusionProcessing) -> None:
+        """#### Initialize the draw.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+        """
         self.initial_info = None
         p.width = math.ceil((self.tile_width + self.padding) / 64) * 64
         p.height = math.ceil((self.tile_height + self.padding) / 64) * 64
 
-    def half_tile_process(self, p, image, rows, cols):
+    def half_tile_process(
+        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int
+    ) -> Image.Image:
+        """#### Perform half-tile processing.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `image` (Image.Image): The image.
+            - `rows` (int): The number of rows.
+            - `cols` (int): The number of columns.
+
+        #### Returns:
+            - `Image.Image`: The processed image.
+        """
         global state
         self.init_draw(p)
         processed = None
@@ -464,33 +653,74 @@ class USDUSeamsFix:
 
         return image
 
-    def start(self, p, image, rows, cols):
+    def start(
+        self, p: StableDiffusionProcessing, image: Image.Image, rows: int, cols: int
+    ) -> Image.Image:
+        """#### Start the seams fix process.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `image` (Image.Image): The image.
+            - `rows` (int): The number of rows.
+            - `cols` (int): The number of columns.
+
+        #### Returns:
+            - `Image.Image`: The processed image.
+        """
         return self.half_tile_process(p, image, rows, cols)
 
 
 class Script(USDU_upscaler.Script):
+    """#### Class representing the script for Ultimate SD Upscale."""
+
     def run(
         self,
-        p,
-        _,
-        tile_width,
-        tile_height,
-        mask_blur,
-        padding,
-        seams_fix_width,
-        seams_fix_denoise,
-        seams_fix_padding,
-        upscaler_index,
-        save_upscaled_image,
-        redraw_mode,
-        save_seams_fix_image,
-        seams_fix_mask_blur,
-        seams_fix_type,
-        target_size_type,
-        custom_width,
-        custom_height,
-        custom_scale,
-    ):
+        p: StableDiffusionProcessing,
+        _: None,
+        tile_width: int,
+        tile_height: int,
+        mask_blur: int,
+        padding: int,
+        seams_fix_width: int,
+        seams_fix_denoise: float,
+        seams_fix_padding: int,
+        upscaler_index: int,
+        save_upscaled_image: bool,
+        redraw_mode: int,
+        save_seams_fix_image: bool,
+        seams_fix_mask_blur: int,
+        seams_fix_type: int,
+        target_size_type: int,
+        custom_width: int,
+        custom_height: int,
+        custom_scale: float,
+    ) -> Processed:
+        """#### Run the script.
+
+        #### Args:
+            - `p` (StableDiffusionProcessing): The processing object.
+            - `_` (None): Unused parameter.
+            - `tile_width` (int): The tile width.
+            - `tile_height` (int): The tile height.
+            - `mask_blur` (int): The mask blur.
+            - `padding` (int): The padding.
+            - `seams_fix_width` (int): The seams fix width.
+            - `seams_fix_denoise` (float): The seams fix denoise strength.
+            - `seams_fix_padding` (int): The seams fix padding.
+            - `upscaler_index` (int): The upscaler index.
+            - `save_upscaled_image` (bool): Whether to save the upscaled image.
+            - `redraw_mode` (int): The redraw mode.
+            - `save_seams_fix_image` (bool): Whether to save the seams fix image.
+            - `seams_fix_mask_blur` (int): The seams fix mask blur.
+            - `seams_fix_type` (int): The seams fix type.
+            - `target_size_type` (int): The target size type.
+            - `custom_width` (int): The custom width.
+            - `custom_height` (int): The custom height.
+            - `custom_scale` (float): The custom scale.
+
+        #### Returns:
+            - `Processed`: The processed images.
+        """
         # Init
         fix_seed(p)
         USDU_upscaler.torch_gc()
@@ -548,17 +778,32 @@ class Script(USDU_upscaler.Script):
         )
 
 
-#
-# Instead of using multiples of 64, use multiples of 8
-#
-
 # Upscaler
 old_init = USDUpscaler.__init__
 
 
 def new_init(
-    self, p, image, upscaler_index, save_redraw, save_seams_fix, tile_width, tile_height
-):
+    self: USDUpscaler,
+    p: StableDiffusionProcessing,
+    image: Image.Image,
+    upscaler_index: int,
+    save_redraw: bool,
+    save_seams_fix: bool,
+    tile_width: int,
+    tile_height: int,
+) -> None:
+    """#### Initialize the USDUpscaler class with new settings.
+
+    #### Args:
+        - `self` (USDUpscaler): The USDUpscaler instance.
+        - `p` (StableDiffusionProcessing): The processing object.
+        - `image` (Image.Image): The image.
+        - `upscaler_index` (int): The upscaler index.
+        - `save_redraw` (bool): Whether to save the redraw.
+        - `save_seams_fix` (bool): Whether to save the seams fix.
+        - `tile_width` (int): The tile width.
+        - `tile_height` (int): The tile height.
+    """
     p.width = math.ceil((image.width * p.upscale_by) / 8) * 8
     p.height = math.ceil((image.height * p.upscale_by) / 8) * 8
     old_init(
@@ -579,7 +824,20 @@ USDUpscaler.__init__ = new_init
 old_setup_redraw = USDURedraw.init_draw
 
 
-def new_setup_redraw(self, p, width, height):
+def new_setup_redraw(
+    self: USDURedraw, p: StableDiffusionProcessing, width: int, height: int
+) -> tuple:
+    """#### Set up the redraw with new settings.
+
+    #### Args:
+        - `self` (USDURedraw): The USDURedraw instance.
+        - `p` (StableDiffusionProcessing): The processing object.
+        - `width` (int): The width.
+        - `height` (int): The height.
+
+    #### Returns:
+        - `tuple`: The mask and draw objects.
+    """
     mask, draw = old_setup_redraw(self, p, width, height)
     p.width = math.ceil((self.tile_width + self.padding) / 8) * 8
     p.height = math.ceil((self.tile_height + self.padding) / 8) * 8
@@ -592,7 +850,13 @@ USDURedraw.init_draw = new_setup_redraw
 old_setup_seams_fix = USDUSeamsFix.init_draw
 
 
-def new_setup_seams_fix(self, p):
+def new_setup_seams_fix(self: USDUSeamsFix, p: StableDiffusionProcessing) -> None:
+    """#### Set up the seams fix with new settings.
+
+    #### Args:
+        - `self` (USDUSeamsFix): The USDUSeamsFix instance.
+        - `p` (StableDiffusionProcessing): The processing object.
+    """
     old_setup_seams_fix(self, p)
     p.width = math.ceil((self.tile_width + self.padding) / 8) * 8
     p.height = math.ceil((self.tile_height + self.padding) / 8) * 8
@@ -600,14 +864,16 @@ def new_setup_seams_fix(self, p):
 
 USDUSeamsFix.init_draw = new_setup_seams_fix
 
-#
 # Make the script upscale on a batch of images instead of one image
-#
-
 old_upscale = USDUpscaler.upscale
 
 
-def new_upscale(self):
+def new_upscale(self: USDUpscaler) -> None:
+    """#### Upscale a batch of images.
+
+    #### Args:
+        - `self` (USDUpscaler): The USDUpscaler instance.
+    """
     old_upscale(self)
     global batch
     batch = [self.image] + [
@@ -634,36 +900,67 @@ SEAM_FIX_MODES = {
 
 
 class UltimateSDUpscale:
+    """#### Class representing the Ultimate SD Upscale functionality."""
+
     def upscale(
         self,
-        image,
-        model,
-        positive,
-        negative,
-        vae,
-        upscale_by,
-        seed,
-        steps,
-        cfg,
-        sampler_name,
-        scheduler,
-        denoise,
-        upscale_model,
-        mode_type,
-        tile_width,
-        tile_height,
-        mask_blur,
-        tile_padding,
-        seam_fix_mode,
-        seam_fix_denoise,
-        seam_fix_mask_blur,
-        seam_fix_width,
-        seam_fix_padding,
-        force_uniform_tiles,
-    ):
-        #
+        image: torch.Tensor,
+        model: torch.nn.Module,
+        positive: str,
+        negative: str,
+        vae: VariationalAE,
+        upscale_by: float,
+        seed: int,
+        steps: int,
+        cfg: float,
+        sampler_name: str,
+        scheduler: str,
+        denoise: float,
+        upscale_model: any,
+        mode_type: str,
+        tile_width: int,
+        tile_height: int,
+        mask_blur: int,
+        tile_padding: int,
+        seam_fix_mode: str,
+        seam_fix_denoise: float,
+        seam_fix_mask_blur: int,
+        seam_fix_width: int,
+        seam_fix_padding: int,
+        force_uniform_tiles: bool,
+    ) -> tuple:
+        """#### Upscale the image.
+
+        #### Args:
+            - `image` (torch.Tensor): The image tensor.
+            - `model` (torch.nn.Module): The model.
+            - `positive` (str): The positive prompt.
+            - `negative` (str): The negative prompt.
+            - `vae` (VariationalAE): The variational autoencoder.
+            - `upscale_by` (float): The upscale factor.
+            - `seed` (int): The seed.
+            - `steps` (int): The number of steps.
+            - `cfg` (float): The CFG scale.
+            - `sampler_name` (str): The sampler name.
+            - `scheduler` (str): The scheduler.
+            - `denoise` (float): The denoise strength.
+            - `upscale_model` (any): The upscale model.
+            - `mode_type` (str): The mode type.
+            - `tile_width` (int): The tile width.
+            - `tile_height` (int): The tile height.
+            - `mask_blur` (int): The mask blur.
+            - `tile_padding` (int): The tile padding.
+            - `seam_fix_mode` (str): The seam fix mode.
+            - `seam_fix_denoise` (float): The seam fix denoise strength.
+            - `seam_fix_mask_blur` (int): The seam fix mask blur.
+            - `seam_fix_width` (int): The seam fix width.
+            - `seam_fix_padding` (int): The seam fix padding.
+            - `force_uniform_tiles` (bool): Whether to force uniform tiles.
+
+        #### Returns:
+            - `tuple`: The resulting tensor.
+        """
         # Set up A1111 patches
-        #
 
         # Upscaler
         # An object that the script works with
@@ -692,9 +989,7 @@ class UltimateSDUpscale:
             force_uniform_tiles,
         )
 
-        #
         # Running the script
-        #
         script = Script()
         script.run(
             p=sdprocessing,

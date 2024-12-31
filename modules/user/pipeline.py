@@ -29,7 +29,17 @@ torch.compiler.allow_in_graph
 
 # TODO: test compilation speedup
 # @torch.compile
-def pipeline(prompt, w, h, hires_fix=False, adetailer=False, enhance_prompt=False):
+def pipeline(prompt: str, w: int, h: int, hires_fix: bool = False, adetailer: bool = False, enhance_prompt: bool = False) -> None:
+    """#### Run the LightDiffusion pipeline.
+
+    #### Args:
+        - `prompt` (str): The prompt for the pipeline.
+        - `w` (int): The width of the generated image.
+        - `h` (int): The height of the generated image.
+        - `hires_fix` (bool, optional): Enable high-resolution fix. Defaults to False.
+        - `adetailer` (bool, optional): Enable automatic face and body enhancing. Defaults to False.
+        - `enhance_prompt` (bool, optional): Enable llama3.2 prompt enhancement. Defaults to False.
+    """
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         checkpointloadersimple = Loader.CheckpointLoaderSimple()

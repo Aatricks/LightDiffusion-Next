@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import math
 from time import time
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Tuple, Dict, List
 from modules.Model import ModelPatcher
 
 import torch
@@ -27,14 +27,16 @@ from .utils import (
 
 F = torch.nn.functional
 
-SCALE_METHODS = ()
-REVERSE_SCALE_METHODS = ()
-
-
-# Taken from https://github.com/blepping/comfyui_jankhidiffusion
+SCALE_METHODS: Tuple[str, ...] = ()
+REVERSE_SCALE_METHODS: Tuple[str, ...] = ()
 
 
 def init_integrations(_integrations) -> None:
+    """#### Initialize integrations.
+
+    #### Args:
+        - `_integrations` (Any): The integrations object.
+    """
     global scale_samples, SCALE_METHODS, REVERSE_SCALE_METHODS  # noqa: PLW0603
     SCALE_METHODS = ("disabled", "skip", *utils.UPSCALE_METHODS)
     REVERSE_SCALE_METHODS = utils.UPSCALE_METHODS
@@ -47,6 +49,18 @@ DEFAULT_WARN_INTERVAL = 60
 
 
 class Preset(NamedTuple):
+    """#### Class representing a preset configuration.
+
+    #### Args:
+        - `input_blocks` (str): The input blocks.
+        - `middle_blocks` (str): The middle blocks.
+        - `output_blocks` (str): The output blocks.
+        - `time_mode` (TimeMode): The time mode.
+        - `start_time` (float): The start time.
+        - `end_time` (float): The end time.
+        - `scale_mode` (str): The scale mode.
+        - `reverse_scale_mode` (str): The reverse scale mode.
+    """
     input_blocks: str = ""
     middle_blocks: str = ""
     output_blocks: str = ""
@@ -57,38 +71,66 @@ class Preset(NamedTuple):
     reverse_scale_mode: str = "nearest-exact"
 
     @property
-    def as_dict(self):
+    def as_dict(self) -> Dict[str, Any]:
+        """#### Convert the preset to a dictionary.
+
+        #### Returns:
+            - `Dict[str, Any]`: The preset as a dictionary.
+        """
         return {k: getattr(self, k) for k in self._fields}
 
     @property
-    def pretty_blocks(self):
+    def pretty_blocks(self) -> str:
+        """#### Get a pretty string representation of the blocks.
+
+        #### Returns:
+            - `str`: The pretty string representation of the blocks.
+        """
         blocks = (self.input_blocks, self.middle_blocks, self.output_blocks)
         return " / ".join(b or "none" for b in blocks)
 
 
-SIMPLE_PRESETS = {
+SIMPLE_PRESETS: Dict[ModelType, Preset] = {
     ModelType.SD15: Preset(input_blocks="1,2", output_blocks="11,10,9"),
     ModelType.SDXL: Preset(input_blocks="4,5", output_blocks="3,4,5"),
 }
 
 
 class WindowSize(NamedTuple):
+    """#### Class representing the window size.
+
+    #### Args:
+        - `height` (int): The height of the window.
+        - `width` (int): The width of the window.
+    """
     height: int
     width: int
 
     @property
-    def sum(self):
+    def sum(self) -> int:
+        """#### Get the sum of the height and width.
+
+        #### Returns:
+            - `int`: The sum of the height and width.
+        """
         return self.height * self.width
 
-    def __neg__(self):
+    def __neg__(self) -> WindowSize:
+        """#### Negate the window size.
+
+        #### Returns:
+            - `WindowSize`: The negated window size.
+        """
         return self.__class__(-self.height, -self.width)
 
 
 class ShiftSize(WindowSize):
+    """#### Class representing the shift size."""
     pass
 
 
 class LastShiftMode(StrEnum):
+    """#### Enum for the last shift mode."""
     GLOBAL = "global"
     BLOCK = "block"
     BOTH = "both"
@@ -96,24 +138,40 @@ class LastShiftMode(StrEnum):
 
 
 class LastShiftStrategy(StrEnum):
+    """#### Enum for the last shift strategy."""
     INCREMENT = "increment"
     DECREMENT = "decrement"
     RETRY = "retry"
 
 
 class Config(NamedTuple):
+    """#### Class representing the configuration.
+
+    #### Args:
+        - `start_sigma` (float): The start sigma.
+        - `end_sigma` (float): The end sigma.
+        - `use_blocks` (set): The blocks to use.
+        - `scale_mode` (str): The scale mode.
+        - `reverse_scale_mode` (str): The reverse scale mode.
+        - `silent` (bool): Whether to disable log warnings.
+        - `last_shift_mode` (LastShiftMode): The last shift mode.
+        - `last_shift_strategy` (LastShiftStrategy): The last shift strategy.
+        - `pre_window_multiplier` (float): The pre-window multiplier.
+        - `post_window_multiplier` (float): The post-window multiplier.
+        - `pre_window_reverse_multiplier` (float): The pre-window reverse multiplier.
+        - `post_window_reverse_multiplier` (float): The post-window reverse multiplier.
+        - `force_apply_attn2` (bool): Whether to force apply attention 2.
+        - `rescale_search_tolerance` (int): The rescale search tolerance.
+        - `verbose` (int): The verbosity level.
+    """
     start_sigma: float
     end_sigma: float
     use_blocks: set
     scale_mode: str = "nearest-exact"
     reverse_scale_mode: str = "nearest-exact"
-    # Allows disabling the log warning for incompatible sizes.
     silent: bool = False
-    # Mode for trying to avoid using the same window size consecutively.
     last_shift_mode: LastShiftMode = LastShiftMode.GLOBAL
-    # Strategy to use when avoiding a duplicate window size.
     last_shift_strategy: LastShiftStrategy = LastShiftStrategy.INCREMENT
-    # Allows multiplying the tensor going into/out of the window or window reverse effect.
     pre_window_multiplier: float = 1.0
     post_window_multiplier: float = 1.0
     pre_window_reverse_multiplier: float = 1.0
@@ -127,14 +185,29 @@ class Config(NamedTuple):
         cls,
         *,
         ms: object,
-        input_blocks: str | list[int],
-        middle_blocks: str | list[int],
-        output_blocks: str | list[int],
+        input_blocks: str | List[int],
+        middle_blocks: str | List[int],
+        output_blocks: str | List[int],
         time_mode: str | TimeMode,
         start_time: float,
         end_time: float,
-        **kwargs: dict,
-    ) -> object:
+        **kwargs: Dict[str, Any],
+    ) -> Config:
+        """#### Build a configuration object.
+
+        #### Args:
+            - `ms` (object): The model sampling object.
+            - `input_blocks` (str | List[int]): The input blocks.
+            - `middle_blocks` (str | List[int]): The middle blocks.
+            - `output_blocks` (str | List[int]): The output blocks.
+            - `time_mode` (str | TimeMode): The time mode.
+            - `start_time` (float): The start time.
+            - `end_time` (float): The end time.
+            - `kwargs` (Dict[str, Any]): Additional keyword arguments.
+
+        #### Returns:
+            - `Config`: The configuration object.
+        """
         time_mode: TimeMode = TimeMode(time_mode)
         start_sigma, end_sigma = convert_time(ms, time_mode, start_time, end_time)
         input_blocks, middle_blocks, output_blocks = itertools.starmap(
@@ -159,12 +232,27 @@ class Config(NamedTuple):
         multiplier: float = 1.0,
         post: bool = False,
     ) -> torch.Tensor:
+        """#### Multiply a tensor by a multiplier.
+
+        #### Args:
+            - `t` (torch.Tensor): The input tensor.
+            - `multiplier` (float, optional): The multiplier. Defaults to 1.0.
+            - `post` (bool, optional): Whether to multiply in-place. Defaults to False.
+
+        #### Returns:
+            - `torch.Tensor`: The multiplied tensor.
+        """
         if multiplier == 1.0:
             return t
         return t.mul_(multiplier) if post else t * multiplier
 
 
 class State:
+    """#### Class representing the state.
+
+    #### Args:
+        - `config` (Config): The configuration object.
+    """
     __slots__ = (
         "config",
         "last_block",
@@ -175,12 +263,13 @@ class State:
         "window_args",
     )
 
-    def __init__(self, config):
+    def __init__(self, config: Config):
         self.config = config
         self.last_warned = None
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
+        """#### Reset the state."""
         self.window_args = None
         self.last_sigma = None
         self.last_block = None
@@ -189,6 +278,11 @@ class State:
 
     @property
     def pretty_last_block(self) -> str:
+        """#### Get a pretty string representation of the last block.
+
+        #### Returns:
+            - `str`: The pretty string representation of the last block.
+        """
         if self.last_block is None:
             return "unknown"
         bt, bnum = self.last_block
@@ -196,7 +290,12 @@ class State:
         btstr = ("in", "mid", "out")[bt]
         return f"{attstr}{btstr}.{bnum}"
 
-    def maybe_warning(self, s):
+    def maybe_warning(self, s: str) -> None:
+        """#### Log a warning if necessary.
+
+        #### Args:
+            - `s` (str): The warning message.
+        """
         if self.config.silent:
             return
         now = time()
@@ -210,11 +309,18 @@ class State:
             )
             self.last_warned = now
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """#### Get a string representation of the state.
+
+        #### Returns:
+            - `str`: The string representation of the state.
+        """
         return f"<MSWMSAAttentionState:last_sigma={self.last_sigma}, last_block={self.pretty_last_block}, last_shift={self.last_shift}, last_shifts={self.last_shifts}>"
 
 
 class ApplyMSWMSAAttention(metaclass=IntegratedNode):
+    """#### Class for applying MSW-MSA attention."""
+
     RETURN_TYPES = ("MODEL",)
     OUTPUT_TOOLTIPS = ("Model patched with the MSW-MSA attention effect.",)
     FUNCTION = "patch"
@@ -222,7 +328,12 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
     DESCRIPTION = "This node applies an attention patch which _may_ slightly improve quality especially when generating at high resolutions. It is a large performance increase on SD1.x, may improve performance on SDXL. This is the advanced version of the node with more parameters, use ApplyMSWMSAAttentionSimple if this seems too complex. NOTE: Only supports SD1.x, SD2.x and SDXL."
 
     @classmethod
-    def INPUT_TYPES(cls):
+    def INPUT_TYPES(cls) -> Dict[str, Any]:
+        """#### Get the input types for the class.
+
+        #### Returns:
+            - `Dict[str, Any]`: The input types.
+        """
         return {
             "required": {
                 "input_blocks": (
@@ -303,6 +414,16 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
         state: State,
         window_index: int,
     ) -> torch.Tensor:
+        """#### Partition a tensor into windows.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `state` (State): The state object.
+            - `window_index` (int): The window index.
+
+        #### Returns:
+            - `torch.Tensor`: The partitioned tensor.
+        """
         config = state.config
         scale_mode = config.scale_mode
         x = config.maybe_multiply(x, config.pre_window_multiplier)
@@ -357,6 +478,16 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
         state: State,
         window_index: int = 0,
     ) -> torch.Tensor:
+        """#### Reverse the window partitioning of a tensor.
+
+        #### Args:
+            - `windows` (torch.Tensor): The input windows tensor.
+            - `state` (State): The state object.
+            - `window_index` (int, optional): The window index. Defaults to 0.
+
+        #### Returns:
+            - `torch.Tensor`: The reversed tensor.
+        """
         config = state.config
         windows = config.maybe_multiply(windows, config.pre_window_reverse_multiplier)
         window_size, shift_size, height, width = state.window_args[window_index]
@@ -394,14 +525,25 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
             x.view(batch, height * width, channels),
             config.post_window_reverse_multiplier,
         )
-
+        
     @staticmethod
     def get_window_args(
         config: Config,
         n: torch.Tensor,
         orig_shape: tuple,
         shift: int,
-    ) -> tuple[WindowSize, ShiftSize, int, int]:
+    ) -> Tuple[WindowSize, ShiftSize, int, int]:
+        """#### Get window arguments for MSW-MSA attention.
+
+        #### Args:
+            - `config` (Config): The configuration object.
+            - `n` (torch.Tensor): The input tensor.
+            - `orig_shape` (tuple): The original shape of the tensor.
+            - `shift` (int): The shift value.
+
+        #### Returns:
+            - `tuple[WindowSize, ShiftSize, int, int]`: The window size, shift size, height, and width.
+        """
         _batch, features, _channels = n.shape
         orig_height, orig_width = orig_shape[-2:]
 
@@ -411,10 +553,6 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
             features,
             tolerance=config.rescale_search_tolerance,
         )
-        # if (height, width) != (orig_height, orig_width):
-        #     print(
-        #         f"\nRESC: features={features}, orig={(orig_height, orig_width)}, new={(height, width)}",
-        #     )
         wheight, wwidth = math.ceil(height / 2), math.ceil(width / 2)
 
         if shift == 0:
@@ -432,8 +570,18 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
         curr_block: tuple,
         state: State,
         *,
-        shift_count=4,
+        shift_count: int = 4,
     ) -> int:
+        """#### Get the shift value for MSW-MSA attention.
+
+        #### Args:
+            - `curr_block` (tuple): The current block.
+            - `state` (State): The state object.
+            - `shift_count` (int, optional): The shift count. Defaults to 4.
+
+        #### Returns:
+            - `int`: The shift value.
+        """
         mode = state.config.last_shift_mode
         strat = state.config.last_shift_strategy
         shift = int(torch.rand(1, device="cpu").item() * shift_count)
@@ -469,7 +617,17 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
         model: ModelPatcher.ModelPatcher,
         yaml_parameters: str | None = None,
         **kwargs: dict[str, Any],
-    ) -> tuple[ModelPatcher.ModelPatcher]:
+    ) -> Tuple[ModelPatcher.ModelPatcher]:
+        """#### Patch the model with MSW-MSA attention.
+
+        #### Args:
+            - `model` (ModelPatcher.ModelPatcher): The model patcher.
+            - `yaml_parameters` (str | None, optional): The YAML parameters. Defaults to None.
+            - `kwargs` (dict[str, Any]): Additional keyword arguments.
+
+        #### Returns:
+            - `tuple[ModelPatcher.ModelPatcher]`: The patched model.
+        """
         if yaml_parameters:
             import yaml  # noqa: PLC0415
 
@@ -501,15 +659,23 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
             k: torch.Tensor,
             v: torch.Tensor,
             extra_options: dict,
-        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            """#### Apply attention patch.
+
+            #### Args:
+                - `q` (torch.Tensor): The query tensor.
+                - `k` (torch.Tensor): The key tensor.
+                - `v` (torch.Tensor): The value tensor.
+                - `extra_options` (dict): Additional options.
+
+            #### Returns:
+                - `tuple[torch.Tensor, torch.Tensor, torch.Tensor]`: The patched tensors.
+            """
             state.window_args = None
             sigma = get_sigma(extra_options)
             block = extra_options.get("block", ("missing", 0))
             curr_block = block_to_num(*block)
             if state.last_sigma is not None and sigma > state.last_sigma:
-                # logging.warning(
-                #     f"Doing reset: block={block}, sigma={sigma}, state={state}",
-                # )
                 state.reset()
             state.last_block = curr_block
             state.last_sigma = sigma
@@ -520,12 +686,9 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
             ):
                 return q, k, v
             orig_shape = extra_options["original_shape"]
-            # MSW-MSA
             shift = cls.get_shift(curr_block, state)
             state.last_shifts[curr_block] = state.last_shift = shift
             try:
-                # get_window_args() can fail with ValueError in rescale_size() for some weird resolutions/aspect ratios
-                #  so we catch it here and skip MSW-MSA attention in that case.
                 state.window_args = tuple(
                     cls.get_window_args(config, x, orig_shape, shift)
                     if x is not None
@@ -548,6 +711,15 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
             return result * 3 if len(result) == 1 else result
 
         def attn_output_patch(n: torch.Tensor, extra_options: dict) -> torch.Tensor:
+            """#### Apply attention output patch.
+
+            #### Args:
+                - `n` (torch.Tensor): The input tensor.
+                - `extra_options` (dict): Additional options.
+
+            #### Returns:
+                - `torch.Tensor`: The patched tensor.
+            """
             if state.window_args is None or state.last_block != block_to_num(
                 *extra_options.get("block", ("missing", 0)),
             ):
@@ -567,6 +739,8 @@ class ApplyMSWMSAAttention(metaclass=IntegratedNode):
 
 
 class ApplyMSWMSAAttentionSimple(metaclass=IntegratedNode):
+    """Class representing a simplified version of MSW-MSA Attention."""
+
     RETURN_TYPES = ("MODEL",)
     OUTPUT_TOOLTIPS = ("Model patched with the MSW-MSA attention effect.",)
     FUNCTION = "go"
@@ -575,6 +749,11 @@ class ApplyMSWMSAAttentionSimple(metaclass=IntegratedNode):
 
     @classmethod
     def INPUT_TYPES(cls) -> dict:
+        """#### Get input types for the class.
+
+        #### Returns:
+            - `dict`: The input types.
+        """
         return {
             "required": {
                 "model_type": (
@@ -597,7 +776,16 @@ class ApplyMSWMSAAttentionSimple(metaclass=IntegratedNode):
         cls,
         model_type: str | ModelType,
         model: ModelPatcher.ModelPatcher,
-    ) -> tuple[ModelPatcher.ModelPatcher]:
+    ) -> Tuple[ModelPatcher.ModelPatcher]:
+        """#### Apply the MSW-MSA attention patch.
+
+        #### Args:
+            - `model_type` (str | ModelType): The model type.
+            - `model` (ModelPatcher.ModelPatcher): The model patcher.
+
+        #### Returns:
+            - `tuple[ModelPatcher.ModelPatcher]`: The patched model.
+        """
         if model_type == "auto":
             guessed_model_type = guess_model_type(model)
             if guessed_model_type not in SIMPLE_PRESETS:
