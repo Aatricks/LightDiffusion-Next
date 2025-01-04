@@ -62,6 +62,7 @@ def pipeline(
         seed = last_seed
     else:
         seed = random.randint(1, 2**64)
+        last_seed = seed
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         checkpointloadersimple = Loader.CheckpointLoaderSimple()
