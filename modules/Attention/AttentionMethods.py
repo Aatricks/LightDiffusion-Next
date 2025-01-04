@@ -1,4 +1,7 @@
-import xformers
+try :
+    import xformers
+except ImportError:
+    pass
 import torch
 
 
