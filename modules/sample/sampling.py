@@ -428,6 +428,7 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
             extra_args: dict,
             callback: callable,
             disable: bool,
+            pipeline: bool,
         ) -> torch.Tensor:
             return samplers.sample_euler_ancestral(
                 model,
@@ -436,6 +437,7 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
                 extra_args=extra_args,
                 callback=callback,
                 disable=disable,
+                pipeline=pipeline,
                 **extra_options,
             )
 

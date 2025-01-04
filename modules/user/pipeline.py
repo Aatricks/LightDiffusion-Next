@@ -171,7 +171,7 @@ def pipeline(
                 dtype = torch.float32
             with (
                 torch.inference_mode(),
-                torch.autocast(device_type="cuda", dtype=dtype),
+                # torch.autocast(device_type="cuda", dtype=dtype),
                 torch.no_grad(),
             ):
                 try:
@@ -219,10 +219,8 @@ def pipeline(
                 )
                 if hires_fix:
                     latentupscale_254 = latent_upscale.upscale(
-                        upscale_method="bislerp",
                         width=w * 2,
                         height=h * 2,
-                        crop="disabled",
                         samples=ksampler_239[0],
                     )
                     ksampler_253 = ksampler_instance.sample(
@@ -238,6 +236,7 @@ def pipeline(
                         positive=cliptextencode_242[0],
                         negative=cliptextencode_243[0],
                         latent_image=latentupscale_254[0],
+                        pipeline=True,
                     )
                 else:
                     ksampler_253 = ksampler_239
