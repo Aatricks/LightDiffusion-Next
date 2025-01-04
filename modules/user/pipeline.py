@@ -31,8 +31,7 @@ torch.compiler.allow_in_graph
 last_seed = 0
 
 
-# TODO: test compilation speedup
-# @torch.compile
+
 def pipeline(
     prompt: str,
     w: int,
@@ -171,8 +170,7 @@ def pipeline(
                 dtype = torch.float32
             with (
                 torch.inference_mode(),
-                # torch.autocast(device_type="cuda", dtype=dtype),
-                torch.no_grad(),
+                torch.autocast(device_type="cuda", dtype=dtype),
             ):
                 try:
                     loraloader = LoRas.LoraLoader()
@@ -246,28 +244,25 @@ def pipeline(
                     vae=checkpointloadersimple_241[2],
                 )
 
-                if adetailer:
+            if adetailer:
+                with torch.inference_mode():
                     samloader = SAM.SAMLoader()
                     samloader_87 = samloader.load_model(
                         model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
                     )
-
                     cliptextencode_124 = cliptextencode.encode(
                         text="royal, detailed, magnificient, beautiful, seducing",
                         clip=loraloader_274[1],
                     )
-
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                     ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                         # model_name="face_yolov8m.pt"
                         model_name="person_yolov8m-seg.pt"
                     )
-
                     bboxdetectorsegs = bbox.BboxDetectorForEach()
                     samdetectorcombined = SAM.SAMDetectorCombined()
                     impactsegsandmask = SEGS.SegsBitwiseAndMask()
                     detailerforeachdebug = ADetailer.DetailerForEachTest()
-
                     bboxdetectorsegs_132 = bboxdetectorsegs.doit(
                         threshold=0.5,
                         dilation=10,
@@ -382,8 +377,8 @@ def pipeline(
                         filename_prefix="lD-2ndrefined",
                         images=detailerforeachdebug_145[0],
                     )
-                else:
-                    saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
+            else:
+                saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
 
 
 if __name__ == "__main__":
