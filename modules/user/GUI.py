@@ -484,6 +484,7 @@ class App(tk.Tk):
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
             )
             if self.stable_fast_var.get() is True:
+                from modules.StableFast import StableFast
                 try:
                     self.title("LightDiffusion - Generating StableFast model")
                 except:
