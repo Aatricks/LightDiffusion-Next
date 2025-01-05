@@ -17,7 +17,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from modules.AutoDetailer import SAM, ADetailer, bbox, SEGS
 from modules.AutoEncoders import VariationalAE
-from modules.StableFast import StableFast
 from modules.clip import Clip
 from modules.sample import sampling
 
@@ -281,6 +280,7 @@ class App(tk.Tk):
                 loraloader_274 = checkpointloadersimple_241
 
             if self.stable_fast_var.get() is True:
+                from modules.StableFast import StableFast
                 try:
                     app.title("LigtDiffusion - Generating StableFast model")
                 except:

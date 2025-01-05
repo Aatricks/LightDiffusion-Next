@@ -779,6 +779,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     #### Returns:
         - `Dict[str, Any]`: The detected UNet configuration.
     """
+    from modules.NeuralNetwork.transformer import count_blocks, calculate_transformer_depth
     state_dict_keys = list(state_dict.keys())
 
     unet_config = {
@@ -810,7 +811,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     last_res_blocks = 0
     last_channel_mult = 0
 
-    input_block_count = transformer.count_blocks(
+    input_block_count = count_blocks(
         state_dict_keys, "{}input_blocks".format(key_prefix) + ".{}."
     )
     for count in range(input_block_count):
@@ -834,7 +835,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
             current_res *= 2
             last_res_blocks = 0
             last_channel_mult = 0
-            out = transformer.calculate_transformer_depth(
+            out = calculate_transformer_depth(
                 prefix_output, state_dict_keys, state_dict
             )
             if out is not None:
@@ -850,7 +851,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
                     // model_channels
                 )
 
-                out = transformer.calculate_transformer_depth(
+                out = calculate_transformer_depth(
                     prefix, state_dict_keys, state_dict
                 )
                 if out is not None:
@@ -864,7 +865,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
 
             res_block_prefix = "{}0.in_layers.0.weight".format(prefix_output)
             if res_block_prefix in block_keys_output:
-                out = transformer.calculate_transformer_depth(
+                out = calculate_transformer_depth(
                     prefix_output, state_dict_keys, state_dict
                 )
                 if out is not None:
@@ -875,7 +876,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     num_res_blocks.append(last_res_blocks)
     channel_mult.append(last_channel_mult)
     if "{}middle_block.1.proj_in.weight".format(key_prefix) in state_dict_keys:
-        transformer_depth_middle = transformer.count_blocks(
+        transformer_depth_middle = count_blocks(
             state_dict_keys,
             "{}middle_block.1.transformer_blocks.".format(key_prefix) + "{}",
         )
