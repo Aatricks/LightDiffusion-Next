@@ -5,14 +5,10 @@ import torch
 import torchsde
 from torch import nn
 
-from modules.user import app_instance
 from modules.Utilities import util
 
 
-disable_gui = True
-if disable_gui is False:
-    from modules.AutoEncoders import taesd
-    from modules.user import app_instance
+disable_gui = False
 
 logging_level = logging.INFO
 
@@ -512,6 +508,9 @@ class DPMSolver(nn.Module):
         """
         global disable_gui
         disable_gui = True if pipeline is True else False
+        if disable_gui is False:
+            from modules.AutoEncoders import taesd
+            from modules.user import app_instance
         noise_sampler = (
             default_noise_sampler(x) if noise_sampler is None else noise_sampler
         )
@@ -528,7 +527,7 @@ class DPMSolver(nn.Module):
         info = {"steps": 0, "nfe": 0, "n_accept": 0, "n_reject": 0}
 
         while s < t_end - 1e-5 if forward else s > t_end + 1e-5:
-            if pipeline is False:
+            if disable_gui is False:
                 try:
                     app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
                 except:
@@ -562,12 +561,12 @@ class DPMSolver(nn.Module):
                 info["n_reject"] += 1
             info["nfe"] += order
             info["steps"] += 1
-            if pipeline is False:
-                if app_instance.app.previewer_checkbox.get() is True:
+            if disable_gui is False:
+                if app_instance.app.previewer_var.get() is True:
                     threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
                 else:
                     pass
-        if pipeline is False:
+        if disable_gui is False:
             try:
                 app_instance.app.title("LightDiffusion")
             except:

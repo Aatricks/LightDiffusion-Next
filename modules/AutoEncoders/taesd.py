@@ -258,7 +258,7 @@ def taesd_preview(x: torch.Tensor):
     #### Args:
         - `x` (torch.Tensor): The input latent.
     """
-    if app_instance.app.previewer_checkbox.get() is True:
+    if app_instance.app.previewer_var.get() is True:
         taesd_instance = TAESD()
         for image in taesd_instance.decode(x[0].unsqueeze(0))[0]:
             i = 255.0 * image.cpu().detach().numpy()

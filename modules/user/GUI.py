@@ -152,8 +152,9 @@ class App(tk.Tk):
         self.image_label = tk.Label(self.display, bg="black")
         self.image_label.pack(expand=True, padx=10, pady=10)
 
+        self.previewer_var = tk.BooleanVar()
         self.previewer_checkbox = ctk.CTkCheckBox(
-            self.display, text="Previewer", variable=tk.BooleanVar()
+            self.display, text="Previewer", variable=self.previewer_var, command=self.print_previewer
         )
         self.previewer_checkbox.pack(pady=10)
 
@@ -376,6 +377,13 @@ class App(tk.Tk):
             print("Adetailer is ON")
         else:
             print("Adetailer is OFF")
+            
+    def print_previewer(self) -> None:
+        """Print the status of the previewer checkbox."""
+        if self.previewer_var.get() is True:
+            print("Previewer is ON")
+        else:
+            print("Previewer is OFF")
 
     def generate_image(self) -> None:
         """Start the image generation process."""
@@ -521,10 +529,8 @@ class App(tk.Tk):
             )
             if self.hires_fix_var.get() is True:
                 latentupscale_254 = latentupscale.upscale(
-                    upscale_method="bislerp",
                     width=w * 2,
                     height=h * 2,
-                    crop="disabled",
                     samples=ksampler_239[0],
                 )
                 ksampler_253 = ksampler_instance.sample(
@@ -576,13 +582,13 @@ class App(tk.Tk):
                     mask_hint_threshold=0.7,
                     mask_hint_use_negative="False",
                     sam_model=samloader_87[0],
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     image=vaedecode_240[0],
                 )
                 if samdetectorcombined_139[0] is None:
                     return
                 impactsegsandmask_152 = impactsegsandmask.doit(
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     mask=samdetectorcombined_139[0],
                 )
                 detailerforeachdebug_145 = detailerforeachdebug.doit(
@@ -635,11 +641,11 @@ class App(tk.Tk):
                     mask_hint_threshold=0.7,
                     mask_hint_use_negative="False",
                     sam_model=samloader_87[0],
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     image=detailerforeachdebug_145[0],
                 )
                 impactsegsandmask_152 = impactsegsandmask.doit(
-                    segs=bboxdetectorsegs_132[0],
+                    segs=bboxdetectorsegs_132,
                     mask=samdetectorcombined_139[0],
                 )
                 detailerforeachdebug_145 = detailerforeachdebug.doit(

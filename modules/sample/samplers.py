@@ -6,11 +6,7 @@ from modules.Utilities import util
 
 from modules.sample import sampling_util
 
-disable_gui = True
-
-if disable_gui is False:
-    from modules.AutoEncoders import taesd
-    from modules.user import app_instance
+disable_gui = False
 
 
 @torch.no_grad()
@@ -42,6 +38,11 @@ def sample_euler_ancestral(
     #### Returns:
         - `torch.Tensor`: The denoised tensor after ancestral sampling.
     """
+    global disable_gui
+    disable_gui = True if pipeline is True else False
+    if disable_gui is False:
+        from modules.AutoEncoders import taesd
+        from modules.user import app_instance
     extra_args = {} if extra_args is None else extra_args
     noise_sampler = (
         sampling_util.default_noise_sampler(x)
@@ -69,7 +70,7 @@ def sample_euler_ancestral(
         if sigmas[i + 1] > 0:
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
         if pipeline is False:
-            if app_instance.app.previewer_checkbox.get() is True:
+            if app_instance.app.previewer_var.get() is True:
                 threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
             else:
                 pass
@@ -204,6 +205,11 @@ def sample_dpmpp_2m_sde(
     #### Returns:
         - `torch.Tensor`: The final sampled tensor.
     """
+    global disable_gui
+    disable_gui = True if pipeline is True else False
+    if disable_gui is False:
+        from modules.AutoEncoders import taesd
+        from modules.user import app_instance
     seed = extra_args.get("seed", None)
     sigma_min, sigma_max = sigmas[sigmas > 0].min(), sigmas.max()
     noise_sampler = (
@@ -259,7 +265,7 @@ def sample_dpmpp_2m_sde(
                     * s_noise
                 )
         if pipeline is False:
-            if app_instance.app.previewer_checkbox.get() is True:
+            if app_instance.app.previewer_var.get() is True:
                 threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
             else:
                 pass
