@@ -14,71 +14,29 @@ import safetensors
 import uuid
 import glob
 import numbers
-import os
 import random
 import sys
-from tkinter import *
+import tkinter as tk
 
 import safetensors.torch
-
-import os
 import packaging.version
-import torch
+import torch.nn as nn
 
 import ollama
 
 
 import argparse
 import enum
-import os
 from typing import Optional
 
-if glob.glob("./_internal/embeddings/*.pt") == []:
-    from huggingface_hub import hf_hub_download
 
-    hf_hub_download(
-        repo_id="EvilEngine/badhandv4",
-        filename="badhandv4.pt",
-        local_dir="./_internal/embeddings",
-    )
-if glob.glob("./_internal/unet/*.gguf") == []:
-    from huggingface_hub import hf_hub_download
 
-    hf_hub_download(
-        repo_id="city96/FLUX.1-dev-gguf",
-        filename="flux1-dev-Q8_0.gguf",
-        local_dir="./_internal/unet",
-    )
-if glob.glob("./_internal/clip/*.gguf") == []:
-    from huggingface_hub import hf_hub_download
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-    hf_hub_download(
-        repo_id="city96/t5-v1_1-xxl-encoder-gguf",
-        filename="t5-v1_1-xxl-encoder-Q8_0.gguf",
-        local_dir="./_internal/clip",
-    )
-    hf_hub_download(
-        repo_id="comfyanonymous/flux_text_encoders",
-        filename="clip_l.safetensors",
-        local_dir="./_internal/clip",
-    )
-if glob.glob("./_internal/vae/*.safetensors") == []:
-    from huggingface_hub import hf_hub_download
+from modules.FileManaging import Downloader
+from modules.SD15 import SDClip
 
-    hf_hub_download(
-        repo_id="black-forest-labs/FLUX.1-schnell",
-        filename="ae.safetensors",
-        local_dir="./_internal/vae",
-    )
-    
-if glob.glob("./_internal/vae_approx/*.pth") == []:
-    from huggingface_hub import hf_hub_download
-    
-    hf_hub_download(
-        repo_id="madebyollin/taef1",
-        filename="diffusion_pytorch_model.safetensors",
-        local_dir="./_internal/vae_approx/",
-    )
+Downloader.CheckAndDownloadFlux()
 
 args_parsing = False
 
@@ -4325,6 +4283,8 @@ import torch
 from transformers import CLIPTokenizer
 
 
+
+
 class ClipTokenWeightEncoder:
     def encode_token_weights(self, token_weight_pairs):
         to_encode = list()
@@ -4338,7 +4298,7 @@ class ClipTokenWeightEncoder:
 
         sections = len(to_encode)
         if has_weights or sections == 0:
-            to_encode.append(gen_empty_tokens(self.special_tokens, max_token_len))
+            to_encode.append(SDClip.gen_empty_tokens(self.special_tokens, max_token_len))
 
         o = self.encode(to_encode)
         out, pooled = o[:2]
@@ -4416,7 +4376,7 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         if textmodel_json_config is None:
             textmodel_json_config = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),
-                "./_internal/sd1_clip_config.json",
+                "./clip/sd1_clip_config.json",
             )
 
         with open(textmodel_json_config) as f:
@@ -7919,7 +7879,7 @@ class T5XXLModel(SDClipModel):
     ):
         textmodel_json_config = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
-            "./_internal/t5_config_xxl.json",
+            "./clip/t5_config_xxl.json",
         )
         super().__init__(
             device=device,
@@ -7936,7 +7896,7 @@ class T5XXLModel(SDClipModel):
 class T5XXLTokenizer(SDTokenizer):
     def __init__(self, embedding_directory=None, tokenizer_data={}):
         tokenizer_path = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "./_internal/t5_tokenizer"
+            os.path.dirname(os.path.realpath(__file__)), "./clip/t5_tokenizer"
         )
         super().__init__(
             tokenizer_path,
@@ -9323,8 +9283,23 @@ def cleanup_additional_models(models):
         if hasattr(m, "cleanup"):
             m.cleanup()
 
+SCHEDULER_NAMES = [
+    "normal",
+    "karras",
+    "exponential",
+    "sgm_uniform",
+    "simple",
+    "ddim_uniform",
+]
+SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
 class KSampler1:
+    SCHEDULERS = SCHEDULER_NAMES
+    SAMPLERS = SAMPLER_NAMES
+    DISCARD_PENULTIMATE_SIGMA_SAMPLERS = set(
+        ("dpm_2", "dpm_2_ancestral", "uni_pc", "uni_pc_bh2")
+    )
+    
     def __init__(
         self,
         model,
@@ -9520,8 +9495,9 @@ class App(tk.Tk):
         )
         self.generate_button.grid(row=0, column=0, padx=10, pady=10)
         
+        self.interrupt_flag = False
         self.interrupt_button = ctk.CTkButton(
-            self.button_frame, text="Interrupt", command=self.interrupt
+            self.button_frame, text="Interrupt", command=self.interrupt_generation
         )
         self.interrupt_button.grid(row=0, column=1, padx=10, pady=10)
 
@@ -9534,7 +9510,7 @@ class App(tk.Tk):
         self.image_label.pack(expand=True, padx=10, pady=10)
         
         self.preview_check = ctk.CTkCheckBox(
-            self.display, bg="black", text="Preview", variable=tk.BooleanVar()
+            self.display, bg_color="black", text="Preview", variable=tk.BooleanVar()
             )
         self.preview_check.pack(pady=10)
 

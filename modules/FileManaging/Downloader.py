@@ -71,3 +71,50 @@ def CheckAndDownload():
             filename="taesd_decoder.safetensors",
             local_dir="./_internal/vae_approx/",
         )
+
+def CheckAndDownloadFlux():
+    if glob.glob("./_internal/embeddings/*.pt") == []:
+        from huggingface_hub import hf_hub_download
+        hf_hub_download(
+            repo_id="EvilEngine/badhandv4",
+            filename="badhandv4.pt",
+            local_dir="./_internal/embeddings",
+        )
+    if glob.glob("./_internal/unet/*.gguf") == []:
+        from huggingface_hub import hf_hub_download
+
+        hf_hub_download(
+            repo_id="city96/FLUX.1-dev-gguf",
+            filename="flux1-dev-Q8_0.gguf",
+            local_dir="./_internal/unet",
+        )
+    if glob.glob("./_internal/clip/*.gguf") == []:
+        from huggingface_hub import hf_hub_download
+
+        hf_hub_download(
+            repo_id="city96/t5-v1_1-xxl-encoder-gguf",
+            filename="t5-v1_1-xxl-encoder-Q8_0.gguf",
+            local_dir="./_internal/clip",
+        )
+        hf_hub_download(
+            repo_id="comfyanonymous/flux_text_encoders",
+            filename="clip_l.safetensors",
+            local_dir="./_internal/clip",
+        )
+    if glob.glob("./_internal/vae/*.safetensors") == []:
+        from huggingface_hub import hf_hub_download
+
+        hf_hub_download(
+            repo_id="black-forest-labs/FLUX.1-schnell",
+            filename="ae.safetensors",
+            local_dir="./_internal/vae",
+        )
+        
+    if glob.glob("./_internal/vae_approx/*.pth") == []:
+        from huggingface_hub import hf_hub_download
+        
+        hf_hub_download(
+            repo_id="madebyollin/taef1",
+            filename="diffusion_pytorch_model.safetensors",
+            local_dir="./_internal/vae_approx/",
+        )

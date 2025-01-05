@@ -3,6 +3,7 @@
 *.pth
 *.pt
 *.safetensors
+*.gguf
 *.png
 /.idea
 /htmlcov
