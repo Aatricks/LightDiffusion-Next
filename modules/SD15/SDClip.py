@@ -303,6 +303,8 @@ class SD1ClipModel(torch.nn.Module):
         super().__init__()
         self.clip_name = clip_name
         self.clip = "clip_{}".format(self.clip_name)
+        self.lowvram_patch_counter = 0
+        self.model_loaded_weight_memory = 0
         setattr(self, self.clip, clip_model(device=device, dtype=dtype, **kwargs))
 
     def set_clip_options(self, options: dict) -> None:

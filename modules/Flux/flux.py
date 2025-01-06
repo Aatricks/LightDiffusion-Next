@@ -29,218 +29,23 @@ import argparse
 import enum
 from typing import Optional
 
-
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from modules.AutoEncoders import VariationalAE
+from modules.NeuralNetwork import transformer
+from modules.UltimateSDUpscale import image_util
+from modules.Utilities import upscale, util
+
+
+
+
+
+from modules.Device import Device
 from modules.FileManaging import Downloader
-from modules.SD15 import SDClip
+from modules.SD15 import SDClip, SDToken
 
 Downloader.CheckAndDownloadFlux()
 
-args_parsing = False
-
-
-def enable_args_parsing(enable=True):
-    global args_parsing
-    args_parsing = enable
-
-
-class EnumAction(argparse.Action):
-    """
-    Argparse action for handling Enums
-    """
-
-    def __init__(self, **kwargs):
-        # Pop off the type value
-        enum_type = kwargs.pop("type", None)
-
-        # Ensure an Enum subclass is provided
-        if enum_type is None:
-            raise ValueError("type must be assigned an Enum when using EnumAction")
-        if not issubclass(enum_type, enum.Enum):
-            raise TypeError("type must be an Enum when using EnumAction")
-
-        # Generate choices from the Enum
-        choices = tuple(e.value for e in enum_type)
-        kwargs.setdefault("choices", choices)
-        kwargs.setdefault("metavar", f"[{','.join(list(choices))}]")
-
-        super(EnumAction, self).__init__(**kwargs)
-
-        self._enum = enum_type
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        # Convert value back into an Enum
-        value = self._enum(values)
-        setattr(namespace, self.dest, value)
-
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    "--listen",
-    type=str,
-    default="127.0.0.1",
-    metavar="IP",
-    nargs="?",
-    const="0.0.0.0,::",
-    help="Specify the IP address to listen on (default: 127.0.0.1). You can give a list of ip addresses by separating them with a comma like: 127.2.2.2,127.3.3.3 If --listen is provided without an argument, it defaults to 0.0.0.0,:: (listens on all ipv4 and ipv6)",
-)
-parser.add_argument("--port", type=int, default=8188, help="Set the listen port.")
-parser.add_argument(
-    "--tls-keyfile",
-    type=str,
-    help="Path to TLS (SSL) key file. Enables TLS, makes app accessible at https://... requires --tls-certfile to function",
-)
-parser.add_argument(
-    "--tls-certfile",
-    type=str,
-    help="Path to TLS (SSL) certificate file. Enables TLS, makes app accessible at https://... requires --tls-keyfile to function",
-)
-parser.add_argument(
-    "--enable-cors-header",
-    type=str,
-    default=None,
-    metavar="ORIGIN",
-    nargs="?",
-    const="*",
-    help="Enable CORS (Cross-Origin Resource Sharing) with optional origin or allow all with default '*'.",
-)
-parser.add_argument(
-    "--max-upload-size",
-    type=float,
-    default=100,
-    help="Set the maximum upload size in MB.",
-)
-
-parser.add_argument(
-    "--extra-model-paths-config",
-    type=str,
-    default=None,
-    metavar="PATH",
-    nargs="+",
-    action="append",
-    help="Load one or more extra_model_paths.yaml files.",
-)
-parser.add_argument(
-    "--output-directory",
-    type=str,
-    default=None,
-    help="Set the ComfyUI output directory.",
-)
-parser.add_argument(
-    "--temp-directory",
-    type=str,
-    default=None,
-    help="Set the ComfyUI temp directory (default is in the ComfyUI directory).",
-)
-parser.add_argument(
-    "--input-directory", type=str, default=None, help="Set the ComfyUI input directory."
-)
-parser.add_argument(
-    "--auto-launch",
-    action="store_true",
-    help="Automatically launch ComfyUI in the default browser.",
-)
-parser.add_argument(
-    "--disable-auto-launch",
-    action="store_true",
-    help="Disable auto launching the browser.",
-)
-parser.add_argument(
-    "--cuda-device",
-    type=int,
-    default=None,
-    metavar="DEVICE_ID",
-    help="Set the id of the cuda device this instance will use.",
-)
-cm_group = parser.add_mutually_exclusive_group()
-cm_group.add_argument(
-    "--cuda-malloc",
-    action="store_true",
-    help="Enable cudaMallocAsync (enabled by default for torch 2.0 and up).",
-)
-cm_group.add_argument(
-    "--disable-cuda-malloc", action="store_true", help="Disable cudaMallocAsync."
-)
-
-
-fp_group = parser.add_mutually_exclusive_group()
-fp_group.add_argument(
-    "--force-fp32",
-    action="store_true",
-    help="Force fp32 (If this makes your GPU work better please report it).",
-)
-fp_group.add_argument("--force-fp16", action="store_true", help="Force fp16.")
-
-fpunet_group = parser.add_mutually_exclusive_group()
-fpunet_group.add_argument(
-    "--bf16-unet",
-    action="store_true",
-    help="Run the UNET in bf16. This should only be used for testing stuff.",
-)
-fpunet_group.add_argument(
-    "--fp16-unet", action="store_true", help="Store unet weights in fp16."
-)
-fpunet_group.add_argument(
-    "--fp8_e4m3fn-unet", action="store_true", help="Store unet weights in fp8_e4m3fn."
-)
-fpunet_group.add_argument(
-    "--fp8_e5m2-unet", action="store_true", help="Store unet weights in fp8_e5m2."
-)
-
-fpvae_group = parser.add_mutually_exclusive_group()
-fpvae_group.add_argument(
-    "--fp16-vae",
-    action="store_true",
-    help="Run the VAE in fp16, might cause black images.",
-)
-fpvae_group.add_argument(
-    "--fp32-vae", action="store_true", help="Run the VAE in full precision fp32."
-)
-fpvae_group.add_argument("--bf16-vae", action="store_true", help="Run the VAE in bf16.")
-
-parser.add_argument("--cpu-vae", action="store_true", help="Run the VAE on the CPU.")
-
-fpte_group = parser.add_mutually_exclusive_group()
-fpte_group.add_argument(
-    "--fp8_e4m3fn-text-enc",
-    action="store_true",
-    help="Store text encoder weights in fp8 (e4m3fn variant).",
-)
-fpte_group.add_argument(
-    "--fp8_e5m2-text-enc",
-    action="store_true",
-    help="Store text encoder weights in fp8 (e5m2 variant).",
-)
-fpte_group.add_argument(
-    "--fp16-text-enc", action="store_true", help="Store text encoder weights in fp16."
-)
-fpte_group.add_argument(
-    "--fp32-text-enc", action="store_true", help="Store text encoder weights in fp32."
-)
-
-parser.add_argument(
-    "--force-channels-last",
-    action="store_true",
-    help="Force channels last format when inferencing the models.",
-)
-
-parser.add_argument(
-    "--directml",
-    type=int,
-    nargs="?",
-    metavar="DIRECTML_DEVICE",
-    const=-1,
-    help="Use torch-directml.",
-)
-
-parser.add_argument(
-    "--disable-ipex-optimize",
-    action="store_true",
-    help="Disables ipex.optimize when loading models with Intel GPUs.",
-)
 
 """
 Tiny AutoEncoder for Stable Diffusion
@@ -321,7 +126,7 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 def taesd_preview(x):
-    if app.previewer_checkbox.get() == True:
+    if app.previewer_checkbox.get() is True:
         taesd_instance = TAESD()
         for image in taesd_instance.decode(x[0].unsqueeze(0))[0]:
             i = 255.0 * image.cpu().detach().numpy()
@@ -338,171 +143,6 @@ class LatentPreviewMethod(enum.Enum):
     TAESD = "taesd"
 
 
-parser.add_argument(
-    "--preview-method",
-    type=LatentPreviewMethod,
-    default=LatentPreviewMethod.NoPreviews,
-    help="Default preview method for sampler nodes.",
-    action=EnumAction,
-)
-
-parser.add_argument(
-    "--preview-size",
-    type=int,
-    default=512,
-    help="Sets the maximum preview size for sampler nodes.",
-)
-
-cache_group = parser.add_mutually_exclusive_group()
-cache_group.add_argument(
-    "--cache-classic",
-    action="store_true",
-    help="Use the old style (aggressive) caching.",
-)
-cache_group.add_argument(
-    "--cache-lru",
-    type=int,
-    default=0,
-    help="Use LRU caching with a maximum of N node results cached. May use more RAM/VRAM.",
-)
-
-attn_group = parser.add_mutually_exclusive_group()
-attn_group.add_argument(
-    "--use-split-cross-attention",
-    action="store_true",
-    help="Use the split cross attention optimization. Ignored when xformers is used.",
-)
-attn_group.add_argument(
-    "--use-quad-cross-attention",
-    action="store_true",
-    help="Use the sub-quadratic cross attention optimization . Ignored when xformers is used.",
-)
-attn_group.add_argument(
-    "--use-pytorch-cross-attention",
-    action="store_true",
-    help="Use the new pytorch 2.0 cross attention function.",
-)
-
-parser.add_argument("--disable-xformers", action="store_true", help="Disable xformers.")
-
-upcast = parser.add_mutually_exclusive_group()
-upcast.add_argument(
-    "--force-upcast-attention",
-    action="store_true",
-    help="Force enable attention upcasting, please report if it fixes black images.",
-)
-upcast.add_argument(
-    "--dont-upcast-attention",
-    action="store_true",
-    help="Disable all upcasting of attention. Should be unnecessary except for debugging.",
-)
-
-
-vram_group = parser.add_mutually_exclusive_group()
-vram_group.add_argument(
-    "--gpu-only",
-    action="store_true",
-    help="Store and run everything (text encoders/CLIP models, etc... on the GPU).",
-)
-vram_group.add_argument(
-    "--highvram",
-    action="store_true",
-    help="By default models will be unloaded to CPU memory after being used. This option keeps them in GPU memory.",
-)
-vram_group.add_argument(
-    "--normalvram",
-    action="store_true",
-    help="Used to force normal vram use if lowvram gets automatically enabled.",
-)
-vram_group.add_argument(
-    "--lowvram", action="store_true", help="Split the unet in parts to use less vram."
-)
-vram_group.add_argument(
-    "--novram", action="store_true", help="When lowvram isn't enough."
-)
-vram_group.add_argument(
-    "--cpu", action="store_true", help="To use the CPU for everything (slow)."
-)
-
-parser.add_argument(
-    "--reserve-vram",
-    type=float,
-    default=None,
-    help="Set the amount of vram in GB you want to reserve for use by your OS/other software. By default some amount is reverved depending on your OS.",
-)
-
-
-parser.add_argument(
-    "--default-hashing-function",
-    type=str,
-    choices=["md5", "sha1", "sha256", "sha512"],
-    default="sha256",
-    help="Allows you to choose the hash function to use for duplicate filename / contents comparison. Default is sha256.",
-)
-
-parser.add_argument(
-    "--disable-smart-memory",
-    action="store_true",
-    help="Force ComfyUI to agressively offload to regular ram instead of keeping models in vram when it can.",
-)
-parser.add_argument(
-    "--deterministic",
-    action="store_true",
-    help="Make pytorch use slower deterministic algorithms when it can. Note that this might not make images deterministic in all cases.",
-)
-parser.add_argument(
-    "--fast",
-    action="store_true",
-    help="Enable some untested and potentially quality deteriorating optimizations.",
-)
-
-parser.add_argument(
-    "--dont-print-server", action="store_true", help="Don't print server output."
-)
-parser.add_argument(
-    "--quick-test-for-ci", action="store_true", help="Quick test for CI."
-)
-parser.add_argument(
-    "--windows-standalone-build",
-    action="store_true",
-    help="Windows standalone build: Enable convenient things that most people using the standalone windows build will probably enjoy (like auto opening the page on startup).",
-)
-
-parser.add_argument(
-    "--disable-metadata",
-    action="store_true",
-    help="Disable saving prompt metadata in files.",
-)
-parser.add_argument(
-    "--disable-all-custom-nodes",
-    action="store_true",
-    help="Disable loading all custom nodes.",
-)
-
-parser.add_argument(
-    "--multi-user", action="store_true", help="Enables per-user storage."
-)
-
-parser.add_argument("--verbose", action="store_true", help="Enables more debug prints.")
-
-# The default built-in provider hosted under web/
-DEFAULT_VERSION_STRING = "comfyanonymous/ComfyUI@latest"
-
-parser.add_argument(
-    "--front-end-version",
-    type=str,
-    default=DEFAULT_VERSION_STRING,
-    help="""
-    Specifies the version of the frontend to be used. This command needs internet connectivity to query and
-    download available frontend implementations from GitHub releases.
-
-    The version string should be in the format of:
-    [repoOwner]/[repoName]@[version]
-    where version is one of: "latest" or a valid version number (e.g. "1.0.0")
-    """,
-)
-
-
 def is_valid_directory(path: Optional[str]) -> Optional[str]:
     """Validate if the given path is a directory."""
     if path is None:
@@ -512,31 +152,6 @@ def is_valid_directory(path: Optional[str]) -> Optional[str]:
         raise argparse.ArgumentTypeError(f"{path} is not a valid directory.")
     return path
 
-
-parser.add_argument(
-    "--front-end-root",
-    type=is_valid_directory,
-    default=None,
-    help="The local filesystem path to the directory where the frontend is located. Overrides --front-end-version.",
-)
-
-parser.add_argument(
-    "--user-directory",
-    type=is_valid_directory,
-    default=None,
-    help="Set the ComfyUI user directory with an absolute path.",
-)
-
-if args_parsing:
-    args = parser.parse_args()
-else:
-    args = parser.parse_args([])
-
-if args.windows_standalone_build:
-    args.auto_launch = True
-
-if args.disable_auto_launch:
-    args.auto_launch = False
 
 if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -594,7 +209,6 @@ class Empty:
 
 # taken from https://github.com/TencentARC/T2I-Adapter
 
-import importlib
 
 
 def append_dims(x, target_dims):
@@ -606,7 +220,6 @@ def append_dims(x, target_dims):
     return expanded.detach().clone() if expanded.device.type == "mps" else expanded
 
 
-import safetensors.torch
 
 
 def calculate_parameters(sd, prefix=""):
@@ -765,7 +378,6 @@ class CONDCrossAttn(CONDRegular):
         return torch.cat(out)
 
 
-import logging
 
 logging_level = logging.INFO
 
@@ -773,7 +385,7 @@ logging.basicConfig(format="%(message)s", level=logging_level)
 
 
 import torch
-from torch import nn
+from torch import lcm, nn
 from tqdm.auto import trange
 
 
@@ -833,1334 +445,6 @@ def sample_euler(
             threading.Thread(target=taesd_preview, args=(x,)).start()
         else : pass
     return x
-
-
-import torch
-
-
-import logging
-import sys
-from enum import Enum
-
-import psutil
-import torch
-
-import psutil
-import logging
-from enum import Enum
-import torch
-import sys
-import platform
-
-
-class VRAMState(Enum):
-    DISABLED = 0  # No vram present: no need to move models to vram
-    NO_VRAM = 1  # Very low vram: enable all the options to save vram
-    LOW_VRAM = 2
-    NORMAL_VRAM = 3
-    HIGH_VRAM = 4
-    SHARED = 5  # No dedicated vram: memory shared between CPU and GPU but models still need to be moved between both.
-
-
-class CPUState(Enum):
-    GPU = 0
-    CPU = 1
-    MPS = 2
-
-
-# Determine VRAM State
-vram_state = VRAMState.NORMAL_VRAM
-set_vram_to = VRAMState.NORMAL_VRAM
-cpu_state = CPUState.GPU
-
-total_vram = 0
-
-xpu_available = False
-torch_version = ""
-try:
-    torch_version = torch.version.__version__
-    xpu_available = (
-        int(torch_version[0]) < 2
-        or (int(torch_version[0]) == 2 and int(torch_version[2]) <= 4)
-    ) and torch.xpu.is_available()
-except:
-    pass
-
-lowvram_available = True
-if args.deterministic:
-    logging.info("Using deterministic algorithms for pytorch")
-    torch.use_deterministic_algorithms(True, warn_only=True)
-
-directml_enabled = False
-if args.directml is not None:
-    import torch_directml
-
-    directml_enabled = True
-    device_index = args.directml
-    if device_index < 0:
-        directml_device = torch_directml.device()
-    else:
-        directml_device = torch_directml.device(device_index)
-    logging.info(
-        "Using directml with device: {}".format(
-            torch_directml.device_name(device_index)
-        )
-    )
-    # torch_directml.disable_tiled_resources(True)
-    lowvram_available = False  # TODO: need to find a way to get free memory in directml before this can be enabled by default.
-
-try:
-    import intel_extension_for_pytorch as ipex
-
-    _ = torch.xpu.device_count()
-    xpu_available = torch.xpu.is_available()
-except:
-    xpu_available = xpu_available or (
-        hasattr(torch, "xpu") and torch.xpu.is_available()
-    )
-
-try:
-    if torch.backends.mps.is_available():
-        cpu_state = CPUState.MPS
-        import torch.mps
-except:
-    pass
-
-if args.cpu:
-    cpu_state = CPUState.CPU
-
-
-def is_intel_xpu():
-    global cpu_state
-    global xpu_available
-    if cpu_state == CPUState.GPU:
-        if xpu_available:
-            return True
-    return False
-
-
-def get_torch_device():
-    global directml_enabled
-    global cpu_state
-    if directml_enabled:
-        global directml_device
-        return directml_device
-    if cpu_state == CPUState.MPS:
-        return torch.device("mps")
-    if cpu_state == CPUState.CPU:
-        return torch.device("cpu")
-    else:
-        if is_intel_xpu():
-            return torch.device("xpu", torch.xpu.current_device())
-        else:
-            return torch.device(torch.cuda.current_device())
-
-
-def get_total_memory(dev=None, torch_total_too=False):
-    global directml_enabled
-    if dev is None:
-        dev = get_torch_device()
-
-    if hasattr(dev, "type") and (dev.type == "cpu" or dev.type == "mps"):
-        mem_total = psutil.virtual_memory().total
-        mem_total_torch = mem_total
-    else:
-        if directml_enabled:
-            mem_total = 1024 * 1024 * 1024  # TODO
-            mem_total_torch = mem_total
-        elif is_intel_xpu():
-            stats = torch.xpu.memory_stats(dev)
-            mem_reserved = stats["reserved_bytes.all.current"]
-            mem_total_torch = mem_reserved
-            mem_total = torch.xpu.get_device_properties(dev).total_memory
-        else:
-            stats = torch.cuda.memory_stats(dev)
-            mem_reserved = stats["reserved_bytes.all.current"]
-            _, mem_total_cuda = torch.cuda.mem_get_info(dev)
-            mem_total_torch = mem_reserved
-            mem_total = mem_total_cuda
-
-    if torch_total_too:
-        return (mem_total, mem_total_torch)
-    else:
-        return mem_total
-
-
-total_vram = get_total_memory(get_torch_device()) / (1024 * 1024)
-total_ram = psutil.virtual_memory().total / (1024 * 1024)
-logging.info(
-    "Total VRAM {:0.0f} MB, total RAM {:0.0f} MB".format(total_vram, total_ram)
-)
-
-try:
-    logging.info("pytorch version: {}".format(torch.version.__version__))
-except:
-    pass
-
-try:
-    OOM_EXCEPTION = torch.cuda.OutOfMemoryError
-except:
-    OOM_EXCEPTION = Exception
-
-XFORMERS_VERSION = ""
-XFORMERS_ENABLED_VAE = True
-if args.disable_xformers:
-    XFORMERS_IS_AVAILABLE = False
-else:
-    try:
-        import xformers
-        import xformers.ops
-
-        XFORMERS_IS_AVAILABLE = True
-        try:
-            XFORMERS_IS_AVAILABLE = xformers._has_cpp_library
-        except:
-            pass
-        try:
-            XFORMERS_VERSION = xformers.version.__version__
-            logging.info("xformers version: {}".format(XFORMERS_VERSION))
-            if XFORMERS_VERSION.startswith("0.0.18"):
-                logging.warning(
-                    "\nWARNING: This version of xformers has a major bug where you will get black images when generating high resolution images."
-                )
-                logging.warning(
-                    "Please downgrade or upgrade xformers to a different version.\n"
-                )
-                XFORMERS_ENABLED_VAE = False
-        except:
-            pass
-    except:
-        XFORMERS_IS_AVAILABLE = False
-
-
-def is_nvidia():
-    global cpu_state
-    if cpu_state == CPUState.GPU:
-        if torch.version.cuda:
-            return True
-    return False
-
-
-ENABLE_PYTORCH_ATTENTION = False
-if args.use_pytorch_cross_attention:
-    ENABLE_PYTORCH_ATTENTION = True
-    XFORMERS_IS_AVAILABLE = False
-
-VAE_DTYPES = [torch.float32]
-
-try:
-    if is_nvidia():
-        if int(torch_version[0]) >= 2:
-            if (
-                ENABLE_PYTORCH_ATTENTION == False
-                and args.use_split_cross_attention == False
-                and args.use_quad_cross_attention == False
-            ):
-                ENABLE_PYTORCH_ATTENTION = True
-            if (
-                torch.cuda.is_bf16_supported()
-                and torch.cuda.get_device_properties(torch.cuda.current_device()).major
-                >= 8
-            ):
-                VAE_DTYPES = [torch.bfloat16] + VAE_DTYPES
-    if is_intel_xpu():
-        if (
-            args.use_split_cross_attention == False
-            and args.use_quad_cross_attention == False
-        ):
-            ENABLE_PYTORCH_ATTENTION = True
-except:
-    pass
-
-if is_intel_xpu():
-    VAE_DTYPES = [torch.bfloat16] + VAE_DTYPES
-
-if args.cpu_vae:
-    VAE_DTYPES = [torch.float32]
-
-
-if ENABLE_PYTORCH_ATTENTION:
-    torch.backends.cuda.enable_math_sdp(True)
-    torch.backends.cuda.enable_flash_sdp(True)
-    torch.backends.cuda.enable_mem_efficient_sdp(True)
-
-if args.lowvram:
-    set_vram_to = VRAMState.LOW_VRAM
-    lowvram_available = True
-elif args.novram:
-    set_vram_to = VRAMState.NO_VRAM
-elif args.highvram or args.gpu_only:
-    vram_state = VRAMState.HIGH_VRAM
-
-FORCE_FP32 = False
-FORCE_FP16 = False
-if args.force_fp32:
-    logging.info("Forcing FP32, if this improves things please report it.")
-    FORCE_FP32 = True
-
-if args.force_fp16:
-    logging.info("Forcing FP16.")
-    FORCE_FP16 = True
-
-if lowvram_available:
-    if set_vram_to in (VRAMState.LOW_VRAM, VRAMState.NO_VRAM):
-        vram_state = set_vram_to
-
-
-if cpu_state != CPUState.GPU:
-    vram_state = VRAMState.DISABLED
-
-if cpu_state == CPUState.MPS:
-    vram_state = VRAMState.SHARED
-
-logging.info(f"Set vram state to: {vram_state.name}")
-
-DISABLE_SMART_MEMORY = args.disable_smart_memory
-
-if DISABLE_SMART_MEMORY:
-    logging.info("Disabling smart memory management")
-
-
-def get_torch_device_name(device):
-    if hasattr(device, "type"):
-        if device.type == "cuda":
-            try:
-                allocator_backend = torch.cuda.get_allocator_backend()
-            except:
-                allocator_backend = ""
-            return "{} {} : {}".format(
-                device, torch.cuda.get_device_name(device), allocator_backend
-            )
-        else:
-            return "{}".format(device.type)
-    elif is_intel_xpu():
-        return "{} {}".format(device, torch.xpu.get_device_name(device))
-    else:
-        return "CUDA {}: {}".format(device, torch.cuda.get_device_name(device))
-
-
-try:
-    logging.info("Device: {}".format(get_torch_device_name(get_torch_device())))
-except:
-    logging.warning("Could not pick default device.")
-
-
-current_loaded_models = []
-
-
-def module_size(module):
-    module_mem = 0
-    sd = module.state_dict()
-    for k in sd:
-        t = sd[k]
-        module_mem += t.nelement() * t.element_size()
-    return module_mem
-
-
-class LoadedModel:
-    def __init__(self, model):
-        self.model = model
-        self.device = model.load_device
-        self.weights_loaded = False
-        self.real_model = None
-        self.currently_used = True
-
-    def model_memory(self):
-        return self.model.model_size()
-
-    def model_offloaded_memory(self):
-        return self.model.model_size() - self.model.loaded_size()
-
-    def model_memory_required(self, device):
-        if device == self.model.current_loaded_device():
-            return self.model_offloaded_memory()
-        else:
-            return self.model_memory()
-
-    def model_load(self, lowvram_model_memory=0, force_patch_weights=False):
-        patch_model_to = self.device
-
-        self.model.model_patches_to(self.device)
-        self.model.model_patches_to(self.model.model_dtype())
-
-        load_weights = not self.weights_loaded
-
-        if self.model.loaded_size() > 0:
-            use_more_vram = lowvram_model_memory
-            if use_more_vram == 0:
-                use_more_vram = 1e32
-            self.model_use_more_vram(use_more_vram)
-        else:
-            try:
-                self.real_model = self.model.patch_model(
-                    device_to=patch_model_to,
-                    lowvram_model_memory=lowvram_model_memory,
-                    load_weights=load_weights,
-                    force_patch_weights=force_patch_weights,
-                )
-            except Exception as e:
-                self.model.unpatch_model(self.model.offload_device)
-                self.model_unload()
-                raise e
-
-        if (
-            is_intel_xpu()
-            and not args.disable_ipex_optimize
-            and "ipex" in globals()
-            and self.real_model is not None
-        ):
-            with torch.no_grad():
-                self.real_model = ipex.optimize(
-                    self.real_model.eval(),
-                    inplace=True,
-                    graph_mode=True,
-                    concat_linear=True,
-                )
-
-        self.weights_loaded = True
-        return self.real_model
-
-    def should_reload_model(self, force_patch_weights=False):
-        if force_patch_weights and self.model.lowvram_patch_counter() > 0:
-            return True
-        return False
-
-    def model_unload(self, memory_to_free=None, unpatch_weights=True):
-        if memory_to_free is not None:
-            if memory_to_free < self.model.loaded_size():
-                freed = self.model.partially_unload(
-                    self.model.offload_device, memory_to_free
-                )
-                if freed >= memory_to_free:
-                    return False
-        self.model.unpatch_model(
-            self.model.offload_device, unpatch_weights=unpatch_weights
-        )
-        self.model.model_patches_to(self.model.offload_device)
-        self.weights_loaded = self.weights_loaded and not unpatch_weights
-        self.real_model = None
-        return True
-
-    def model_use_more_vram(self, extra_memory):
-        return self.model.partially_load(self.device, extra_memory)
-
-    def __eq__(self, other):
-        return self.model is other.model
-
-
-def use_more_memory(extra_memory, loaded_models, device):
-    for m in loaded_models:
-        if m.device == device:
-            extra_memory -= m.model_use_more_vram(extra_memory)
-            if extra_memory <= 0:
-                break
-
-
-def offloaded_memory(loaded_models, device):
-    offloaded_mem = 0
-    for m in loaded_models:
-        if m.device == device:
-            offloaded_mem += m.model_offloaded_memory()
-    return offloaded_mem
-
-
-WINDOWS = any(platform.win32_ver())
-
-EXTRA_RESERVED_VRAM = 400 * 1024 * 1024
-if WINDOWS:
-    EXTRA_RESERVED_VRAM = (
-        600 * 1024 * 1024
-    )  # Windows is higher because of the shared vram issue
-
-if args.reserve_vram is not None:
-    EXTRA_RESERVED_VRAM = args.reserve_vram * 1024 * 1024 * 1024
-    logging.debug(
-        "Reserving {}MB vram for other applications.".format(
-            EXTRA_RESERVED_VRAM / (1024 * 1024)
-        )
-    )
-
-
-def extra_reserved_memory():
-    return EXTRA_RESERVED_VRAM
-
-
-def minimum_inference_memory():
-    return (1024 * 1024 * 1024) * 0.8 + extra_reserved_memory()
-
-
-def unload_model_clones(model, unload_weights_only=True, force_unload=True):
-    to_unload = []
-    for i in range(len(current_loaded_models)):
-        if model.is_clone(current_loaded_models[i].model):
-            to_unload = [i] + to_unload
-
-    if len(to_unload) == 0:
-        return True
-
-    same_weights = 0
-    for i in to_unload:
-        if model.clone_has_same_weights(current_loaded_models[i].model):
-            same_weights += 1
-
-    if same_weights == len(to_unload):
-        unload_weight = False
-    else:
-        unload_weight = True
-
-    if not force_unload:
-        if unload_weights_only and unload_weight == False:
-            return None
-    else:
-        unload_weight = True
-
-    for i in to_unload:
-        logging.debug("unload clone {} {}".format(i, unload_weight))
-        current_loaded_models.pop(i).model_unload(unpatch_weights=unload_weight)
-
-    return unload_weight
-
-
-def free_memory(memory_required, device, keep_loaded=[]):
-    unloaded_model = []
-    can_unload = []
-    unloaded_models = []
-
-    for i in range(len(current_loaded_models) - 1, -1, -1):
-        shift_model = current_loaded_models[i]
-        if shift_model.device == device:
-            if shift_model not in keep_loaded:
-                can_unload.append(
-                    (
-                        -shift_model.model_offloaded_memory(),
-                        sys.getrefcount(shift_model.model),
-                        shift_model.model_memory(),
-                        i,
-                    )
-                )
-                shift_model.currently_used = False
-
-    for x in sorted(can_unload):
-        i = x[-1]
-        memory_to_free = None
-        if not DISABLE_SMART_MEMORY:
-            free_mem = get_free_memory(device)
-            if free_mem > memory_required:
-                break
-            memory_to_free = memory_required - free_mem
-        logging.debug(
-            f"Unloading {current_loaded_models[i].model.model.__class__.__name__}"
-        )
-        if current_loaded_models[i].model_unload(memory_to_free):
-            unloaded_model.append(i)
-
-    for i in sorted(unloaded_model, reverse=True):
-        unloaded_models.append(current_loaded_models.pop(i))
-
-    if len(unloaded_model) > 0:
-        soft_empty_cache()
-    else:
-        if vram_state != VRAMState.HIGH_VRAM:
-            mem_free_total, mem_free_torch = get_free_memory(
-                device, torch_free_too=True
-            )
-            if mem_free_torch > mem_free_total * 0.25:
-                soft_empty_cache()
-    return unloaded_models
-
-
-def load_models_gpu(
-    models,
-    memory_required=0,
-    force_patch_weights=False,
-    minimum_memory_required=None,
-    force_full_load=False,
-):
-    global vram_state
-
-    inference_memory = minimum_inference_memory()
-    extra_mem = max(inference_memory, memory_required + extra_reserved_memory())
-    if minimum_memory_required is None:
-        minimum_memory_required = extra_mem
-    else:
-        minimum_memory_required = max(
-            inference_memory, minimum_memory_required + extra_reserved_memory()
-        )
-
-    models = set(models)
-
-    models_to_load = []
-    models_already_loaded = []
-    for x in models:
-        loaded_model = LoadedModel(x)
-        loaded = None
-
-        try:
-            loaded_model_index = current_loaded_models.index(loaded_model)
-        except:
-            loaded_model_index = None
-
-        if loaded_model_index is not None:
-            loaded = current_loaded_models[loaded_model_index]
-            if loaded.should_reload_model(
-                force_patch_weights=force_patch_weights
-            ):  # TODO: cleanup this model reload logic
-                current_loaded_models.pop(loaded_model_index).model_unload(
-                    unpatch_weights=True
-                )
-                loaded = None
-            else:
-                loaded.currently_used = True
-                models_already_loaded.append(loaded)
-
-        if loaded is None:
-            if hasattr(x, "model"):
-                logging.info(f"Requested to load {x.model.__class__.__name__}")
-            models_to_load.append(loaded_model)
-
-    if len(models_to_load) == 0:
-        devs = set(map(lambda a: a.device, models_already_loaded))
-        for d in devs:
-            if d != torch.device("cpu"):
-                free_memory(
-                    extra_mem + offloaded_memory(models_already_loaded, d),
-                    d,
-                    models_already_loaded,
-                )
-                free_mem = get_free_memory(d)
-                if free_mem < minimum_memory_required:
-                    logging.info(
-                        "Unloading models for lowram load."
-                    )  # TODO: partial model unloading when this case happens, also handle the opposite case where models can be unlowvramed.
-                    models_to_load = free_memory(minimum_memory_required, d)
-                    logging.info("{} models unloaded.".format(len(models_to_load)))
-                else:
-                    use_more_memory(
-                        free_mem - minimum_memory_required, models_already_loaded, d
-                    )
-        if len(models_to_load) == 0:
-            return
-
-    logging.info(
-        f"Loading {len(models_to_load)} new model{'s' if len(models_to_load) > 1 else ''}"
-    )
-
-    total_memory_required = {}
-    for loaded_model in models_to_load:
-        unload_model_clones(
-            loaded_model.model, unload_weights_only=True, force_unload=False
-        )  # unload clones where the weights are different
-        total_memory_required[loaded_model.device] = total_memory_required.get(
-            loaded_model.device, 0
-        ) + loaded_model.model_memory_required(loaded_model.device)
-
-    for loaded_model in models_already_loaded:
-        total_memory_required[loaded_model.device] = total_memory_required.get(
-            loaded_model.device, 0
-        ) + loaded_model.model_memory_required(loaded_model.device)
-
-    for loaded_model in models_to_load:
-        weights_unloaded = unload_model_clones(
-            loaded_model.model, unload_weights_only=False, force_unload=False
-        )  # unload the rest of the clones where the weights can stay loaded
-        if weights_unloaded is not None:
-            loaded_model.weights_loaded = not weights_unloaded
-
-    for device in total_memory_required:
-        if device != torch.device("cpu"):
-            free_memory(
-                total_memory_required[device] * 1.1 + extra_mem,
-                device,
-                models_already_loaded,
-            )
-
-    for loaded_model in models_to_load:
-        model = loaded_model.model
-        torch_dev = model.load_device
-        if is_device_cpu(torch_dev):
-            vram_set_state = VRAMState.DISABLED
-        else:
-            vram_set_state = vram_state
-        lowvram_model_memory = 0
-        if (
-            lowvram_available
-            and (
-                vram_set_state == VRAMState.LOW_VRAM
-                or vram_set_state == VRAMState.NORMAL_VRAM
-            )
-            and not force_full_load
-        ):
-            model_size = loaded_model.model_memory_required(torch_dev)
-            current_free_mem = get_free_memory(torch_dev)
-            lowvram_model_memory = max(
-                64 * (1024 * 1024),
-                (current_free_mem - minimum_memory_required),
-                min(
-                    current_free_mem * 0.4,
-                    current_free_mem - minimum_inference_memory(),
-                ),
-            )
-            if (
-                model_size <= lowvram_model_memory
-            ):  # only switch to lowvram if really necessary
-                lowvram_model_memory = 0
-
-        if vram_set_state == VRAMState.NO_VRAM:
-            lowvram_model_memory = 64 * 1024 * 1024
-
-        cur_loaded_model = loaded_model.model_load(
-            lowvram_model_memory, force_patch_weights=force_patch_weights
-        )
-        current_loaded_models.insert(0, loaded_model)
-
-    devs = set(map(lambda a: a.device, models_already_loaded))
-    for d in devs:
-        if d != torch.device("cpu"):
-            free_mem = get_free_memory(d)
-            if free_mem > minimum_memory_required:
-                use_more_memory(
-                    free_mem - minimum_memory_required, models_already_loaded, d
-                )
-    return
-
-
-def load_model_gpu(model):
-    return load_models_gpu([model])
-
-
-def loaded_models(only_currently_used=False):
-    output = []
-    for m in current_loaded_models:
-        if only_currently_used:
-            if not m.currently_used:
-                continue
-
-        output.append(m.model)
-    return output
-
-
-def cleanup_models(keep_clone_weights_loaded=False):
-    to_delete = []
-    for i in range(len(current_loaded_models)):
-        # TODO: very fragile function needs improvement
-        num_refs = sys.getrefcount(current_loaded_models[i].model)
-        if num_refs <= 2:
-            if not keep_clone_weights_loaded:
-                to_delete = [i] + to_delete
-            # TODO: find a less fragile way to do this.
-            elif (
-                sys.getrefcount(current_loaded_models[i].real_model) <= 3
-            ):  # references from .real_model + the .model
-                to_delete = [i] + to_delete
-
-    for i in to_delete:
-        x = current_loaded_models.pop(i)
-        x.model_unload()
-        del x
-
-
-def dtype_size(dtype):
-    dtype_size = 4
-    if dtype == torch.float16 or dtype == torch.bfloat16:
-        dtype_size = 2
-    elif dtype == torch.float32:
-        dtype_size = 4
-    else:
-        try:
-            dtype_size = dtype.itemsize
-        except:  # Old pytorch doesn't have .itemsize
-            pass
-    return dtype_size
-
-
-def unet_offload_device():
-    if vram_state == VRAMState.HIGH_VRAM:
-        return get_torch_device()
-    else:
-        return torch.device("cpu")
-
-
-def unet_inital_load_device(parameters, dtype):
-    torch_dev = get_torch_device()
-    if vram_state == VRAMState.HIGH_VRAM:
-        return torch_dev
-
-    cpu_dev = torch.device("cpu")
-    if DISABLE_SMART_MEMORY:
-        return cpu_dev
-
-    model_size = dtype_size(dtype) * parameters
-
-    mem_dev = get_free_memory(torch_dev)
-    mem_cpu = get_free_memory(cpu_dev)
-    if mem_dev > mem_cpu and model_size < mem_dev:
-        return torch_dev
-    else:
-        return cpu_dev
-
-
-def maximum_vram_for_weights(device=None):
-    return get_total_memory(device) * 0.88 - minimum_inference_memory()
-
-
-def unet_dtype(
-    device=None,
-    model_params=0,
-    supported_dtypes=[torch.float16, torch.bfloat16, torch.float32],
-):
-    if model_params < 0:
-        model_params = 1000000000000000000000
-    if args.bf16_unet:
-        return torch.bfloat16
-    if args.fp16_unet:
-        return torch.float16
-    if args.fp8_e4m3fn_unet:
-        return torch.float8_e4m3fn
-    if args.fp8_e5m2_unet:
-        return torch.float8_e5m2
-
-    fp8_dtype = None
-    try:
-        for dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
-            if dtype in supported_dtypes:
-                fp8_dtype = dtype
-                break
-    except:
-        pass
-
-    if fp8_dtype is not None:
-        free_model_memory = maximum_vram_for_weights(device)
-        if model_params * 2 > free_model_memory:
-            return fp8_dtype
-
-    for dt in supported_dtypes:
-        if dt == torch.float16 and should_use_fp16(
-            device=device, model_params=model_params
-        ):
-            if torch.float16 in supported_dtypes:
-                return torch.float16
-        if dt == torch.bfloat16 and should_use_bf16(device, model_params=model_params):
-            if torch.bfloat16 in supported_dtypes:
-                return torch.bfloat16
-
-    for dt in supported_dtypes:
-        if dt == torch.float16 and should_use_fp16(
-            device=device, model_params=model_params, manual_cast=True
-        ):
-            if torch.float16 in supported_dtypes:
-                return torch.float16
-        if dt == torch.bfloat16 and should_use_bf16(
-            device, model_params=model_params, manual_cast=True
-        ):
-            if torch.bfloat16 in supported_dtypes:
-                return torch.bfloat16
-
-    return torch.float32
-
-
-# None means no manual cast
-def unet_manual_cast(
-    weight_dtype,
-    inference_device,
-    supported_dtypes=[torch.float16, torch.bfloat16, torch.float32],
-):
-    if weight_dtype == torch.float32:
-        return None
-
-    fp16_supported = should_use_fp16(inference_device, prioritize_performance=False)
-    if fp16_supported and weight_dtype == torch.float16:
-        return None
-
-    bf16_supported = should_use_bf16(inference_device)
-    if bf16_supported and weight_dtype == torch.bfloat16:
-        return None
-
-    fp16_supported = should_use_fp16(inference_device, prioritize_performance=True)
-    for dt in supported_dtypes:
-        if dt == torch.float16 and fp16_supported:
-            return torch.float16
-        if dt == torch.bfloat16 and bf16_supported:
-            return torch.bfloat16
-
-    return torch.float32
-
-
-def text_encoder_offload_device():
-    return torch.device("cpu")
-
-
-def text_encoder_device():
-    if args.gpu_only:
-        return get_torch_device()
-    elif vram_state == VRAMState.HIGH_VRAM or vram_state == VRAMState.NORMAL_VRAM:
-        if should_use_fp16(prioritize_performance=False):
-            return get_torch_device()
-        else:
-            return torch.device("cpu")
-    else:
-        return torch.device("cpu")
-
-
-def text_encoder_initial_device(load_device, offload_device, model_size=0):
-    if load_device == offload_device or model_size <= 1024 * 1024 * 1024:
-        return offload_device
-
-    if is_device_mps(load_device):
-        return offload_device
-
-    mem_l = get_free_memory(load_device)
-    mem_o = get_free_memory(offload_device)
-    if mem_l > (mem_o * 0.5) and model_size * 1.2 < mem_l:
-        return load_device
-    else:
-        return offload_device
-
-
-def text_encoder_dtype(device=None):
-    if args.fp8_e4m3fn_text_enc:
-        return torch.float8_e4m3fn
-    elif args.fp8_e5m2_text_enc:
-        return torch.float8_e5m2
-    elif args.fp16_text_enc:
-        return torch.float16
-    elif args.fp32_text_enc:
-        return torch.float32
-
-    if is_device_cpu(device):
-        return torch.float16
-
-    return torch.float16
-
-
-def intermediate_device():
-    if args.gpu_only:
-        return get_torch_device()
-    else:
-        return torch.device("cpu")
-
-
-def vae_device():
-    if args.cpu_vae:
-        return torch.device("cpu")
-    return get_torch_device()
-
-
-def vae_offload_device():
-    if args.gpu_only:
-        return get_torch_device()
-    else:
-        return torch.device("cpu")
-
-
-def vae_dtype(device=None, allowed_dtypes=[]):
-    global VAE_DTYPES
-    if args.fp16_vae:
-        return torch.float16
-    elif args.bf16_vae:
-        return torch.bfloat16
-    elif args.fp32_vae:
-        return torch.float32
-
-    for d in allowed_dtypes:
-        if d == torch.float16 and should_use_fp16(device, prioritize_performance=False):
-            return d
-        if d in VAE_DTYPES:
-            return d
-
-    return VAE_DTYPES[0]
-
-
-def get_autocast_device(dev):
-    if hasattr(dev, "type"):
-        return dev.type
-    return "cuda"
-
-
-def supports_dtype(device, dtype):  # TODO
-    if dtype == torch.float32:
-        return True
-    if is_device_cpu(device):
-        return False
-    if dtype == torch.float16:
-        return True
-    if dtype == torch.bfloat16:
-        return True
-    return False
-
-
-def supports_cast(device, dtype):  # TODO
-    if dtype == torch.float32:
-        return True
-    if dtype == torch.float16:
-        return True
-    if directml_enabled:  # TODO: test this
-        return False
-    if dtype == torch.bfloat16:
-        return True
-    if is_device_mps(device):
-        return False
-    if dtype == torch.float8_e4m3fn:
-        return True
-    if dtype == torch.float8_e5m2:
-        return True
-    return False
-
-
-def pick_weight_dtype(dtype, fallback_dtype, device=None):
-    if dtype is None:
-        dtype = fallback_dtype
-    elif dtype_size(dtype) > dtype_size(fallback_dtype):
-        dtype = fallback_dtype
-
-    if not supports_cast(device, dtype):
-        dtype = fallback_dtype
-
-    return dtype
-
-
-def device_supports_non_blocking(device):
-    if is_device_mps(device):
-        return False  # pytorch bug? mps doesn't support non blocking
-    if is_intel_xpu():
-        return False
-    if (
-        args.deterministic
-    ):  # TODO: figure out why deterministic breaks non blocking from gpu to cpu (previews)
-        return False
-    if directml_enabled:
-        return False
-    return True
-
-
-def device_should_use_non_blocking(device):
-    if not device_supports_non_blocking(device):
-        return False
-    return False
-    # return True #TODO: figure out why this causes memory issues on Nvidia and possibly others
-
-
-def force_channels_last():
-    if args.force_channels_last:
-        return True
-
-    # TODO
-    return False
-
-
-def cast_to_device(tensor, device, dtype, copy=False):
-    device_supports_cast = False
-    if tensor.dtype == torch.float32 or tensor.dtype == torch.float16:
-        device_supports_cast = True
-    elif tensor.dtype == torch.bfloat16:
-        if hasattr(device, "type") and device.type.startswith("cuda"):
-            device_supports_cast = True
-        elif is_intel_xpu():
-            device_supports_cast = True
-
-    non_blocking = device_should_use_non_blocking(device)
-
-    if device_supports_cast:
-        if copy:
-            if tensor.device == device:
-                return tensor.to(dtype, copy=copy, non_blocking=non_blocking)
-            return tensor.to(device, copy=copy, non_blocking=non_blocking).to(
-                dtype, non_blocking=non_blocking
-            )
-        else:
-            return tensor.to(device, non_blocking=non_blocking).to(
-                dtype, non_blocking=non_blocking
-            )
-    else:
-        return tensor.to(device, dtype, copy=copy, non_blocking=non_blocking)
-
-
-def xformers_enabled():
-    global directml_enabled
-    global cpu_state
-    if cpu_state != CPUState.GPU:
-        return False
-    if is_intel_xpu():
-        return False
-    if directml_enabled:
-        return False
-    return XFORMERS_IS_AVAILABLE
-
-
-def xformers_enabled_vae():
-    enabled = xformers_enabled()
-    if not enabled:
-        return False
-
-    return XFORMERS_ENABLED_VAE
-
-
-def pytorch_attention_enabled():
-    global ENABLE_PYTORCH_ATTENTION
-    return ENABLE_PYTORCH_ATTENTION
-
-
-def pytorch_attention_flash_attention():
-    global ENABLE_PYTORCH_ATTENTION
-    if ENABLE_PYTORCH_ATTENTION:
-        # TODO: more reliable way of checking for flash attention?
-        if is_nvidia():  # pytorch flash attention only works on Nvidia
-            return True
-        if is_intel_xpu():
-            return True
-    return False
-
-
-def force_upcast_attention_dtype():
-    upcast = args.force_upcast_attention
-    try:
-        macos_version = tuple(int(n) for n in platform.mac_ver()[0].split("."))
-        if (
-            (14, 5) <= macos_version < (14, 7)
-        ):  # black image bug on recent versions of MacOS
-            upcast = True
-    except:
-        pass
-    if upcast:
-        return torch.float32
-    else:
-        return None
-
-
-def get_free_memory(dev=None, torch_free_too=False):
-    global directml_enabled
-    if dev is None:
-        dev = get_torch_device()
-
-    if hasattr(dev, "type") and (dev.type == "cpu" or dev.type == "mps"):
-        mem_free_total = psutil.virtual_memory().available
-        mem_free_torch = mem_free_total
-    else:
-        if directml_enabled:
-            mem_free_total = 1024 * 1024 * 1024  # TODO
-            mem_free_torch = mem_free_total
-        elif is_intel_xpu():
-            stats = torch.xpu.memory_stats(dev)
-            mem_active = stats["active_bytes.all.current"]
-            mem_reserved = stats["reserved_bytes.all.current"]
-            mem_free_torch = mem_reserved - mem_active
-            mem_free_xpu = (
-                torch.xpu.get_device_properties(dev).total_memory - mem_reserved
-            )
-            mem_free_total = mem_free_xpu + mem_free_torch
-        else:
-            stats = torch.cuda.memory_stats(dev)
-            mem_active = stats["active_bytes.all.current"]
-            mem_reserved = stats["reserved_bytes.all.current"]
-            mem_free_cuda, _ = torch.cuda.mem_get_info(dev)
-            mem_free_torch = mem_reserved - mem_active
-            mem_free_total = mem_free_cuda + mem_free_torch
-
-    if torch_free_too:
-        return (mem_free_total, mem_free_torch)
-    else:
-        return mem_free_total
-
-
-def cpu_mode():
-    global cpu_state
-    return cpu_state == CPUState.CPU
-
-
-def mps_mode():
-    global cpu_state
-    return cpu_state == CPUState.MPS
-
-
-def is_device_type(device, type):
-    if hasattr(device, "type"):
-        if device.type == type:
-            return True
-    return False
-
-
-def is_device_cpu(device):
-    return is_device_type(device, "cpu")
-
-
-def is_device_mps(device):
-    return is_device_type(device, "mps")
-
-
-def is_device_cuda(device):
-    return is_device_type(device, "cuda")
-
-
-def should_use_fp16(
-    device=None, model_params=0, prioritize_performance=True, manual_cast=False
-):
-    global directml_enabled
-
-    if device is not None:
-        if is_device_cpu(device):
-            return False
-
-    if FORCE_FP16:
-        return True
-
-    if device is not None:
-        if is_device_mps(device):
-            return True
-
-    if FORCE_FP32:
-        return False
-
-    if directml_enabled:
-        return False
-
-    if mps_mode():
-        return True
-
-    if cpu_mode():
-        return False
-
-    if is_intel_xpu():
-        return True
-
-    if torch.version.hip:
-        return True
-
-    props = torch.cuda.get_device_properties(device)
-    if props.major >= 8:
-        return True
-
-    if props.major < 6:
-        return False
-
-    # FP16 is confirmed working on a 1080 (GP104) and on latest pytorch actually seems faster than fp32
-    nvidia_10_series = [
-        "1080",
-        "1070",
-        "titan x",
-        "p3000",
-        "p3200",
-        "p4000",
-        "p4200",
-        "p5000",
-        "p5200",
-        "p6000",
-        "1060",
-        "1050",
-        "p40",
-        "p100",
-        "p6",
-        "p4",
-    ]
-    for x in nvidia_10_series:
-        if x in props.name.lower():
-            if WINDOWS or manual_cast:
-                return True
-            else:
-                return False  # weird linux behavior where fp32 is faster
-
-    if manual_cast:
-        free_model_memory = maximum_vram_for_weights(device)
-        if (not prioritize_performance) or model_params * 4 > free_model_memory:
-            return True
-
-    if props.major < 7:
-        return False
-
-    # FP16 is just broken on these cards
-    nvidia_16_series = [
-        "1660",
-        "1650",
-        "1630",
-        "T500",
-        "T550",
-        "T600",
-        "MX550",
-        "MX450",
-        "CMP 30HX",
-        "T2000",
-        "T1000",
-        "T1200",
-    ]
-    for x in nvidia_16_series:
-        if x in props.name:
-            return False
-
-    return True
-
-
-def should_use_bf16(
-    device=None, model_params=0, prioritize_performance=True, manual_cast=False
-):
-    if device is not None:
-        if is_device_cpu(device):  # TODO ? bf16 works on CPU but is extremely slow
-            return False
-
-    if device is not None:
-        if is_device_mps(device):
-            return True
-
-    if FORCE_FP32:
-        return False
-
-    if directml_enabled:
-        return False
-
-    if mps_mode():
-        return True
-
-    if cpu_mode():
-        return False
-
-    if is_intel_xpu():
-        return True
-
-    props = torch.cuda.get_device_properties(device)
-    if props.major >= 8:
-        return True
-
-    bf16_works = torch.cuda.is_bf16_supported()
-
-    if bf16_works or manual_cast:
-        free_model_memory = maximum_vram_for_weights(device)
-        if (not prioritize_performance) or model_params * 4 > free_model_memory:
-            return True
-
-    return False
-
-
-def supports_fp8_compute(device=None):
-    props = torch.cuda.get_device_properties(device)
-    if props.major >= 9:
-        return True
-    if props.major < 8:
-        return False
-    if props.minor < 9:
-        return False
-    return True
-
-
-def soft_empty_cache(force=False):
-    global cpu_state
-    if cpu_state == CPUState.MPS:
-        torch.mps.empty_cache()
-    elif is_intel_xpu():
-        torch.xpu.empty_cache()
-    elif torch.cuda.is_available():
-        if (
-            force or is_nvidia()
-        ):  # This seems to make things worse on ROCm so I only do it for cuda
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-
-
-def unload_all_models():
-    free_memory(1e30, get_torch_device())
-
-
-def resolve_lowvram_weight(weight, model, key):  # TODO: remove
-    print(
-        "WARNING: The comfy.model_management.resolve_lowvram_weight function will be removed soon, please stop using it."
-    )
-    return weight
 
 
 # TODO: might be cleaner to put this somewhere else
@@ -2223,10 +507,11 @@ def prepare_sampling(model, noise_shape, conds):
         model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
         + inference_memory
     )
-    load_models_gpu(
+    Device.load_models_gpu(
         [model] + models,
         memory_required=memory_required,
         minimum_memory_required=minimum_memory_required,
+        flux_enabled=True,
     )
     real_model = model.model
 
@@ -2265,7 +550,7 @@ def cast_bias_weight(s, input=None, dtype=None, device=None, bias_dtype=None):
             device = input.device
 
     bias = None
-    non_blocking = device_supports_non_blocking(device)
+    non_blocking = Device.device_supports_non_blocking(device)
     if s.bias is not None:
         has_function = s.bias_function is not None
         bias = cast_to(
@@ -2520,7 +805,6 @@ class manual_cast(disable_weight_init):
         comfy_cast_weights = True
 
 
-import collections
 
 
 def get_area_and_mult(conds, x_in, timestep_in):
@@ -2693,7 +977,7 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options):
         to_batch_temp.reverse()
         to_batch = to_batch_temp[:1]
 
-        free_memory = get_free_memory(x_in.device)
+        free_memory = Device.get_free_memory(x_in.device)
         for i in range(1, len(to_batch_temp) + 1):
             batch_amount = to_batch_temp[: len(to_batch_temp) // i]
             input_shape = [len(batch_amount) * first_shape[0]] + list(first_shape)[1:]
@@ -3345,7 +1629,7 @@ def sample(
         disable_pbar=disable_pbar,
         seed=seed,
     )
-    samples = samples.to(intermediate_device())
+    samples = samples.to(Device.intermediate_device())
     return samples
 
 
@@ -3421,12 +1705,11 @@ def prepare_noise(latent_image, seed, noise_inds=None):
     return noises
 
 
-import uuid
 import torch.nn as nn
 
 ops = disable_weight_init
 
-if xformers_enabled_vae():
+if Device.xformers_enabled_vae():
     import xformers
     import xformers.ops
 
@@ -3630,7 +1913,7 @@ class AttnBlock(nn.Module):
             in_channels, in_channels, kernel_size=1, stride=1, padding=0
         )
 
-        if xformers_enabled_vae():
+        if Device.xformers_enabled_vae():
             logging.info("Using xformers attention in VAE")
             self.optimized_attention = xformers_attention
         else:
@@ -3895,7 +2178,7 @@ import logging
 
 from torch import nn
 
-if xformers_enabled():
+if Device.xformers_enabled():
     import xformers
     import xformers.ops
 
@@ -4000,7 +2283,7 @@ def attention_pytorch(
     return out
 
 
-if xformers_enabled():
+if Device.xformers_enabled():
     logging.info("Using xformers cross attention")
     optimized_attention = attention_xformers
 else:
@@ -4304,7 +2587,7 @@ class ClipTokenWeightEncoder:
         out, pooled = o[:2]
 
         if pooled is not None:
-            first_pooled = pooled[0:1].to(intermediate_device())
+            first_pooled = pooled[0:1].to(Device.intermediate_device())
         else:
             first_pooled = pooled
 
@@ -4321,9 +2604,9 @@ class ClipTokenWeightEncoder:
             output.append(z)
 
         if len(output) == 0:
-            r = (out[-1:].to(intermediate_device()), first_pooled)
+            r = (out[-1:].to(Device.intermediate_device()), first_pooled)
         else:
-            r = (torch.cat(output, dim=-2).to(intermediate_device()), first_pooled)
+            r = (torch.cat(output, dim=-2).to(Device.intermediate_device()), first_pooled)
 
         if len(o) > 2:
             extra = {}
@@ -4334,7 +2617,7 @@ class ClipTokenWeightEncoder:
                         v[:sections]
                         .flatten()
                         .unsqueeze(dim=0)
-                        .to(intermediate_device())
+                        .to(Device.intermediate_device())
                     )
                 extra[k] = v
 
@@ -4655,7 +2938,7 @@ class SDTokenizer:
         self.embedding_key = embedding_key
 
     def _try_get_embedding(self, embedding_name: str):
-        embed = load_embed(
+        embed = SDToken.load_embed(
             embedding_name,
             self.embedding_directory,
             self.embedding_size,
@@ -4664,7 +2947,7 @@ class SDTokenizer:
         if embed is None:
             stripped = embedding_name.strip(",")
             if len(stripped) < len(embedding_name):
-                embed = load_embed(
+                embed = SDToken.load_embed(
                     stripped,
                     self.embedding_directory,
                     self.embedding_size,
@@ -4909,9 +3192,6 @@ class BaseModel(torch.nn.Module):
             self.diffusion_model = unet_model(
                 **unet_config, device=device, operations=operations
             )
-            if force_channels_last():
-                self.diffusion_model.to(memory_format=torch.channels_last)
-                logging.debug("using channels last mode for diffusion model")
             logging.info(
                 "model weight dtype {}, manual cast: {}".format(
                     self.get_dtype(), self.manual_cast_dtype
@@ -4989,12 +3269,10 @@ class BaseModel(torch.nn.Module):
             device = kwargs["device"]
 
             if concat_latent_image.shape[1:] != noise.shape[1:]:
-                concat_latent_image = common_upscale(
+                concat_latent_image = upscale.common_upscale(
                     concat_latent_image,
                     noise.shape[-1],
                     noise.shape[-2],
-                    "bilinear",
-                    "center",
                 )
 
             concat_latent_image = resize_to_batch_size(
@@ -5009,7 +3287,7 @@ class BaseModel(torch.nn.Module):
                     (-1, 1, denoise_mask.shape[-2], denoise_mask.shape[-1])
                 )
                 if denoise_mask.shape[-2:] != noise.shape[-2:]:
-                    denoise_mask = common_upscale(
+                    denoise_mask = upscale.common_upscale(
                         denoise_mask,
                         noise.shape[-1],
                         noise.shape[-2],
@@ -5075,13 +3353,13 @@ class BaseModel(torch.nn.Module):
         return self.latent_format.process_out(latent)
 
     def memory_required(self, input_shape):
-        if xformers_enabled() or pytorch_attention_flash_attention():
+        if Device.xformers_enabled() or Device.pytorch_attention_flash_attention():
             dtype = self.get_dtype()
             if self.manual_cast_dtype is not None:
                 dtype = self.manual_cast_dtype
             # TODO: this needs to be tweaked
             area = input_shape[0] * math.prod(input_shape[2:])
-            return (area * dtype_size(dtype) * 0.01 * self.memory_usage_factor) * (
+            return (area * Device.dtype_size(dtype) * 0.01 * self.memory_usage_factor) * (
                 1024 * 1024
             )
         else:
@@ -5382,7 +3660,7 @@ def detect_unet_config(state_dict, key_prefix):
             current_res *= 2
             last_res_blocks = 0
             last_channel_mult = 0
-            out = calculate_transformer_depth(
+            out = transformer.calculate_transformer_depth(
                 prefix_output, state_dict_keys, state_dict
             )
             if out is not None:
@@ -5398,7 +3676,7 @@ def detect_unet_config(state_dict, key_prefix):
                     // model_channels
                 )
 
-                out = calculate_transformer_depth(prefix, state_dict_keys, state_dict)
+                out = transformer.calculate_transformer_depth(prefix, state_dict_keys, state_dict)
                 if out is not None:
                     transformer_depth.append(out[0])
                     if context_dim is None:
@@ -5411,7 +3689,7 @@ def detect_unet_config(state_dict, key_prefix):
 
             res_block_prefix = "{}0.in_layers.0.weight".format(prefix_output)
             if res_block_prefix in block_keys_output:
-                out = calculate_transformer_depth(
+                out = transformer.calculate_transformer_depth(
                     prefix_output, state_dict_keys, state_dict
                 )
                 if out is not None:
@@ -5497,19 +3775,19 @@ class CLIP:
         clip = target.clip
         tokenizer = target.tokenizer
 
-        load_device = model_options.get("load_device", text_encoder_device())
+        load_device = model_options.get("load_device", Device.text_encoder_device())
         offload_device = model_options.get(
-            "offload_device", text_encoder_offload_device()
+            "offload_device", Device.text_encoder_offload_device()
         )
         dtype = model_options.get("dtype", None)
         if dtype is None:
-            dtype = text_encoder_dtype(load_device)
+            dtype = Device.text_encoder_dtype(load_device)
 
         params["dtype"] = dtype
         params["device"] = model_options.get(
             "initial_device",
-            text_encoder_initial_device(
-                load_device, offload_device, parameters * dtype_size(dtype)
+            Device.text_encoder_initial_device(
+                load_device, offload_device, parameters * Device.dtype_size(dtype)
             ),
         )
         params["model_options"] = model_options
@@ -5517,7 +3795,7 @@ class CLIP:
         self.cond_stage_model = clip(**(params))
 
         for dt in self.cond_stage_model.dtypes:
-            if not supports_cast(load_device, dt):
+            if not Device.supports_cast(load_device, dt):
                 load_device = offload_device
                 if params["device"] != offload_device:
                     self.cond_stage_model.to(offload_device)
@@ -5532,7 +3810,7 @@ class CLIP:
             offload_device=offload_device,
         )
         if params["device"] == load_device:
-            load_models_gpu([self.patcher], force_full_load=True)
+            Device.load_models_gpu([self.patcher], force_full_load=True, flux_enabled=True)
         self.layer_idx = None
         logging.debug(
             "CLIP model load device: {}, offload device: {}, current: {}".format(
@@ -5584,7 +3862,7 @@ class CLIP:
         return sd_clip
 
     def load_model(self):
-        load_model_gpu(self.patcher)
+        Device.load_model_gpu(self.patcher)
         return self.patcher
 
     def get_key_patches(self):
@@ -5600,12 +3878,12 @@ class VAE:
 
         self.memory_used_encode = lambda shape, dtype: (
             1767 * shape[2] * shape[3]
-        ) * dtype_size(
+        ) * Device.dtype_size(
             dtype
         )  # These are for AutoencoderKL and need tweaking (should be lower)
         self.memory_used_decode = lambda shape, dtype: (
             2178 * shape[2] * shape[3] * 64
-        ) * dtype_size(dtype)
+        ) * Device.dtype_size(dtype)
         self.downscale_ratio = 8
         self.upscale_ratio = 8
         self.latent_channels = 4
@@ -5643,30 +3921,23 @@ class VAE:
                 self.latent_channels = ddconfig["z_channels"] = sd[
                     "decoder.conv_in.weight"
                 ].shape[1]
-                if "quant_conv.weight" in sd:
-                    self.first_stage_model = AutoencoderKL(
-                        ddconfig=ddconfig, embed_dim=4
-                    )
-                else:
-                    self.first_stage_model = AutoencodingEngine(
-                        regularizer_config={
-                            "target": "flux.DiagonalGaussianRegularizer"
-                        },
-                        encoder_config={
-                            "target": "flux.Encoder",
-                            "params": ddconfig,
-                        },
-                        decoder_config={
-                            "target": "flux.Decoder",
-                            "params": ddconfig,
-                        },
-                    )
+                self.first_stage_model = AutoencodingEngine(
+                    regularizer_config={
+                        "target": "flux.DiagonalGaussianRegularizer"
+                    },
+                    encoder_config={
+                        "target": "flux.Encoder",
+                        "params": ddconfig,
+                    },
+                    decoder_config={
+                        "target": "flux.Decoder",
+                        "params": ddconfig,
+                    },
+                )
             else:
                 logging.warning("WARNING: No VAE weights detected, VAE not initalized.")
                 self.first_stage_model = None
                 return
-        else:
-            self.first_stage_model = AutoencoderKL(**(config["params"]))
         self.first_stage_model = self.first_stage_model.eval()
 
         m, u = self.first_stage_model.load_state_dict(sd, strict=False)
@@ -5677,14 +3948,14 @@ class VAE:
             logging.debug("Leftover VAE keys {}".format(u))
 
         if device is None:
-            device = vae_device()
+            device = Device.vae_device()
         self.device = device
-        offload_device = vae_offload_device()
+        offload_device = Device.vae_offload_device()
         if dtype is None:
-            dtype = vae_dtype(self.device, self.working_dtypes)
+            dtype = Device.vae_dtype()
         self.vae_dtype = dtype
         self.first_stage_model.to(self.vae_dtype)
-        self.output_device = intermediate_device()
+        self.output_device = Device.intermediate_device()
 
         self.patcher = ModelPatcher(
             self.first_stage_model,
@@ -5707,23 +3978,22 @@ class VAE:
         return pixels
 
     def decode_tiled_(self, samples, tile_x=64, tile_y=64, overlap=16):
-        steps = samples.shape[0] * get_tiled_scale_steps(
+        steps = samples.shape[0] * image_util.get_tiled_scale_steps(
             samples.shape[3], samples.shape[2], tile_x, tile_y, overlap
         )
-        steps += samples.shape[0] * get_tiled_scale_steps(
+        steps += samples.shape[0] * image_util.get_tiled_scale_steps(
             samples.shape[3], samples.shape[2], tile_x // 2, tile_y * 2, overlap
         )
-        steps += samples.shape[0] * get_tiled_scale_steps(
+        steps += samples.shape[0] * image_util.get_tiled_scale_steps(
             samples.shape[3], samples.shape[2], tile_x * 2, tile_y // 2, overlap
         )
-        pbar = ProgressBar(steps)
+        pbar = util.ProgressBar(steps)
 
-        decode_fn = lambda a: self.first_stage_model.decode(
-            a.to(self.vae_dtype).to(self.device)
-        ).float()
+        def decode_fn(a):
+            return self.first_stage_model.decode(a.to(self.vae_dtype).to(self.device)).float()
         output = self.process_output(
             (
-                tiled_scale(
+                image_util.tiled_scale(
                     samples,
                     decode_fn,
                     tile_x // 2,
@@ -5733,7 +4003,7 @@ class VAE:
                     output_device=self.output_device,
                     pbar=pbar,
                 )
-                + tiled_scale(
+                + image_util.tiled_scale(
                     samples,
                     decode_fn,
                     tile_x * 2,
@@ -5743,7 +4013,7 @@ class VAE:
                     output_device=self.output_device,
                     pbar=pbar,
                 )
-                + tiled_scale(
+                + image_util.tiled_scale(
                     samples,
                     decode_fn,
                     tile_x,
@@ -5759,9 +4029,8 @@ class VAE:
         return output
 
     def decode_tiled_1d(self, samples, tile_x=128, overlap=32):
-        decode_fn = lambda a: self.first_stage_model.decode(
-            a.to(self.vae_dtype).to(self.device)
-        ).float()
+        def decode_fn(a):
+            return self.first_stage_model.decode(a.to(self.vae_dtype).to(self.device)).float()
         return tiled_scale_multidim(
             samples,
             decode_fn,
@@ -5773,29 +4042,28 @@ class VAE:
         )
 
     def encode_tiled_(self, pixel_samples, tile_x=512, tile_y=512, overlap=64):
-        steps = pixel_samples.shape[0] * get_tiled_scale_steps(
+        steps = pixel_samples.shape[0] * image_util.get_tiled_scale_steps(
             pixel_samples.shape[3], pixel_samples.shape[2], tile_x, tile_y, overlap
         )
-        steps += pixel_samples.shape[0] * get_tiled_scale_steps(
+        steps += pixel_samples.shape[0] * image_util.get_tiled_scale_steps(
             pixel_samples.shape[3],
             pixel_samples.shape[2],
             tile_x // 2,
             tile_y * 2,
             overlap,
         )
-        steps += pixel_samples.shape[0] * get_tiled_scale_steps(
+        steps += pixel_samples.shape[0] * image_util.get_tiled_scale_steps(
             pixel_samples.shape[3],
             pixel_samples.shape[2],
             tile_x * 2,
             tile_y // 2,
             overlap,
         )
-        pbar = ProgressBar(steps)
+        pbar = util.ProgressBar(steps)
 
-        encode_fn = lambda a: self.first_stage_model.encode(
-            (self.process_input(a)).to(self.vae_dtype).to(self.device)
-        ).float()
-        samples = tiled_scale(
+        def encode_fn(a):
+            return self.first_stage_model.encode(self.process_input(a).to(self.vae_dtype).to(self.device)).float()
+        samples = image_util.tiled_scale(
             pixel_samples,
             encode_fn,
             tile_x,
@@ -5806,7 +4074,7 @@ class VAE:
             output_device=self.output_device,
             pbar=pbar,
         )
-        samples += tiled_scale(
+        samples += image_util.tiled_scale(
             pixel_samples,
             encode_fn,
             tile_x * 2,
@@ -5817,7 +4085,7 @@ class VAE:
             output_device=self.output_device,
             pbar=pbar,
         )
-        samples += tiled_scale(
+        samples += image_util.tiled_scale(
             pixel_samples,
             encode_fn,
             tile_x // 2,
@@ -5832,9 +4100,8 @@ class VAE:
         return samples
 
     def encode_tiled_1d(self, samples, tile_x=128 * 2048, overlap=32 * 2048):
-        encode_fn = lambda a: self.first_stage_model.encode(
-            (self.process_input(a)).to(self.vae_dtype).to(self.device)
-        ).float()
+        def encode_fn(a):
+            return self.first_stage_model.encode(self.process_input(a).to(self.vae_dtype).to(self.device)).float()
         return tiled_scale_multidim(
             samples,
             encode_fn,
@@ -5848,8 +4115,8 @@ class VAE:
     def decode(self, samples_in):
         try:
             memory_used = self.memory_used_decode(samples_in.shape, self.vae_dtype)
-            load_models_gpu([self.patcher], memory_required=memory_used)
-            free_memory = get_free_memory(self.device)
+            Device.load_models_gpu([self.patcher], memory_required=memory_used, flux_enabled=True)
+            free_memory = Device.get_free_memory(self.device)
             batch_number = int(free_memory / memory_used)
             batch_number = max(1, batch_number)
 
@@ -5867,7 +4134,7 @@ class VAE:
                     .to(self.output_device)
                     .float()
                 )
-        except OOM_EXCEPTION as e:
+        except Device.OOM_EXCEPTION:
             logging.warning(
                 "Warning: Ran out of memory when regular VAE decoding, retrying with tiled VAE decoding."
             )
@@ -5880,7 +4147,7 @@ class VAE:
         return pixel_samples
 
     def decode_tiled(self, samples, tile_x=64, tile_y=64, overlap=16):
-        load_model_gpu(self.patcher)
+        Device.load_model_gpu(self.patcher)
         output = self.decode_tiled_(samples, tile_x, tile_y, overlap)
         return output.movedim(1, -1)
 
@@ -5889,8 +4156,8 @@ class VAE:
         pixel_samples = pixel_samples.movedim(-1, 1)
         try:
             memory_used = self.memory_used_encode(pixel_samples.shape, self.vae_dtype)
-            load_models_gpu([self.patcher], memory_required=memory_used)
-            free_memory = get_free_memory(self.device)
+            Device.load_models_gpu([self.patcher], memory_required=memory_used, flux_enabled=True)
+            free_memory = Device.get_free_memory(self.device)
             batch_number = int(free_memory / memory_used)
             batch_number = max(1, batch_number)
             samples = torch.empty(
@@ -5912,7 +4179,7 @@ class VAE:
                     .float()
                 )
 
-        except OOM_EXCEPTION as e:
+        except Device.OOM_EXCEPTION:
             logging.warning(
                 "Warning: Ran out of memory when regular VAE encoding, retrying with tiled VAE encoding."
             )
@@ -5925,7 +4192,7 @@ class VAE:
 
     def encode_tiled(self, pixel_samples, tile_x=512, tile_y=512, overlap=64):
         pixel_samples = self.vae_encode_crop_pixels(pixel_samples)
-        load_model_gpu(self.patcher)
+        Device.load_model_gpu(self.patcher)
         pixel_samples = pixel_samples.movedim(-1, 1)
         samples = self.encode_tiled_(
             pixel_samples, tile_x=tile_x, tile_y=tile_y, overlap=overlap
@@ -5999,7 +4266,7 @@ class VAEDecode:
 
 class EmptyLatentImage:
     def __init__(self):
-        self.device = intermediate_device()
+        self.device = Device.intermediate_device()
 
     def generate(self, width, height, batch_size=1):
         latent = torch.zeros(
@@ -6141,7 +4408,6 @@ class SaveImage:
         return {"ui": {"images": results}}
 
 
-import numpy as np
 import torch.nn.functional as F
 from PIL import Image
 
@@ -6156,14 +4422,10 @@ import math
 from PIL import Image
 
 
-import math
 import os
-import re
-import numpy as np
 import torch
 
 from PIL import Image
-import numpy as np
 import torch
 
 
@@ -6171,14 +4433,12 @@ LANCZOS = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LA
 
 
 import logging
-from dataclasses import dataclass
 
 import torch
 
 
 import torch as th
 import torch.nn as nn
-import copy
 
 
 logger = logging.getLogger()
@@ -6283,7 +4543,7 @@ def load_torch_file(ckpt, safe_load=False, device=None):
         sd = safetensors.torch.load_file(ckpt, device=device.type)
     else:
         if safe_load:
-            if not "weights_only" in torch.load.__code__.co_varnames:
+            if "weights_only" not in torch.load.__code__.co_varnames:
                 logging.warning(
                     "Warning torch.load doesn't support weights_only on this pytorch version, loading unsafely."
                 )
@@ -6316,9 +4576,7 @@ from typing import (
     Protocol,
     Tuple,
     TypedDict,
-    Optional,
     List,
-    Union,
 )
 
 
@@ -6387,7 +4645,7 @@ class ModelPatcher:
     def model_size(self):
         if self.size > 0:
             return self.size
-        self.size = module_size(self.model)
+        self.size = Device.module_size(self.model)
         return self.size
 
     def loaded_size(self):
@@ -6470,7 +4728,7 @@ class ModelPatcher:
             )
 
         if device_to is not None:
-            temp_weight = cast_to_device(weight, device_to, torch.float32, copy=True)
+            temp_weight = Device.cast_to_device(weight, device_to, torch.float32, copy=True)
         else:
             temp_weight = weight.to(torch.float32, copy=True)
         out_weight = calculate_weight(self.patches[key], temp_weight, key)
@@ -6478,9 +4736,9 @@ class ModelPatcher:
             out_weight, weight.dtype, seed=string_to_seed(key)
         )
         if inplace_update:
-            copy_to_param(self.model, key, out_weight)
+            util.copy_to_param(self.model, key, out_weight)
         else:
-            set_attr_param(self.model, key, out_weight)
+            util.set_attr_param(self.model, key, out_weight)
 
     def load(
         self,
@@ -6495,7 +4753,7 @@ class ModelPatcher:
         loading = []
         for n, m in self.model.named_modules():
             if hasattr(m, "comfy_cast_weights") or hasattr(m, "weight"):
-                loading.append((module_size(m), n, m))
+                loading.append((Device.module_size(m), n, m))
 
         load_completely = []
         loading.sort(reverse=True)
@@ -6593,7 +4851,7 @@ class ModelPatcher:
         force_patch_weights=False,
     ):
         for k in self.object_patches:
-            old = set_attr(self.model, k, self.object_patches[k])
+            old = util.set_attr(self.model, k, self.object_patches[k])
             if k not in self.object_patches_backup:
                 self.object_patches_backup[k] = old
 
@@ -6625,9 +4883,9 @@ class ModelPatcher:
             for k in keys:
                 bk = self.backup[k]
                 if bk.inplace_update:
-                    copy_to_param(self.model, k, bk.weight)
+                    util.copy_to_param(self.model, k, bk.weight)
                 else:
-                    set_attr_param(self.model, k, bk.weight)
+                    util.set_attr_param(self.model, k, bk.weight)
 
             self.backup.clear()
 
@@ -6642,7 +4900,7 @@ class ModelPatcher:
 
         keys = list(self.object_patches_backup.keys())
         for k in keys:
-            set_attr(self.model, k, self.object_patches_backup[k])
+            util.set_attr(self.model, k, self.object_patches_backup[k])
 
         self.object_patches_backup.clear()
 
@@ -6652,9 +4910,8 @@ class ModelPatcher:
         unload_list = []
 
         for n, m in self.model.named_modules():
-            shift_lowvram = False
             if hasattr(m, "comfy_cast_weights"):
-                module_mem = module_size(m)
+                module_mem = Device.module_size(m)
                 unload_list.append((module_mem, n, m))
 
         unload_list.sort()
@@ -6664,32 +4921,6 @@ class ModelPatcher:
             module_mem = unload[0]
             n = unload[1]
             m = unload[2]
-            weight_key = "{}.weight".format(n)
-            bias_key = "{}.bias".format(n)
-
-            if hasattr(m, "comfy_patched_weights") and m.comfy_patched_weights == True:
-                for key in [weight_key, bias_key]:
-                    bk = self.backup.get(key, None)
-                    if bk is not None:
-                        if bk.inplace_update:
-                            copy_to_param(self.model, key, bk.weight)
-                        else:
-                            set_attr_param(self.model, key, bk.weight)
-                        self.backup.pop(key)
-
-                m.to(device_to)
-                if weight_key in self.patches:
-                    m.weight_function = LowVramPatch(weight_key, self.patches)
-                    patch_counter += 1
-                if bias_key in self.patches:
-                    m.bias_function = LowVramPatch(bias_key, self.patches)
-                    patch_counter += 1
-
-                m.prev_comfy_cast_weights = m.comfy_cast_weights
-                m.comfy_cast_weights = True
-                m.comfy_patched_weights = False
-                memory_freed += module_mem
-                logging.debug("freed {}".format(n))
 
         self.model.model_lowvram = True
         self.model.lowvram_patch_counter += patch_counter
@@ -6700,7 +4931,7 @@ class ModelPatcher:
         self.unpatch_model(unpatch_weights=False)
         self.patch_model(load_weights=False)
         full_load = False
-        if self.model.model_lowvram == False:
+        if self.model.model_lowvram is False:
             return 0
         if self.model.model_loaded_weight_memory + extra_memory > self.model_size():
             full_load = True
@@ -6725,7 +4956,6 @@ class ModelPatcher:
 
 
 # import pytorch_lightning as pl
-from typing import Dict, Tuple
 
 import torch
 
@@ -6740,7 +4970,7 @@ class DiagonalGaussianRegularizer(torch.nn.Module):
 
     def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
         log = dict()
-        posterior = DiagonalGaussianDistribution(z)
+        posterior = VariationalAE.DiagonalGaussianDistribution(z)
         if self.sample:
             z = posterior.sample()
         else:
@@ -6749,6 +4979,7 @@ class DiagonalGaussianRegularizer(torch.nn.Module):
         kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
         log["kl_loss"] = kl_loss
         return z, log
+
 
 
 class AbstractAutoencoder(torch.nn.Module):
@@ -6771,10 +5002,6 @@ class AbstractAutoencoder(torch.nn.Module):
         self.use_ema = ema_decay is not None
         if monitor is not None:
             self.monitor = monitor
-
-        if self.use_ema:
-            self.model_ema = LitEma(self, decay=ema_decay)
-            logpy.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))}.")
 
     def get_input(self, batch) -> Any:
         raise NotImplementedError()
@@ -7016,11 +5243,8 @@ class ModelSamplingFlux(torch.nn.Module):
 
 
 from PIL import Image
-from abc import abstractmethod
 import torch as th
 import torch.nn as nn
-import torch.nn.functional as F
-from einops import rearrange
 
 ops = disable_weight_init
 
@@ -7039,13 +5263,11 @@ class TimestepBlock(nn.Module):
 
 # Original code can be found on: https://github.com/black-forest-labs/flux
 
-from dataclasses import dataclass
-import math
 
 import torch
 from torch import Tensor, nn
 
-from einops import rearrange, repeat
+from einops import repeat
 
 
 def attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor) -> Tensor:
@@ -7058,7 +5280,7 @@ def attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor) -> Tensor:
 
 def rope(pos: Tensor, dim: int, theta: int) -> Tensor:
     assert dim % 2 == 0
-    if is_device_mps(pos.device) or is_intel_xpu():
+    if Device.is_device_mps(pos.device) or Device.is_intel_xpu():
         device = torch.device("cpu")
     else:
         device = pos.device
@@ -7748,7 +5970,7 @@ def load_diffusion_model_state_dict(
         sd = temp_sd
 
     parameters = calculate_parameters(sd)
-    load_device = get_torch_device()
+    load_device = Device.get_torch_device()
     model_config = model_config_from_unet(sd, "")
 
     if model_config is not None:
@@ -7773,16 +5995,16 @@ def load_diffusion_model_state_dict(
                 else:
                     logging.warning("{} {}".format(diffusers_keys[k], k))
 
-    offload_device = unet_offload_device()
+    offload_device = Device.unet_offload_device()
     if dtype is None:
-        unet_dtype2 = unet_dtype(
+        unet_dtype2 = Device.unet_dtype(
             model_params=parameters,
             supported_dtypes=model_config.supported_inference_dtypes,
         )
     else:
         unet_dtype2 = dtype
 
-    manual_cast_dtype = unet_manual_cast(
+    manual_cast_dtype = Device.unet_manual_cast(
         unet_dtype2, load_device, model_config.supported_inference_dtypes
     )
     model_config.set_inference_dtype(unet_dtype2, manual_cast_dtype)
@@ -7857,7 +6079,7 @@ def get_obj_from_str(string, reload=False):
 
 
 def instantiate_from_config(config):
-    if not "target" in config:
+    if "target" not in config:
         if config == "__is_first_stage__":
             return None
         elif config == "__is_unconditional__":
@@ -7929,7 +6151,7 @@ class FluxTokenizer:
 class FluxClipModel(torch.nn.Module):
     def __init__(self, dtype_t5=None, device="cpu", dtype=None, model_options={}):
         super().__init__()
-        dtype_t5 = pick_weight_dtype(dtype_t5, dtype, device)
+        dtype_t5 = Device.pick_weight_dtype(dtype_t5, dtype, device)
         clip_l_class = model_options.get("clip_l_class", SDClipModel)
         self.clip_l = clip_l_class(
             device=device,
@@ -7977,7 +6199,6 @@ def flux_clip(dtype_t5=None):
 from transformers import T5TokenizerFast
 
 import torch
-import math
 
 
 class T5LayerNorm(torch.nn.Module):
@@ -8392,35 +6613,16 @@ def load_text_encoder_state_dicts(
         pass
 
     for i in range(len(clip_data)):
-        if "transformer.resblocks.0.ln_1.weight" in clip_data[i]:
-            clip_data[i] = clip_text_transformers_convert(clip_data[i], "", "")
-        else:
-            if "text_projection" in clip_data[i]:
-                clip_data[i]["text_projection.weight"] = clip_data[i][
-                    "text_projection"
-                ].transpose(
-                    0, 1
-                )  # old models saved with the CLIPSave node
+        if "text_projection" in clip_data[i]:
+            clip_data[i]["text_projection.weight"] = clip_data[i][
+                "text_projection"
+            ].transpose(
+                0, 1
+            )  # old models saved with the CLIPSave node
 
     clip_target = EmptyClass()
     clip_target.params = {}
-    if len(clip_data) == 1:
-        if "encoder.block.23.layer.1.DenseReluDense.wi_1.weight" in clip_data[0]:
-            weight = clip_data[0]["encoder.block.23.layer.1.DenseReluDense.wi_1.weight"]
-            dtype_t5 = weight.dtype
-            if weight.shape[-1] == 2048:
-                clip_target.clip = AuraT5Model
-                clip_target.tokenizer = AuraT5Tokenizer
-        elif "encoder.block.0.layer.0.SelfAttention.k.weight" in clip_data[0]:
-            clip_target.clip = SAT5Model
-            clip_target.tokenizer = SAT5Tokenizer
-        else:
-            w = clip_data[0].get(
-                "text_model.embeddings.position_embedding.weight", None
-            )
-            clip_target.clip = SD1ClipModel
-            clip_target.tokenizer = SD1Tokenizer
-    elif len(clip_data) == 2:
+    if len(clip_data) == 2:
         if clip_type == CLIPType.FLUX:
             weight_name = "encoder.block.23.layer.1.DenseReluDense.wi_1.weight"
             weight = clip_data[0].get(weight_name, clip_data[1].get(weight_name, None))
@@ -8629,7 +6831,7 @@ class GGMLLayer(torch.nn.Module):
                 device = input.device
 
         bias = None
-        non_blocking = device_supports_non_blocking(device)
+        non_blocking = Device.device_supports_non_blocking(device)
         if s.bias is not None:
             bias = s.get_weight(s.bias.to(device), dtype)
             bias = cast_to(
@@ -8837,10 +7039,6 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
             raise ValueError(
                 f"Unexpected architecture type in GGUF file, expected one of flux, sd1, sdxl, t5encoder but got {arch_str!r}"
             )
-    else:  # stable-diffusion.cpp
-        # import here to avoid changes to convert.py breaking regular models
-        arch_str = detect_arch(set(val[0] for val in tensors))
-        compat = "sd.cpp"
 
     # main loading loop
     state_dict = {}
@@ -8916,7 +7114,7 @@ class GGUFModelPatcher(ModelPatcher):
                 )
 
             if device_to is not None:
-                temp_weight = cast_to_device(
+                temp_weight = Device.cast_to_device(
                     weight, device_to, torch.float32, copy=True
                 )
             else:
@@ -8926,9 +7124,9 @@ class GGUFModelPatcher(ModelPatcher):
             out_weight = stochastic_rounding(out_weight, weight.dtype)
 
         if inplace_update:
-            copy_to_param(self.model, key, out_weight)
+            util.copy_to_param(self.model, key, out_weight)
         else:
-            set_attr_param(self.model, key, out_weight)
+            util.set_attr_param(self.model, key, out_weight)
 
     def unpatch_model(self, device_to=None, unpatch_weights=True):
         if unpatch_weights:
@@ -9105,7 +7303,7 @@ class CLIPLoaderGGUF:
             state_dicts=clip_data,
             model_options={
                 "custom_operations": GGMLOps,
-                "initial_device": text_encoder_offload_device(),
+                "initial_device": Device.text_encoder_offload_device(),
             },
             embedding_directory="models/embeddings",
         )
@@ -9253,25 +7451,6 @@ def resolve_areas_and_cond_masks_multidim(conditions, dims, device):
                 mask = torch.nn.functional.interpolate(
                     mask.unsqueeze(1), size=dims, mode="bilinear", align_corners=False
                 ).squeeze(1)
-
-            if modified.get("set_area_to_bounds", False):  # TODO: handle dim != 2
-                bounds = torch.max(torch.abs(mask), dim=0).values.unsqueeze(0)
-                boxes, is_empty = get_mask_aabb(bounds)
-                if is_empty[0]:
-                    # Use the minimum possible size for efficiency reasons. (Since the mask is all-0, this becomes a noop anyway)
-                    modified["area"] = (8, 8, 0, 0)
-                else:
-                    box = boxes[0]
-                    H, W, Y, X = (
-                        box[3] - box[1] + 1,
-                        box[2] - box[0] + 1,
-                        box[1],
-                        box[0],
-                    )
-                    H = max(8, H)
-                    W = max(8, W)
-                    area = (int(H), int(W), int(Y), int(X))
-                    modified["area"] = area
 
             modified["mask"] = mask
             conditions[i] = modified
@@ -9432,10 +7611,7 @@ class KSampler:
 
 
 import os
-import random
-from typing import Any, Union
 import torch
-import tkinter as tk
 import customtkinter as ctk
 from PIL import ImageTk
 
@@ -9509,10 +7685,10 @@ class App(tk.Tk):
         self.image_label = tk.Label(self.display, bg="black")
         self.image_label.pack(expand=True, padx=10, pady=10)
         
-        self.preview_check = ctk.CTkCheckBox(
+        self.previewer_checkbox = ctk.CTkCheckBox(
             self.display, bg_color="black", text="Preview", variable=tk.BooleanVar()
             )
-        self.preview_check.pack(pady=10)
+        self.previewer_checkbox.pack(pady=10)
 
         self.ckpt = None
 
@@ -9585,11 +7761,11 @@ class App(tk.Tk):
 
     def _prep(self):
         prompt = self.prompt_entry.get("1.0", tk.END)
-        if self.enhancer_var.get() == True:
+        if self.enhancer_var.get() is True:
             prompt = enhance_prompt()
-            while prompt == None:
+            while prompt is None:
                 pass
-        neg = self.neg.get("1.0", tk.END)
+        self.neg.get("1.0", tk.END)
         w = int(self.width_slider.get())
         h = int(self.height_slider.get())
         if self.changed:
@@ -9664,7 +7840,7 @@ class App(tk.Tk):
                 vae=self.vaeloader_11[0],
             )
 
-            saveimage_24 = self.saveimage.save_images(
+            self.saveimage.save_images(
                 filename_prefix="Flux", images=vaedecode_8[0]
             )
             for image in vaedecode_8[0]:
@@ -9724,7 +7900,7 @@ class App(tk.Tk):
         img = Image.open(image_files[0])
         self.update_image(img)
         
-        if self.display_most_recent_image_flag == True:
+        if self.display_most_recent_image_flag is True:
             self.after(10000, self.display_most_recent_image)
             self.display_most_recent_image_flag = False
 
