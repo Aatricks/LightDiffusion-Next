@@ -394,7 +394,7 @@ class ModelPatcher:
         self.model.device = device_to
         self.model.model_loaded_weight_memory = mem_counter
     
-    def patch_model(
+    def patch_model_flux(
         self,
         device_to: torch.device = None,
         lowvram_model_memory: int =0,
@@ -431,7 +431,7 @@ class ModelPatcher:
             )
         return self.model
 
-    def patch_model_lowvram(
+    def patch_model_lowvram_flux(
         self,
         device_to: torch.device = None,
         lowvram_model_memory: int = 0,
@@ -448,6 +448,112 @@ class ModelPatcher:
             - `torch.nn.Module`: The patched model.
         """
         self.patch_model(device_to)
+
+        logging.info(
+            "loading in lowvram mode {}".format(lowvram_model_memory / (1024 * 1024))
+        )
+
+        class LowVramPatch:
+            def __init__(self, key: str, model_patcher: "ModelPatcher"):
+                self.key = key
+                self.model_patcher = model_patcher
+
+            def __call__(self, weight: torch.Tensor) -> torch.Tensor:
+                return self.model_patcher.calculate_weight(
+                    self.model_patcher.patches[self.key], weight, self.key
+                )
+
+        mem_counter = 0
+        patch_counter = 0
+        for n, m in self.model.named_modules():
+            lowvram_weight = False
+            if hasattr(m, "comfy_cast_weights"):
+                module_mem = Device.module_size(m)
+                if mem_counter + module_mem >= lowvram_model_memory:
+                    lowvram_weight = True
+
+            weight_key = "{}.weight".format(n)
+            bias_key = "{}.bias".format(n)
+
+            if lowvram_weight:
+                if weight_key in self.patches:
+                    if force_patch_weights:
+                        self.patch_weight_to_device(weight_key)
+                    else:
+                        m.weight_function = LowVramPatch(weight_key, self)
+                        patch_counter += 1
+                if bias_key in self.patches:
+                    if force_patch_weights:
+                        self.patch_weight_to_device(bias_key)
+                    else:
+                        m.bias_function = LowVramPatch(bias_key, self)
+                        patch_counter += 1
+
+                m.prev_comfy_cast_weights = m.comfy_cast_weights
+                m.comfy_cast_weights = True
+            else:
+                if hasattr(m, "weight"):
+                    self.patch_weight_to_device(weight_key, device_to)
+                    self.patch_weight_to_device(bias_key, device_to)
+                    m.to(device_to)
+                    mem_counter += Device.module_size(m)
+                    logging.debug("lowvram: loaded module regularly {}".format(m))
+
+        self.model_lowvram = True
+        self.lowvram_patch_counter = patch_counter
+        return self.model
+    
+    def patch_model(
+        self, device_to: torch.device = None, patch_weights: bool = True
+    ) -> torch.nn.Module:
+        """#### Patch the model.
+
+        #### Args:
+            - `device_to` (torch.device, optional): The device to patch to. Defaults to None.
+            - `patch_weights` (bool, optional): Whether to patch weights. Defaults to True.
+
+        #### Returns:
+            - `torch.nn.Module`: The patched model.
+        """
+        for k in self.object_patches:
+            old = util.set_attr(self.model, k, self.object_patches[k])
+            if k not in self.object_patches_backup:
+                self.object_patches_backup[k] = old
+
+        if patch_weights:
+            model_sd = self.model_state_dict()
+            for key in self.patches:
+                if key not in model_sd:
+                    logging.warning(
+                        "could not patch. key doesn't exist in model: {}".format(key)
+                    )
+                    continue
+
+                self.patch_weight_to_device(key, device_to)
+
+            if device_to is not None:
+                self.model.to(device_to)
+                self.current_device = device_to
+
+        return self.model
+
+    def patch_model_lowvram(
+        self,
+        device_to: torch.device = None,
+        lowvram_model_memory: int = 0,
+        force_patch_weights: bool = False,
+    ) -> torch.nn.Module:
+        """#### Patch the model for low VRAM.
+
+        #### Args:
+            - `device_to` (torch.device, optional): The device to patch to. Defaults to None.
+            - `lowvram_model_memory` (int, optional): The low VRAM model memory. Defaults to 0.
+            - `force_patch_weights` (bool, optional): Whether to force patch weights. Defaults to False.
+
+        #### Returns:
+            - `torch.nn.Module`: The patched model.
+        """
+        self.patch_model(device_to, patch_weights=False)
 
         logging.info(
             "loading in lowvram mode {}".format(lowvram_model_memory / (1024 * 1024))

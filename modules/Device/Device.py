@@ -364,7 +364,7 @@ class LoadedModel:
                 )
             else:
                 self.real_model = self.model.patch_model(
-                    device_to=patch_model_to, load_weights=load_weights
+                    device_to=patch_model_to, patch_weights=load_weights
                 )
         except Exception as e:
             self.model.unpatch_model(self.model.offload_device)
@@ -397,7 +397,7 @@ class LoadedModel:
             self.model_use_more_vram(use_more_vram)
         else:
             try:
-                self.real_model = self.model.patch_model(
+                self.real_model = self.model.patch_model_flux(
                     device_to=patch_model_to,
                     lowvram_model_memory=lowvram_model_memory,
                     load_weights=load_weights,
