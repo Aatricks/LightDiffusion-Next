@@ -19,7 +19,7 @@ from modules.sample import sampling
 from modules.Utilities import upscale
 from modules.AutoDetailer import SAM, ADetailer, bbox, SEGS
 
-from modules.FileManaging import ImageSaver, Loader
+from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale
@@ -158,6 +158,7 @@ def pipeline(
                     images=ultimatesdupscale_250[0],
                 )
         elif flux_enabled:
+            Downloader.CheckAndDownloadFlux()
             with torch.inference_mode():
                 dualcliploadergguf = flux.DualCLIPLoaderGGUF()
                 emptylatentimage = flux.EmptyLatentImage()

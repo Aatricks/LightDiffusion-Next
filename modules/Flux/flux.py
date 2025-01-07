@@ -43,10 +43,7 @@ from modules.Utilities import upscale, util
 
 
 from modules.Device import Device
-from modules.FileManaging import Downloader
 from modules.SD15 import SDClip, SDToken
-
-Downloader.CheckAndDownloadFlux()
 
 
 class LatentPreviewMethod(enum.Enum):
