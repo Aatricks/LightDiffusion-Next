@@ -42,11 +42,61 @@ class CONDRegular:
         return self._copy_with(
             util.repeat_to_batch_size(self.cond, batch_size).to(device)
         )
+        
+    def can_concat(self, other: "CONDRegular") -> bool:
+        """#### Check if conditions can be concatenated.
+        
+        #### Args:
+            - `other` (CONDRegular): The other condition.
+            
+        #### Returns:
+            - `bool`: True if conditions can be concatenated, False otherwise.
+        """
+        if self.cond.shape != other.cond.shape:
+            return False
+        return True
+
+    def concat(self, others: list) -> torch.Tensor:
+        """#### Concatenate conditions.
+        
+        #### Args:
+            - `others` (list): The list of other conditions.
+            
+        #### Returns:
+            - `torch.Tensor`: The concatenated conditions.
+        """
+        conds = [self.cond]
+        for x in others:
+            conds.append(x.cond)
+        return torch.cat(conds)
 
 
 class CONDCrossAttn(CONDRegular):
     """#### Class representing a cross-attention condition."""
 
+    def can_concat(self, other: "CONDRegular") -> bool:
+        """#### Check if conditions can be concatenated.
+        
+        #### Args:
+            - `other` (CONDRegular): The other condition.
+            
+        #### Returns:   
+            - `bool`: True if conditions can be concatenated, False otherwise.
+        """
+        s1 = self.cond.shape
+        s2 = other.cond.shape
+        if s1 != s2:
+            if s1[0] != s2[0] or s1[2] != s2[2]:  # these 2 cases should not happen
+                return False
+
+            mult_min = torch.lcm(s1[1], s2[1])
+            diff = mult_min // min(s1[1], s2[1])
+            if (
+                diff > 4
+            ):  # arbitrary limit on the padding because it's probably going to impact performance negatively if it's too much
+                return False
+        return True
+    
     def concat(self, others: list) -> torch.Tensor:
         """#### Concatenate cross-attention conditions.
 

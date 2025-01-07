@@ -1,66 +1,41 @@
 from __future__ import annotations
+from abc import abstractmethod
 import collections
-from contextlib import contextmanager
 import copy
 from dataclasses import dataclass
 import importlib
+import json
 import logging
+import math
 import os
+import pickle
+from einops import rearrange, repeat
 import gguf
 import numpy as np
 import torch
 from enum import Enum
 import safetensors
 import uuid
-import glob
 import numbers
-import random
-import sys
-import tkinter as tk
 
 import safetensors.torch
 import packaging.version
 import torch.nn as nn
 
-import ollama
+from PIL import Image
 
-
-import argparse
-import enum
-from typing import Optional
-
-from modules.sample import samplers
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from transformers import CLIPTokenizer, T5TokenizerFast
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, TypedDict, Union
 
 from modules.AutoEncoders import VariationalAE
 from modules.NeuralNetwork import transformer
 from modules.UltimateSDUpscale import image_util
-from modules.Utilities import upscale, util
-
-
-
-
-
+from modules.Utilities import Latent, util
 from modules.Device import Device
 from modules.SD15 import SDClip, SDToken
-
-
-class LatentPreviewMethod(enum.Enum):
-    NoPreviews = "none"
-    Auto = "auto"
-    Latent2RGB = "latent2rgb"
-    TAESD = "taesd"
-
-
-def is_valid_directory(path: Optional[str]) -> Optional[str]:
-    """Validate if the given path is a directory."""
-    if path is None:
-        return None
-
-    if not os.path.isdir(path):
-        raise argparse.ArgumentTypeError(f"{path} is not a valid directory.")
-    return path
+from modules.cond import cond, cond_util
+from modules.sample import samplers
+import torch.nn.functional as F
 
 
 if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):
@@ -91,201 +66,13 @@ output_directory = "./_internal/output"
 
 filename_list_cache = {}
 
-
-args_parsing = False
-
-
-class LatentFormat:
-    scale_factor = 1.0
-    latent_channels = 4
-    latent_rgb_factors = None
-    taesd_decoder_name = None
-
-    def process_in(self, latent):
-        return latent * self.scale_factor
-
-    def process_out(self, latent):
-        return latent / self.scale_factor
-
-
-import pickle
-
-load = pickle.load
-
-
 class Empty:
     pass
-
-
-# taken from https://github.com/TencentARC/T2I-Adapter
-
-
-
-def append_dims(x, target_dims):
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    expanded = x[(...,) + (None,) * dims_to_append]
-    # MPS will get inf values if it tries to index into the new axes, but detaching fixes this.
-    # https://github.com/pytorch/pytorch/issues/84364
-    return expanded.detach().clone() if expanded.device.type == "mps" else expanded
-
-
-
-
-def calculate_parameters(sd, prefix=""):
-    params = 0
-    for k in sd.keys():
-        if k.startswith(prefix):
-            params += sd[k].nelement()
-    return params
-
-
-UNET_MAP_ATTENTIONS = {
-    "proj_in.weight",
-    "proj_in.bias",
-    "proj_out.weight",
-    "proj_out.bias",
-    "norm.weight",
-    "norm.bias",
-}
-
-TRANSFORMER_BLOCKS = {
-    "norm1.weight",
-    "norm1.bias",
-    "norm2.weight",
-    "norm2.bias",
-    "norm3.weight",
-    "norm3.bias",
-    "attn1.to_q.weight",
-    "attn1.to_k.weight",
-    "attn1.to_v.weight",
-    "attn1.to_out.0.weight",
-    "attn1.to_out.0.bias",
-    "attn2.to_q.weight",
-    "attn2.to_k.weight",
-    "attn2.to_v.weight",
-    "attn2.to_out.0.weight",
-    "attn2.to_out.0.bias",
-    "ff.net.0.proj.weight",
-    "ff.net.0.proj.bias",
-    "ff.net.2.weight",
-    "ff.net.2.bias",
-}
-
-UNET_MAP_RESNET = {
-    "in_layers.2.weight": "conv1.weight",
-    "in_layers.2.bias": "conv1.bias",
-    "emb_layers.1.weight": "time_emb_proj.weight",
-    "emb_layers.1.bias": "time_emb_proj.bias",
-    "out_layers.3.weight": "conv2.weight",
-    "out_layers.3.bias": "conv2.bias",
-    "skip_connection.weight": "conv_shortcut.weight",
-    "skip_connection.bias": "conv_shortcut.bias",
-    "in_layers.0.weight": "norm1.weight",
-    "in_layers.0.bias": "norm1.bias",
-    "out_layers.0.weight": "norm2.weight",
-    "out_layers.0.bias": "norm2.bias",
-}
-
-UNET_MAP_BASIC = {
-    ("label_emb.0.0.weight", "class_embedding.linear_1.weight"),
-    ("label_emb.0.0.bias", "class_embedding.linear_1.bias"),
-    ("label_emb.0.2.weight", "class_embedding.linear_2.weight"),
-    ("label_emb.0.2.bias", "class_embedding.linear_2.bias"),
-    ("label_emb.0.0.weight", "add_embedding.linear_1.weight"),
-    ("label_emb.0.0.bias", "add_embedding.linear_1.bias"),
-    ("label_emb.0.2.weight", "add_embedding.linear_2.weight"),
-    ("label_emb.0.2.bias", "add_embedding.linear_2.bias"),
-    ("input_blocks.0.0.weight", "conv_in.weight"),
-    ("input_blocks.0.0.bias", "conv_in.bias"),
-    ("out.0.weight", "conv_norm_out.weight"),
-    ("out.0.bias", "conv_norm_out.bias"),
-    ("out.2.weight", "conv_out.weight"),
-    ("out.2.bias", "conv_out.bias"),
-    ("time_embed.0.weight", "time_embedding.linear_1.weight"),
-    ("time_embed.0.bias", "time_embedding.linear_1.bias"),
-    ("time_embed.2.weight", "time_embedding.linear_2.weight"),
-    ("time_embed.2.bias", "time_embedding.linear_2.bias"),
-}
-
-
-def repeat_to_batch_size(tensor, batch_size, dim=0):
-    if tensor.shape[dim] > batch_size:
-        return tensor.narrow(dim, 0, batch_size)
-    elif tensor.shape[dim] < batch_size:
-        return tensor.repeat(
-            dim * [1]
-            + [math.ceil(batch_size / tensor.shape[dim])]
-            + [1] * (len(tensor.shape) - 1 - dim)
-        ).narrow(dim, 0, batch_size)
-    return tensor
-
-
-def get_attr(obj, attr):
-    attrs = attr.split(".")
-    for name in attrs:
-        obj = getattr(obj, name)
-    return obj
 
 
 PROGRESS_BAR_ENABLED = True
 PROGRESS_BAR_HOOK = None
 
-
-class CONDRegular:
-    def __init__(self, cond):
-        self.cond = cond
-
-    def _copy_with(self, cond):
-        return self.__class__(cond)
-
-    def process_cond(self, batch_size, device, **kwargs):
-        return self._copy_with(repeat_to_batch_size(self.cond, batch_size).to(device))
-
-    def can_concat(self, other):
-        if self.cond.shape != other.cond.shape:
-            return False
-        return True
-
-    def concat(self, others):
-        conds = [self.cond]
-        for x in others:
-            conds.append(x.cond)
-        return torch.cat(conds)
-
-
-class CONDCrossAttn(CONDRegular):
-    def can_concat(self, other):
-        s1 = self.cond.shape
-        s2 = other.cond.shape
-        if s1 != s2:
-            if s1[0] != s2[0] or s1[2] != s2[2]:  # these 2 cases should not happen
-                return False
-
-            mult_min = lcm(s1[1], s2[1])
-            diff = mult_min // min(s1[1], s2[1])
-            if (
-                diff > 4
-            ):  # arbitrary limit on the padding because it's probably going to impact performance negatively if it's too much
-                return False
-        return True
-
-    def concat(self, others):
-        conds = [self.cond]
-        crossattn_max_len = self.cond.shape[1]
-        for x in others:
-            c = x.cond
-            crossattn_max_len = lcm(crossattn_max_len, c.shape[1])
-            conds.append(c)
-
-        out = []
-        for c in conds:
-            if c.shape[1] < crossattn_max_len:
-                c = c.repeat(
-                    1, crossattn_max_len // c.shape[1], 1
-                )  # padding with repeat doesn't change result
-            out.append(c)
-        return torch.cat(out)
 
 
 
@@ -294,88 +81,13 @@ logging_level = logging.INFO
 logging.basicConfig(format="%(message)s", level=logging_level)
 
 
-import torch
-from torch import lcm, nn
-from tqdm.auto import trange
-
-
-# TODO: might be cleaner to put this somewhere else
-import threading
-import torch
-
-
-def get_models_from_cond(cond, model_type):
-    models = []
-    for c in cond:
-        if model_type in c:
-            models += [c[model_type]]
-    return models
-
-
-def convert_cond(cond):
-    out = []
-    for c in cond:
-        temp = c[1].copy()
-        model_conds = temp.get("model_conds", {})
-        if c[0] is not None:
-            model_conds["c_crossattn"] = CONDCrossAttn(c[0])  # TODO: remove
-            temp["cross_attn"] = c[0]
-        temp["model_conds"] = model_conds
-        out.append(temp)
-    return out
-
-
-def get_additional_models(conds, dtype):
-    """loads additional _internal in conditioning"""
-    cnets = []
-    gligen = []
-
-    for k in conds:
-        cnets += get_models_from_cond(conds[k], "control")
-        gligen += get_models_from_cond(conds[k], "gligen")
-
-    control_nets = set(cnets)
-
-    inference_memory = 0
-    control_models = []
-    for m in control_nets:
-        control_models += m.get_models()
-        inference_memory += m.inference_memory_requirements(dtype)
-
-    gligen = [x[1] for x in gligen]
-    models = control_models + gligen
-    return models, inference_memory
-
-
-def prepare_sampling(model, noise_shape, conds):
-    device = model.load_device
-    real_model = None
-    models, inference_memory = get_additional_models(conds, model.model_dtype())
-    memory_required = (
-        model.memory_required([noise_shape[0] * 2] + list(noise_shape[1:]))
-        + inference_memory
-    )
-    minimum_memory_required = (
-        model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
-        + inference_memory
-    )
-    Device.load_models_gpu(
-        [model] + models,
-        memory_required=memory_required,
-        minimum_memory_required=minimum_memory_required,
-        flux_enabled=True,
-    )
-    real_model = model.model
-
-    return real_model, conds, models
-
 
 def cleanup_models(conds, models):
     cleanup_additional_models(models)
 
     control_cleanup = []
     for k in conds:
-        control_cleanup += get_models_from_cond(conds[k], "control")
+        control_cleanup += cond_util.get_models_from_cond(conds[k], "control")
 
     cleanup_additional_models(set(control_cleanup))
 
@@ -780,10 +492,6 @@ def can_concat_cond(c1, c2):
 
 
 def cond_cat(c_list):
-    c_crossattn = []
-    c_concat = []
-    c_adm = []
-    crossattn_max_len = 0
 
     temp = {}
     for x in c_list:
@@ -971,7 +679,7 @@ def sampling_function(
 ):
     if (
         math.isclose(cond_scale, 1.0)
-        and model_options.get("disable_cfg1_optimization", False) == False
+        and model_options.get("disable_cfg1_optimization", False) is False
     ):
         uncond_ = None
     else:
@@ -1106,9 +814,8 @@ def pre_run_control(model, conds):
     for t in range(len(conds)):
         x = conds[t]
 
-        timestep_start = None
-        timestep_end = None
-        percent_to_timestep_function = lambda a: s.percent_to_sigma(a)
+        def percent_to_timestep_function(a):
+            return s.percent_to_sigma(a)
         if "control" in x:
             x["control"].pre_run(model, percent_to_timestep_function)
 
@@ -1230,7 +937,8 @@ class KSAMPLER(Sampler):
         k_callback = None
         total_steps = len(sigmas) - 1
         if callback is not None:
-            k_callback = lambda x: callback(x["i"], x["denoised"], x["x"], total_steps)
+            def k_callback(x):
+                return callback(x["i"], x["denoised"], x["x"], total_steps)
 
         samples = self.sampler_function(
             model_k,
@@ -1308,7 +1016,7 @@ def process_conds(
                 apply_empty_x_to_equal_area(
                     list(
                         filter(
-                            lambda c: c.get("control_apply_to_uncond", False) == True,
+                            lambda c: c.get("control_apply_to_uncond", False) is True,
                             positive,
                         )
                     ),
@@ -1338,7 +1046,7 @@ class CFGGuider:
 
     def inner_set_conds(self, conds):
         for k in conds:
-            self.original_conds[k] = convert_cond(conds[k])
+            self.original_conds[k] = cond.convert_cond(conds[k])
 
     def __call__(self, *args, **kwargs):
         return self.predict_noise(*args, **kwargs)
@@ -1414,8 +1122,8 @@ class CFGGuider:
         for k in self.original_conds:
             self.conds[k] = list(map(lambda a: a.copy(), self.original_conds[k]))
 
-        self.inner_model, self.conds, self.loaded_models = prepare_sampling(
-            self.model_patcher, noise.shape, self.conds
+        self.inner_model, self.conds, self.loaded_models = cond_util.prepare_sampling(
+            self.model_patcher, noise.shape, self.conds, flux_enabled=True
         )
         device = self.model_patcher.load_device
 
@@ -1568,7 +1276,6 @@ def prepare_noise(latent_image, seed, noise_inds=None):
     return noises
 
 
-import torch.nn as nn
 
 ops = disable_weight_init
 
@@ -1936,8 +1643,6 @@ class Decoder(nn.Module):
         **ignorekwargs,
     ):
         super().__init__()
-        if use_linear_attn:
-            attn_type = "linear"
         self.ch = ch
         self.temb_ch = 0
         self.num_resolutions = len(ch_mult)
@@ -1948,7 +1653,7 @@ class Decoder(nn.Module):
         self.tanh_out = tanh_out
 
         # compute in_ch_mult, block_in and curr_res at lowest res
-        in_ch_mult = (1,) + tuple(ch_mult)
+        (1,) + tuple(ch_mult)
         block_in = ch * ch_mult[self.num_resolutions - 1]
         curr_res = resolution // 2 ** (self.num_resolutions - 1)
         self.z_shape = (1, z_channels, curr_res, curr_res)
@@ -2035,11 +1740,6 @@ class Decoder(nn.Module):
         h = nonlinearity(h)
         h = self.conv_out(h, **kwargs)
         return h
-
-
-import logging
-
-from torch import nn
 
 if Device.xformers_enabled():
     import xformers
@@ -2158,9 +1858,6 @@ optimized_attention_masked = optimized_attention
 
 def optimized_attention_for_device(device, mask=False, small_input=False):
     return attention_pytorch
-
-
-import torch
 
 
 class CLIPAttention(torch.nn.Module):
@@ -2417,18 +2114,8 @@ class CLIPTextModel(torch.nn.Module):
         x = self.text_model(*args, **kwargs)
         out = self.text_projection(x[2])
         return (x[0], x[1], out, x[2])
-
-
-from torch import nn
-
+    
 ops = manual_cast
-
-import json
-
-import torch
-from transformers import CLIPTokenizer
-
-
 
 
 class ClipTokenWeightEncoder:
@@ -2919,12 +2606,6 @@ class SDTokenizer:
     def untokenize(self, token_weight_pair):
         return list(map(lambda a: (a, self.inv_vocab[a[0]]), token_weight_pair))
 
-
-from abc import abstractmethod
-
-import torch as th
-import torch.nn as nn
-
 oai_ops = disable_weight_init
 
 
@@ -2967,7 +2648,7 @@ class UNetModel(nn.Module):
         dims=2,
         num_classes=None,
         use_checkpoint=False,
-        dtype=th.float32,
+        dtype=torch.float32,
         num_heads=-1,
         num_head_channels=-1,
         num_heads_upsample=-1,
@@ -3002,14 +2683,7 @@ class UNetModel(nn.Module):
     ):
         pass
 
-
-from typing import Union
-
-import torch
-from einops import rearrange
-
 ae_ops = disable_weight_init
-from enum import Enum
 
 
 class ModelType(Enum):
@@ -3119,79 +2793,17 @@ class BaseModel(torch.nn.Module):
 
     def extra_conds(self, **kwargs):
         out = {}
-        if len(self.concat_keys) > 0:
-            cond_concat = []
-            denoise_mask = kwargs.get("concat_mask", kwargs.get("denoise_mask", None))
-            concat_latent_image = kwargs.get("concat_latent_image", None)
-            if concat_latent_image is None:
-                concat_latent_image = kwargs.get("latent_image", None)
-            else:
-                concat_latent_image = self.process_latent_in(concat_latent_image)
-
-            noise = kwargs.get("noise", None)
-            device = kwargs["device"]
-
-            if concat_latent_image.shape[1:] != noise.shape[1:]:
-                concat_latent_image = upscale.common_upscale(
-                    concat_latent_image,
-                    noise.shape[-1],
-                    noise.shape[-2],
-                )
-
-            concat_latent_image = resize_to_batch_size(
-                concat_latent_image, noise.shape[0]
-            )
-
-            if denoise_mask is not None:
-                if len(denoise_mask.shape) == len(noise.shape):
-                    denoise_mask = denoise_mask[:, :1]
-
-                denoise_mask = denoise_mask.reshape(
-                    (-1, 1, denoise_mask.shape[-2], denoise_mask.shape[-1])
-                )
-                if denoise_mask.shape[-2:] != noise.shape[-2:]:
-                    denoise_mask = upscale.common_upscale(
-                        denoise_mask,
-                        noise.shape[-1],
-                        noise.shape[-2],
-                        "bilinear",
-                        "center",
-                    )
-                denoise_mask = resize_to_batch_size(
-                    denoise_mask.round(), noise.shape[0]
-                )
-
-            for ck in self.concat_keys:
-                if denoise_mask is not None:
-                    if ck == "mask":
-                        cond_concat.append(denoise_mask.to(device))
-                    elif ck == "masked_image":
-                        cond_concat.append(
-                            concat_latent_image.to(device)
-                        )  # NOTE: the latent_image should be masked by the mask in pixel space
-                else:
-                    if ck == "mask":
-                        cond_concat.append(torch.ones_like(noise)[:, :1])
-                    elif ck == "masked_image":
-                        cond_concat.append(self.blank_inpaint_image_like(noise))
-            data = torch.cat(cond_concat, dim=1)
-            out["c_concat"] = CONDNoiseShape(data)
-
         adm = self.encode_adm(**kwargs)
         if adm is not None:
-            out["y"] = CONDRegular(adm)
+            out["y"] = cond.CONDRegular(adm)
 
         cross_attn = kwargs.get("cross_attn", None)
         if cross_attn is not None:
-            out["c_crossattn"] = CONDCrossAttn(cross_attn)
+            out["c_crossattn"] = cond.CONDCrossAttn(cross_attn)
 
         cross_attn_cnet = kwargs.get("cross_attn_controlnet", None)
         if cross_attn_cnet is not None:
-            out["crossattn_controlnet"] = CONDCrossAttn(cross_attn_cnet)
-
-        c_concat = kwargs.get("noise_concat", None)
-        if c_concat is not None:
-            out["c_concat"] = CONDNoiseShape(c_concat)
+            out["crossattn_controlnet"] = cond.CONDCrossAttn(cross_attn_cnet)
 
         return out
 
@@ -3244,7 +2856,7 @@ class BASE:
     clip_vision_prefix = None
     noise_aug_config = None
     sampling_settings = {}
-    latent_format = LatentFormat
+    latent_format = Latent.LatentFormat
     vae_key_prefix = ["first_stage_model."]
     text_encoder_key_prefix = ["cond_stage_model."]
     supported_inference_dtypes = [torch.float16, torch.bfloat16, torch.float32]
@@ -3294,7 +2906,7 @@ def count_blocks(state_dict_keys, prefix_string):
             if k.startswith(prefix_string.format(count)):
                 c = True
                 break
-        if c == False:
+        if c is False:
             break
         count += 1
     return count
@@ -3482,7 +3094,6 @@ def detect_unet_config(state_dict, key_prefix):
 
     num_res_blocks = []
     channel_mult = []
-    attention_resolutions = []
     transformer_depth = []
     transformer_depth_output = []
     context_dim = None
@@ -3616,12 +3227,6 @@ def model_config_from_unet(state_dict, unet_key_prefix, use_base_if_no_match=Fal
     return model_config
 
 
-import os
-from enum import Enum
-
-import torch
-
-
 class CLIP:
     def __init__(
         self,
@@ -3734,11 +3339,6 @@ class CLIP:
 
 class VAE:
     def __init__(self, sd=None, device=None, config=None, dtype=None):
-        if (
-            "decoder.up_blocks.0.resnets.0.norm1.weight" in sd.keys()
-        ):  # diffusers format
-            sd = convert_vae_state_dict(sd)
-
         self.memory_used_encode = lambda shape, dtype: (
             1767 * shape[2] * shape[3]
         ) * Device.dtype_size(
@@ -3891,19 +3491,6 @@ class VAE:
         )
         return output
 
-    def decode_tiled_1d(self, samples, tile_x=128, overlap=32):
-        def decode_fn(a):
-            return self.first_stage_model.decode(a.to(self.vae_dtype).to(self.device)).float()
-        return tiled_scale_multidim(
-            samples,
-            decode_fn,
-            tile=(tile_x,),
-            overlap=overlap,
-            upscale_amount=self.upscale_ratio,
-            out_channels=self.output_channels,
-            output_device=self.output_device,
-        )
-
     def encode_tiled_(self, pixel_samples, tile_x=512, tile_y=512, overlap=64):
         steps = pixel_samples.shape[0] * image_util.get_tiled_scale_steps(
             pixel_samples.shape[3], pixel_samples.shape[2], tile_x, tile_y, overlap
@@ -3961,19 +3548,6 @@ class VAE:
         )
         samples /= 3.0
         return samples
-
-    def encode_tiled_1d(self, samples, tile_x=128 * 2048, overlap=32 * 2048):
-        def encode_fn(a):
-            return self.first_stage_model.encode(self.process_input(a).to(self.vae_dtype).to(self.device)).float()
-        return tiled_scale_multidim(
-            samples,
-            encode_fn,
-            tile=(tile_x,),
-            overlap=overlap,
-            upscale_amount=(1 / self.downscale_ratio),
-            out_channels=self.latent_channels,
-            output_device=self.output_device,
-        )
 
     def decode(self, samples_in):
         try:
@@ -4146,7 +3720,7 @@ def fix_empty_latent_channels(model, latent_image):
         latent_channels != latent_image.shape[1]
         and torch.count_nonzero(latent_image) == 0
     ):
-        latent_image = repeat_to_batch_size(latent_image, latent_channels, dim=1)
+        latent_image = util.repeat_to_batch_size(latent_image, latent_channels, dim=1)
     return latent_image
 
 
@@ -4273,122 +3847,10 @@ class SaveImage:
         return {"ui": {"images": results}}
 
 
-import torch.nn.functional as F
-from PIL import Image
-
-if not hasattr(Image, "Resampling"):  # For older versions of Pillow
-    Image.Resampling = Image
-
-
-from enum import Enum
-
-import math
-
-from PIL import Image
-
-
-import os
-import torch
-
-from PIL import Image
-import torch
-
-
-LANCZOS = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
-
-
-import logging
-
-import torch
-
-
-import torch as th
-import torch.nn as nn
-
 
 logger = logging.getLogger()
 
 
-def enhance_prompt(p=None):
-    prompt, neg, width, height, cfg = load_parameters_from_file()
-    if p is None:
-        pass
-    else:
-        prompt = p
-    print(prompt)
-    response = ollama.chat(
-        model="llama3.2",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""Your goal is to generate a text-to-image prompt based on a user's input, detailing their desired final outcome for an image. The user will provide specific details about the characteristics, features, or elements they want the image to include. The prompt should guide the generation of an image that aligns with the user's desired outcome.
-
-                        Generate a text-to-image prompt by arranging the following blocks in a single string, separated by commas:
-
-                        Image Type: [Specify desired image type]
-
-                        Aesthetic or Mood: [Describe desired aesthetic or mood]
-
-                        Lighting Conditions: [Specify desired lighting conditions]
-
-                        Composition or Framing: [Provide details about desired composition or framing]
-
-                        Background: [Specify desired background elements or setting]
-
-                        Colors: [Mention any specific colors or color palette]
-
-                        Objects or Elements: [List specific objects or features]
-
-                        Style or Artistic Influence: [Mention desired artistic style or influence]
-
-                        Subject's Appearance: [Describe appearance of main subject]
-
-                        Ensure the blocks are arranged in order of visual importance, from the most significant to the least significant, to effectively guide image generation, a block can be surrounded by parentheses to gain additionnal significance.
-
-                        This is an example of a user's input: "a beautiful blonde lady in lingerie sitting in seiza in a seducing way with a focus on her assets"
-
-                        And this is an example of a desired output: "portrait| serene and mysterious| soft, diffused lighting| close-up shot, emphasizing facial features| simple and blurred background| earthy tones with a hint of warm highlights| renaissance painting| a beautiful lady with freckles and dark makeup"
-                        
-                        Here is the user's input: {prompt}
-
-                        Write the prompt in the same style as the example above, in a single line , with absolutely no additional information, words or symbols other than the enhanced prompt.
-
-                        Output:""",
-            },
-        ],
-    )
-    print("here's the enhanced prompt :", response["message"]["content"])
-    return response["message"]["content"]
-
-
-def write_parameters_to_file(prompt_entry, neg, width, height, cfg):
-    with open("./_internal/prompt.txt", "w") as f:
-        f.write(f"prompt: {prompt_entry}")
-        f.write(f"neg: {neg}")
-        f.write(f"w: {int(width)}\n")
-        f.write(f"h: {int(height)}\n")
-        f.write(f"cfg: {int(cfg)}\n")
-
-
-def load_parameters_from_file():
-    with open("./_internal/prompt.txt", "r") as f:
-        lines = f.readlines()
-        parameters = {}
-        for line in lines:
-            # Skip empty lines
-            if line.strip() == "":
-                continue
-            key, value = line.split(": ")
-            parameters[key] = value.strip()
-        prompt = parameters["prompt"]
-        neg = parameters["neg"]
-        width = int(parameters["w"])
-        height = int(parameters["h"])
-        cfg = int(parameters["cfg"])
-    return prompt, neg, width, height, cfg
-
-
-import pickle
 
 load = pickle.load
 
@@ -4432,17 +3894,6 @@ def wipe_lowvram_weight(m):
         del m.prev_comfy_cast_weights
     m.weight_function = None
     m.bias_function = None
-
-
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Protocol,
-    Tuple,
-    TypedDict,
-    List,
-)
 
 
 class UnetApplyFunction(Protocol):
@@ -4549,7 +4000,7 @@ class ModelPatcher:
             if name in self.object_patches_backup:
                 return self.object_patches_backup[name]
             else:
-                return get_attr(self.model, name)
+                return util.get_attr(self.model, name)
 
     def model_patches_to(self, device):
         to = self.model_options["transformer_options"]
@@ -4580,7 +4031,7 @@ class ModelPatcher:
         if key not in self.patches:
             return
 
-        weight = get_attr(self.model, key)
+        weight = util.get_attr(self.model, key)
 
         inplace_update = self.weight_inplace_update or inplace_update
 
@@ -4822,8 +4273,6 @@ class ModelPatcher:
 
 # import pytorch_lightning as pl
 
-import torch
-
 
 class DiagonalGaussianRegularizer(torch.nn.Module):
     def __init__(self, sample: bool = True):
@@ -4876,32 +4325,11 @@ class AbstractAutoencoder(torch.nn.Module):
         if self.use_ema:
             self.model_ema(self)
 
-    @contextmanager
-    def ema_scope(self, context=None):
-        if self.use_ema:
-            self.model_ema.store(self.parameters())
-            self.model_ema.copy_to(self)
-            if context is not None:
-                logpy.info(f"{context}: Switched to EMA weights")
-        try:
-            yield None
-        finally:
-            if self.use_ema:
-                self.model_ema.restore(self.parameters())
-                if context is not None:
-                    logpy.info(f"{context}: Restored training weights")
-
     def encode(self, *args, **kwargs) -> torch.Tensor:
         raise NotImplementedError("encode()-method of abstract base class called")
 
     def decode(self, *args, **kwargs) -> torch.Tensor:
         raise NotImplementedError("decode()-method of abstract base class called")
-
-    def instantiate_optimizer_from_config(self, params, lr, cfg):
-        logpy.info(f"loading >>> {cfg['target']} <<< optimizer from config")
-        return get_obj_from_str(cfg["target"])(
-            params, lr=lr, **cfg.get("params", dict())
-        )
 
     def configure_optimizers(self) -> Any:
         raise NotImplementedError()
@@ -4996,7 +4424,7 @@ def state_dict_prefix_replace(state_dict, replace_prefix, filter_keys=False):
     return out
 
 
-class SD3(LatentFormat):
+class SD3(Latent.LatentFormat):
     latent_channels = 16
 
     def __init__(self):
@@ -5106,11 +4534,6 @@ class ModelSamplingFlux(torch.nn.Module):
     def sigma(self, timestep):
         return flux_time_shift(self.shift, 1.0, timestep)
 
-
-from PIL import Image
-import torch as th
-import torch.nn as nn
-
 ops = disable_weight_init
 
 
@@ -5129,13 +4552,7 @@ class TimestepBlock(nn.Module):
 # Original code can be found on: https://github.com/black-forest-labs/flux
 
 
-import torch
-from torch import Tensor, nn
-
-from einops import repeat
-
-
-def attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor) -> Tensor:
+def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tensor) -> torch.Tensor:
     q, k = apply_rope(q, k, pe)
 
     heads = q.shape[1]
@@ -5143,7 +4560,7 @@ def attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor) -> Tensor:
     return x
 
 
-def rope(pos: Tensor, dim: int, theta: int) -> Tensor:
+def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     assert dim % 2 == 0
     if Device.is_device_mps(pos.device) or Device.is_intel_xpu():
         device = torch.device("cpu")
@@ -5164,7 +4581,7 @@ def rope(pos: Tensor, dim: int, theta: int) -> Tensor:
     return out.to(dtype=torch.float32, device=pos.device)
 
 
-def apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):
+def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor):
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
     xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
@@ -5179,7 +4596,7 @@ class EmbedND(nn.Module):
         self.theta = theta
         self.axes_dim = axes_dim
 
-    def forward(self, ids: Tensor) -> Tensor:
+    def forward(self, ids: torch.Tensor) -> torch.Tensor:
         n_axes = ids.shape[-1]
         emb = torch.cat(
             [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
@@ -5189,7 +4606,7 @@ class EmbedND(nn.Module):
         return emb.unsqueeze(1)
 
 
-def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 1000.0):
+def timestep_embedding(t: torch.Tensor, dim, max_period=10000, time_factor: float = 1000.0):
     """
     Create sinusoidal timestep embeddings.
     :param t: a 1-D Tensor of N indices, one per batch element.
@@ -5228,7 +4645,7 @@ class MLPEmbedder(nn.Module):
             hidden_dim, hidden_dim, bias=True, dtype=dtype, device=device
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
 
 
@@ -5237,7 +4654,7 @@ class RMSNorm(torch.nn.Module):
         super().__init__()
         self.scale = nn.Parameter(torch.empty((dim), dtype=dtype, device=device))
 
-    def forward(self, x: Tensor):
+    def forward(self, x: torch.Tensor):
         return rms_norm(x, self.scale, 1e-6)
 
 
@@ -5249,7 +4666,7 @@ class QKNorm(torch.nn.Module):
         )
         self.key_norm = RMSNorm(dim, dtype=dtype, device=device, operations=operations)
 
-    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> tuple:
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> tuple:
         q = self.query_norm(q)
         k = self.key_norm(k)
         return q.to(v), k.to(v)
@@ -5278,9 +4695,9 @@ class SelfAttention(nn.Module):
 
 @dataclass
 class ModulationOut:
-    shift: Tensor
-    scale: Tensor
-    gate: Tensor
+    shift: torch.Tensor
+    scale: torch.Tensor
+    gate: torch.Tensor
 
 
 class Modulation(nn.Module):
@@ -5294,7 +4711,7 @@ class Modulation(nn.Module):
             dim, self.multiplier * dim, bias=True, dtype=dtype, device=device
         )
 
-    def forward(self, vec: Tensor) -> tuple:
+    def forward(self, vec: torch.Tensor) -> tuple:
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(
             self.multiplier, dim=-1
         )
@@ -5377,7 +4794,7 @@ class DoubleStreamBlock(nn.Module):
             ),
         )
 
-    def forward(self, img: Tensor, txt: Tensor, vec: Tensor, pe: Tensor):
+    def forward(self, img: torch.Tensor, txt: torch.Tensor, vec: torch.Tensor, pe: torch.Tensor):
         img_mod1, img_mod2 = self.img_mod(vec)
         txt_mod1, txt_mod2 = self.txt_mod(vec)
 
@@ -5474,7 +4891,7 @@ class SingleStreamBlock(nn.Module):
             hidden_size, double=False, dtype=dtype, device=device, operations=operations
         )
 
-    def forward(self, x: Tensor, vec: Tensor, pe: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor, vec: torch.Tensor, pe: torch.Tensor) -> torch.Tensor:
         mod, _ = self.modulation(vec)
         x_mod = (1 + mod.scale) * self.pre_norm(x) + mod.shift
         qkv, mlp = torch.split(
@@ -5524,7 +4941,7 @@ class LastLayer(nn.Module):
             ),
         )
 
-    def forward(self, x: Tensor, vec: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
         shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)
         x = (1 + scale[:, None, :]) * self.norm_final(x) + shift[:, None, :]
         x = self.linear(x)
@@ -5687,15 +5104,15 @@ class Flux3(nn.Module):
 
     def forward_orig(
         self,
-        img: Tensor,
-        img_ids: Tensor,
-        txt: Tensor,
-        txt_ids: Tensor,
-        timesteps: Tensor,
-        y: Tensor,
-        guidance: Tensor = None,
+        img: torch.Tensor,
+        img_ids: torch.Tensor,
+        txt: torch.Tensor,
+        txt_ids: torch.Tensor,
+        timesteps: torch.Tensor,
+        y: torch.Tensor,
+        guidance: torch.Tensor = None,
         control=None,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         if img.ndim != 3 or txt.ndim != 3:
             raise ValueError("Input img and txt tensors must have 3 dimensions.")
 
@@ -5790,8 +5207,8 @@ class Flux2(BaseModel):
         out = super().extra_conds(**kwargs)
         cross_attn = kwargs.get("cross_attn", None)
         if cross_attn is not None:
-            out["c_crossattn"] = CONDRegular(cross_attn)
-        out["guidance"] = CONDRegular(torch.FloatTensor([kwargs.get("guidance", 3.5)]))
+            out["c_crossattn"] = cond.CONDRegular(cross_attn)
+        out["guidance"] = cond.CONDRegular(torch.FloatTensor([kwargs.get("guidance", 3.5)]))
         return out
 
 
@@ -5834,31 +5251,12 @@ def load_diffusion_model_state_dict(
     if len(temp_sd) > 0:
         sd = temp_sd
 
-    parameters = calculate_parameters(sd)
+    parameters = util.calculate_parameters(sd)
     load_device = Device.get_torch_device()
     model_config = model_config_from_unet(sd, "")
 
     if model_config is not None:
         new_sd = sd
-    else:
-        new_sd = convert_diffusers_mmdit(sd, "")
-        if new_sd is not None:  # diffusers mmdit
-            model_config = model_config_from_unet(new_sd, "")
-            if model_config is None:
-                return None
-        else:  # diffusers unet
-            model_config = model_config_from_diffusers_unet(sd)
-            if model_config is None:
-                return None
-
-            diffusers_keys = unet_to_diffusers(model_config.unet_config)
-
-            new_sd = {}
-            for k in diffusers_keys:
-                if k in sd:
-                    new_sd[diffusers_keys[k]] = sd.pop(k)
-                else:
-                    logging.warning("{} {}".format(diffusers_keys[k], k))
 
     offload_device = Device.unet_offload_device()
     if dtype is None:
@@ -6061,11 +5459,6 @@ def flux_clip(dtype_t5=None):
     return FluxClipModel_
 
 
-from transformers import T5TokenizerFast
-
-import torch
-
-
 class T5LayerNorm(torch.nn.Module):
     def __init__(self, hidden_size, eps=1e-6, dtype=None, device=None, operations=None):
         super().__init__()
@@ -6117,10 +5510,6 @@ class T5LayerFF(torch.nn.Module):
         super().__init__()
         if gated_act:
             self.DenseReluDense = T5DenseGatedActDense(
-                model_dim, ff_dim, ff_activation, dtype, device, operations
-            )
-        else:
-            self.DenseReluDense = T5DenseActDense(
                 model_dim, ff_dim, ff_activation, dtype, device, operations
             )
 
@@ -6303,7 +5692,7 @@ class T5LayerSelfAttention(torch.nn.Module):
         # self.dropout = nn.Dropout(config.dropout_rate)
 
     def forward(self, x, mask=None, past_bias=None, optimized_attention=None):
-        normed_hidden_states = self.layer_norm(x)
+        self.layer_norm(x)
         output, past_bias = self.SelfAttention(
             self.layer_norm(x),
             mask=mask,
@@ -6501,7 +5890,7 @@ def load_text_encoder_state_dicts(
     parameters = 0
     tokenizer_data = {}
     for c in clip_data:
-        parameters += calculate_parameters(c)
+        parameters += util.calculate_parameters(c)
         tokenizer_data, model_options = model_options_long_clip(
             c, tokenizer_data, model_options
         )
@@ -6952,12 +6341,9 @@ class GGUFModelPatcher(ModelPatcher):
     def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
         if key not in self.patches:
             return
-        weight = get_attr(self.model, key)
+        weight = util.get_attr(self.model, key)
 
-        try:
-            from add import calculate_weight
-        except Exception:
-            calculate_weight = self.calculate_weight
+        calculate_weight = self.calculate_weight
 
         patches = self.patches[key]
         if is_quantized(weight):

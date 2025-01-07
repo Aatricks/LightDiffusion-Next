@@ -98,16 +98,25 @@ def state_dict_prefix_replace(
     return out
 
 
-def repeat_to_batch_size(tensor: torch.Tensor, batch_size: int) -> torch.Tensor:
+def repeat_to_batch_size(tensor: torch.Tensor, batch_size: int, dim: int = 0) -> torch.Tensor:
     """#### Repeat a tensor to match a specific batch size.
 
     #### Args:
         - `tensor` (torch.Tensor): The input tensor.
         - `batch_size` (int): The target batch size.
+        - `dim` (int, optional): The dimension to repeat. Defaults to 0.
 
     #### Returns:
         - `torch.Tensor`: The repeated tensor.
     """
+    if tensor.shape[dim] > batch_size:
+        return tensor.narrow(dim, 0, batch_size)
+    elif tensor.shape[dim] < batch_size:
+        return tensor.repeat(
+            dim * [1]
+            + [math.ceil(batch_size / tensor.shape[dim])]
+            + [1] * (len(tensor.shape) - 1 - dim)
+        ).narrow(dim, 0, batch_size)
     return tensor
 
 

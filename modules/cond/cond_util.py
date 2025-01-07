@@ -14,6 +14,9 @@ def get_models_from_cond(cond: dict, model_type: str) -> List[object]:
         - `List[object]`: The list of models.
     """
     models = []
+    for c in cond:
+        if model_type in c:
+            models += [c[model_type]]
     return models
 
 
@@ -48,7 +51,7 @@ def get_additional_models(conds: dict, dtype: torch.dtype) -> Tuple[List[object]
 
 
 def prepare_sampling(
-    model: object, noise_shape: Tuple[int], conds: dict
+    model: object, noise_shape: Tuple[int], conds: dict, flux_enabled: bool = False
 ) -> Tuple[object, dict, List[object]]:
     """#### Prepare the model for sampling.
 
@@ -56,16 +59,26 @@ def prepare_sampling(
         - `model` (object): The model.
         - `noise_shape` (Tuple[int]): The shape of the noise.
         - `conds` (dict): The conditions.
+        - `flux_enabled` (bool, optional): Whether flux is enabled. Defaults to False.
 
     #### Returns:
         - `Tuple[object, dict, List[object]]`: The prepared model, conditions, and additional models.
     """
     real_model = None
     models, inference_memory = get_additional_models(conds, model.model_dtype())
+    memory_required = (
+        model.memory_required([noise_shape[0] * 2] + list(noise_shape[1:]))
+        + inference_memory
+    )
+    minimum_memory_required = (
+        model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
+        + inference_memory
+    )
     Device.load_models_gpu(
         [model] + models,
-        model.memory_required([noise_shape[0] * 2] + list(noise_shape[1:]))
-        + inference_memory,
+        memory_required=memory_required,
+        minimum_memory_required=minimum_memory_required,
+        flux_enabled=flux_enabled,
     )
     real_model = model.model
 
