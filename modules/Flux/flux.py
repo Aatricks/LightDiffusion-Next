@@ -29,6 +29,8 @@ import argparse
 import enum
 from typing import Optional
 
+from modules.sample import samplers
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from modules.AutoEncoders import VariationalAE
@@ -45,95 +47,6 @@ from modules.FileManaging import Downloader
 from modules.SD15 import SDClip, SDToken
 
 Downloader.CheckAndDownloadFlux()
-
-
-"""
-Tiny AutoEncoder for Stable Diffusion
-(DNN for encoding / decoding SD's latent space)
-"""
-
-def conv(n_in, n_out, **kwargs):
-    return disable_weight_init.Conv2d(n_in, n_out, 3, padding=1, **kwargs)
-
-class Clamp(nn.Module):
-    def forward(self, x):
-        return torch.tanh(x / 3) * 3
-
-class Block(nn.Module):
-    def __init__(self, n_in, n_out):
-        super().__init__()
-        self.conv = nn.Sequential(conv(n_in, n_out), nn.ReLU(), conv(n_out, n_out), nn.ReLU(), conv(n_out, n_out))
-        self.skip = disable_weight_init.Conv2d(n_in, n_out, 1, bias=False) if n_in != n_out else nn.Identity()
-        self.fuse = nn.ReLU()
-    def forward(self, x):
-        return self.fuse(self.conv(x) + self.skip(x))
-
-def Encoder2(latent_channels=4):
-    return nn.Sequential(
-        conv(3, 64), Block(64, 64),
-        conv(64, 64, stride=2, bias=False), Block(64, 64), Block(64, 64), Block(64, 64),
-        conv(64, 64, stride=2, bias=False), Block(64, 64), Block(64, 64), Block(64, 64),
-        conv(64, 64, stride=2, bias=False), Block(64, 64), Block(64, 64), Block(64, 64),
-        conv(64, latent_channels),
-    )
-
-
-def Decoder2(latent_channels=4):
-    return nn.Sequential(
-        Clamp(), conv(latent_channels, 64), nn.ReLU(),
-        Block(64, 64), Block(64, 64), Block(64, 64), nn.Upsample(scale_factor=2), conv(64, 64, bias=False),
-        Block(64, 64), Block(64, 64), Block(64, 64), nn.Upsample(scale_factor=2), conv(64, 64, bias=False),
-        Block(64, 64), Block(64, 64), Block(64, 64), nn.Upsample(scale_factor=2), conv(64, 64, bias=False),
-        Block(64, 64), conv(64, 3),
-    )
-
-class TAESD(nn.Module):
-    latent_magnitude = 3
-    latent_shift = 0.5
-
-    def __init__(self, encoder_path=None, decoder_path=None, latent_channels=4):
-        super().__init__()
-        self.vae_shift = torch.nn.Parameter(torch.tensor(0.0))
-        self.vae_scale = torch.nn.Parameter(torch.tensor(1.0))
-        self.taesd_encoder = Encoder2(latent_channels)
-        self.taesd_decoder = Decoder2(latent_channels)
-        decoder_path = "./_internal/vae_approx/diffusion_pytorch_model.safetensors" if decoder_path is None else decoder_path
-        if encoder_path is not None:
-            self.taesd_encoder.load_state_dict(load_torch_file(encoder_path, safe_load=True))
-        if decoder_path is not None:
-            self.taesd_decoder.load_state_dict(load_torch_file(decoder_path, safe_load=True))
-
-    @staticmethod
-    def scale_latents(x):
-        """raw latents -> [0, 1]"""
-        return x.div(2 * TAESD.latent_magnitude).add(TAESD.latent_shift).clamp(0, 1)
-
-    @staticmethod
-    def unscale_latents(x):
-        """[0, 1] -> raw latents"""
-        return x.sub(TAESD.latent_shift).mul(2 * TAESD.latent_magnitude)
-
-    def decode(self, x):
-        device = next(self.taesd_decoder.parameters()).device
-        x = x.to(device)
-        x_sample = self.taesd_decoder((x - self.vae_shift) * self.vae_scale)
-        x_sample = x_sample.sub(0.5).mul(2)
-        return x_sample
-
-    def encode(self, x):
-        device = next(self.taesd_encoder.parameters()).device
-        x = x.to(device) 
-        return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
-
-def taesd_preview(x):
-    if app.previewer_checkbox.get() is True:
-        taesd_instance = TAESD()
-        for image in taesd_instance.decode(x[0].unsqueeze(0))[0]:
-            i = 255.0 * image.cpu().detach().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-        app.update_image(img)
-    else:
-        pass
 
 
 class LatentPreviewMethod(enum.Enum):
@@ -387,64 +300,6 @@ logging.basicConfig(format="%(message)s", level=logging_level)
 import torch
 from torch import lcm, nn
 from tqdm.auto import trange
-
-
-def to_d(x, sigma, denoised):
-    return (x - denoised) / append_dims(sigma, x.ndim)
-
-
-@torch.no_grad()
-def sample_euler(
-    model,
-    x,
-    sigmas,
-    extra_args=None,
-    callback=None,
-    disable=None,
-    s_churn=0.0,
-    s_tmin=0.0,
-    s_tmax=float("inf"),
-    s_noise=1.0,
-):
-    """Implements Algorithm 2 (Euler steps) from Karras et al. (2022)."""
-    extra_args = {} if extra_args is None else extra_args
-    s_in = x.new_ones([x.shape[0]])
-    for i in trange(len(sigmas) - 1, disable=disable):
-        if app.interrupt_flag == True:
-            break
-        if s_churn > 0:
-            gamma = (
-                min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
-                if s_tmin <= sigmas[i] <= s_tmax
-                else 0.0
-            )
-            sigma_hat = sigmas[i] * (gamma + 1)
-        else:
-            gamma = 0
-            sigma_hat = sigmas[i]
-
-        if gamma > 0:
-            eps = torch.randn_like(x) * s_noise
-            x = x + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
-        denoised = model(x, sigma_hat * s_in, **extra_args)
-        d = to_d(x, sigma_hat, denoised)
-        if callback is not None:
-            callback(
-                {
-                    "x": x,
-                    "i": i,
-                    "sigma": sigmas[i],
-                    "sigma_hat": sigma_hat,
-                    "denoised": denoised,
-                }
-            )
-        dt = sigmas[i + 1] - sigma_hat
-        # Euler method
-        x = x + d * dt
-        if app.preview_check.get() == True:
-            threading.Thread(target=taesd_preview, args=(x,)).start()
-        else : pass
-    return x
 
 
 # TODO: might be cleaner to put this somewhere else
@@ -1338,10 +1193,11 @@ KSAMPLER_NAMES = [
 
 
 class KSAMPLER(Sampler):
-    def __init__(self, sampler_function, extra_options={}, inpaint_options={}):
+    def __init__(self, sampler_function, extra_options={}, inpaint_options={}, pipeline=False):
         self.sampler_function = sampler_function
         self.extra_options = extra_options
         self.inpaint_options = inpaint_options
+        self.pipeline = pipeline
 
     def sample(
         self,
@@ -1353,6 +1209,7 @@ class KSAMPLER(Sampler):
         latent_image=None,
         denoise_mask=None,
         disable_pbar=False,
+        pipeline=False,
     ):
         extra_args["denoise_mask"] = denoise_mask
         model_k = KSamplerX0Inpaint(model_wrap, sigmas)
@@ -1385,6 +1242,7 @@ class KSAMPLER(Sampler):
             extra_args=extra_args,
             callback=k_callback,
             disable=disable_pbar,
+            pipeline=pipeline,
             **self.extra_options,
         )
         samples = model_wrap.inner_model.model_sampling.inverse_noise_scaling(
@@ -1393,23 +1251,24 @@ class KSAMPLER(Sampler):
         return samples
 
 
-def ksampler(sampler_name, extra_options={}, inpaint_options={}):
+def ksampler(sampler_name, extra_options={}, inpaint_options={}, pipeline=False):
     if sampler_name == "euler":
 
-        def euler_function(model, noise, sigmas, extra_args, callback, disable):
-            return sample_euler(
+        def euler_function(model, noise, sigmas, extra_args, callback, disable, pipeline=False):
+            return samplers.sample_euler(
                 model,
                 noise,
                 sigmas,
                 extra_args=extra_args,
                 callback=callback,
                 disable=disable,
+                pipeline=pipeline,
                 **extra_options,
             )
 
         sampler_function = euler_function
 
-    return KSAMPLER(sampler_function, extra_options, inpaint_options)
+    return KSAMPLER(sampler_function, extra_options, inpaint_options, pipeline=pipeline)
 
 
 def process_conds(
@@ -1510,6 +1369,7 @@ class CFGGuider:
         callback,
         disable_pbar,
         seed,
+        pipeline=False,
     ):
         if (
             latent_image is not None and torch.count_nonzero(latent_image) > 0
@@ -1537,6 +1397,7 @@ class CFGGuider:
             latent_image,
             denoise_mask,
             disable_pbar,
+            pipeline=pipeline,
         )
         return self.inner_model.process_latent_out(samples.to(torch.float32))
 
@@ -1550,6 +1411,7 @@ class CFGGuider:
         callback=None,
         disable_pbar=False,
         seed=None,
+        pipeline=False,
     ):
         self.conds = {}
         for k in self.original_conds:
@@ -1574,6 +1436,7 @@ class CFGGuider:
             callback,
             disable_pbar,
             seed,
+            pipeline=pipeline,
         )
 
         cleanup_models(self.conds, self.loaded_models)
@@ -1603,6 +1466,7 @@ def sample(
     callback=None,
     disable_pbar=False,
     seed=None,
+    pipeline=False,
 ):
     sampler = KSampler1(
         model,
@@ -1628,6 +1492,7 @@ def sample(
         callback=callback,
         disable_pbar=disable_pbar,
         seed=seed,
+        pipeline=pipeline,
     )
     samples = samples.to(Device.intermediate_device())
     return samples
@@ -1644,8 +1509,8 @@ SCHEDULER_NAMES = [
 SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
 
-def sampler_object(name):
-    sampler = ksampler(name)
+def sampler_object(name, pipeline=False):
+    sampler = ksampler(name, pipeline=pipeline)
     return sampler
 
 
@@ -1664,12 +1529,13 @@ def sample1(
     callback=None,
     disable_pbar=False,
     seed=None,
+    pipeline=False,
 ):
     cfg_guider = CFGGuider(model)
     cfg_guider.set_conds(positive, negative)
     cfg_guider.set_cfg(cfg)
     return cfg_guider.sample(
-        noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed
+        noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed, pipeline=pipeline
     )
 
 
@@ -3821,7 +3687,7 @@ class CLIP:
     def tokenize(self, text, return_word_ids=False):
         return self.tokenizer.tokenize_with_weights(text, return_word_ids)
 
-    def encode_from_tokens(self, tokens, return_pooled=False, return_dict=False):
+    def encode_from_tokens(self, tokens, return_pooled=False, return_dict=False, flux_enabled=False):
         self.cond_stage_model.reset_clip_options()
 
         if self.layer_idx is not None:
@@ -3830,7 +3696,7 @@ class CLIP:
         if return_pooled == "unprojected":
             self.cond_stage_model.set_clip_options({"projected_pooled": False})
 
-        self.load_model()
+        self.load_model(flux_enabled=flux_enabled)
         o = self.cond_stage_model.encode_token_weights(tokens)
         cond, pooled = o[:2]
         if return_dict:
@@ -3861,8 +3727,8 @@ class CLIP:
             sd_clip[k] = sd_tokenizer[k]
         return sd_clip
 
-    def load_model(self):
-        Device.load_model_gpu(self.patcher)
+    def load_model(self, flux_enabled=False):
+        Device.load_model_gpu(self.patcher, flux_enabled=flux_enabled)
         return self.patcher
 
     def get_key_patches(self):
@@ -3923,14 +3789,14 @@ class VAE:
                 ].shape[1]
                 self.first_stage_model = AutoencodingEngine(
                     regularizer_config={
-                        "target": "flux.DiagonalGaussianRegularizer"
+                        "target": "modules.Flux.flux.DiagonalGaussianRegularizer"
                     },
                     encoder_config={
-                        "target": "flux.Encoder",
+                        "target": "modules.Flux.flux.Encoder",
                         "params": ddconfig,
                     },
                     decoder_config={
-                        "target": "flux.Decoder",
+                        "target": "modules.Flux.flux.Decoder",
                         "params": ddconfig,
                     },
                 )
@@ -4302,6 +4168,7 @@ def common_ksampler(
     start_step=None,
     last_step=None,
     force_full_denoise=False,
+    pipeline=False,
 ):
     latent_image = latent["samples"]
     latent_image = fix_empty_latent_channels(model, latent_image)
@@ -4337,6 +4204,7 @@ def common_ksampler(
         force_full_denoise=force_full_denoise,
         noise_mask=noise_mask,
         seed=seed,
+        pipeline=pipeline,
     )
     out = latent.copy()
     out["samples"] = samples
@@ -7348,11 +7216,11 @@ class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
 
 
 class CLIPTextEncodeFlux:
-    def encode(self, clip, clip_l, t5xxl, guidance):
+    def encode(self, clip, clip_l, t5xxl, guidance, flux_enabled:bool = False):
         tokens = clip.tokenize(clip_l)
         tokens["t5xxl"] = clip.tokenize(t5xxl)["t5xxl"]
 
-        output = clip.encode_from_tokens(tokens, return_pooled=True, return_dict=True)
+        output = clip.encode_from_tokens(tokens, return_pooled=True, return_dict=True, flux_enabled=flux_enabled)
         cond = output.pop("cond")
         output["guidance"] = guidance
         return ([[cond, output]],)
@@ -7544,6 +7412,7 @@ class KSampler1:
         callback=None,
         disable_pbar=False,
         seed=None,
+        pipeline=False,
     ):
         if sigmas is None:
             sigmas = self.sigmas
@@ -7562,7 +7431,7 @@ class KSampler1:
                 else:
                     return torch.zeros_like(noise)
 
-        sampler = sampler_object(self.sampler)
+        sampler = sampler_object(self.sampler, pipeline=pipeline)
 
         return sample1(
             self.model,
@@ -7579,6 +7448,7 @@ class KSampler1:
             callback=callback,
             disable_pbar=disable_pbar,
             seed=seed,
+            pipeline=pipeline,
         )
 
 
@@ -7595,6 +7465,7 @@ class KSampler:
         negative,
         latent_image,
         denoise=1.0,
+        pipeline=False,
     ):
         return common_ksampler(
             model,
@@ -7607,311 +7478,5 @@ class KSampler:
             negative,
             latent_image,
             denoise=denoise,
+            pipeline=pipeline,
         )
-
-
-import os
-import torch
-import customtkinter as ctk
-from PIL import ImageTk
-
-
-class App(tk.Tk):
-    def __init__(self):
-        super().__init__()
-
-        self.title("LightDiffusion")
-        self.geometry("800x500")
-
-        self.changed = True
-
-        # Create a frame for the sidebar
-        self.sidebar = tk.Frame(self, width=200, bg="black")
-        self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
-
-        # Text input for the prompt
-        self.prompt_entry = ctk.CTkTextbox(self.sidebar, width=400, height=200)
-        self.prompt_entry.pack(pady=10, padx=10)
-
-        self.neg = ctk.CTkTextbox(self.sidebar, width=400, height=50)
-        self.neg.pack(pady=10, padx=10)
-
-        # Sliders for the resolution
-        self.width_label = ctk.CTkLabel(self.sidebar, text="")
-        self.width_label.pack()
-        self.width_slider = ctk.CTkSlider(
-            self.sidebar, from_=1, to=2048, number_of_steps=16
-        )
-        self.width_slider.pack()
-
-        self.height_label = ctk.CTkLabel(self.sidebar, text="")
-        self.height_label.pack()
-        self.height_slider = ctk.CTkSlider(
-            self.sidebar,
-            from_=1,
-            to=2048,
-            number_of_steps=16,
-        )
-        self.height_slider.pack()
-
-        self.enhancer_var = tk.BooleanVar()
-        self.enhancer_checkbox = ctk.CTkCheckBox(
-            self.sidebar,
-            text="Prompt enhancer",
-            variable=self.enhancer_var,
-        )
-        self.enhancer_checkbox.pack(pady=5)
-        
-        self.button_frame = tk.Frame(self.sidebar, bg="black")
-        self.button_frame.pack()
-
-        # Button to launch the generation
-        self.generate_button = ctk.CTkButton(
-            self.button_frame, text="Generate", command=self.generate_image
-        )
-        self.generate_button.grid(row=0, column=0, padx=10, pady=10)
-        
-        self.interrupt_flag = False
-        self.interrupt_button = ctk.CTkButton(
-            self.button_frame, text="Interrupt", command=self.interrupt_generation
-        )
-        self.interrupt_button.grid(row=0, column=1, padx=10, pady=10)
-
-        # Create a frame for the image display, without border
-        self.display = tk.Frame(self, bg="black", border=0)
-        self.display.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
-
-        # centered Label to display the generated image
-        self.image_label = tk.Label(self.display, bg="black")
-        self.image_label.pack(expand=True, padx=10, pady=10)
-        
-        self.previewer_checkbox = ctk.CTkCheckBox(
-            self.display, bg_color="black", text="Preview", variable=tk.BooleanVar()
-            )
-        self.previewer_checkbox.pack(pady=10)
-
-        self.ckpt = None
-
-        # load the checkpoint on an another thread
-        threading.Thread(target=self._prep, daemon=True).start()
-
-        prompt, neg, width, height, cfg = load_parameters_from_file()
-        self.prompt_entry.insert(tk.END, prompt)
-        self.neg.insert(tk.END, neg)
-        self.width_slider.set(width)
-        self.height_slider.set(height)
-
-        self.width_slider.bind("<B1-Motion>", lambda event: self.update_labels())
-        self.height_slider.bind("<B1-Motion>", lambda event: self.update_labels())
-        self.update_labels()
-        self.prompt_entry.bind(
-            "<KeyRelease>",
-            lambda event: write_parameters_to_file(
-                self.prompt_entry.get("1.0", tk.END),
-                self.neg.get("1.0", tk.END),
-                self.width_slider.get(),
-                self.height_slider.get(),
-                3.5,
-            ),
-        )
-        self.neg.bind(
-            "<KeyRelease>",
-            lambda event: write_parameters_to_file(
-                self.prompt_entry.get("1.0", tk.END),
-                self.neg.get("1.0", tk.END),
-                self.width_slider.get(),
-                self.height_slider.get(),
-                3.5,
-            ),
-        )
-        self.width_slider.bind(
-            "<ButtonRelease-1>",
-            lambda event: write_parameters_to_file(
-                self.prompt_entry.get("1.0", tk.END),
-                self.neg.get("1.0", tk.END),
-                self.width_slider.get(),
-                self.height_slider.get(),
-                3.5,
-            ),
-        )
-        self.height_slider.bind(
-            "<ButtonRelease-1>",
-            lambda event: write_parameters_to_file(
-                self.prompt_entry.get("1.0", tk.END),
-                self.neg.get("1.0", tk.END),
-                self.width_slider.get(),
-                self.height_slider.get(),
-                3.5,
-            ),
-        )  # if the text changed, put the changed flag to True
-        self.prompt_entry.bind("<KeyRelease>", lambda event: self.changed_smt())
-        self.neg.bind("<KeyRelease>", lambda event: self.changed_smt())
-        self.enhancer_var.trace("w", lambda *args: self.changed_smt())
-        self.width_slider.bind("<ButtonRelease-1>", lambda event: self.changed_smt())
-        self.height_slider.bind("<ButtonRelease-1>", lambda event: self.changed_smt())
-        self.bind("<Configure>", self.on_resize)
-        self.display_most_recent_image_flag = False
-        self.display_most_recent_image()
-
-    def generate_image(self):
-        threading.Thread(target=self._generate_image, daemon=True).start()
-
-    def changed_smt(self):
-        self.changed = True
-
-    def _prep(self):
-        prompt = self.prompt_entry.get("1.0", tk.END)
-        if self.enhancer_var.get() is True:
-            prompt = enhance_prompt()
-            while prompt is None:
-                pass
-        self.neg.get("1.0", tk.END)
-        w = int(self.width_slider.get())
-        h = int(self.height_slider.get())
-        if self.changed:
-            with torch.inference_mode():
-                self.dualcliploadergguf = DualCLIPLoaderGGUF()
-                self.emptylatentimage = EmptyLatentImage()
-                self.vaeloader = VAELoader()
-                self.unetloadergguf = UnetLoaderGGUF()
-                self.cliptextencodeflux = CLIPTextEncodeFlux()
-                self.conditioningzeroout = ConditioningZeroOut()
-                self.ksampler = KSampler()
-                self.vaedecode = VAEDecode()
-                self.saveimage = SaveImage()
-                self.unetloadergguf_10 = self.unetloadergguf.load_unet(
-                    unet_name="flux1-dev-Q8_0.gguf"
-                )
-                self.vaeloader_11 = self.vaeloader.load_vae(vae_name="ae.safetensors")
-
-                self.dualcliploadergguf_19 = self.dualcliploadergguf.load_clip(
-                    clip_name1="clip_l.safetensors",
-                    clip_name2="t5-v1_1-xxl-encoder-Q8_0.gguf",
-                    type="flux",
-                )
-
-                self.emptylatentimage_5 = self.emptylatentimage.generate(
-                    width=w, height=h, batch_size=1
-                )
-
-                self.cliptextencodeflux_15 = self.cliptextencodeflux.encode(
-                    clip_l=prompt,
-                    t5xxl=prompt,
-                    guidance=3.5,
-                    clip=self.dualcliploadergguf_19[0],
-                )
-
-                self.conditioningzeroout_16 = self.conditioningzeroout.zero_out(
-                    conditioning=self.cliptextencodeflux_15[0]
-                )
-                self.changed = False
-        return (
-            self.dualcliploadergguf,
-            self.emptylatentimage,
-            self.vaeloader,
-            self.unetloadergguf,
-            self.cliptextencodeflux,
-            self.conditioningzeroout,
-            self.ksampler,
-            self.vaedecode,
-            self.saveimage,
-        )
-
-    def _generate_image(self):
-        with torch.inference_mode():
-            if self.changed:
-                self._prep()
-
-            ksampler_3 = self.ksampler.sample(
-                seed=random.randint(1, 2**64),
-                steps=20,
-                cfg=1,
-                sampler_name="euler",
-                scheduler="simple",
-                denoise=1,
-                model=self.unetloadergguf_10[0],
-                positive=self.cliptextencodeflux_15[0],
-                negative=self.conditioningzeroout_16[0],
-                latent_image=self.emptylatentimage_5[0],
-            )
-
-            vaedecode_8 = self.vaedecode.decode(
-                samples=ksampler_3[0],
-                vae=self.vaeloader_11[0],
-            )
-
-            self.saveimage.save_images(
-                filename_prefix="Flux", images=vaedecode_8[0]
-            )
-            for image in vaedecode_8[0]:
-                i = 255.0 * image.cpu().numpy()
-                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-
-            self.changed = False
-
-        self.image_label.after(0, self._update_image_label, img)
-        self.display_most_recent_image_flag = True
-
-
-    def update_labels(self):
-        self.width_label.configure(text=f"Width: {int(self.width_slider.get())}")
-        self.height_label.configure(text=f"Height: {int(self.height_slider.get())}")
-        self.changed = True
-
-    def update_image(self, img):
-        # Calculate the aspect ratio of the original image
-        aspect_ratio = img.width / img.height
-
-        # Determine the new dimensions while maintaining the aspect ratio
-        label_width = int(4 * self.winfo_width() / 7)
-        label_height = int(4 * self.winfo_height() / 7)
-
-        if label_width / aspect_ratio <= label_height:
-            new_width = label_width
-            new_height = int(label_width / aspect_ratio)
-        else:
-            new_height = label_height
-            new_width = int(label_height * aspect_ratio)
-
-        # Resize the image to the new dimensions
-        img = img.resize((new_width, new_height), Image.LANCZOS)
-        self.image_label.after(0, self._update_image_label, img)
-
-    def _update_image_label(self, img):
-        # Convert the PIL image to a Tkinter PhotoImage
-        tk_image = ImageTk.PhotoImage(img)
-        # Update the image label with the Tkinter PhotoImage
-        self.image_label.config(image=tk_image)
-        # Keep a reference to the image to prevent it from being garbage collected
-        self.image_label.image = tk_image
-
-    def display_most_recent_image(self):
-        # Get a list of all image files in the output directory
-        image_files = glob.glob("./_internal/output/*")
-
-        # If there are no image files, return
-        if not image_files:
-            return
-
-        # Sort the files by modification time in descending order
-        image_files.sort(key=os.path.getmtime, reverse=True)
-
-        # Open the most recent image file
-        img = Image.open(image_files[0])
-        self.update_image(img)
-        
-        if self.display_most_recent_image_flag is True:
-            self.after(10000, self.display_most_recent_image)
-            self.display_most_recent_image_flag = False
-
-    def on_resize(self, event):
-        if hasattr(self, 'img'):
-            self.update_image(self.img)
-
-    def interrupt_generation(self):
-        self.interrupt_flag = True
-
-
-if __name__ == "__main__":
-    app = App()
-    app.mainloop()

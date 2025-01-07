@@ -397,7 +397,7 @@ class LoadedModel:
             self.model_use_more_vram(use_more_vram)
         else:
             try:
-                self.real_model = self.model.patch_model_flux(
+                self.real_model = self.model.patch_model(
                     device_to=patch_model_to,
                     lowvram_model_memory=lowvram_model_memory,
                     load_weights=load_weights,
@@ -739,13 +739,14 @@ def load_models_gpu(models: list, memory_required: int = 0, force_patch_weights:
                 )
     return
 
-def load_model_gpu(model: torch.nn.Module) -> None:
+def load_model_gpu(model: torch.nn.Module, flux_enabled:bool = False) -> None:
     """#### Load a model on the GPU
     
     #### Args:
         - `model` (torch.nn.Module): The model
+        - `flux_enable` (bool, optional): Whether flux is enabled. Defaults to False.
     """
-    return load_models_gpu([model])
+    return load_models_gpu([model], flux_enabled=flux_enabled)
 
 
 def cleanup_models(keep_clone_weights_loaded:bool = False):

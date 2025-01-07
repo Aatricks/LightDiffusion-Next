@@ -494,12 +494,13 @@ class CLIP:
         """
         return self.tokenizer.tokenize_with_weights(text, return_word_ids)
 
-    def encode_from_tokens(self, tokens: list, return_pooled: bool = False) -> tuple:
+    def encode_from_tokens(self, tokens: list, return_pooled: bool = False, flux_enabled:bool = False) -> tuple:
         """#### Encode the input tokens.
 
         #### Args:
             - `tokens` (list): The input tokens.
             - `return_pooled` (bool, optional): Whether to return the pooled output. Defaults to False.
+            - `flux_enabled` (bool, optional): Whether to enable flux. Defaults to False.
 
         #### Returns:
             - `tuple`: The encoded tokens and the pooled output.
@@ -509,7 +510,7 @@ class CLIP:
             self.cond_stage_model.set_clip_options({"layer": self.layer_idx})
         if return_pooled == "unprojected":
             self.cond_stage_model.set_clip_options({"projected_pooled": False})
-        self.load_model()
+        self.load_model(flux_enabled=flux_enabled)
         cond, pooled = self.cond_stage_model.encode_token_weights(tokens)
         if return_pooled:
             return cond, pooled
@@ -524,13 +525,13 @@ class CLIP:
         """
         return self.cond_stage_model.load_state_dict(sd, strict=False)
 
-    def load_model(self) -> ModelPatcher:
+    def load_model(self, flux_enabled:bool = False) -> ModelPatcher:
         """#### Load the model.
 
         #### Returns:
             - `ModelPatcher`: The model patcher.
         """
-        Device.load_model_gpu(self.patcher)
+        Device.load_model_gpu(self.patcher, flux_enabled=flux_enabled)
         return self.patcher
 
 
@@ -540,18 +541,19 @@ class CLIPType(Enum):
 
 
 class CLIPTextEncode:
-    def encode(self, clip: CLIP, text: str) -> tuple:
+    def encode(self, clip: CLIP, text: str, flux_enabled: bool = False) -> tuple:
         """#### Encode the input text.
 
         #### Args:
             - `clip` (CLIP): The CLIP object.
             - `text` (str): The input text.
+            - `flux_enabled` (bool, optional): Whether to enable flux. Defaults to False.
 
         #### Returns:
             - `tuple`: The encoded text and the pooled output.
         """
         tokens = clip.tokenize(text)
-        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True, flux_enabled=flux_enabled)
         return ([[cond, {"pooled_output": pooled}]],)
 
 

@@ -24,12 +24,12 @@ from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale
 from modules.hidiffusion import msw_msa_attention
+from modules.Flux import flux
 
 torch._dynamo.config.suppress_errors = True
 torch.compiler.allow_in_graph
 
 last_seed = 0
-
 
 
 def pipeline(
@@ -43,6 +43,7 @@ def pipeline(
     img2img: bool = False,
     stable_fast: bool = False,
     reuse_seed: bool = False,
+    flux_enabled: bool = False,
 ) -> None:
     """#### Run the LightDiffusion pipeline.
 
@@ -56,6 +57,7 @@ def pipeline(
         - `img2img` (bool, optional): Use LightDiffusion in Image to Image mode, the prompt input becomes the path to the input image. Defaults to False.
         - `stable_fast` (bool, optional): Enable Stable-Fast speedup offering a 70% speed improvement in return of a compilation time. Defaults to False.
         - `reuse_seed` (bool, optional): Reuse the last used seed, if False the seed will be kept random. Default to False.
+        - `flux_enabled` (bool, optional): Enable the flux mode. Defaults to False.
     """
     global last_seed
     if reuse_seed:
@@ -154,6 +156,59 @@ def pipeline(
                 saveimage.save_images(
                     filename_prefix="LD-i2i",
                     images=ultimatesdupscale_250[0],
+                )
+        elif flux_enabled:
+            with torch.inference_mode():
+                dualcliploadergguf = flux.DualCLIPLoaderGGUF()
+                emptylatentimage = flux.EmptyLatentImage()
+                vaeloader = flux.VAELoader()
+                unetloadergguf = flux.UnetLoaderGGUF()
+                cliptextencodeflux = flux.CLIPTextEncodeFlux()
+                conditioningzeroout = flux.ConditioningZeroOut()
+                ksampler = flux.KSampler()
+                unetloadergguf_10 = unetloadergguf.load_unet(
+                    unet_name="flux1-dev-Q8_0.gguf"
+                )
+                vaeloader_11 = vaeloader.load_vae(vae_name="ae.safetensors")
+                dualcliploadergguf_19 = dualcliploadergguf.load_clip(
+                    clip_name1="clip_l.safetensors",
+                    clip_name2="t5-v1_1-xxl-encoder-Q8_0.gguf",
+                    type="flux",
+                )
+                emptylatentimage_5 = emptylatentimage.generate(
+                    width=w, height=h, batch_size=1
+                )
+                cliptextencodeflux_15 = cliptextencodeflux.encode(
+                    clip_l=prompt,
+                    t5xxl=prompt,
+                    guidance=3.5,
+                    clip=dualcliploadergguf_19[0],
+                    flux_enabled=True,
+                )
+                conditioningzeroout_16 = conditioningzeroout.zero_out(
+                    conditioning=cliptextencodeflux_15[0]
+                )
+                ksampler_3 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=20,
+                    cfg=1,
+                    sampler_name="euler",
+                    scheduler="simple",
+                    denoise=1,
+                    model=unetloadergguf_10[0],
+                    positive=cliptextencodeflux_15[0],
+                    negative=conditioningzeroout_16[0],
+                    latent_image=emptylatentimage_5[0],
+                    pipeline=True,
+                )
+
+                vaedecode_8 = vaedecode.decode(
+                    samples=ksampler_3[0],
+                    vae=vaeloader_11[0],
+                )
+
+                saveimage.save_images(
+                    filename_prefix="Flux", images=vaedecode_8[0]
                 )
         else:
             if enhance_prompt:
@@ -416,6 +471,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable to reuse last used seed for sampling, default for False is a random seed at every use.",
     )
+    parser.add_argument(
+        "--flux-enabled",
+        action="store_true",
+        help="Enable the flux mode.",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -429,4 +489,5 @@ if __name__ == "__main__":
         args.img2img,
         args.stable_fast,
         args.reuse_seed,
+        args.flux_enabled,
     )
