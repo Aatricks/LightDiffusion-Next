@@ -10,8 +10,24 @@ def calculate_start_end_timesteps(model: torch.nn.Module, conds: list) -> None:
         - `model` (torch.nn.Module): The input model.
         - `conds` (list): The list of conditions.
     """
+    s = model.model_sampling
     for t in range(len(conds)):
-        conds[t]
+        x = conds[t]
+
+        timestep_start = None
+        timestep_end = None
+        if "start_percent" in x:
+            timestep_start = s.percent_to_sigma(x["start_percent"])
+        if "end_percent" in x:
+            timestep_end = s.percent_to_sigma(x["end_percent"])
+
+        if (timestep_start is not None) or (timestep_end is not None):
+            n = x.copy()
+            if timestep_start is not None:
+                n["timestep_start"] = timestep_start
+            if timestep_end is not None:
+                n["timestep_end"] = timestep_end
+            conds[t] = n
 
 
 def pre_run_control(model: torch.nn.Module, conds: list) -> None:

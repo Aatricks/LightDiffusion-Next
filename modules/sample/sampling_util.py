@@ -76,6 +76,14 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
     return embedding
 
+def simple_scheduler(model_sampling, steps):
+    s = model_sampling
+    sigs = []
+    ss = len(s.sigmas) / steps
+    for x in range(steps):
+        sigs += [float(s.sigmas[-(1 + int(x * ss))])]
+    sigs += [0.0]
+    return torch.FloatTensor(sigs)
 
 def get_sigmas_karras(n, sigma_min, sigma_max, rho=7.0, device="cpu"):
     """#### Get the sigmas for Karras sampling.

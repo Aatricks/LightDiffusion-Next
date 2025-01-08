@@ -186,3 +186,33 @@ def create_cond_with_same_area_if_none(conds: List[dict], c: dict) -> None:
     """
     if "area" not in c:
         return
+
+    c_area = c["area"]
+    smallest = None
+    for x in conds:
+        if "area" in x:
+            a = x["area"]
+            if c_area[2] >= a[2] and c_area[3] >= a[3]:
+                if a[0] + a[2] >= c_area[0] + c_area[2]:
+                    if a[1] + a[3] >= c_area[1] + c_area[3]:
+                        if smallest is None:
+                            smallest = x
+                        elif "area" not in smallest:
+                            smallest = x
+                        else:
+                            if smallest["area"][0] * smallest["area"][1] > a[0] * a[1]:
+                                smallest = x
+        else:
+            if smallest is None:
+                smallest = x
+    if smallest is None:
+        return
+    if "area" in smallest:
+        if smallest["area"] == c_area:
+            return
+
+    out = c.copy()
+    out["model_conds"] = smallest[
+        "model_conds"
+    ].copy()
+    conds += [out]

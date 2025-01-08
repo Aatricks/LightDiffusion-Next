@@ -32,7 +32,6 @@ Downloader.CheckAndDownload()
 files = glob.glob("./_internal/checkpoints/*.safetensors")
 loras = glob.glob("./_internal/loras/*.safetensors")
 loras += glob.glob("./_internal/loras/*.pt")
-generated = 0
 
 
 class App(tk.Tk):
@@ -250,6 +249,7 @@ class App(tk.Tk):
         Args:
             file_path (str): The path to the selected image.
         """
+        self.display_most_recent_image_flag = False
         prompt = self.prompt_entry.get("1.0", tk.END)
         neg = self.neg.get("1.0", tk.END)
         img = Image.open(file_path)
@@ -426,6 +426,7 @@ class App(tk.Tk):
 
     def _generate_image(self) -> None:
         """Generate an image based on the provided prompt and settings."""
+        self.display_most_recent_image_flag = False
         prompt = self.prompt_entry.get("1.0", tk.END)
         if self.enhancer_var.get() is True:
             prompt = Enhancer.enhance_prompt()
@@ -678,8 +679,6 @@ class App(tk.Tk):
                     images=detailerforeachdebug_145[0],
                 )
         self.update_image(img)
-        global generated
-        generated = img
         self.display_most_recent_image_flag = True
 
     def update_labels(self) -> None:
@@ -694,7 +693,6 @@ class App(tk.Tk):
         Args:
             img (Image.Image): The image to display.
         """
-        global generated
         # Calculate the aspect ratio of the original image
         aspect_ratio = img.width / img.height
 
@@ -714,10 +712,8 @@ class App(tk.Tk):
             img = img.resize((new_width, new_height), Image.LANCZOS)
         except RecursionError:
             pass
-        self.image_label.after(0, self._update_image_label, img)
-        if self.display_most_recent_image_flag is True:
-            self.update_image(generated)
-            self.display_most_recent_image_flag = False
+        if self.display_most_recent_image_flag is False:
+            self._update_image_label(img)
 
     def _update_image_label(self, img: Image.Image) -> None:
         """Update the image label with the provided image.

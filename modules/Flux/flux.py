@@ -34,7 +34,7 @@ from modules.Utilities import Latent, util
 from modules.Device import Device
 from modules.SD15 import SDClip, SDToken
 from modules.cond import cast, cond, cond_util
-from modules.sample import CFG, ksampler_util, samplers
+from modules.sample import CFG, ksampler_util, samplers, sampling, sampling_util
 from modules.cond import cond as Cond
 import torch.nn.functional as F
 
@@ -80,101 +80,6 @@ PROGRESS_BAR_HOOK = None
 logging_level = logging.INFO
 
 logging.basicConfig(format="%(message)s", level=logging_level)
-
-
-class KSamplerX0Inpaint:
-    def __init__(self, model, sigmas):
-        self.inner_model = model
-        self.sigmas = sigmas
-
-    def __call__(self, x, sigma, denoise_mask, model_options={}, seed=None):
-        if denoise_mask is not None:
-            if "denoise_mask_function" in model_options:
-                denoise_mask = model_options["denoise_mask_function"](
-                    sigma,
-                    denoise_mask,
-                    extra_options={"model": self.inner_model, "sigmas": self.sigmas},
-                )
-            latent_mask = 1.0 - denoise_mask
-            x = (
-                x * denoise_mask
-                + self.inner_model.inner_model.model_sampling.noise_scaling(
-                    sigma.reshape([sigma.shape[0]] + [1] * (len(self.noise.shape) - 1)),
-                    self.noise,
-                    self.latent_image,
-                )
-                * latent_mask
-            )
-        out = self.inner_model(x, sigma, model_options=model_options, seed=seed)
-        if denoise_mask is not None:
-            out = out * denoise_mask + self.latent_image * latent_mask
-        return out
-
-
-def simple_scheduler(model_sampling, steps):
-    s = model_sampling
-    sigs = []
-    ss = len(s.sigmas) / steps
-    for x in range(steps):
-        sigs += [float(s.sigmas[-(1 + int(x * ss))])]
-    sigs += [0.0]
-    return torch.FloatTensor(sigs)
-
-
-def create_cond_with_same_area_if_none(conds, c):  # TODO: handle dim != 2
-    if "area" not in c:
-        return
-
-    c_area = c["area"]
-    smallest = None
-    for x in conds:
-        if "area" in x:
-            a = x["area"]
-            if c_area[2] >= a[2] and c_area[3] >= a[3]:
-                if a[0] + a[2] >= c_area[0] + c_area[2]:
-                    if a[1] + a[3] >= c_area[1] + c_area[3]:
-                        if smallest is None:
-                            smallest = x
-                        elif "area" not in smallest:
-                            smallest = x
-                        else:
-                            if smallest["area"][0] * smallest["area"][1] > a[0] * a[1]:
-                                smallest = x
-        else:
-            if smallest is None:
-                smallest = x
-    if smallest is None:
-        return
-    if "area" in smallest:
-        if smallest["area"] == c_area:
-            return
-
-    out = c.copy()
-    out["model_conds"] = smallest[
-        "model_conds"
-    ].copy()  # TODO: which fields should be copied?
-    conds += [out]
-
-
-def calculate_start_end_timesteps(model, conds):
-    s = model.model_sampling
-    for t in range(len(conds)):
-        x = conds[t]
-
-        timestep_start = None
-        timestep_end = None
-        if "start_percent" in x:
-            timestep_start = s.percent_to_sigma(x["start_percent"])
-        if "end_percent" in x:
-            timestep_end = s.percent_to_sigma(x["end_percent"])
-
-        if (timestep_start is not None) or (timestep_end is not None):
-            n = x.copy()
-            if timestep_start is not None:
-                n["timestep_start"] = timestep_start
-            if timestep_end is not None:
-                n["timestep_end"] = timestep_end
-            conds[t] = n
 
 
 def pre_run_control(model, conds):
@@ -284,7 +189,7 @@ class KSAMPLER(Sampler):
         pipeline=False,
     ):
         extra_args["denoise_mask"] = denoise_mask
-        model_k = KSamplerX0Inpaint(model_wrap, sigmas)
+        model_k = sampling.KSamplerX0Inpaint(model_wrap, sigmas)
         model_k.latent_image = latent_image
         if self.inpaint_options.get(
             "random", False
@@ -352,7 +257,7 @@ def process_conds(
         resolve_areas_and_cond_masks_multidim(conds[k], noise.shape[2:], device)
 
     for k in conds:
-        calculate_start_end_timesteps(model, conds[k])
+        ksampler_util.calculate_start_end_timesteps(model, conds[k])
 
     if hasattr(model, "extra_conds"):
         for k in conds:
@@ -372,7 +277,7 @@ def process_conds(
         for c in conds[k]:
             for kk in conds:
                 if k != kk:
-                    create_cond_with_same_area_if_none(conds[kk], c)
+                    cond_util.create_cond_with_same_area_if_none(conds[kk], c)
 
     for k in conds:
         pre_run_control(model, conds[k])
@@ -6033,7 +5938,7 @@ SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
 
 def calculate_sigmas1(model_sampling, scheduler_name, steps):
     if scheduler_name == "simple":
-        sigmas = simple_scheduler(model_sampling, steps)
+        sigmas = sampling_util.simple_scheduler(model_sampling, steps)
     else:
         logging.error("error invalid scheduler {}".format(scheduler_name))
     return sigmas
