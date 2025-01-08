@@ -120,9 +120,6 @@ def cond_equal_size(c1: Any, c2: Any) -> bool:
         return True
     if c1.keys() != c2.keys():
         return False
-    for k in c1:
-        if not c1[k].can_concat(c2[k]):
-            return False
     return True
 
 
