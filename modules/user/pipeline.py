@@ -473,7 +473,7 @@ if __name__ == "__main__":
         help="Enable to reuse last used seed for sampling, default for False is a random seed at every use.",
     )
     parser.add_argument(
-        "--flux-enabled",
+        "--flux",
         action="store_true",
         help="Enable the flux mode.",
     )
@@ -490,5 +490,5 @@ if __name__ == "__main__":
         args.img2img,
         args.stable_fast,
         args.reuse_seed,
-        args.flux_enabled,
+        args.flux,
     )

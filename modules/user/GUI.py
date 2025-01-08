@@ -710,7 +710,10 @@ class App(tk.Tk):
             new_width = int(label_height * aspect_ratio)
 
         # Resize the image to the new dimensions
-        img = img.resize((new_width, new_height), Image.LANCZOS)
+        try :
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+        except RecursionError:
+            pass
         self.image_label.after(0, self._update_image_label, img)
         if self.display_most_recent_image_flag is True:
             self.update_image(generated)

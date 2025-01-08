@@ -16,12 +16,13 @@ python -m pip install --upgrade pip
 
 REM Install specific packages
 echo Installing required packages...
-pip install xformers torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+pip install uv
+uv pip install xformers torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 REM Install additional requirements
 IF EXIST requirements.txt (
     echo Installing additional requirements...
-    pip install -r requirements.txt
+    uv pip install -r requirements.txt
 ) ELSE (
     echo requirements.txt not found, skipping...
 )

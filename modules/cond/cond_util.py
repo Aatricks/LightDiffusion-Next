@@ -84,6 +84,11 @@ def prepare_sampling(
 
     return real_model, conds, models
 
+def cleanup_additional_models(models):
+    """cleanup additional models that were loaded"""
+    for m in models:
+        if hasattr(m, "cleanup"):
+            m.cleanup()
 
 def cleanup_models(conds: dict, models: List[object]) -> None:
     """#### Clean up the models after sampling.
@@ -92,9 +97,13 @@ def cleanup_models(conds: dict, models: List[object]) -> None:
         - `conds` (dict): The conditions.
         - `models` (List[object]): The list of models.
     """
+    cleanup_additional_models(models)
+
     control_cleanup = []
     for k in conds:
         control_cleanup += get_models_from_cond(conds[k], "control")
+
+    cleanup_additional_models(set(control_cleanup))
 
 
 def cond_equal_size(c1: Any, c2: Any) -> bool:
@@ -109,6 +118,11 @@ def cond_equal_size(c1: Any, c2: Any) -> bool:
     """
     if c1 is c2:
         return True
+    if c1.keys() != c2.keys():
+        return False
+    for k in c1:
+        if not c1[k].can_concat(c2[k]):
+            return False
     return True
 
 
@@ -122,6 +136,23 @@ def can_concat_cond(c1: Any, c2: Any) -> bool:
     #### Returns:
         - `bool`: Whether the conditions can be concatenated.
     """
+    if c1.input_x.shape != c2.input_x.shape:
+        return False
+
+    def objects_concatable(obj1, obj2):
+        if (obj1 is None) != (obj2 is None):
+            return False
+        if obj1 is not None:
+            if obj1 is not obj2:
+                return False
+        return True
+
+    if not objects_concatable(c1.control, c2.control):
+        return False
+
+    if not objects_concatable(c1.patches, c2.patches):
+        return False
+
     return cond_equal_size(c1.conditioning, c2.conditioning)
 
 

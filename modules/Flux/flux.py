@@ -33,8 +33,9 @@ from modules.UltimateSDUpscale import image_util
 from modules.Utilities import Latent, util
 from modules.Device import Device
 from modules.SD15 import SDClip, SDToken
-from modules.cond import cond, cond_util
-from modules.sample import samplers
+from modules.cond import cast, cond, cond_util
+from modules.sample import CFG, ksampler_util, samplers
+from modules.cond import cond as Cond
 import torch.nn.functional as F
 
 
@@ -79,639 +80,6 @@ PROGRESS_BAR_HOOK = None
 logging_level = logging.INFO
 
 logging.basicConfig(format="%(message)s", level=logging_level)
-
-
-
-def cleanup_models(conds, models):
-    cleanup_additional_models(models)
-
-    control_cleanup = []
-    for k in conds:
-        control_cleanup += cond_util.get_models_from_cond(conds[k], "control")
-
-    cleanup_additional_models(set(control_cleanup))
-
-
-def cast_to(weight, dtype=None, device=None, non_blocking=False, copy=False):
-    if device is None or weight.device == device:
-        if not copy:
-            if dtype is None or weight.dtype == dtype:
-                return weight
-        return weight.to(dtype=dtype, copy=copy)
-
-    r = torch.empty_like(weight, dtype=dtype, device=device)
-    r.copy_(weight, non_blocking=non_blocking)
-    return r
-
-
-def cast_bias_weight(s, input=None, dtype=None, device=None, bias_dtype=None):
-    if input is not None:
-        if dtype is None:
-            dtype = input.dtype
-        if bias_dtype is None:
-            bias_dtype = dtype
-        if device is None:
-            device = input.device
-
-    bias = None
-    non_blocking = Device.device_supports_non_blocking(device)
-    if s.bias is not None:
-        has_function = s.bias_function is not None
-        bias = cast_to(
-            s.bias, bias_dtype, device, non_blocking=non_blocking, copy=has_function
-        )
-        if has_function:
-            bias = s.bias_function(bias)
-
-    has_function = s.weight_function is not None
-    weight = cast_to(
-        s.weight, dtype, device, non_blocking=non_blocking, copy=has_function
-    )
-    if has_function:
-        weight = s.weight_function(weight)
-    return weight, bias
-
-
-class CastWeightBiasOp:
-    comfy_cast_weights = False
-    weight_function = None
-    bias_function = None
-
-
-class disable_weight_init:
-    class Linear(torch.nn.Linear, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input):
-            weight, bias = cast_bias_weight(self, input)
-            return torch.nn.functional.linear(input, weight, bias)
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class Conv1d(torch.nn.Conv1d, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input):
-            weight, bias = cast_bias_weight(self, input)
-            return self._conv_forward(input, weight, bias)
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class Conv2d(torch.nn.Conv2d, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input):
-            weight, bias = cast_bias_weight(self, input)
-            return self._conv_forward(input, weight, bias)
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class Conv3d(torch.nn.Conv3d, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input):
-            weight, bias = cast_bias_weight(self, input)
-            return self._conv_forward(input, weight, bias)
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class GroupNorm(torch.nn.GroupNorm, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input):
-            weight, bias = cast_bias_weight(self, input)
-            return torch.nn.functional.group_norm(
-                input, self.num_groups, weight, bias, self.eps
-            )
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class LayerNorm(torch.nn.LayerNorm, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input):
-            if self.weight is not None:
-                weight, bias = cast_bias_weight(self, input)
-            else:
-                weight = None
-                bias = None
-            return torch.nn.functional.layer_norm(
-                input, self.normalized_shape, weight, bias, self.eps
-            )
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class ConvTranspose2d(torch.nn.ConvTranspose2d, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input, output_size=None):
-            num_spatial_dims = 2
-            output_padding = self._output_padding(
-                input,
-                output_size,
-                self.stride,
-                self.padding,
-                self.kernel_size,
-                num_spatial_dims,
-                self.dilation,
-            )
-
-            weight, bias = cast_bias_weight(self, input)
-            return torch.nn.functional.conv_transpose2d(
-                input,
-                weight,
-                bias,
-                self.stride,
-                self.padding,
-                output_padding,
-                self.groups,
-                self.dilation,
-            )
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class ConvTranspose1d(torch.nn.ConvTranspose1d, CastWeightBiasOp):
-        def reset_parameters(self):
-            return None
-
-        def forward_comfy_cast_weights(self, input, output_size=None):
-            num_spatial_dims = 1
-            output_padding = self._output_padding(
-                input,
-                output_size,
-                self.stride,
-                self.padding,
-                self.kernel_size,
-                num_spatial_dims,
-                self.dilation,
-            )
-
-            weight, bias = cast_bias_weight(self, input)
-            return torch.nn.functional.conv_transpose1d(
-                input,
-                weight,
-                bias,
-                self.stride,
-                self.padding,
-                output_padding,
-                self.groups,
-                self.dilation,
-            )
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                return super().forward(*args, **kwargs)
-
-    class Embedding(torch.nn.Embedding, CastWeightBiasOp):
-        def reset_parameters(self):
-            self.bias = None
-            return None
-
-        def forward_comfy_cast_weights(self, input, out_dtype=None):
-            output_dtype = out_dtype
-            if (
-                self.weight.dtype == torch.float16
-                or self.weight.dtype == torch.bfloat16
-            ):
-                out_dtype = None
-            weight, bias = cast_bias_weight(self, device=input.device, dtype=out_dtype)
-            return torch.nn.functional.embedding(
-                input,
-                weight,
-                self.padding_idx,
-                self.max_norm,
-                self.norm_type,
-                self.scale_grad_by_freq,
-                self.sparse,
-            ).to(dtype=output_dtype)
-
-        def forward(self, *args, **kwargs):
-            if self.comfy_cast_weights:
-                return self.forward_comfy_cast_weights(*args, **kwargs)
-            else:
-                if "out_dtype" in kwargs:
-                    kwargs.pop("out_dtype")
-                return super().forward(*args, **kwargs)
-
-    @classmethod
-    def conv_nd(s, dims, *args, **kwargs):
-        if dims == 2:
-            return s.Conv2d(*args, **kwargs)
-        elif dims == 3:
-            return s.Conv3d(*args, **kwargs)
-        else:
-            raise ValueError(f"unsupported dimensions: {dims}")
-
-
-class manual_cast(disable_weight_init):
-    class Linear(disable_weight_init.Linear):
-        comfy_cast_weights = True
-
-    class Conv1d(disable_weight_init.Conv1d):
-        comfy_cast_weights = True
-
-    class Conv2d(disable_weight_init.Conv2d):
-        comfy_cast_weights = True
-
-    class Conv3d(disable_weight_init.Conv3d):
-        comfy_cast_weights = True
-
-    class GroupNorm(disable_weight_init.GroupNorm):
-        comfy_cast_weights = True
-
-    class LayerNorm(disable_weight_init.LayerNorm):
-        comfy_cast_weights = True
-
-    class ConvTranspose2d(disable_weight_init.ConvTranspose2d):
-        comfy_cast_weights = True
-
-    class ConvTranspose1d(disable_weight_init.ConvTranspose1d):
-        comfy_cast_weights = True
-
-    class Embedding(disable_weight_init.Embedding):
-        comfy_cast_weights = True
-
-
-
-
-def get_area_and_mult(conds, x_in, timestep_in):
-    dims = tuple(x_in.shape[2:])
-    area = None
-    strength = 1.0
-
-    if "timestep_start" in conds:
-        timestep_start = conds["timestep_start"]
-        if timestep_in[0] > timestep_start:
-            return None
-    if "timestep_end" in conds:
-        timestep_end = conds["timestep_end"]
-        if timestep_in[0] < timestep_end:
-            return None
-    if "area" in conds:
-        area = list(conds["area"])
-    if "strength" in conds:
-        strength = conds["strength"]
-
-    input_x = x_in
-    if area is not None:
-        for i in range(len(dims)):
-            area[i] = min(input_x.shape[i + 2] - area[len(dims) + i], area[i])
-            input_x = input_x.narrow(i + 2, area[len(dims) + i], area[i])
-
-    if "mask" in conds:
-        # Scale the mask to the size of the input
-        # The mask should have been resized as we began the sampling process
-        mask_strength = 1.0
-        if "mask_strength" in conds:
-            mask_strength = conds["mask_strength"]
-        mask = conds["mask"]
-        assert mask.shape[1:] == x_in.shape[2:]
-
-        mask = mask[: input_x.shape[0]]
-        if area is not None:
-            for i in range(len(dims)):
-                mask = mask.narrow(i + 1, area[len(dims) + i], area[i])
-
-        mask = mask * mask_strength
-        mask = mask.unsqueeze(1).repeat(
-            input_x.shape[0] // mask.shape[0], input_x.shape[1], 1, 1
-        )
-    else:
-        mask = torch.ones_like(input_x)
-    mult = mask * strength
-
-    if "mask" not in conds and area is not None:
-        rr = 8
-        for i in range(len(dims)):
-            if area[len(dims) + i] != 0:
-                for t in range(rr):
-                    m = mult.narrow(i + 2, t, 1)
-                    m *= (1.0 / rr) * (t + 1)
-            if (area[i] + area[len(dims) + i]) < x_in.shape[i + 2]:
-                for t in range(rr):
-                    m = mult.narrow(i + 2, area[i] - 1 - t, 1)
-                    m *= (1.0 / rr) * (t + 1)
-
-    conditioning = {}
-    model_conds = conds["model_conds"]
-    for c in model_conds:
-        conditioning[c] = model_conds[c].process_cond(
-            batch_size=x_in.shape[0], device=x_in.device, area=area
-        )
-
-    control = conds.get("control", None)
-
-    patches = None
-    if "gligen" in conds:
-        gligen = conds["gligen"]
-        patches = {}
-        gligen_type = gligen[0]
-        gligen_model = gligen[1]
-        if gligen_type == "position":
-            gligen_patch = gligen_model.model.set_position(
-                input_x.shape, gligen[2], input_x.device
-            )
-        else:
-            gligen_patch = gligen_model.model.set_empty(input_x.shape, input_x.device)
-
-        patches["middle_patch"] = [gligen_patch]
-
-    cond_obj = collections.namedtuple(
-        "cond_obj", ["input_x", "mult", "conditioning", "area", "control", "patches"]
-    )
-    return cond_obj(input_x, mult, conditioning, area, control, patches)
-
-
-def cond_equal_size(c1, c2):
-    if c1 is c2:
-        return True
-    if c1.keys() != c2.keys():
-        return False
-    for k in c1:
-        if not c1[k].can_concat(c2[k]):
-            return False
-    return True
-
-
-def can_concat_cond(c1, c2):
-    if c1.input_x.shape != c2.input_x.shape:
-        return False
-
-    def objects_concatable(obj1, obj2):
-        if (obj1 is None) != (obj2 is None):
-            return False
-        if obj1 is not None:
-            if obj1 is not obj2:
-                return False
-        return True
-
-    if not objects_concatable(c1.control, c2.control):
-        return False
-
-    if not objects_concatable(c1.patches, c2.patches):
-        return False
-
-    return cond_equal_size(c1.conditioning, c2.conditioning)
-
-
-def cond_cat(c_list):
-
-    temp = {}
-    for x in c_list:
-        for k in x:
-            cur = temp.get(k, [])
-            cur.append(x[k])
-            temp[k] = cur
-
-    out = {}
-    for k in temp:
-        conds = temp[k]
-        out[k] = conds[0].concat(conds[1:])
-
-    return out
-
-
-def calc_cond_batch(model, conds, x_in, timestep, model_options):
-    out_conds = []
-    out_counts = []
-    to_run = []
-
-    for i in range(len(conds)):
-        out_conds.append(torch.zeros_like(x_in))
-        out_counts.append(torch.ones_like(x_in) * 1e-37)
-
-        cond = conds[i]
-        if cond is not None:
-            for x in cond:
-                p = get_area_and_mult(x, x_in, timestep)
-                if p is None:
-                    continue
-
-                to_run += [(p, i)]
-
-    while len(to_run) > 0:
-        first = to_run[0]
-        first_shape = first[0][0].shape
-        to_batch_temp = []
-        for x in range(len(to_run)):
-            if can_concat_cond(to_run[x][0], first[0]):
-                to_batch_temp += [x]
-
-        to_batch_temp.reverse()
-        to_batch = to_batch_temp[:1]
-
-        free_memory = Device.get_free_memory(x_in.device)
-        for i in range(1, len(to_batch_temp) + 1):
-            batch_amount = to_batch_temp[: len(to_batch_temp) // i]
-            input_shape = [len(batch_amount) * first_shape[0]] + list(first_shape)[1:]
-            if model.memory_required(input_shape) * 1.5 < free_memory:
-                to_batch = batch_amount
-                break
-
-        input_x = []
-        mult = []
-        c = []
-        cond_or_uncond = []
-        area = []
-        control = None
-        patches = None
-        for x in to_batch:
-            o = to_run.pop(x)
-            p = o[0]
-            input_x.append(p.input_x)
-            mult.append(p.mult)
-            c.append(p.conditioning)
-            area.append(p.area)
-            cond_or_uncond.append(o[1])
-            control = p.control
-            patches = p.patches
-
-        batch_chunks = len(cond_or_uncond)
-        input_x = torch.cat(input_x)
-        c = cond_cat(c)
-        timestep_ = torch.cat([timestep] * batch_chunks)
-
-        if control is not None:
-            c["control"] = control.get_control(
-                input_x, timestep_, c, len(cond_or_uncond)
-            )
-
-        transformer_options = {}
-        if "transformer_options" in model_options:
-            transformer_options = model_options["transformer_options"].copy()
-
-        if patches is not None:
-            if "patches" in transformer_options:
-                cur_patches = transformer_options["patches"].copy()
-                for p in patches:
-                    if p in cur_patches:
-                        cur_patches[p] = cur_patches[p] + patches[p]
-                    else:
-                        cur_patches[p] = patches[p]
-                transformer_options["patches"] = cur_patches
-            else:
-                transformer_options["patches"] = patches
-
-        transformer_options["cond_or_uncond"] = cond_or_uncond[:]
-        transformer_options["sigmas"] = timestep
-
-        c["transformer_options"] = transformer_options
-
-        if "model_function_wrapper" in model_options:
-            output = model_options["model_function_wrapper"](
-                model.apply_model,
-                {
-                    "input": input_x,
-                    "timestep": timestep_,
-                    "c": c,
-                    "cond_or_uncond": cond_or_uncond,
-                },
-            ).chunk(batch_chunks)
-        else:
-            output = model.apply_model(input_x, timestep_, **c).chunk(batch_chunks)
-
-        for o in range(batch_chunks):
-            cond_index = cond_or_uncond[o]
-            a = area[o]
-            if a is None:
-                out_conds[cond_index] += output[o] * mult[o]
-                out_counts[cond_index] += mult[o]
-            else:
-                out_c = out_conds[cond_index]
-                out_cts = out_counts[cond_index]
-                dims = len(a) // 2
-                for i in range(dims):
-                    out_c = out_c.narrow(i + 2, a[i + dims], a[i])
-                    out_cts = out_cts.narrow(i + 2, a[i + dims], a[i])
-                out_c += output[o] * mult[o]
-                out_cts += mult[o]
-
-    for i in range(len(out_conds)):
-        out_conds[i] /= out_counts[i]
-
-    return out_conds
-
-
-def cfg_function(
-    model,
-    cond_pred,
-    uncond_pred,
-    cond_scale,
-    x,
-    timestep,
-    model_options={},
-    cond=None,
-    uncond=None,
-):
-    if "sampler_cfg_function" in model_options:
-        args = {
-            "cond": x - cond_pred,
-            "uncond": x - uncond_pred,
-            "cond_scale": cond_scale,
-            "timestep": timestep,
-            "input": x,
-            "sigma": timestep,
-            "cond_denoised": cond_pred,
-            "uncond_denoised": uncond_pred,
-            "model": model,
-            "model_options": model_options,
-        }
-        cfg_result = x - model_options["sampler_cfg_function"](args)
-    else:
-        cfg_result = uncond_pred + (cond_pred - uncond_pred) * cond_scale
-
-    for fn in model_options.get("sampler_post_cfg_function", []):
-        args = {
-            "denoised": cfg_result,
-            "cond": cond,
-            "uncond": uncond,
-            "model": model,
-            "uncond_denoised": uncond_pred,
-            "cond_denoised": cond_pred,
-            "sigma": timestep,
-            "model_options": model_options,
-            "input": x,
-        }
-        cfg_result = fn(args)
-
-    return cfg_result
-
-
-def sampling_function(
-    model, x, timestep, uncond, cond, cond_scale, model_options={}, seed=None
-):
-    if (
-        math.isclose(cond_scale, 1.0)
-        and model_options.get("disable_cfg1_optimization", False) is False
-    ):
-        uncond_ = None
-    else:
-        uncond_ = uncond
-
-    conds = [cond, uncond_]
-    out = calc_cond_batch(model, conds, x, timestep, model_options)
-
-    for fn in model_options.get("sampler_pre_cfg_function", []):
-        args = {
-            "conds": conds,
-            "conds_out": out,
-            "cond_scale": cond_scale,
-            "timestep": timestep,
-            "input": x,
-            "sigma": timestep,
-            "model": model,
-            "model_options": model_options,
-        }
-        out = fn(args)
-
-    return cfg_function(
-        model,
-        out[0],
-        out[1],
-        cond_scale,
-        x,
-        timestep,
-        model_options=model_options,
-        cond=cond,
-        uncond=uncond_,
-    )
 
 
 class KSamplerX0Inpaint:
@@ -1052,7 +420,7 @@ class CFGGuider:
         return self.predict_noise(*args, **kwargs)
 
     def predict_noise(self, x, timestep, model_options={}, seed=None):
-        return sampling_function(
+        return CFG.sampling_function(
             self.inner_model,
             x,
             timestep,
@@ -1144,7 +512,7 @@ class CFGGuider:
             pipeline=pipeline,
         )
 
-        cleanup_models(self.conds, self.loaded_models)
+        cond_util.cleanup_models(self.conds, self.loaded_models)
         del self.inner_model
         del self.conds
         del self.loaded_models
@@ -1277,7 +645,7 @@ def prepare_noise(latent_image, seed, noise_inds=None):
 
 
 
-ops = disable_weight_init
+ops = cast.disable_weight_init
 
 if Device.xformers_enabled_vae():
     import xformers
@@ -1745,7 +1113,7 @@ if Device.xformers_enabled():
     import xformers
     import xformers.ops
 
-ops = disable_weight_init
+ops = cast.disable_weight_init
 
 _ATTN_PRECISION = "fp32"
 
@@ -2008,7 +1376,7 @@ class CLIPEmbeddings(torch.nn.Module):
         )
 
     def forward(self, input_tokens, dtype=torch.float32):
-        return self.token_embedding(input_tokens, out_dtype=dtype) + cast_to(
+        return self.token_embedding(input_tokens, out_dtype=dtype) + cast.cast_to(
             self.position_embedding.weight, dtype=dtype, device=input_tokens.device
         )
 
@@ -2115,7 +1483,7 @@ class CLIPTextModel(torch.nn.Module):
         out = self.text_projection(x[2])
         return (x[0], x[1], out, x[2])
     
-ops = manual_cast
+ops = cast.manual_cast
 
 
 class ClipTokenWeightEncoder:
@@ -2176,7 +1544,7 @@ class ClipTokenWeightEncoder:
 
 
 def cast_to_input(weight, input, non_blocking=False, copy=True):
-    return cast_to(
+    return cast.cast_to(
         weight, input.dtype, input.device, non_blocking=non_blocking, copy=copy
     )
 
@@ -2217,7 +1585,7 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
 
         operations = model_options.get("custom_operations", None)
         if operations is None:
-            operations = manual_cast
+            operations = cast.manual_cast
 
         self.operations = operations
         self.transformer = model_class(config, dtype, device, self.operations)
@@ -2606,7 +1974,7 @@ class SDTokenizer:
     def untokenize(self, token_weight_pair):
         return list(map(lambda a: (a, self.inv_vocab[a[0]]), token_weight_pair))
 
-oai_ops = disable_weight_init
+oai_ops = cast.disable_weight_init
 
 
 class UNetModel(nn.Module):
@@ -2683,7 +2051,7 @@ class UNetModel(nn.Module):
     ):
         pass
 
-ae_ops = disable_weight_init
+ae_ops = cast.disable_weight_init
 
 
 class ModelType(Enum):
@@ -4534,7 +3902,7 @@ class ModelSamplingFlux(torch.nn.Module):
     def sigma(self, timestep):
         return flux_time_shift(self.shift, 1.0, timestep)
 
-ops = disable_weight_init
+ops = cast.disable_weight_init
 
 
 class TimestepBlock(nn.Module):
@@ -4973,12 +4341,12 @@ def rms_norm(x, weight, eps=1e-6):
         return rms_norm_torch(
             x,
             weight.shape,
-            weight=cast_to(weight, dtype=x.dtype, device=x.device),
+            weight=cast.cast_to(weight, dtype=x.dtype, device=x.device),
             eps=eps,
         )
     else:
         rrms = torch.rsqrt(torch.mean(x**2, dim=-1, keepdim=True) + eps)
-        return (x * rrms) * cast_to(weight, dtype=x.dtype, device=x.device)
+        return (x * rrms) * cast.cast_to(weight, dtype=x.dtype, device=x.device)
 
 
 @dataclass
@@ -6088,12 +5456,12 @@ class GGMLLayer(torch.nn.Module):
         non_blocking = Device.device_supports_non_blocking(device)
         if s.bias is not None:
             bias = s.get_weight(s.bias.to(device), dtype)
-            bias = cast_to(
+            bias = cast.cast_to(
                 bias, bias_dtype, device, non_blocking=non_blocking, copy=False
             )
 
         weight = s.get_weight(s.weight.to(device), dtype)
-        weight = cast_to(weight, dtype, device, non_blocking=non_blocking, copy=False)
+        weight = cast.cast_to(weight, dtype, device, non_blocking=non_blocking, copy=False)
         return weight, bias
 
     def forward_comfy_cast_weights(self, input, *args, **kwargs):
@@ -6102,12 +5470,12 @@ class GGMLLayer(torch.nn.Module):
         return super().forward_comfy_cast_weights(input, *args, **kwargs)
 
 
-class GGMLOps(manual_cast):
+class GGMLOps(cast.manual_cast):
     """
     Dequantize weights on the fly before doing the compute
     """
 
-    class Linear(GGMLLayer, manual_cast.Linear):
+    class Linear(GGMLLayer, cast.manual_cast.Linear):
         def __init__(
             self, in_features, out_features, bias=True, device=None, dtype=None
         ):
@@ -6124,7 +5492,7 @@ class GGMLOps(manual_cast):
             weight, bias = self.cast_bias_weight(input)
             return torch.nn.functional.linear(input, weight, bias)
 
-    class Embedding(GGMLLayer, manual_cast.Embedding):
+    class Embedding(GGMLLayer, cast.manual_cast.Embedding):
         def forward_ggml_cast_weights(self, input, out_dtype=None):
             output_dtype = out_dtype
             if (
@@ -6571,7 +5939,7 @@ class CLIPLoaderGGUF:
                 is None
             ):
                 clip.cond_stage_model.clip_l.transformer.text_projection = (
-                    manual_cast.Linear(768, 768)
+                    cast.manual_cast.Linear(768, 768)
                 )
         if getattr(clip.cond_stage_model, "clip_g", None) is not None:
             if (
@@ -6583,7 +5951,7 @@ class CLIPLoaderGGUF:
                 is None
             ):
                 clip.cond_stage_model.clip_g.transformer.text_projection = (
-                    manual_cast.Linear(1280, 1280)
+                    cast.manual_cast.Linear(1280, 1280)
                 )
 
         return clip
@@ -6706,12 +6074,6 @@ def resolve_areas_and_cond_masks_multidim(conditions, dims, device):
             modified["mask"] = mask
             conditions[i] = modified
 
-
-def cleanup_additional_models(models):
-    """cleanup additional models that were loaded"""
-    for m in models:
-        if hasattr(m, "cleanup"):
-            m.cleanup()
 
 SCHEDULER_NAMES = [
     "normal",

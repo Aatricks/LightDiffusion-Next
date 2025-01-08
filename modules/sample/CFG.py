@@ -1,6 +1,8 @@
+import math
 import torch
 from modules.Model import ModelPatcher
 from modules.cond import cond, cond_util
+from modules.cond import cond as Cond
 
 
 def cfg_function(
@@ -30,7 +32,37 @@ def cfg_function(
     #### Returns:
         - `torch.Tensor`: The CFG result.
     """
-    cfg_result = uncond_pred + (cond_pred - uncond_pred) * cond_scale
+    if "sampler_cfg_function" in model_options:
+        args = {
+            "cond": x - cond_pred,
+            "uncond": x - uncond_pred,
+            "cond_scale": cond_scale,
+            "timestep": timestep,
+            "input": x,
+            "sigma": timestep,
+            "cond_denoised": cond_pred,
+            "uncond_denoised": uncond_pred,
+            "model": model,
+            "model_options": model_options,
+        }
+        cfg_result = x - model_options["sampler_cfg_function"](args)
+    else:
+        cfg_result = uncond_pred + (cond_pred - uncond_pred) * cond_scale
+
+    for fn in model_options.get("sampler_post_cfg_function", []):
+        args = {
+            "denoised": cfg_result,
+            "cond": cond,
+            "uncond": uncond,
+            "model": model,
+            "uncond_denoised": uncond_pred,
+            "cond_denoised": cond_pred,
+            "sigma": timestep,
+            "model_options": model_options,
+            "input": x,
+        }
+        cfg_result = fn(args)
+
     return cfg_result
 
 
@@ -59,10 +91,30 @@ def sampling_function(
     #### Returns:
         - `torch.Tensor`: The sampled tensor.
     """
-    uncond_ = uncond
+    if (
+        math.isclose(cond_scale, 1.0)
+        and model_options.get("disable_cfg1_optimization", False) is False
+    ):
+        uncond_ = None
+    else:
+        uncond_ = uncond
 
     conds = [condo, uncond_]
-    out = cond.calc_cond_batch(model, conds, x, timestep, model_options)
+    out = Cond.calc_cond_batch(model, conds, x, timestep, model_options)
+
+    for fn in model_options.get("sampler_pre_cfg_function", []):
+        args = {
+            "conds": conds,
+            "conds_out": out,
+            "cond_scale": cond_scale,
+            "timestep": timestep,
+            "input": x,
+            "sigma": timestep,
+            "model": model,
+            "model_options": model_options,
+        }
+        out = fn(args)
+
     return cfg_function(
         model,
         out[0],
@@ -71,7 +123,7 @@ def sampling_function(
         x,
         timestep,
         model_options=model_options,
-        cond=condo,
+        cond=cond,
         uncond=uncond_,
     )
 
