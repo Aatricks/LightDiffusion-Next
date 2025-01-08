@@ -1,6 +1,9 @@
+import importlib
 from inspect import isfunction
+import logging
 import math
 import os
+import pickle
 import safetensors.torch
 import torch
 
@@ -33,6 +36,16 @@ def to_d(x: torch.Tensor, sigma: torch.Tensor, denoised: torch.Tensor) -> torch.
     """
     return (x - denoised) / append_dims(sigma, x.ndim)
 
+load = pickle.load
+
+class Empty:
+    pass
+
+class Unpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module.startswith("pytorch_lightning"):
+            return Empty
+        return super().find_class(module, name)
 
 def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> dict:
     """#### Load a PyTorch checkpoint file.
@@ -47,10 +60,25 @@ def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> d
     """
     if device is None:
         device = torch.device("cpu")
-    if ckpt.lower().endswith(".safetensors"):
+    if ckpt.lower().endswith(".safetensors") or ckpt.lower().endswith(".sft"):
         sd = safetensors.torch.load_file(ckpt, device=device.type)
     else:
-        sd = torch.load(ckpt, map_location=device, weights_only=True)
+        if safe_load:
+            if "weights_only" not in torch.load.__code__.co_varnames:
+                logging.warning(
+                    "Warning torch.load doesn't support weights_only on this pytorch version, loading unsafely."
+                )
+                safe_load = False
+        if safe_load:
+            pl_sd = torch.load(ckpt, map_location=device, weights_only=True)
+        else:
+            pl_sd = torch.load(ckpt, map_location=device, pickle_module=Unpickler)
+        if "global_step" in pl_sd:
+            logging.debug(f"Global Step: {pl_sd['global_step']}")
+        if "state_dict" in pl_sd:
+            sd = pl_sd["state_dict"]
+        else:
+            sd = pl_sd
     return sd
 
 
@@ -84,7 +112,10 @@ def state_dict_prefix_replace(
     #### Returns:
         - `dict`: The updated state dictionary.
     """
-    out = {}
+    if filter_keys:
+        out = {}
+    else:
+        out = state_dict
     for rp in replace_prefix:
         replace = list(
             map(
@@ -166,6 +197,24 @@ def copy_to_param(obj: object, attr: str, value: any) -> None:
         obj = getattr(obj, name)
     prev = getattr(obj, attrs[-1])
     prev.data.copy_(value)
+
+def get_obj_from_str(string, reload=False):
+    module, cls = string.rsplit(".", 1)
+    if reload:
+        module_imp = importlib.import_module(module)
+        importlib.reload(module_imp)
+    return getattr(importlib.import_module(module, package=None), cls)
+
+
+def instantiate_from_config(config):
+    if "target" not in config:
+        if config == "__is_first_stage__":
+            return None
+        elif config == "__is_unconditional__":
+            return None
+        raise KeyError("Expected key `target` to instantiate.")
+    return get_obj_from_str(config["target"])(**config.get("params", dict()))
+
 
 
 def get_attr(obj: object, attr: str) -> any:

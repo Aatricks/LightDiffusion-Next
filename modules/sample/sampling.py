@@ -862,10 +862,7 @@ class KSampler2:
 class ModelType(Enum):
     """#### Enum for Model Types."""
     EPS = 1
-    V_PREDICTION = 2
-    V_PREDICTION_EDM = 3
-    STABLE_CASCADE = 4
-    EDM = 5
+    FLUX = 8
 
 
 def model_sampling(model_config: dict, model_type: ModelType) -> torch.nn.Module:

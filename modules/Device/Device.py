@@ -397,7 +397,7 @@ class LoadedModel:
             self.model_use_more_vram(use_more_vram)
         else:
             try:
-                self.real_model = self.model.patch_model(
+                self.real_model = self.model.patch_model_flux(
                     device_to=patch_model_to,
                     lowvram_model_memory=lowvram_model_memory,
                     load_weights=load_weights,

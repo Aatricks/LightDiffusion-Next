@@ -3,39 +3,34 @@ from abc import abstractmethod
 import collections
 import copy
 from dataclasses import dataclass
-import importlib
 import json
 import logging
 import math
 import os
-import pickle
 from einops import rearrange, repeat
 import gguf
 import numpy as np
 import torch
 from enum import Enum
-import safetensors
 import uuid
 import numbers
 
-import safetensors.torch
 import packaging.version
 import torch.nn as nn
 
 from PIL import Image
 
-from transformers import CLIPTokenizer, T5TokenizerFast
+from transformers import T5TokenizerFast
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, TypedDict, Union
 
-from modules.AutoEncoders import VariationalAE
-from modules.NeuralNetwork import transformer
+from modules.NeuralNetwork import transformer, unet
 from modules.UltimateSDUpscale import image_util
 from modules.Utilities import Latent, util
 from modules.Device import Device
 from modules.SD15 import SDClip, SDToken
 from modules.cond import cast, cond, cond_util
 from modules.sample import CFG, ksampler_util, samplers, sampling, sampling_util
-from modules.cond import cond as Cond
+from modules.Model import ModelPatcher as Modelpatcher
 import torch.nn.functional as F
 
 
@@ -1160,814 +1155,8 @@ class CLIPAttention(torch.nn.Module):
         out = optimized_attention(q, k, v, self.heads, mask)
         return self.out_proj(out)
 
-
-ACTIVATIONS = {
-    "quick_gelu": lambda a: a * torch.sigmoid(1.702 * a),
-    "gelu": torch.nn.functional.gelu,
-}
-
-
-class CLIPMLP(torch.nn.Module):
-    def __init__(
-        self, embed_dim, intermediate_size, activation, dtype, device, operations
-    ):
-        super().__init__()
-        self.fc1 = operations.Linear(
-            embed_dim, intermediate_size, bias=True, dtype=dtype, device=device
-        )
-        self.activation = ACTIVATIONS[activation]
-        self.fc2 = operations.Linear(
-            intermediate_size, embed_dim, bias=True, dtype=dtype, device=device
-        )
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.activation(x)
-        x = self.fc2(x)
-        return x
-
-
-class CLIPLayer(torch.nn.Module):
-    def __init__(
-        self,
-        embed_dim,
-        heads,
-        intermediate_size,
-        intermediate_activation,
-        dtype,
-        device,
-        operations,
-    ):
-        super().__init__()
-        self.layer_norm1 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)
-        self.self_attn = CLIPAttention(embed_dim, heads, dtype, device, operations)
-        self.layer_norm2 = operations.LayerNorm(embed_dim, dtype=dtype, device=device)
-        self.mlp = CLIPMLP(
-            embed_dim,
-            intermediate_size,
-            intermediate_activation,
-            dtype,
-            device,
-            operations,
-        )
-
-    def forward(self, x, mask=None, optimized_attention=None):
-        x += self.self_attn(self.layer_norm1(x), mask, optimized_attention)
-        x += self.mlp(self.layer_norm2(x))
-        return x
-
-
-class CLIPEncoder(torch.nn.Module):
-    def __init__(
-        self,
-        num_layers,
-        embed_dim,
-        heads,
-        intermediate_size,
-        intermediate_activation,
-        dtype,
-        device,
-        operations,
-    ):
-        super().__init__()
-        self.layers = torch.nn.ModuleList(
-            [
-                CLIPLayer(
-                    embed_dim,
-                    heads,
-                    intermediate_size,
-                    intermediate_activation,
-                    dtype,
-                    device,
-                    operations,
-                )
-                for i in range(num_layers)
-            ]
-        )
-
-    def forward(self, x, mask=None, intermediate_output=None):
-        optimized_attention = optimized_attention_for_device(
-            x.device, mask=mask is not None, small_input=True
-        )
-
-        if intermediate_output is not None:
-            if intermediate_output < 0:
-                intermediate_output = len(self.layers) + intermediate_output
-
-        intermediate = None
-        for i, l in enumerate(self.layers):
-            x = l(x, mask, optimized_attention)
-            if i == intermediate_output:
-                intermediate = x.clone()
-        return x, intermediate
-
-
-class CLIPEmbeddings(torch.nn.Module):
-    def __init__(
-        self,
-        embed_dim,
-        vocab_size=49408,
-        num_positions=77,
-        dtype=None,
-        device=None,
-        operations=None,
-    ):
-        super().__init__()
-        self.token_embedding = operations.Embedding(
-            vocab_size, embed_dim, dtype=dtype, device=device
-        )
-        self.position_embedding = operations.Embedding(
-            num_positions, embed_dim, dtype=dtype, device=device
-        )
-
-    def forward(self, input_tokens, dtype=torch.float32):
-        return self.token_embedding(input_tokens, out_dtype=dtype) + cast.cast_to(
-            self.position_embedding.weight, dtype=dtype, device=input_tokens.device
-        )
-
-
-class CLIPTextModel_(torch.nn.Module):
-    def __init__(self, config_dict, dtype, device, operations):
-        num_layers = config_dict["num_hidden_layers"]
-        embed_dim = config_dict["hidden_size"]
-        heads = config_dict["num_attention_heads"]
-        intermediate_size = config_dict["intermediate_size"]
-        intermediate_activation = config_dict["hidden_act"]
-        num_positions = config_dict["max_position_embeddings"]
-        self.eos_token_id = config_dict["eos_token_id"]
-
-        super().__init__()
-        self.embeddings = CLIPEmbeddings(
-            embed_dim,
-            num_positions=num_positions,
-            dtype=dtype,
-            device=device,
-            operations=operations,
-        )
-        self.encoder = CLIPEncoder(
-            num_layers,
-            embed_dim,
-            heads,
-            intermediate_size,
-            intermediate_activation,
-            dtype,
-            device,
-            operations,
-        )
-        self.final_layer_norm = operations.LayerNorm(
-            embed_dim, dtype=dtype, device=device
-        )
-
-    def forward(
-        self,
-        input_tokens,
-        attention_mask=None,
-        intermediate_output=None,
-        final_layer_norm_intermediate=True,
-        dtype=torch.float32,
-    ):
-        x = self.embeddings(input_tokens, dtype=dtype)
-        mask = None
-        if attention_mask is not None:
-            mask = 1.0 - attention_mask.to(x.dtype).reshape(
-                (attention_mask.shape[0], 1, -1, attention_mask.shape[-1])
-            ).expand(
-                attention_mask.shape[0],
-                1,
-                attention_mask.shape[-1],
-                attention_mask.shape[-1],
-            )
-            mask = mask.masked_fill(mask.to(torch.bool), float("-inf"))
-
-        causal_mask = (
-            torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device)
-            .fill_(float("-inf"))
-            .triu_(1)
-        )
-        if mask is not None:
-            mask += causal_mask
-        else:
-            mask = causal_mask
-
-        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)
-        x = self.final_layer_norm(x)
-        if i is not None and final_layer_norm_intermediate:
-            i = self.final_layer_norm(i)
-
-        pooled_output = x[
-            torch.arange(x.shape[0], device=x.device),
-            (
-                torch.round(input_tokens).to(dtype=torch.int, device=x.device)
-                == self.eos_token_id
-            )
-            .int()
-            .argmax(dim=-1),
-        ]
-        return x, i, pooled_output
-
-
-class CLIPTextModel(torch.nn.Module):
-    def __init__(self, config_dict, dtype, device, operations):
-        super().__init__()
-        self.num_layers = config_dict["num_hidden_layers"]
-        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)
-        embed_dim = config_dict["hidden_size"]
-        self.text_projection = operations.Linear(
-            embed_dim, embed_dim, bias=False, dtype=dtype, device=device
-        )
-        self.dtype = dtype
-
-    def get_input_embeddings(self):
-        return self.text_model.embeddings.token_embedding
-
-    def set_input_embeddings(self, embeddings):
-        self.text_model.embeddings.token_embedding = embeddings
-
-    def forward(self, *args, **kwargs):
-        x = self.text_model(*args, **kwargs)
-        out = self.text_projection(x[2])
-        return (x[0], x[1], out, x[2])
     
 ops = cast.manual_cast
-
-
-class ClipTokenWeightEncoder:
-    def encode_token_weights(self, token_weight_pairs):
-        to_encode = list()
-        max_token_len = 0
-        has_weights = False
-        for x in token_weight_pairs:
-            tokens = list(map(lambda a: a[0], x))
-            max_token_len = max(len(tokens), max_token_len)
-            has_weights = has_weights or not all(map(lambda a: a[1] == 1.0, x))
-            to_encode.append(tokens)
-
-        sections = len(to_encode)
-        if has_weights or sections == 0:
-            to_encode.append(SDClip.gen_empty_tokens(self.special_tokens, max_token_len))
-
-        o = self.encode(to_encode)
-        out, pooled = o[:2]
-
-        if pooled is not None:
-            first_pooled = pooled[0:1].to(Device.intermediate_device())
-        else:
-            first_pooled = pooled
-
-        output = []
-        for k in range(0, sections):
-            z = out[k : k + 1]
-            if has_weights:
-                z_empty = out[-1]
-                for i in range(len(z)):
-                    for j in range(len(z[i])):
-                        weight = token_weight_pairs[k][j][1]
-                        if weight != 1.0:
-                            z[i][j] = (z[i][j] - z_empty[j]) * weight + z_empty[j]
-            output.append(z)
-
-        if len(output) == 0:
-            r = (out[-1:].to(Device.intermediate_device()), first_pooled)
-        else:
-            r = (torch.cat(output, dim=-2).to(Device.intermediate_device()), first_pooled)
-
-        if len(o) > 2:
-            extra = {}
-            for k in o[2]:
-                v = o[2][k]
-                if k == "attention_mask":
-                    v = (
-                        v[:sections]
-                        .flatten()
-                        .unsqueeze(dim=0)
-                        .to(Device.intermediate_device())
-                    )
-                extra[k] = v
-
-            r = r + (extra,)
-        return r
-
-
-def cast_to_input(weight, input, non_blocking=False, copy=True):
-    return cast.cast_to(
-        weight, input.dtype, input.device, non_blocking=non_blocking, copy=copy
-    )
-
-
-class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
-    LAYERS = ["last", "pooled", "hidden"]
-
-    def __init__(
-        self,
-        version="openai/clip-vit-large-patch14",
-        device="cpu",
-        max_length=77,
-        freeze=True,
-        layer="last",
-        layer_idx=None,
-        textmodel_json_config=None,
-        dtype=None,
-        model_class=CLIPTextModel,
-        special_tokens={"start": 49406, "end": 49407, "pad": 49407},
-        layer_norm_hidden_state=True,
-        enable_attention_masks=False,
-        zero_out_masked=False,
-        return_projected_pooled=True,
-        return_attention_masks=False,
-        model_options={},
-    ):  # clip-vit-base-patch32
-        super().__init__()
-        assert layer in self.LAYERS
-
-        if textmodel_json_config is None:
-            textmodel_json_config = os.path.join(
-                os.path.dirname(os.path.realpath(__file__)),
-                "./clip/sd1_clip_config.json",
-            )
-
-        with open(textmodel_json_config) as f:
-            config = json.load(f)
-
-        operations = model_options.get("custom_operations", None)
-        if operations is None:
-            operations = cast.manual_cast
-
-        self.operations = operations
-        self.transformer = model_class(config, dtype, device, self.operations)
-        self.num_layers = self.transformer.num_layers
-
-        self.max_length = max_length
-        if freeze:
-            self.freeze()
-        self.layer = layer
-        self.layer_idx = None
-        self.special_tokens = special_tokens
-
-        self.logit_scale = torch.nn.Parameter(torch.tensor(4.6055))
-        self.enable_attention_masks = enable_attention_masks
-        self.zero_out_masked = zero_out_masked
-
-        self.layer_norm_hidden_state = layer_norm_hidden_state
-        self.return_projected_pooled = return_projected_pooled
-        self.return_attention_masks = return_attention_masks
-
-        if layer == "hidden":
-            assert layer_idx is not None
-            assert abs(layer_idx) < self.num_layers
-            self.set_clip_options({"layer": layer_idx})
-        self.options_default = (
-            self.layer,
-            self.layer_idx,
-            self.return_projected_pooled,
-        )
-
-    def freeze(self):
-        self.transformer = self.transformer.eval()
-        # self.train = disabled_train
-        for param in self.parameters():
-            param.requires_grad = False
-
-    def set_clip_options(self, options):
-        layer_idx = options.get("layer", self.layer_idx)
-        self.return_projected_pooled = options.get(
-            "projected_pooled", self.return_projected_pooled
-        )
-        if layer_idx is None or abs(layer_idx) > self.num_layers:
-            self.layer = "last"
-        else:
-            self.layer = "hidden"
-            self.layer_idx = layer_idx
-
-    def reset_clip_options(self):
-        self.layer = self.options_default[0]
-        self.layer_idx = self.options_default[1]
-        self.return_projected_pooled = self.options_default[2]
-
-    def set_up_textual_embeddings(self, tokens, current_embeds):
-        out_tokens = []
-        next_new_token = token_dict_size = current_embeds.weight.shape[0]
-        embedding_weights = []
-
-        for x in tokens:
-            tokens_temp = []
-            for y in x:
-                if isinstance(y, numbers.Integral):
-                    tokens_temp += [int(y)]
-                else:
-                    if y.shape[0] == current_embeds.weight.shape[1]:
-                        embedding_weights += [y]
-                        tokens_temp += [next_new_token]
-                        next_new_token += 1
-                    else:
-                        logging.warning(
-                            "WARNING: shape mismatch when trying to apply embedding, embedding will be ignored {} != {}".format(
-                                y.shape[0], current_embeds.weight.shape[1]
-                            )
-                        )
-            while len(tokens_temp) < len(x):
-                tokens_temp += [self.special_tokens["pad"]]
-            out_tokens += [tokens_temp]
-
-        n = token_dict_size
-        if len(embedding_weights) > 0:
-            new_embedding = self.operations.Embedding(
-                next_new_token + 1,
-                current_embeds.weight.shape[1],
-                device=current_embeds.weight.device,
-                dtype=current_embeds.weight.dtype,
-            )
-            new_embedding.weight[:token_dict_size] = current_embeds.weight
-            for x in embedding_weights:
-                new_embedding.weight[n] = x
-                n += 1
-            self.transformer.set_input_embeddings(new_embedding)
-
-        processed_tokens = []
-        for x in out_tokens:
-            processed_tokens += [
-                list(map(lambda a: n if a == -1 else a, x))
-            ]  # The EOS token should always be the largest one
-
-        return processed_tokens
-
-    def forward(self, tokens):
-        backup_embeds = self.transformer.get_input_embeddings()
-        device = backup_embeds.weight.device
-        tokens = self.set_up_textual_embeddings(tokens, backup_embeds)
-        tokens = torch.LongTensor(tokens).to(device)
-
-        attention_mask = None
-        if (
-            self.enable_attention_masks
-            or self.zero_out_masked
-            or self.return_attention_masks
-        ):
-            attention_mask = torch.zeros_like(tokens)
-            end_token = self.special_tokens.get("end", -1)
-            for x in range(attention_mask.shape[0]):
-                for y in range(attention_mask.shape[1]):
-                    attention_mask[x, y] = 1
-                    if tokens[x, y] == end_token:
-                        break
-
-        attention_mask_model = None
-        if self.enable_attention_masks:
-            attention_mask_model = attention_mask
-
-        outputs = self.transformer(
-            tokens,
-            attention_mask_model,
-            intermediate_output=self.layer_idx,
-            final_layer_norm_intermediate=self.layer_norm_hidden_state,
-            dtype=torch.float32,
-        )
-        self.transformer.set_input_embeddings(backup_embeds)
-
-        if self.layer == "last":
-            z = outputs[0].float()
-        else:
-            z = outputs[1].float()
-
-        if self.zero_out_masked:
-            z *= attention_mask.unsqueeze(-1).float()
-
-        pooled_output = None
-        if len(outputs) >= 3:
-            if (
-                not self.return_projected_pooled
-                and len(outputs) >= 4
-                and outputs[3] is not None
-            ):
-                pooled_output = outputs[3].float()
-            elif outputs[2] is not None:
-                pooled_output = outputs[2].float()
-
-        extra = {}
-        if self.return_attention_masks:
-            extra["attention_mask"] = attention_mask
-
-        if len(extra) > 0:
-            return z, pooled_output, extra
-
-        return z, pooled_output
-
-    def encode(self, tokens):
-        return self(tokens)
-
-    def load_sd(self, sd):
-        return self.transformer.load_state_dict(sd, strict=False)
-
-
-def parse_parentheses(string):
-    result = []
-    current_item = ""
-    nesting_level = 0
-    for char in string:
-        if char == "(":
-            if nesting_level == 0:
-                if current_item:
-                    result.append(current_item)
-                    current_item = "("
-                else:
-                    current_item = "("
-            else:
-                current_item += char
-            nesting_level += 1
-        elif char == ")":
-            nesting_level -= 1
-            if nesting_level == 0:
-                result.append(current_item + ")")
-                current_item = ""
-            else:
-                current_item += char
-        else:
-            current_item += char
-    if current_item:
-        result.append(current_item)
-    return result
-
-
-def token_weights(string, current_weight):
-    a = parse_parentheses(string)
-    out = []
-    for x in a:
-        weight = current_weight
-        if len(x) >= 2 and x[-1] == ")" and x[0] == "(":
-            x = x[1:-1]
-            xx = x.rfind(":")
-            weight *= 1.1
-            if xx > 0:
-                try:
-                    weight = float(x[xx + 1 :])
-                    x = x[:xx]
-                except:
-                    pass
-            out += token_weights(x, weight)
-        else:
-            out += [(x, current_weight)]
-    return out
-
-
-def escape_important(text):
-    text = text.replace("\\)", "\0\1")
-    text = text.replace("\\(", "\0\2")
-    return text
-
-
-def unescape_important(text):
-    text = text.replace("\0\1", ")")
-    text = text.replace("\0\2", "(")
-    return text
-
-
-class SDTokenizer:
-    def __init__(
-        self,
-        tokenizer_path=None,
-        max_length=77,
-        pad_with_end=True,
-        embedding_directory=None,
-        embedding_size=768,
-        embedding_key="clip_l",
-        tokenizer_class=CLIPTokenizer,
-        has_start_token=True,
-        pad_to_max_length=True,
-        min_length=None,
-    ):
-        if tokenizer_path is None:
-            tokenizer_path = "./_internal/sd1_tokenizer/"
-        self.tokenizer = tokenizer_class.from_pretrained(tokenizer_path)
-        self.max_length = max_length
-        self.min_length = min_length
-
-        empty = self.tokenizer("")["input_ids"]
-        if has_start_token:
-            self.tokens_start = 1
-            self.start_token = empty[0]
-            self.end_token = empty[1]
-        else:
-            self.tokens_start = 0
-            self.start_token = None
-            self.end_token = empty[0]
-        self.pad_with_end = pad_with_end
-        self.pad_to_max_length = pad_to_max_length
-
-        vocab = self.tokenizer.get_vocab()
-        self.inv_vocab = {v: k for k, v in vocab.items()}
-        self.embedding_directory = embedding_directory
-        self.max_word_length = 8
-        self.embedding_identifier = "embedding:"
-        self.embedding_size = embedding_size
-        self.embedding_key = embedding_key
-
-    def _try_get_embedding(self, embedding_name: str):
-        embed = SDToken.load_embed(
-            embedding_name,
-            self.embedding_directory,
-            self.embedding_size,
-            self.embedding_key,
-        )
-        if embed is None:
-            stripped = embedding_name.strip(",")
-            if len(stripped) < len(embedding_name):
-                embed = SDToken.load_embed(
-                    stripped,
-                    self.embedding_directory,
-                    self.embedding_size,
-                    self.embedding_key,
-                )
-                return (embed, embedding_name[len(stripped) :])
-        return (embed, "")
-
-    def tokenize_with_weights(self, text: str, return_word_ids=False):
-        if self.pad_with_end:
-            pad_token = self.end_token
-        else:
-            pad_token = 0
-
-        text = escape_important(text)
-        parsed_weights = token_weights(text, 1.0)
-
-        # tokenize words
-        tokens = []
-        for weighted_segment, weight in parsed_weights:
-            to_tokenize = (
-                unescape_important(weighted_segment).replace("\n", " ").split(" ")
-            )
-            to_tokenize = [x for x in to_tokenize if x != ""]
-            for word in to_tokenize:
-                # if we find an embedding, deal with the embedding
-                if (
-                    word.startswith(self.embedding_identifier)
-                    and self.embedding_directory is not None
-                ):
-                    embedding_name = word[len(self.embedding_identifier) :].strip("\n")
-                    embed, leftover = self._try_get_embedding(embedding_name)
-                    if embed is None:
-                        logging.warning(
-                            f"warning, embedding:{embedding_name} does not exist, ignoring"
-                        )
-                    else:
-                        if len(embed.shape) == 1:
-                            tokens.append([(embed, weight)])
-                        else:
-                            tokens.append(
-                                [(embed[x], weight) for x in range(embed.shape[0])]
-                            )
-                        print("loading ", embedding_name)
-                    # if we accidentally have leftover text, continue parsing using leftover, else move on to next word
-                    if leftover != "":
-                        word = leftover
-                    else:
-                        continue
-                # parse word
-                tokens.append(
-                    [
-                        (t, weight)
-                        for t in self.tokenizer(word)["input_ids"][
-                            self.tokens_start : -1
-                        ]
-                    ]
-                )
-
-        # reshape token array to CLIP input size
-        batched_tokens = []
-        batch = []
-        if self.start_token is not None:
-            batch.append((self.start_token, 1.0, 0))
-        batched_tokens.append(batch)
-        for i, t_group in enumerate(tokens):
-            # determine if we're going to try and keep the tokens in a single batch
-            is_large = len(t_group) >= self.max_word_length
-
-            while len(t_group) > 0:
-                if len(t_group) + len(batch) > self.max_length - 1:
-                    remaining_length = self.max_length - len(batch) - 1
-                    # break word in two and add end token
-                    if is_large:
-                        batch.extend(
-                            [(t, w, i + 1) for t, w in t_group[:remaining_length]]
-                        )
-                        batch.append((self.end_token, 1.0, 0))
-                        t_group = t_group[remaining_length:]
-                    # add end token and pad
-                    else:
-                        batch.append((self.end_token, 1.0, 0))
-                        if self.pad_to_max_length:
-                            batch.extend([(pad_token, 1.0, 0)] * (remaining_length))
-                    # start new batch
-                    batch = []
-                    if self.start_token is not None:
-                        batch.append((self.start_token, 1.0, 0))
-                    batched_tokens.append(batch)
-                else:
-                    batch.extend([(t, w, i + 1) for t, w in t_group])
-                    t_group = []
-
-        # fill last batch
-        batch.append((self.end_token, 1.0, 0))
-        if self.pad_to_max_length:
-            batch.extend([(pad_token, 1.0, 0)] * (self.max_length - len(batch)))
-        if self.min_length is not None and len(batch) < self.min_length:
-            batch.extend([(pad_token, 1.0, 0)] * (self.min_length - len(batch)))
-
-        if not return_word_ids:
-            batched_tokens = [[(t, w) for t, w, _ in x] for x in batched_tokens]
-
-        return batched_tokens
-
-    def untokenize(self, token_weight_pair):
-        return list(map(lambda a: (a, self.inv_vocab[a[0]]), token_weight_pair))
-
-oai_ops = cast.disable_weight_init
-
-
-class UNetModel(nn.Module):
-    """
-    The full UNet model with attention and timestep embedding.
-    :param in_channels: channels in the input Tensor.
-    :param model_channels: base channel count for the model.
-    :param out_channels: channels in the output Tensor.
-    :param num_res_blocks: number of residual blocks per downsample.
-    :param dropout: the dropout probability.
-    :param channel_mult: channel multiplier for each level of the UNet.
-    :param conv_resample: if True, use learned convolutions for upsampling and
-        downsampling.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
-    :param num_classes: if specified (as an int), then this model will be
-        class-conditional with `num_classes` classes.
-    :param use_checkpoint: use gradient checkpointing to reduce memory usage.
-    :param num_heads: the number of attention heads in each attention layer.
-    :param num_heads_channels: if specified, ignore num_heads and instead use
-                               a fixed channel width per attention head.
-    :param num_heads_upsample: works with num_heads to set a different number
-                               of heads for upsampling. Deprecated.
-    :param use_scale_shift_norm: use a FiLM-like conditioning mechanism.
-    :param resblock_updown: use residual blocks for up/downsampling.
-    :param use_new_attention_order: use a different attention pattern for potentially
-                                    increased efficiency.
-    """
-
-    def __init__(
-        self,
-        image_size,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        num_classes=None,
-        use_checkpoint=False,
-        dtype=torch.float32,
-        num_heads=-1,
-        num_head_channels=-1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
-        resblock_updown=False,
-        use_new_attention_order=False,
-        use_spatial_transformer=False,  # custom transformer support
-        transformer_depth=1,  # custom transformer support
-        context_dim=None,  # custom transformer support
-        n_embed=None,  # custom support for prediction of discrete ids into codebook of first stage vq model
-        legacy=True,
-        disable_self_attentions=None,
-        num_attention_blocks=None,
-        disable_middle_self_attn=False,
-        use_linear_in_transformer=False,
-        adm_in_channels=None,
-        transformer_depth_middle=None,
-        transformer_depth_output=None,
-        use_temporal_resblock=False,
-        use_temporal_attention=False,
-        time_context_dim=None,
-        extra_ff_mix_layer=False,
-        use_spatial_context=False,
-        merge_strategy=None,
-        merge_factor=0.0,
-        video_kernel_size=None,
-        disable_temporal_crossattention=False,
-        max_ddpm_temb_period=10000,
-        attn_precision=None,
-        device=None,
-        operations=ops,
-    ):
-        pass
-
-ae_ops = cast.disable_weight_init
-
-
-class ModelType(Enum):
-    EPS = 1
-    V_PREDICTION = 2
-    V_PREDICTION_EDM = 3
-    STABLE_CASCADE = 4
-    EDM = 5
-    FLOW = 6
-    V_PREDICTION_CONTINUOUS = 7
-    FLUX = 8
 
 
 def model_sampling(model_config, model_type):
@@ -1982,7 +1171,7 @@ def model_sampling(model_config, model_type):
 
 class BaseModel(torch.nn.Module):
     def __init__(
-        self, model_config, model_type=ModelType.EPS, device=None, unet_model=UNetModel
+        self, model_config, model_type=sampling.ModelType.EPS, device=None, unet_model=unet.UNetModel1
     ):
         super().__init__()
 
@@ -2165,7 +1354,7 @@ class BASE:
         self.manual_cast_dtype = manual_cast_dtype
 
     def model_type(self, state_dict, prefix=""):
-        return ModelType.EPS
+        return sampling.ModelType.EPS
 
     def inpaint_model(self):
         return self.unet_config["in_channels"] > 4
@@ -2545,7 +1734,7 @@ class CLIP:
         self.tokenizer = tokenizer(
             embedding_directory=embedding_directory, tokenizer_data=tokenizer_data
         )
-        self.patcher = ModelPatcher(
+        self.patcher = Modelpatcher.ModelPatcher(
             self.cond_stage_model,
             load_device=load_device,
             offload_device=offload_device,
@@ -2659,7 +1848,7 @@ class VAE:
                 ].shape[1]
                 self.first_stage_model = AutoencodingEngine(
                     regularizer_config={
-                        "target": "modules.Flux.flux.DiagonalGaussianRegularizer"
+                        "target": "modules.AutoEncoders.VariationalAE.DiagonalGaussianRegularizer"
                     },
                     encoder_config={
                         "target": "modules.Flux.flux.Encoder",
@@ -2693,7 +1882,7 @@ class VAE:
         self.first_stage_model.to(self.vae_dtype)
         self.output_device = Device.intermediate_device()
 
-        self.patcher = ModelPatcher(
+        self.patcher = Modelpatcher.ModelPatcher(
             self.first_stage_model,
             load_device=self.device,
             offload_device=offload_device,
@@ -3082,91 +2271,7 @@ class KSampler2:
             denoise=denoise,
         )
 
-
-class SaveImage:
-    def __init__(self):
-        self.output_dir = get_output_directory()
-        self.type = "output"
-        self.prefix_append = ""
-        self.compress_level = 4
-
-    def save_images(
-        self, images, filename_prefix="LD", prompt=None, extra_pnginfo=None
-    ):
-        filename_prefix += self.prefix_append
-        full_output_folder, filename, counter, subfolder, filename_prefix = (
-            get_save_image_path(
-                filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0]
-            )
-        )
-        results = list()
-        for batch_number, image in enumerate(images):
-            i = 255.0 * image.cpu().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            metadata = None
-
-            filename_with_batch_num = filename.replace("%batch_num%", str(batch_number))
-            file = f"{filename_with_batch_num}_{counter:05}_.png"
-            img.save(
-                os.path.join(full_output_folder, file),
-                pnginfo=metadata,
-                compress_level=self.compress_level,
-            )
-            results.append(
-                {"filename": file, "subfolder": subfolder, "type": self.type}
-            )
-            counter += 1
-
-        return {"ui": {"images": results}}
-
-
-
 logger = logging.getLogger()
-
-
-
-load = pickle.load
-
-
-class Unpickler(pickle.Unpickler):
-    def find_class(self, module, name):
-        # TODO: safe unpickle
-        if module.startswith("pytorch_lightning"):
-            return Empty
-        return super().find_class(module, name)
-
-
-def load_torch_file(ckpt, safe_load=False, device=None):
-    if device is None:
-        device = torch.device("cpu")
-    if ckpt.lower().endswith(".safetensors") or ckpt.lower().endswith(".sft"):
-        sd = safetensors.torch.load_file(ckpt, device=device.type)
-    else:
-        if safe_load:
-            if "weights_only" not in torch.load.__code__.co_varnames:
-                logging.warning(
-                    "Warning torch.load doesn't support weights_only on this pytorch version, loading unsafely."
-                )
-                safe_load = False
-        if safe_load:
-            pl_sd = torch.load(ckpt, map_location=device, weights_only=True)
-        else:
-            pl_sd = torch.load(ckpt, map_location=device, pickle_module=Unpickler)
-        if "global_step" in pl_sd:
-            logging.debug(f"Global Step: {pl_sd['global_step']}")
-        if "state_dict" in pl_sd:
-            sd = pl_sd["state_dict"]
-        else:
-            sd = pl_sd
-    return sd
-
-
-def wipe_lowvram_weight(m):
-    if hasattr(m, "prev_comfy_cast_weights"):
-        m.comfy_cast_weights = m.prev_comfy_cast_weights
-        del m.prev_comfy_cast_weights
-    m.weight_function = None
-    m.bias_function = None
 
 
 class UnetApplyFunction(Protocol):
@@ -3199,374 +2304,7 @@ class UnetParams(TypedDict):
 UnetWrapperFunction = Callable[[UnetApplyFunction, UnetParams], torch.Tensor]
 
 
-class ModelPatcher:
-    def __init__(
-        self, model, load_device, offload_device, size=0, weight_inplace_update=False
-    ):
-        self.size = size
-        self.model = model
-        if not hasattr(self.model, "device"):
-            logging.debug("Model doesn't have a device attribute.")
-            self.model.device = offload_device
-        elif self.model.device is None:
-            self.model.device = offload_device
-
-        self.patches = {}
-        self.backup = {}
-        self.object_patches = {}
-        self.object_patches_backup = {}
-        self.model_options = {"transformer_options": {}}
-        self.model_size()
-        self.load_device = load_device
-        self.offload_device = offload_device
-        self.weight_inplace_update = weight_inplace_update
-        self.patches_uuid = uuid.uuid4()
-
-        if not hasattr(self.model, "model_loaded_weight_memory"):
-            self.model.model_loaded_weight_memory = 0
-
-        if not hasattr(self.model, "lowvram_patch_counter"):
-            self.model.lowvram_patch_counter = 0
-
-        if not hasattr(self.model, "model_lowvram"):
-            self.model.model_lowvram = False
-
-    def model_size(self):
-        if self.size > 0:
-            return self.size
-        self.size = Device.module_size(self.model)
-        return self.size
-
-    def loaded_size(self):
-        return self.model.model_loaded_weight_memory
-
-    def lowvram_patch_counter(self):
-        return self.model.lowvram_patch_counter
-
-    def is_clone(self, other):
-        if hasattr(other, "model") and self.model is other.model:
-            return True
-        return False
-
-    def clone_has_same_weights(self, clone):
-        if not self.is_clone(clone):
-            return False
-
-        if len(self.patches) == 0 and len(clone.patches) == 0:
-            return True
-
-        if self.patches_uuid == clone.patches_uuid:
-            if len(self.patches) != len(clone.patches):
-                logging.warning(
-                    "WARNING: something went wrong, same patch uuid but different length of patches."
-                )
-            else:
-                return True
-
-    def memory_required(self, input_shape):
-        return self.model.memory_required(input_shape=input_shape)
-
-    def get_model_object(self, name):
-        if name in self.object_patches:
-            return self.object_patches[name]
-        else:
-            if name in self.object_patches_backup:
-                return self.object_patches_backup[name]
-            else:
-                return util.get_attr(self.model, name)
-
-    def model_patches_to(self, device):
-        to = self.model_options["transformer_options"]
-        if "patches" in to:
-            patches = to["patches"]
-            for name in patches:
-                patch_list = patches[name]
-                for i in range(len(patch_list)):
-                    if hasattr(patch_list[i], "to"):
-                        patch_list[i] = patch_list[i].to(device)
-        if "patches_replace" in to:
-            patches = to["patches_replace"]
-            for name in patches:
-                patch_list = patches[name]
-                for k in patch_list:
-                    if hasattr(patch_list[k], "to"):
-                        patch_list[k] = patch_list[k].to(device)
-        if "model_function_wrapper" in self.model_options:
-            wrap_func = self.model_options["model_function_wrapper"]
-            if hasattr(wrap_func, "to"):
-                self.model_options["model_function_wrapper"] = wrap_func.to(device)
-
-    def model_dtype(self):
-        if hasattr(self.model, "get_dtype"):
-            return self.model.get_dtype()
-
-    def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
-        if key not in self.patches:
-            return
-
-        weight = util.get_attr(self.model, key)
-
-        inplace_update = self.weight_inplace_update or inplace_update
-
-        if key not in self.backup:
-            self.backup[key] = collections.namedtuple(
-                "Dimension", ["weight", "inplace_update"]
-            )(
-                weight.to(device=self.offload_device, copy=inplace_update),
-                inplace_update,
-            )
-
-        if device_to is not None:
-            temp_weight = Device.cast_to_device(weight, device_to, torch.float32, copy=True)
-        else:
-            temp_weight = weight.to(torch.float32, copy=True)
-        out_weight = calculate_weight(self.patches[key], temp_weight, key)
-        out_weight = stochastic_rounding(
-            out_weight, weight.dtype, seed=string_to_seed(key)
-        )
-        if inplace_update:
-            util.copy_to_param(self.model, key, out_weight)
-        else:
-            util.set_attr_param(self.model, key, out_weight)
-
-    def load(
-        self,
-        device_to=None,
-        lowvram_model_memory=0,
-        force_patch_weights=False,
-        full_load=False,
-    ):
-        mem_counter = 0
-        patch_counter = 0
-        lowvram_counter = 0
-        loading = []
-        for n, m in self.model.named_modules():
-            if hasattr(m, "comfy_cast_weights") or hasattr(m, "weight"):
-                loading.append((Device.module_size(m), n, m))
-
-        load_completely = []
-        loading.sort(reverse=True)
-        for x in loading:
-            n = x[1]
-            m = x[2]
-            module_mem = x[0]
-
-            lowvram_weight = False
-
-            if not full_load and hasattr(m, "comfy_cast_weights"):
-                if mem_counter + module_mem >= lowvram_model_memory:
-                    lowvram_weight = True
-                    lowvram_counter += 1
-                    if hasattr(m, "prev_comfy_cast_weights"):  # Already lowvramed
-                        continue
-
-            weight_key = "{}.weight".format(n)
-            bias_key = "{}.bias".format(n)
-
-            if lowvram_weight:
-                if weight_key in self.patches:
-                    if force_patch_weights:
-                        self.patch_weight_to_device(weight_key)
-                    else:
-                        m.weight_function = LowVramPatch(weight_key, self.patches)
-                        patch_counter += 1
-                if bias_key in self.patches:
-                    if force_patch_weights:
-                        self.patch_weight_to_device(bias_key)
-                    else:
-                        m.bias_function = LowVramPatch(bias_key, self.patches)
-                        patch_counter += 1
-
-                m.prev_comfy_cast_weights = m.comfy_cast_weights
-                m.comfy_cast_weights = True
-            else:
-                if hasattr(m, "comfy_cast_weights"):
-                    if m.comfy_cast_weights:
-                        wipe_lowvram_weight(m)
-
-                if hasattr(m, "weight"):
-                    mem_counter += module_mem
-                    load_completely.append((module_mem, n, m))
-
-        load_completely.sort(reverse=True)
-        for x in load_completely:
-            n = x[1]
-            m = x[2]
-            weight_key = "{}.weight".format(n)
-            bias_key = "{}.bias".format(n)
-            if hasattr(m, "comfy_patched_weights"):
-                if m.comfy_patched_weights == True:
-                    continue
-
-            self.patch_weight_to_device(weight_key, device_to=device_to)
-            self.patch_weight_to_device(bias_key, device_to=device_to)
-            logging.debug("lowvram: loaded module regularly {} {}".format(n, m))
-            m.comfy_patched_weights = True
-
-        for x in load_completely:
-            x[2].to(device_to)
-
-        if lowvram_counter > 0:
-            logging.info(
-                "loaded partially {} {} {}".format(
-                    lowvram_model_memory / (1024 * 1024),
-                    mem_counter / (1024 * 1024),
-                    patch_counter,
-                )
-            )
-            self.model.model_lowvram = True
-        else:
-            logging.info(
-                "loaded completely {} {} {}".format(
-                    lowvram_model_memory / (1024 * 1024),
-                    mem_counter / (1024 * 1024),
-                    full_load,
-                )
-            )
-            self.model.model_lowvram = False
-            if full_load:
-                self.model.to(device_to)
-                mem_counter = self.model_size()
-
-        self.model.lowvram_patch_counter += patch_counter
-        self.model.device = device_to
-        self.model.model_loaded_weight_memory = mem_counter
-
-    def patch_model(
-        self,
-        device_to=None,
-        lowvram_model_memory=0,
-        load_weights=True,
-        force_patch_weights=False,
-    ):
-        for k in self.object_patches:
-            old = util.set_attr(self.model, k, self.object_patches[k])
-            if k not in self.object_patches_backup:
-                self.object_patches_backup[k] = old
-
-        if lowvram_model_memory == 0:
-            full_load = True
-        else:
-            full_load = False
-
-        if load_weights:
-            self.load(
-                device_to,
-                lowvram_model_memory=lowvram_model_memory,
-                force_patch_weights=force_patch_weights,
-                full_load=full_load,
-            )
-        return self.model
-
-    def unpatch_model(self, device_to=None, unpatch_weights=True):
-        if unpatch_weights:
-            if self.model.model_lowvram:
-                for m in self.model.modules():
-                    wipe_lowvram_weight(m)
-
-                self.model.model_lowvram = False
-                self.model.lowvram_patch_counter = 0
-
-            keys = list(self.backup.keys())
-
-            for k in keys:
-                bk = self.backup[k]
-                if bk.inplace_update:
-                    util.copy_to_param(self.model, k, bk.weight)
-                else:
-                    util.set_attr_param(self.model, k, bk.weight)
-
-            self.backup.clear()
-
-            if device_to is not None:
-                self.model.to(device_to)
-                self.model.device = device_to
-            self.model.model_loaded_weight_memory = 0
-
-            for m in self.model.modules():
-                if hasattr(m, "comfy_patched_weights"):
-                    del m.comfy_patched_weights
-
-        keys = list(self.object_patches_backup.keys())
-        for k in keys:
-            util.set_attr(self.model, k, self.object_patches_backup[k])
-
-        self.object_patches_backup.clear()
-
-    def partially_unload(self, device_to, memory_to_free=0):
-        memory_freed = 0
-        patch_counter = 0
-        unload_list = []
-
-        for n, m in self.model.named_modules():
-            if hasattr(m, "comfy_cast_weights"):
-                module_mem = Device.module_size(m)
-                unload_list.append((module_mem, n, m))
-
-        unload_list.sort()
-        for unload in unload_list:
-            if memory_to_free < memory_freed:
-                break
-            module_mem = unload[0]
-            n = unload[1]
-            m = unload[2]
-
-        self.model.model_lowvram = True
-        self.model.lowvram_patch_counter += patch_counter
-        self.model.model_loaded_weight_memory -= memory_freed
-        return memory_freed
-
-    def partially_load(self, device_to, extra_memory=0):
-        self.unpatch_model(unpatch_weights=False)
-        self.patch_model(load_weights=False)
-        full_load = False
-        if self.model.model_lowvram is False:
-            return 0
-        if self.model.model_loaded_weight_memory + extra_memory > self.model_size():
-            full_load = True
-        current_used = self.model.model_loaded_weight_memory
-        self.load(
-            device_to,
-            lowvram_model_memory=current_used + extra_memory,
-            full_load=full_load,
-        )
-        return self.model.model_loaded_weight_memory - current_used
-
-    def current_loaded_device(self):
-        return self.model.device
-
-    def calculate_weight(self, patches, weight, key, intermediate_dtype=torch.float32):
-        print(
-            "WARNING the ModelPatcher.calculate_weight function is deprecated, please use: comfy.lora.calculate_weight instead"
-        )
-        return calculate_weight(
-            patches, weight, key, intermediate_dtype=intermediate_dtype
-        )
-
-
 # import pytorch_lightning as pl
-
-
-class DiagonalGaussianRegularizer(torch.nn.Module):
-    def __init__(self, sample: bool = True):
-        super().__init__()
-        self.sample = sample
-
-    def get_trainable_parameters(self) -> Any:
-        yield from ()
-
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
-        log = dict()
-        posterior = VariationalAE.DiagonalGaussianDistribution(z)
-        if self.sample:
-            z = posterior.sample()
-        else:
-            z = posterior.mode()
-        kl_loss = posterior.kl()
-        kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
-        log["kl_loss"] = kl_loss
-        return z, log
-
 
 
 class AbstractAutoencoder(torch.nn.Module):
@@ -3625,9 +2363,9 @@ class AutoencodingEngine(AbstractAutoencoder):
     ):
         super().__init__(*args, **kwargs)
 
-        self.encoder: torch.nn.Module = instantiate_from_config(encoder_config)
-        self.decoder: torch.nn.Module = instantiate_from_config(decoder_config)
-        self.regularization: AbstractRegularizer = instantiate_from_config(
+        self.encoder: torch.nn.Module = util.instantiate_from_config(encoder_config)
+        self.decoder: torch.nn.Module = util.instantiate_from_config(decoder_config)
+        self.regularization: AbstractRegularizer = util.instantiate_from_config(
             regularizer_config
         )
 
@@ -3677,24 +2415,6 @@ def unet_prefix_from_state_dict(state_dict):
         return top
     else:
         return "model."  # aura flow and others
-
-
-def state_dict_prefix_replace(state_dict, replace_prefix, filter_keys=False):
-    if filter_keys:
-        out = {}
-    else:
-        out = state_dict
-    for rp in replace_prefix:
-        replace = list(
-            map(
-                lambda a: (a, "{}{}".format(replace_prefix[rp], a[len(rp) :])),
-                filter(lambda a: a.startswith(rp), state_dict.keys()),
-            )
-        )
-        for x in replace:
-            w = state_dict.pop(x[0])
-            out[x[1]] = w
-    return out
 
 
 class SD3(Latent.LatentFormat):
@@ -3877,32 +2597,6 @@ class EmbedND(nn.Module):
         )
 
         return emb.unsqueeze(1)
-
-
-def timestep_embedding(t: torch.Tensor, dim, max_period=10000, time_factor: float = 1000.0):
-    """
-    Create sinusoidal timestep embeddings.
-    :param t: a 1-D Tensor of N indices, one per batch element.
-                      These may be fractional.
-    :param dim: the dimension of the output.
-    :param max_period: controls the minimum frequency of the embeddings.
-    :return: an (N, D) Tensor of positional embeddings.
-    """
-    t = time_factor * t
-    half = dim // 2
-    freqs = torch.exp(
-        -math.log(max_period)
-        * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device)
-        / half
-    )
-
-    args = t[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    if torch.is_floating_point(t):
-        embedding = embedding.to(t)
-    return embedding
 
 
 class MLPEmbedder(nn.Module):
@@ -4391,14 +3085,14 @@ class Flux3(nn.Module):
 
         # running on sequences img
         img = self.img_in(img)
-        vec = self.time_in(timestep_embedding(timesteps, 256).to(img.dtype))
+        vec = self.time_in(sampling_util.timestep_embedding_flux(timesteps, 256).to(img.dtype))
         if self.params.guidance_embed:
             if guidance is None:
                 raise ValueError(
                     "Didn't get guidance strength for guidance distilled model."
                 )
             vec = vec + self.guidance_in(
-                timestep_embedding(guidance, 256).to(img.dtype)
+                sampling_util.timestep_embedding_flux(guidance, 256).to(img.dtype)
             )
 
         vec = vec + self.vector_in(y)
@@ -4470,7 +3164,7 @@ class Flux3(nn.Module):
 
 
 class Flux2(BaseModel):
-    def __init__(self, model_config, model_type=ModelType.FLUX, device=None):
+    def __init__(self, model_config, model_type=sampling.ModelType.FLUX, device=None):
         super().__init__(model_config, model_type, device=device, unet_model=Flux3)
 
     def encode_adm(self, **kwargs):
@@ -4518,7 +3212,7 @@ def load_diffusion_model_state_dict(
 
     # Allow loading unets from checkpoint files
     diffusion_model_prefix = unet_prefix_from_state_dict(sd)
-    temp_sd = state_dict_prefix_replace(
+    temp_sd = util.state_dict_prefix_replace(
         sd, {diffusion_model_prefix: ""}, filter_keys=True
     )
     if len(temp_sd) > 0:
@@ -4553,7 +3247,7 @@ def load_diffusion_model_state_dict(
     left_over = sd.keys()
     if len(left_over) > 0:
         logging.info("left over keys in unet: {}".format(left_over))
-    return ModelPatcher(model, load_device=load_device, offload_device=offload_device)
+    return Modelpatcher.ModelPatcher(model, load_device=load_device, offload_device=offload_device)
 
 
 vae_conversion_map = [
@@ -4606,32 +3300,7 @@ vae_conversion_map_attn = [
 ]
 
 
-def get_obj_from_str(string, reload=False):
-    module, cls = string.rsplit(".", 1)
-    if reload:
-        module_imp = importlib.import_module(module)
-        importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
-
-
-def instantiate_from_config(config):
-    if "target" not in config:
-        if config == "__is_first_stage__":
-            return None
-        elif config == "__is_unconditional__":
-            return None
-        raise KeyError("Expected key `target` to instantiate.")
-    return get_obj_from_str(config["target"])(**config.get("params", dict()))
-
-
-def model_options_long_clip(sd, tokenizer_data, model_options):
-    w = sd.get("clip_l.text_model.embeddings.position_embedding.weight", None)
-    if w is None:
-        w = sd.get("text_model.embeddings.position_embedding.weight", None)
-    return tokenizer_data, model_options
-
-
-class T5XXLModel(SDClipModel):
+class T5XXLModel(SDClip.SDClipModel):
     def __init__(
         self, device="cpu", layer="last", layer_idx=None, dtype=None, model_options={}
     ):
@@ -4651,7 +3320,7 @@ class T5XXLModel(SDClipModel):
         )
 
 
-class T5XXLTokenizer(SDTokenizer):
+class T5XXLTokenizer(SDToken.SDTokenizer):
     def __init__(self, embedding_directory=None, tokenizer_data={}):
         tokenizer_path = os.path.join(
             os.path.dirname(os.path.realpath(__file__)), "./clip/t5_tokenizer"
@@ -4672,7 +3341,7 @@ class T5XXLTokenizer(SDTokenizer):
 class FluxTokenizer:
     def __init__(self, embedding_directory=None, tokenizer_data={}):
         clip_l_tokenizer_class = tokenizer_data.get(
-            "clip_l_tokenizer_class", SDTokenizer
+            "clip_l_tokenizer_class", SDToken.SDTokenizer
         )
         self.clip_l = clip_l_tokenizer_class(embedding_directory=embedding_directory)
         self.t5xxl = T5XXLTokenizer(embedding_directory=embedding_directory)
@@ -4688,7 +3357,7 @@ class FluxClipModel(torch.nn.Module):
     def __init__(self, dtype_t5=None, device="cpu", dtype=None, model_options={}):
         super().__init__()
         dtype_t5 = Device.pick_weight_dtype(dtype_t5, dtype, device)
-        clip_l_class = model_options.get("clip_l_class", SDClipModel)
+        clip_l_class = model_options.get("clip_l_class", SDClip.SDClipModel)
         self.clip_l = clip_l_class(
             device=device,
             dtype=dtype,
@@ -4743,7 +3412,7 @@ class T5LayerNorm(torch.nn.Module):
     def forward(self, x):
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.variance_epsilon)
-        return cast_to_input(self.weight, x) * x
+        return cast.cast_to_input(self.weight, x) * x
 
 
 activations = {
@@ -5164,7 +3833,7 @@ def load_text_encoder_state_dicts(
     tokenizer_data = {}
     for c in clip_data:
         parameters += util.calculate_parameters(c)
-        tokenizer_data, model_options = model_options_long_clip(
+        tokenizer_data, model_options = SDToken.model_options_long_clip(
             c, tokenizer_data, model_options
         )
 
@@ -5608,7 +4277,7 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
     return state_dict
 
 
-class GGUFModelPatcher(ModelPatcher):
+class GGUFModelPatcher(Modelpatcher.ModelPatcher):
     patch_on_device = False
 
     def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
@@ -5758,7 +4427,7 @@ class VAELoader:
             sd = self.load_taesd(vae_name)
         else:
             vae_path = "./_internal/vae/" + vae_name
-            sd = load_torch_file(vae_path)
+            sd = util.load_torch_file(vae_path)
         vae = VAE(sd=sd)
         return (vae,)
 
@@ -5808,7 +4477,7 @@ class CLIPLoaderGGUF:
             if p.endswith(".gguf"):
                 clip_data.append(gguf_clip_loader(p))
             else:
-                sd = load_torch_file(p, safe_load=True)
+                sd = util.load_torch_file(p, safe_load=True)
                 clip_data.append(
                     {
                         k: GGMLTensor(

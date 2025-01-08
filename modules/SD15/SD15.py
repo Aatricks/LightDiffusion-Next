@@ -1,4 +1,5 @@
 import torch
+from modules.Flux import flux
 from modules.Utilities import util
 from modules.Model import ModelBase
 from modules.SD15 import SDClip, SDToken
@@ -76,5 +77,5 @@ class sm_SD15(ModelBase.BASE):
         return Clip.ClipTarget(SDToken.SD1Tokenizer, SDClip.SD1ClipModel)
     
 models = [
-    sm_SD15,
+    sm_SD15,flux.Flux
 ]

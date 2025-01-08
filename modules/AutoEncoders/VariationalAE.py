@@ -89,7 +89,10 @@ class DiagonalGaussianRegularizer(torch.nn.Module):
         """
         log = dict()
         posterior = DiagonalGaussianDistribution(z)
-        z = posterior.sample()
+        if self.sample:
+            z = posterior.sample()
+        else:
+            z = posterior.mode()
         kl_loss = posterior.kl()
         kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
         log["kl_loss"] = kl_loss

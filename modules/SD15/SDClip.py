@@ -1,5 +1,6 @@
 import json
 import logging
+import numbers
 import torch
 from modules.Device import Device
 from modules.clip import Clip
@@ -53,8 +54,13 @@ class ClipTokenWeightEncoder:
         if has_weights or sections == 0:
             to_encode.append(gen_empty_tokens(self.special_tokens, max_token_len))
 
-        out, pooled = self.encode(to_encode)
-        first_pooled = pooled[0:1].to(Device.intermediate_device())
+        o = self.encode(to_encode)
+        out, pooled = o[:2]
+
+        if pooled is not None:
+            first_pooled = pooled[0:1].to(Device.intermediate_device())
+        else:
+            first_pooled = pooled
 
         output = []
         for k in range(0, sections):
@@ -68,8 +74,26 @@ class ClipTokenWeightEncoder:
                             z[i][j] = (z[i][j] - z_empty[j]) * weight + z_empty[j]
             output.append(z)
 
-        return torch.cat(output, dim=-2).to(Device.intermediate_device()), first_pooled
+        if len(output) == 0:
+            r = (out[-1:].to(Device.intermediate_device()), first_pooled)
+        else:
+            r = (torch.cat(output, dim=-2).to(Device.intermediate_device()), first_pooled)
 
+        if len(o) > 2:
+            extra = {}
+            for k in o[2]:
+                v = o[2][k]
+                if k == "attention_mask":
+                    v = (
+                        v[:sections]
+                        .flatten()
+                        .unsqueeze(dim=0)
+                        .to(Device.intermediate_device())
+                    )
+                extra[k] = v
+
+            r = r + (extra,)
+        return r
 
 class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
     """#### Uses the CLIP transformer encoder for text (from huggingface)."""
@@ -90,7 +114,10 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         special_tokens: dict = {"start": 49406, "end": 49407, "pad": 49407},
         layer_norm_hidden_state: bool = True,
         enable_attention_masks: bool = False,
+        zero_out_masked:bool = False,
         return_projected_pooled: bool = True,
+        return_attention_masks: bool = False,
+        model_options={},
     ):
         """#### Initialize the SDClipModel.
 
@@ -107,7 +134,10 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
             - `special_tokens` (dict, optional): The special tokens. Defaults to {"start": 49406, "end": 49407, "pad": 49407}.
             - `layer_norm_hidden_state` (bool, optional): Whether to normalize the hidden state. Defaults to True.
             - `enable_attention_masks` (bool, optional): Whether to enable attention masks. Defaults to False.
+            - `zero_out_masked` (bool, optional): Whether to zero out masked tokens. Defaults to False.
             - `return_projected_pooled` (bool, optional): Whether to return the projected pooled output. Defaults to True.
+            - `return_attention_masks` (bool, optional): Whether to return the attention masks. Defaults to False.
+            - `model_options` (dict, optional): Additional model options. Defaults to {}.
         """
         super().__init__()
         assert layer in self.LAYERS
@@ -118,7 +148,12 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         with open(textmodel_json_config) as f:
             config = json.load(f)
 
-        self.transformer = model_class(config, dtype, device, cast.manual_cast)
+        operations = model_options.get("custom_operations", None)
+        if operations is None:
+            operations = cast.manual_cast
+
+        self.operations = operations
+        self.transformer = model_class(config, dtype, device, self.operations)
         self.num_layers = self.transformer.num_layers
 
         self.max_length = max_length
@@ -130,9 +165,16 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
 
         self.logit_scale = torch.nn.Parameter(torch.tensor(4.6055))
         self.enable_attention_masks = enable_attention_masks
+        self.zero_out_masked = zero_out_masked
 
         self.layer_norm_hidden_state = layer_norm_hidden_state
         self.return_projected_pooled = return_projected_pooled
+        self.return_attention_masks = return_attention_masks
+
+        if layer == "hidden":
+            assert layer_idx is not None
+            assert abs(layer_idx) < self.num_layers
+            self.set_clip_options({"layer": layer_idx})
         self.options_default = (
             self.layer,
             self.layer_idx,
@@ -155,8 +197,11 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         self.return_projected_pooled = options.get(
             "projected_pooled", self.return_projected_pooled
         )
-        self.layer = "hidden"
-        self.layer_idx = layer_idx
+        if layer_idx is None or abs(layer_idx) > self.num_layers:
+            self.layer = "last"
+        else:
+            self.layer = "hidden"
+            self.layer_idx = layer_idx
 
     def reset_clip_options(self) -> None:
         """#### Reset the CLIP options to default."""
@@ -175,16 +220,14 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
             - `list`: The processed tokens.
         """
         out_tokens = []
-        next_new_token = token_dict_size = current_embeds.weight.shape[0] - 1
+        next_new_token = token_dict_size = current_embeds.weight.shape[0]
         embedding_weights = []
 
         for x in tokens:
             tokens_temp = []
             for y in x:
-                if isinstance(y, int):
-                    if y == token_dict_size:  # EOS token
-                        y = -1
-                    tokens_temp += [y]
+                if isinstance(y, numbers.Integral):
+                    tokens_temp += [int(y)]
                 else:
                     if y.shape[0] == current_embeds.weight.shape[1]:
                         embedding_weights += [y]
@@ -202,17 +245,16 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
 
         n = token_dict_size
         if len(embedding_weights) > 0:
-            new_embedding = torch.nn.Embedding(
+            new_embedding = self.operations.Embedding(
                 next_new_token + 1,
                 current_embeds.weight.shape[1],
                 device=current_embeds.weight.device,
                 dtype=current_embeds.weight.dtype,
             )
-            new_embedding.weight[:token_dict_size] = current_embeds.weight[:-1]
+            new_embedding.weight[:token_dict_size] = current_embeds.weight
             for x in embedding_weights:
                 new_embedding.weight[n] = x
                 n += 1
-            new_embedding.weight[n] = current_embeds.weight[-1]  # EOS embedding
             self.transformer.set_input_embeddings(new_embedding)
 
         processed_tokens = []
@@ -238,19 +280,39 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         tokens = torch.LongTensor(tokens).to(device)
 
         attention_mask = None
+        if (
+            self.enable_attention_masks
+            or self.zero_out_masked
+            or self.return_attention_masks
+        ):
+            attention_mask = torch.zeros_like(tokens)
+            end_token = self.special_tokens.get("end", -1)
+            for x in range(attention_mask.shape[0]):
+                for y in range(attention_mask.shape[1]):
+                    attention_mask[x, y] = 1
+                    if tokens[x, y] == end_token:
+                        break
+
+        attention_mask_model = None
+        if self.enable_attention_masks:
+            attention_mask_model = attention_mask
 
         outputs = self.transformer(
             tokens,
-            attention_mask,
+            attention_mask_model,
             intermediate_output=self.layer_idx,
             final_layer_norm_intermediate=self.layer_norm_hidden_state,
+            dtype=torch.float32,
         )
         self.transformer.set_input_embeddings(backup_embeds)
 
         if self.layer == "last":
-            z = outputs[0]
+            z = outputs[0].float()
         else:
-            z = outputs[1]
+            z = outputs[1].float()
+
+        if self.zero_out_masked:
+            z *= attention_mask.unsqueeze(-1).float()
 
         pooled_output = None
         if len(outputs) >= 3:
@@ -263,7 +325,14 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
             elif outputs[2] is not None:
                 pooled_output = outputs[2].float()
 
-        return z.float(), pooled_output
+        extra = {}
+        if self.return_attention_masks:
+            extra["attention_mask"] = attention_mask
+
+        if len(extra) > 0:
+            return z, pooled_output, extra
+
+        return z, pooled_output
 
     def encode(self, tokens: list) -> tuple:
         """#### Encode the input tokens.

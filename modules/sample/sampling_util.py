@@ -53,7 +53,6 @@ def checkpoint(func, inputs, params, flag):
     """
     return func(*inputs)
 
-
 def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     """#### Create a timestep embedding.
 
@@ -74,6 +73,34 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     )
     args = timesteps[:, None].float() * freqs[None]
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    return embedding
+
+def timestep_embedding_flux(t: torch.Tensor, dim, max_period=10000, time_factor: float = 1000.0):
+    """#### Create a timestep embedding.
+
+    #### Args:
+        - `timesteps` (torch.Tensor): The timesteps.
+        - `dim` (int): The embedding dimension.
+        - `max_period` (int, optional): The maximum period. Defaults to 10000.
+        - `repeat_only` (bool, optional): Whether to repeat only. Defaults to False.
+
+    #### Returns:
+        - `torch.Tensor`: The timestep embedding.
+    """
+    t = time_factor * t
+    half = dim // 2
+    freqs = torch.exp(
+        -math.log(max_period)
+        * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device)
+        / half
+    )
+
+    args = t[:, None].float() * freqs[None]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+    if torch.is_floating_point(t):
+        embedding = embedding.to(t)
     return embedding
 
 def simple_scheduler(model_sampling, steps):

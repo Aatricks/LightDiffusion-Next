@@ -4,6 +4,7 @@ import torch
 from modules.Model import ModelPatcher
 from modules.Attention import Attention
 from modules.Device import Device
+from modules.cond import cast
 
 
 class CLIPAttention(torch.nn.Module):
@@ -249,6 +250,7 @@ class CLIPEmbeddings(torch.nn.Module):
         num_positions: int = 77,
         dtype: torch.dtype = None,
         device: torch.device = None,
+        operations: object = torch.nn,
     ):
         """#### Initialize the CLIPEmbeddings module.
 
@@ -260,23 +262,26 @@ class CLIPEmbeddings(torch.nn.Module):
             - `device` (torch.device, optional): The device to use. Defaults to None.
         """
         super().__init__()
-        self.token_embedding = torch.nn.Embedding(
+        self.token_embedding = operations.Embedding(
             vocab_size, embed_dim, dtype=dtype, device=device
         )
-        self.position_embedding = torch.nn.Embedding(
+        self.position_embedding = operations.Embedding(
             num_positions, embed_dim, dtype=dtype, device=device
         )
 
-    def forward(self, input_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_tokens: torch.Tensor, dtype=torch.float32) -> torch.Tensor:
         """#### Forward pass for the CLIPEmbeddings module.
 
         #### Args:
             - `input_tokens` (torch.Tensor): The input tokens.
+            - `dtype` (torch.dtype, optional): The data type. Defaults to torch.float32.
 
         #### Returns:
             - `torch.Tensor`: The output tensor.
         """
-        return self.token_embedding(input_tokens) + self.position_embedding.weight
+        return self.token_embedding(input_tokens, out_dtype=dtype) + cast.cast_to(
+            self.position_embedding.weight, dtype=dtype, device=input_tokens.device
+        )
 
 
 class CLIPTextModel_(torch.nn.Module):
@@ -300,9 +305,17 @@ class CLIPTextModel_(torch.nn.Module):
         heads = config_dict["num_attention_heads"]
         intermediate_size = config_dict["intermediate_size"]
         intermediate_activation = config_dict["hidden_act"]
+        num_positions = config_dict["max_position_embeddings"]
+        self.eos_token_id = config_dict["eos_token_id"]
 
         super().__init__()
-        self.embeddings = CLIPEmbeddings(embed_dim, dtype=torch.float32, device=device)
+        self.embeddings = CLIPEmbeddings(
+            embed_dim,
+            num_positions=num_positions,
+            dtype=dtype,
+            device=device,
+            operations=operations,
+        )
         self.encoder = CLIPEncoder(
             num_layers,
             embed_dim,
@@ -323,6 +336,7 @@ class CLIPTextModel_(torch.nn.Module):
         attention_mask: torch.Tensor = None,
         intermediate_output: int = None,
         final_layer_norm_intermediate: bool = True,
+        dtype: torch.dtype = torch.float32,
     ) -> tuple:
         """#### Forward pass for the CLIPTextModel_ module.
 
@@ -335,15 +349,28 @@ class CLIPTextModel_(torch.nn.Module):
         #### Returns:
             - `tuple`: The output tensor, the intermediate output tensor, and the pooled output tensor.
         """
-        x = self.embeddings(input_tokens)
+        x = self.embeddings(input_tokens, dtype=dtype)
         mask = None
+        if attention_mask is not None:
+            mask = 1.0 - attention_mask.to(x.dtype).reshape(
+                (attention_mask.shape[0], 1, -1, attention_mask.shape[-1])
+            ).expand(
+                attention_mask.shape[0],
+                1,
+                attention_mask.shape[-1],
+                attention_mask.shape[-1],
+            )
+            mask = mask.masked_fill(mask.to(torch.bool), float("-inf"))
 
         causal_mask = (
             torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device)
             .fill_(float("-inf"))
             .triu_(1)
         )
-        mask = causal_mask
+        if mask is not None:
+            mask += causal_mask
+        else:
+            mask = causal_mask
 
         x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)
         x = self.final_layer_norm(x)
@@ -352,7 +379,12 @@ class CLIPTextModel_(torch.nn.Module):
 
         pooled_output = x[
             torch.arange(x.shape[0], device=x.device),
-            input_tokens.to(dtype=torch.int, device=x.device).argmax(dim=-1),
+            (
+                torch.round(input_tokens).to(dtype=torch.int, device=x.device)
+                == self.eos_token_id
+            )
+            .int()
+            .argmax(dim=-1),
         ]
         return x, i, pooled_output
 
@@ -380,7 +412,6 @@ class CLIPTextModel(torch.nn.Module):
         self.text_projection = operations.Linear(
             embed_dim, embed_dim, bias=False, dtype=dtype, device=device
         )
-        self.text_projection.weight.copy_(torch.eye(embed_dim))
         self.dtype = dtype
 
     def get_input_embeddings(self) -> torch.nn.Embedding:
@@ -420,6 +451,9 @@ class CLIP:
         target: object = None,
         embedding_directory: str = None,
         no_init: bool = False,
+        tokenizer_data={},
+        parameters=0,
+        model_options={},
     ):
         """#### Initialize the CLIP class.
 

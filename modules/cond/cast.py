@@ -12,6 +12,12 @@ def cast_to(weight, dtype=None, device=None, non_blocking=False, copy=False):
     r.copy_(weight, non_blocking=non_blocking)
     return r
 
+
+def cast_to_input(weight, input, non_blocking=False, copy=True):
+    return cast_to(
+        weight, input.dtype, input.device, non_blocking=non_blocking, copy=copy
+    )
+
 def cast_bias_weight(s: torch.nn.Module, input: torch.Tensor= None, dtype:torch.dtype = None, device:torch.device = None, bias_dtype:torch.dtype = None) -> tuple:
     """#### Cast the bias and weight of a module to match the input tensor.
 
