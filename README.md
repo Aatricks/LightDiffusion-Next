@@ -1,65 +1,114 @@
-# LightDiffusion-Next
+# LightDiffusion-Next  
 
-The purpose of this repository and project is to be the refactored version of the original LightDiffusion repository. The goal is to make the code more readable, maintainable, and to add new features to the project. The original repository can be found [here](https://github.com/Aatrick/LightDiffusion).
+**LightDiffusion-Next** is the fastest AI-powered image generation GUI/CLI, combining speed, precision, and flexibility in one cohesive tool. As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.  
 
-For more information, check the [documentation](https://aatrick.github.io/LightDiffusion/)
 
-## Features
+📚 Learn more in the [official documentation](https://aatrick.github.io/LightDiffusion/).  
 
-- Original Txt2Img, Img2Img (R-ERSGAN4x+ UltimateSDUpscaling DPM++ 2M)
-- Attention syntax
-- Hires-Fix (euler ancestral normal)
-- GPU only
-- Xformers and Pytorch optimization
-- Stable-Fast implementation offering a 70% speedup at the cost of pre inference model optimization windup time
-- FP16 and FP32 precision support
-- Saved state in between starts
-- GUI
-- DPM Adaptive Karras
-- Clip Skip
-- LoRa and textual inversion (embeddings) support
-- Automatic Prompt-Enhancing with llama3.2 (ollama)
-- Discord bot integration with the installation of [Boubou](https://github.com/Aatrick/Boubou) and the usage of LightDiffusion's pipeline
-- Automatic Face and body Detailer (based on [Impact pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack))
-- TAESD image previewing at the cost of a 10% performance hit
+---
 
-![Home Image](./HomeImage.png)
+## 🌟 Highlights  
 
-# Inference benchmarks
+**LightDiffusion-Next** offers a powerful suite of tools to cater to creators at every level. At its core, it supports **Text-to-Image** (Txt2Img) and **Image-to-Image** (Img2Img) generation, offering a variety of upscale methods and samplers, to make it easier to create stunning images with minimal effort.
 
-The following table compares the inference speeds of different image generation tools for a 512x512 image using MeinaMix-SD1.5 on an RTX 3060 laptop GPU with the dpmpp-2m-sde karras sampler:
+Advanced users can take advantage of features like **attention syntax**, **Hires-Fix** or **ADetailer**. These tools provide better quality and flexibility for generating complex and high-resolution outputs.
 
-| Tool                               | Speed (it/s) |
-|------------------------------------|--------------|
-| LightDiffusion with Stable-Fast    | 9.2          |
-| LightDiffusion                     | 7.8          |
-| ComfyUI                            | 7.1          |
-| SDWebUI                            | 6.6          |
+**LightDiffusion-Next** is fine-tuned for **performance**. Features such as **Xformers** acceleration, **BFloat16** precision support, and **Stable-Fast** model compilation (which offers up to a 70% speed boost) ensure smooth and efficient operation, even on demanding workloads.
 
-## Installation
+---
 
-To install, please download a release or clone this repo and execute the run.bat file in a cmd and you should be good to go.
+## ✨ Feature Showcase  
 
-### Pipeline
+Here’s what makes LightDiffusion-Next stand out:  
 
-You can also use the `pipeline.bat <prompt> <width> <height>` to install and run without graphical interface, use `pipeline.bat -h` to get the usage information.
+- **Speed and Efficiency**:  
+  Enjoy industry-leading performance with built-in Xformers, Pytorch and Stable-Fast optimizations, achieving up to 30% faster speeds compared to the comfyUI.
 
-#### From Source
+- **Automatic Detailing**:  
+  Effortlessly enhance faces and body details with AI-driven tools based on the [Impact Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack).  
 
-Else install the python dependencies by writing `pip install -r requirements.txt`
+- **State Preservation**:  
+  Save and resume your progress with saved states, ensuring seamless transitions between sessions.  
 
-After doing that, add your SD1/1.5 safetensors model to the checkpoints directory and you should be good to go.
+- **Advanced GUI and CLI**:  
+  Work through a user-friendly graphical interface or leverage the streamlined pipeline for CLI-based workflows.  
 
-### Stable-Fast
+- **Integration-Ready**:  
+  Collaborate and create directly in Discord with [Boubou](https://github.com/Aatrick/Boubou), or preview images dynamically with the optional **TAESD preview mode**.  
 
-To use the stable-fast optimization refer to this [guide](https://github.com/chengzeyi/stable-fast?tab=readme-ov-file#installation) to install from the wheel file.
+- **Image Previewing**:  
+  Get a real-time preview of your generated images with TAESD, allowing for user-friendly and interactive workflows.
 
-### Ollama
+- **Image Upscaling**:  
+  Enhance your images with advanced upscaling options like UltimateSDUpscaling, ensuring high-quality results every time.
 
-To use the Prompt enhancer refer to this [guide](https://github.com/ollama/ollama?tab=readme-ov-file) to install and run those commands
-`ollama run llama3.1`
-`pip install ollama`
+- **Prompt Refinement**:
+    Use the Llama 3.2-powered automatic prompt enhancer to refine your prompts and generate more accurate and detailed outputs.
 
-### Discord
+- **LoRa and Textual Inversion Embeddings**:
+    Leverage LoRa and textual inversion embeddings for highly customized and nuanced results, adding a new dimension to your creative process.
 
-To use LightDiffusion in discord, refer to the installation guide in this [repo](https://github.com/Aatrick/Boubou)
+- **Low-End Device Support**:
+    Run LightDiffusion-Next on low-end devices with as little as 2GB of VRAM or even no GPU, ensuring accessibility for all users.
+
+---
+
+## ⚡ Performance Benchmarks  
+
+**LightDiffusion-Next** dominates in performance:  
+
+| **Tool**                           | **Speed (it/s)** |  
+|------------------------------------|------------------|  
+| **LightDiffusion with Stable-Fast** | 9.2              |  
+| **LightDiffusion**                 | 7.8              |  
+| **ComfyUI**                        | 7.1              |  
+| **SDWebUI**                        | 6.6              |  
+
+With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark for AI image generation tools.  
+
+---
+
+## 🛠 Installation  
+
+### Quick Start  
+
+1. Download a release or clone this repository.  
+2. Run `run.bat` in a terminal.  
+3. Start creating!  
+
+### Command-Line Pipeline  
+
+For a GUI-free experience, use the pipeline:  
+```bash  
+pipeline.bat <prompt> <width> <height>  
+```  
+Use `pipeline.bat -h` for more options.  
+
+---
+
+### Advanced Setup  
+
+- **Install from Source**:  
+  Install dependencies via:  
+  ```bash  
+  pip install -r requirements.txt  
+  ```  
+  Add your SD1/1.5 safetensors model to the `checkpoints` directory, then launch the application.  
+
+- **⚡Stable-Fast Optimization**:  
+  Follow [this guide](https://github.com/chengzeyi/stable-fast?tab=readme-ov-file#installation) to enable Stable-Fast mode for optimal performance.  
+
+- **🦙 Prompt Enhancer**:  
+  Refine your prompts with Llama 3.2:  
+  ```bash  
+  pip install ollama  
+  ollama run llama3.1  
+  ```  
+  See the [Ollama guide](https://github.com/ollama/ollama?tab=readme-ov-file) for details.  
+
+- **🤖 Discord Integration**:  
+  Set up the Discord bot by following the [Boubou installation guide](https://github.com/Aatrick/Boubou).  
+
+---
+
+🎨 Enjoy exploring the powerful features of LightDiffusion-Next!  
