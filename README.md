@@ -2,6 +2,11 @@
 
 **LightDiffusion-Next** is the fastest AI-powered image generation GUI/CLI, combining speed, precision, and flexibility in one cohesive tool. As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.  
 
+## Motivation:
+
+**LightDiffusion** was originally meant to be made in Rust, but due to the lack of support for the Rust language in the AI community, it was made in Python with the goal of being the simplest and fastest AI image generation tool. 
+
+That's when the first version of LightDiffusion was born which only counted [3000 lines of code](https://github.com/LightDiffusion/LightDiffusion-original), only using Pytorch. With time, the [project](https://github.com/Aatrick/LightDiffusion) grew and became more complex, and the need for a refactor was evident. This is where **LightDiffusion-Next** comes in, with a more modular and maintainable codebase, and a plethora of new features and optimizations.
 
 📚 Learn more in the [official documentation](https://aatrick.github.io/LightDiffusion/).  
 
