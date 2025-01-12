@@ -1,6 +1,17 @@
-# LightDiffusion-Next  
+<div align="center">
 
-**LightDiffusion-Next** is the fastest AI-powered image generation GUI/CLI, combining speed, precision, and flexibility in one cohesive tool. As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.  
+# Say hi to LightDiffusion-Next 👋
+
+**LightDiffusion-Next**  is the fastest AI-powered image generation GUI/CLI, combining speed, precision, and flexibility in one cohesive tool. 
+  <a href="[https://github.com/ntegrals/aura-voice](https://github.com/LightDiffusion/LightDiffusion-Next)">
+    <img src="[.assets//header.png](https://github.com/user-attachments/assets/c6c232e6-7b93-499a-ada7-04310a3d77fe)" alt="Logo">
+
+  </a>
+</br>
+</div>
+
+
+As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.  
 
 ## Motivation:
 
