@@ -31,6 +31,7 @@ torch.compiler.allow_in_graph
 
 last_seed = 0
 
+Downloader.CheckAndDownload()
 
 def pipeline(
     prompt: str,

@@ -429,15 +429,16 @@ class DPMSolver(nn.Module):
         #### Returns:
             - `tuple`: A tuple containing the epsilon value and the updated cache.
         """
-        if key in eps_cache:
-            return eps_cache[key], eps_cache
-        sigma = self.sigma(t) * x.new_ones([x.shape[0]])
-        eps = (
-            x - self.model(x, sigma, *args, **self.extra_args, **kwargs)
-        ) / self.sigma(t)
-        if self.eps_callback is not None:
-            self.eps_callback()
-        return eps, {key: eps, **eps_cache}
+        with torch.amp.autocast(device_type="cuda"):
+            if key in eps_cache:
+                return eps_cache[key], eps_cache
+            sigma = self.sigma(t) * x.new_ones([x.shape[0]])
+            eps = (
+                x - self.model(x, sigma, *args, **self.extra_args, **kwargs)
+            ) / self.sigma(t)
+            if self.eps_callback is not None:
+                self.eps_callback()
+            return eps, {key: eps, **eps_cache}
 
     def dpm_solver_2_step(self, x, t, t_next, r1=1 / 2, eps_cache=None):
         """#### Perform a 2-step DPM-Solver update.
@@ -452,18 +453,19 @@ class DPMSolver(nn.Module):
         #### Returns:
             - `tuple`: A tuple containing the updated tensor and the updated cache.
         """
-        eps_cache = {} if eps_cache is None else eps_cache
-        h = t_next - t
-        eps, eps_cache = self.eps(eps_cache, "eps", x, t)
-        s1 = t + r1 * h
-        u1 = x - self.sigma(s1) * (r1 * h).expm1() * eps
-        eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", u1, s1)
-        x_2 = (
-            x
-            - self.sigma(t_next) * h.expm1() * eps
-            - self.sigma(t_next) / (2 * r1) * h.expm1() * (eps_r1 - eps)
-        )
-        return x_2, eps_cache
+        with torch.amp.autocast(device_type="cuda"):
+            eps_cache = {} if eps_cache is None else eps_cache
+            h = t_next - t
+            eps, eps_cache = self.eps(eps_cache, "eps", x, t)
+            s1 = t + r1 * h
+            u1 = x - self.sigma(s1) * (r1 * h).expm1() * eps
+            eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", u1, s1)
+            x_2 = (
+                x
+                - self.sigma(t_next) * h.expm1() * eps
+                - self.sigma(t_next) / (2 * r1) * h.expm1() * (eps_r1 - eps)
+            )
+            return x_2, eps_cache
 
     def dpm_solver_3_step(self, x, t, t_next, r1=1 / 3, r2=2 / 3, eps_cache=None):
         """#### Perform a 3-step DPM-Solver update.
@@ -479,28 +481,29 @@ class DPMSolver(nn.Module):
         #### Returns:
             - `tuple`: A tuple containing the updated tensor and the updated cache.
         """
-        eps_cache = {} if eps_cache is None else eps_cache
-        h = t_next - t
-        eps, eps_cache = self.eps(eps_cache, "eps", x, t)
-        s1 = t + r1 * h
-        s2 = t + r2 * h
-        u1 = x - self.sigma(s1) * (r1 * h).expm1() * eps
-        eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", u1, s1)
-        u2 = (
-            x
-            - self.sigma(s2) * (r2 * h).expm1() * eps
-            - self.sigma(s2)
-            * (r2 / r1)
-            * ((r2 * h).expm1() / (r2 * h) - 1)
-            * (eps_r1 - eps)
-        )
-        eps_r2, eps_cache = self.eps(eps_cache, "eps_r2", u2, s2)
-        x_3 = (
-            x
-            - self.sigma(t_next) * h.expm1() * eps
-            - self.sigma(t_next) / r2 * (h.expm1() / h - 1) * (eps_r2 - eps)
-        )
-        return x_3, eps_cache
+        with torch.amp.autocast(device_type="cuda"):
+            eps_cache = {} if eps_cache is None else eps_cache
+            h = t_next - t
+            eps, eps_cache = self.eps(eps_cache, "eps", x, t)
+            s1 = t + r1 * h
+            s2 = t + r2 * h
+            u1 = x - self.sigma(s1) * (r1 * h).expm1() * eps
+            eps_r1, eps_cache = self.eps(eps_cache, "eps_r1", u1, s1)
+            u2 = (
+                x
+                - self.sigma(s2) * (r2 * h).expm1() * eps
+                - self.sigma(s2)
+                * (r2 / r1)
+                * ((r2 * h).expm1() / (r2 * h) - 1)
+                * (eps_r1 - eps)
+            )
+            eps_r2, eps_cache = self.eps(eps_cache, "eps_r2", u2, s2)
+            x_3 = (
+                x
+                - self.sigma(t_next) * h.expm1() * eps
+                - self.sigma(t_next) / r2 * (h.expm1() / h - 1) * (eps_r2 - eps)
+            )
+            return x_3, eps_cache
 
     def dpm_solver_adaptive(
         self,
@@ -560,47 +563,47 @@ class DPMSolver(nn.Module):
             h_init, pcoeff, icoeff, dcoeff, 1.5 if eta else order, accept_safety
         )
         info = {"steps": 0, "nfe": 0, "n_accept": 0, "n_reject": 0}
+        with torch.amp.autocast(device_type="cuda"):
+            while s < t_end - 1e-5 if forward else s > t_end + 1e-5:
+                if disable_gui is False:
+                    try:
+                        app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
+                    except:
+                        pass
+                    if app_instance.app.interrupt_flag is True:
+                        break
+                eps_cache = {}
+                t = (
+                    torch.minimum(t_end, s + pid.h)
+                    if forward
+                    else torch.maximum(t_end, s + pid.h)
+                )
+                t_, su = t, 0.0
 
-        while s < t_end - 1e-5 if forward else s > t_end + 1e-5:
-            if disable_gui is False:
-                try:
-                    app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
-                except:
-                    pass
-                if app_instance.app.interrupt_flag is True:
-                    break
-            eps_cache = {}
-            t = (
-                torch.minimum(t_end, s + pid.h)
-                if forward
-                else torch.maximum(t_end, s + pid.h)
-            )
-            t_, su = t, 0.0
+                eps, eps_cache = self.eps(eps_cache, "eps", x, s)
+                x - self.sigma(s) * eps
 
-            eps, eps_cache = self.eps(eps_cache, "eps", x, s)
-            x - self.sigma(s) * eps
-
-            x_low, eps_cache = self.dpm_solver_2_step(
-                x, s, t_, r1=1 / 3, eps_cache=eps_cache
-            )
-            x_high, eps_cache = self.dpm_solver_3_step(x, s, t_, eps_cache=eps_cache)
-            delta = torch.maximum(atol, rtol * torch.maximum(x_low.abs(), x_prev.abs()))
-            error = torch.linalg.norm((x_low - x_high) / delta) / x.numel() ** 0.5
-            accept = pid.propose_step(error)
-            if accept:
-                x_prev = x_low
-                x = x_high + su * s_noise * noise_sampler(self.sigma(s), self.sigma(t))
-                s = t
-                info["n_accept"] += 1
-            else:
-                info["n_reject"] += 1
-            info["nfe"] += order
-            info["steps"] += 1
-            if disable_gui is False:
-                if app_instance.app.previewer_var.get() is True:
-                    threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+                x_low, eps_cache = self.dpm_solver_2_step(
+                    x, s, t_, r1=1 / 3, eps_cache=eps_cache
+                )
+                x_high, eps_cache = self.dpm_solver_3_step(x, s, t_, eps_cache=eps_cache)
+                delta = torch.maximum(atol, rtol * torch.maximum(x_low.abs(), x_prev.abs()))
+                error = torch.linalg.norm((x_low - x_high) / delta) / x.numel() ** 0.5
+                accept = pid.propose_step(error)
+                if accept:
+                    x_prev = x_low
+                    x = x_high + su * s_noise * noise_sampler(self.sigma(s), self.sigma(t))
+                    s = t
+                    info["n_accept"] += 1
                 else:
-                    pass
+                    info["n_reject"] += 1
+                info["nfe"] += order
+                info["steps"] += 1
+                if disable_gui is False:
+                    if app_instance.app.previewer_var.get() is True:
+                        threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+                    else:
+                        pass
         if disable_gui is False:
             try:
                 app_instance.app.title("LightDiffusion")
