@@ -1,3 +1,5 @@
+import logging
+import math
 from typing import Any, Dict, List, Optional
 import torch.nn as nn
 import torch as th
@@ -779,8 +781,161 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     #### Returns:
         - `Dict[str, Any]`: The detected UNet configuration.
     """
-    from modules.NeuralNetwork.transformer import count_blocks, calculate_transformer_depth
     state_dict_keys = list(state_dict.keys())
+
+    if (
+        "{}joint_blocks.0.context_block.attn.qkv.weight".format(key_prefix)
+        in state_dict_keys
+    ):  # mmdit model
+        unet_config = {}
+        unet_config["in_channels"] = state_dict[
+            "{}x_embedder.proj.weight".format(key_prefix)
+        ].shape[1]
+        patch_size = state_dict["{}x_embedder.proj.weight".format(key_prefix)].shape[2]
+        unet_config["patch_size"] = patch_size
+        final_layer = "{}final_layer.linear.weight".format(key_prefix)
+        if final_layer in state_dict:
+            unet_config["out_channels"] = state_dict[final_layer].shape[0] // (
+                patch_size * patch_size
+            )
+
+        unet_config["depth"] = (
+            state_dict["{}x_embedder.proj.weight".format(key_prefix)].shape[0] // 64
+        )
+        unet_config["input_size"] = None
+        y_key = "{}y_embedder.mlp.0.weight".format(key_prefix)
+        if y_key in state_dict_keys:
+            unet_config["adm_in_channels"] = state_dict[y_key].shape[1]
+
+        context_key = "{}context_embedder.weight".format(key_prefix)
+        if context_key in state_dict_keys:
+            in_features = state_dict[context_key].shape[1]
+            out_features = state_dict[context_key].shape[0]
+            unet_config["context_embedder_config"] = {
+                "target": "torch.nn.Linear",
+                "params": {"in_features": in_features, "out_features": out_features},
+            }
+        num_patches_key = "{}pos_embed".format(key_prefix)
+        if num_patches_key in state_dict_keys:
+            num_patches = state_dict[num_patches_key].shape[1]
+            unet_config["num_patches"] = num_patches
+            unet_config["pos_embed_max_size"] = round(math.sqrt(num_patches))
+
+        rms_qk = "{}joint_blocks.0.context_block.attn.ln_q.weight".format(key_prefix)
+        if rms_qk in state_dict_keys:
+            unet_config["qk_norm"] = "rms"
+
+        unet_config["pos_embed_scaling_factor"] = None  # unused for inference
+        context_processor = "{}context_processor.layers.0.attn.qkv.weight".format(
+            key_prefix
+        )
+        if context_processor in state_dict_keys:
+            unet_config["context_processor_layers"] = transformer.count_blocks(
+                state_dict_keys,
+                "{}context_processor.layers.".format(key_prefix) + "{}.",
+            )
+        return unet_config
+
+    if "{}clf.1.weight".format(key_prefix) in state_dict_keys:  # stable cascade
+        unet_config = {}
+        text_mapper_name = "{}clip_txt_mapper.weight".format(key_prefix)
+        if text_mapper_name in state_dict_keys:
+            unet_config["stable_cascade_stage"] = "c"
+            w = state_dict[text_mapper_name]
+            if w.shape[0] == 1536:  # stage c lite
+                unet_config["c_cond"] = 1536
+                unet_config["c_hidden"] = [1536, 1536]
+                unet_config["nhead"] = [24, 24]
+                unet_config["blocks"] = [[4, 12], [12, 4]]
+            elif w.shape[0] == 2048:  # stage c full
+                unet_config["c_cond"] = 2048
+        elif "{}clip_mapper.weight".format(key_prefix) in state_dict_keys:
+            unet_config["stable_cascade_stage"] = "b"
+            w = state_dict["{}down_blocks.1.0.channelwise.0.weight".format(key_prefix)]
+            if w.shape[-1] == 640:
+                unet_config["c_hidden"] = [320, 640, 1280, 1280]
+                unet_config["nhead"] = [-1, -1, 20, 20]
+                unet_config["blocks"] = [[2, 6, 28, 6], [6, 28, 6, 2]]
+                unet_config["block_repeat"] = [[1, 1, 1, 1], [3, 3, 2, 2]]
+            elif w.shape[-1] == 576:  # stage b lite
+                unet_config["c_hidden"] = [320, 576, 1152, 1152]
+                unet_config["nhead"] = [-1, 9, 18, 18]
+                unet_config["blocks"] = [[2, 4, 14, 4], [4, 14, 4, 2]]
+                unet_config["block_repeat"] = [[1, 1, 1, 1], [2, 2, 2, 2]]
+        return unet_config
+
+    if (
+        "{}transformer.rotary_pos_emb.inv_freq".format(key_prefix) in state_dict_keys
+    ):  # stable audio dit
+        unet_config = {}
+        unet_config["audio_model"] = "dit1.0"
+        return unet_config
+
+    if (
+        "{}double_layers.0.attn.w1q.weight".format(key_prefix) in state_dict_keys
+    ):  # aura flow dit
+        unet_config = {}
+        unet_config["max_seq"] = state_dict[
+            "{}positional_encoding".format(key_prefix)
+        ].shape[1]
+        unet_config["cond_seq_dim"] = state_dict[
+            "{}cond_seq_linear.weight".format(key_prefix)
+        ].shape[1]
+        double_layers = transformer.count_blocks(
+            state_dict_keys, "{}double_layers.".format(key_prefix) + "{}."
+        )
+        single_layers = transformer.count_blocks(
+            state_dict_keys, "{}single_layers.".format(key_prefix) + "{}."
+        )
+        unet_config["n_double_layers"] = double_layers
+        unet_config["n_layers"] = double_layers + single_layers
+        return unet_config
+
+    if "{}mlp_t5.0.weight".format(key_prefix) in state_dict_keys:  # Hunyuan DiT
+        unet_config = {}
+        unet_config["image_model"] = "hydit"
+        unet_config["depth"] = transformer.count_blocks(
+            state_dict_keys, "{}blocks.".format(key_prefix) + "{}."
+        )
+        unet_config["hidden_size"] = state_dict[
+            "{}x_embedder.proj.weight".format(key_prefix)
+        ].shape[0]
+        if unet_config["hidden_size"] == 1408 and unet_config["depth"] == 40:  # DiT-g/2
+            unet_config["mlp_ratio"] = 4.3637
+        if state_dict["{}extra_embedder.0.weight".format(key_prefix)].shape[1] == 3968:
+            unet_config["size_cond"] = True
+            unet_config["use_style_cond"] = True
+            unet_config["image_model"] = "hydit1"
+        return unet_config
+
+    if (
+        "{}double_blocks.0.img_attn.norm.key_norm.scale".format(key_prefix)
+        in state_dict_keys
+    ):  # Flux
+        dit_config = {}
+        dit_config["image_model"] = "flux"
+        dit_config["in_channels"] = 16
+        dit_config["vec_in_dim"] = 768
+        dit_config["context_in_dim"] = 4096
+        dit_config["hidden_size"] = 3072
+        dit_config["mlp_ratio"] = 4.0
+        dit_config["num_heads"] = 24
+        dit_config["depth"] = transformer.count_blocks(
+            state_dict_keys, "{}double_blocks.".format(key_prefix) + "{}."
+        )
+        dit_config["depth_single_blocks"] = transformer.count_blocks(
+            state_dict_keys, "{}single_blocks.".format(key_prefix) + "{}."
+        )
+        dit_config["axes_dim"] = [16, 56, 56]
+        dit_config["theta"] = 10000
+        dit_config["qkv_bias"] = True
+        dit_config["guidance_embed"] = (
+            "{}guidance_in.in_layer.weight".format(key_prefix) in state_dict_keys
+        )
+        return dit_config
+
+    if "{}input_blocks.0.0.weight".format(key_prefix) not in state_dict_keys:
+        return None
 
     unet_config = {
         "use_checkpoint": False,
@@ -789,14 +944,21 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
         "legacy": False,
     }
 
-    "{}label_emb.0.0.weight".format(key_prefix)
-    unet_config["adm_in_channels"] = None
+    y_input = "{}label_emb.0.0.weight".format(key_prefix)
+    if y_input in state_dict_keys:
+        unet_config["num_classes"] = "sequential"
+        unet_config["adm_in_channels"] = state_dict[y_input].shape[1]
+    else:
+        unet_config["adm_in_channels"] = None
 
     model_channels = state_dict["{}input_blocks.0.0.weight".format(key_prefix)].shape[0]
     in_channels = state_dict["{}input_blocks.0.0.weight".format(key_prefix)].shape[1]
 
     out_key = "{}out.2.weight".format(key_prefix)
-    out_channels = state_dict[out_key].shape[0]
+    if out_key in state_dict:
+        out_channels = state_dict[out_key].shape[0]
+    else:
+        out_channels = 4
 
     num_res_blocks = []
     channel_mult = []
@@ -805,13 +967,16 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     context_dim = None
     use_linear_in_transformer = False
 
+    video_model = False
+    video_model_cross = False
+
     current_res = 1
     count = 0
 
     last_res_blocks = 0
     last_channel_mult = 0
 
-    input_block_count = count_blocks(
+    input_block_count = transformer.count_blocks(
         state_dict_keys, "{}input_blocks".format(key_prefix) + ".{}."
     )
     for count in range(input_block_count):
@@ -823,6 +988,8 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
         block_keys = sorted(
             list(filter(lambda a: a.startswith(prefix), state_dict_keys))
         )
+        if len(block_keys) == 0:
+            break
 
         block_keys_output = sorted(
             list(filter(lambda a: a.startswith(prefix_output), state_dict_keys))
@@ -835,7 +1002,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
             current_res *= 2
             last_res_blocks = 0
             last_channel_mult = 0
-            out = calculate_transformer_depth(
+            out = transformer.calculate_transformer_depth(
                 prefix_output, state_dict_keys, state_dict
             )
             if out is not None:
@@ -851,9 +1018,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
                     // model_channels
                 )
 
-                out = calculate_transformer_depth(
-                    prefix, state_dict_keys, state_dict
-                )
+                out = transformer.calculate_transformer_depth(prefix, state_dict_keys, state_dict)
                 if out is not None:
                     transformer_depth.append(out[0])
                     if context_dim is None:
@@ -865,7 +1030,7 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
 
             res_block_prefix = "{}0.in_layers.0.weight".format(prefix_output)
             if res_block_prefix in block_keys_output:
-                out = calculate_transformer_depth(
+                out = transformer.calculate_transformer_depth(
                     prefix_output, state_dict_keys, state_dict
                 )
                 if out is not None:
@@ -876,10 +1041,14 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     num_res_blocks.append(last_res_blocks)
     channel_mult.append(last_channel_mult)
     if "{}middle_block.1.proj_in.weight".format(key_prefix) in state_dict_keys:
-        transformer_depth_middle = count_blocks(
+        transformer_depth_middle = transformer.count_blocks(
             state_dict_keys,
             "{}middle_block.1.transformer_blocks.".format(key_prefix) + "{}",
         )
+    elif "{}middle_block.0.in_layers.0.weight".format(key_prefix) in state_dict_keys:
+        transformer_depth_middle = -1
+    else:
+        transformer_depth_middle = -2
 
     unet_config["in_channels"] = in_channels
     unet_config["out_channels"] = out_channels
@@ -892,8 +1061,18 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     unet_config["use_linear_in_transformer"] = use_linear_in_transformer
     unet_config["context_dim"] = context_dim
 
-    unet_config["use_temporal_resblock"] = False
-    unet_config["use_temporal_attention"] = False
+    if video_model:
+        unet_config["extra_ff_mix_layer"] = True
+        unet_config["use_spatial_context"] = True
+        unet_config["merge_strategy"] = "learned_with_images"
+        unet_config["merge_factor"] = 0.0
+        unet_config["video_kernel_size"] = [3, 1, 1]
+        unet_config["use_temporal_resblock"] = True
+        unet_config["use_temporal_attention"] = True
+        unet_config["disable_temporal_crossattention"] = not video_model_cross
+    else:
+        unet_config["use_temporal_resblock"] = False
+        unet_config["use_temporal_attention"] = False
 
     return unet_config
 
@@ -914,6 +1093,9 @@ def model_config_from_unet_config(unet_config: Dict[str, Any], state_dict: Optio
         if model_config.matches(unet_config, state_dict):
             return model_config(unet_config)
 
+    logging.error("no match {}".format(unet_config))
+    return None
+
 
 def model_config_from_unet(state_dict: Dict[str, torch.Tensor], unet_key_prefix: str, use_base_if_no_match: bool = False) -> Any:
     """#### Get the model configuration from a UNet state dictionary.
@@ -927,6 +1109,8 @@ def model_config_from_unet(state_dict: Dict[str, torch.Tensor], unet_key_prefix:
         - `Any`: The model configuration.
     """
     unet_config = detect_unet_config(state_dict, unet_key_prefix)
+    if unet_config is None:
+        return None
     model_config = model_config_from_unet_config(unet_config, state_dict)
     return model_config
 

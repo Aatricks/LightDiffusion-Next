@@ -1,4 +1,6 @@
 import collections
+import logging
+import numpy as np
 import torch
 from modules.sample import sampling_util
 
@@ -39,9 +41,12 @@ def pre_run_control(model: torch.nn.Module, conds: list) -> None:
     """
     s = model.model_sampling
     for t in range(len(conds)):
-        conds[t]
+        x = conds[t]
 
-        lambda a: s.percent_to_sigma(a)
+        def percent_to_timestep_function(a):
+            return s.percent_to_sigma(a)
+        if "control" in x:
+            x["control"].pre_run(model, percent_to_timestep_function)
 
 
 def apply_empty_x_to_equal_area(
@@ -55,16 +60,39 @@ def apply_empty_x_to_equal_area(
         - `name` (str): The name.
         - `uncond_fill_func` (callable): The unconditional fill function.
     """
+    cond_cnets = []
     cond_other = []
+    uncond_cnets = []
     uncond_other = []
     for t in range(len(conds)):
         x = conds[t]
         if "area" not in x:
-            cond_other.append((x, t))
+            if name in x and x[name] is not None:
+                cond_cnets.append(x[name])
+            else:
+                cond_other.append((x, t))
     for t in range(len(uncond)):
         x = uncond[t]
         if "area" not in x:
-            uncond_other.append((x, t))
+            if name in x and x[name] is not None:
+                uncond_cnets.append(x[name])
+            else:
+                uncond_other.append((x, t))
+
+    if len(uncond_cnets) > 0:
+        return
+
+    for x in range(len(cond_cnets)):
+        temp = uncond_other[x % len(uncond_other)]
+        o = temp[0]
+        if name in o and o[name] is not None:
+            n = o.copy()
+            n[name] = uncond_fill_func(cond_cnets, x)
+            uncond += [n]
+        else:
+            n = o.copy()
+            n[name] = uncond_fill_func(cond_cnets, x)
+            uncond[temp[1]] = n
 
 
 def get_area_and_mult(
@@ -129,6 +157,14 @@ def normal_scheduler(
     sigs += [0.0]
     return torch.FloatTensor(sigs)
 
+def simple_scheduler(model_sampling, steps):
+    s = model_sampling
+    sigs = []
+    ss = len(s.sigmas) / steps
+    for x in range(steps):
+        sigs += [float(s.sigmas[-(1 + int(x * ss))])]
+    sigs += [0.0]
+    return torch.FloatTensor(sigs)
 
 def calculate_sigmas(
     model_sampling: torch.nn.Module, scheduler_name: str, steps: int
@@ -151,6 +187,10 @@ def calculate_sigmas(
         )
     elif scheduler_name == "normal":
         sigmas = normal_scheduler(model_sampling, steps)
+    elif scheduler_name == "simple":
+        sigmas = simple_scheduler(model_sampling, steps)
+    else:
+        logging.error("error invalid scheduler {}".format(scheduler_name))
     return sigmas
 
 
@@ -168,10 +208,27 @@ def prepare_noise(
         - `torch.Tensor`: The prepared noise tensor.
     """
     generator = torch.manual_seed(seed)
-    return torch.randn(
-        latent_image.size(),
-        dtype=latent_image.dtype,
-        layout=latent_image.layout,
-        generator=generator,
-        device="cpu",
-    )
+    if noise_inds is None:
+        return torch.randn(
+            latent_image.size(),
+            dtype=latent_image.dtype,
+            layout=latent_image.layout,
+            generator=generator,
+            device="cpu",
+        )
+
+    unique_inds, inverse = np.unique(noise_inds, return_inverse=True)
+    noises = []
+    for i in range(unique_inds[-1] + 1):
+        noise = torch.randn(
+            [1] + list(latent_image.size())[1:],
+            dtype=latent_image.dtype,
+            layout=latent_image.layout,
+            generator=generator,
+            device="cpu",
+        )
+        if i in unique_inds:
+            noises.append(noise)
+    noises = [noises[i] for i in inverse]
+    noises = torch.cat(noises, axis=0)
+    return noises

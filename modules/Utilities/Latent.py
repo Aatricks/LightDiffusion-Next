@@ -1,6 +1,7 @@
 from typing import Dict, Tuple
 import torch
 from modules.Device import Device
+from modules.Utilities import util
 
 class LatentFormat:
     """#### Base class for latent formats.
@@ -87,3 +88,14 @@ class EmptyLatentImage:
             [batch_size, 4, height // 8, width // 8], device=self.device
         )
         return ({"samples": latent},)
+
+def fix_empty_latent_channels(model, latent_image):
+    latent_channels = model.get_model_object(
+        "latent_format"
+    ).latent_channels  # Resize the empty latent image so it has the right number of channels
+    if (
+        latent_channels != latent_image.shape[1]
+        and torch.count_nonzero(latent_image) == 0
+    ):
+        latent_image = util.repeat_to_batch_size(latent_image, latent_channels, dim=1)
+    return latent_image

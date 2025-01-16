@@ -68,11 +68,12 @@ def pipeline(
         last_seed = seed
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
-        checkpointloadersimple = Loader.CheckpointLoaderSimple()
-        checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
-            ckpt_name=ckpt
-        )
-        hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+        if not flux_enabled:
+            checkpointloadersimple = Loader.CheckpointLoaderSimple()
+            checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
+                ckpt_name=ckpt
+            )
+            hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
         cliptextencode = Clip.CLIPTextEncode()
         emptylatentimage = Latent.EmptyLatentImage()
         ksampler_instance = sampling.KSampler2()
@@ -162,8 +163,8 @@ def pipeline(
             Downloader.CheckAndDownloadFlux()
             with torch.inference_mode():
                 dualcliploadergguf = flux.DualCLIPLoaderGGUF()
-                emptylatentimage = flux.EmptyLatentImage()
-                vaeloader = flux.VAELoader()
+                emptylatentimage = Latent.EmptyLatentImage()
+                vaeloader = VariationalAE.VAELoader()
                 unetloadergguf = flux.UnetLoaderGGUF()
                 cliptextencodeflux = flux.CLIPTextEncodeFlux()
                 conditioningzeroout = flux.ConditioningZeroOut()
@@ -207,6 +208,7 @@ def pipeline(
                 vaedecode_8 = vaedecode.decode(
                     samples=ksampler_3[0],
                     vae=vaeloader_11[0],
+                    flux=True,
                 )
 
                 saveimage.save_images(

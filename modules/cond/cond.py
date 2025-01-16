@@ -309,7 +309,10 @@ def encode_model_conds(
         params = x.copy()
         params["device"] = device
         params["noise"] = noise
-        params["width"] = params.get("width", noise.shape[3] * 8)
+        default_width = None
+        if len(noise.shape) >= 4:  # TODO: 8 multiple should be set by the model
+            default_width = noise.shape[3] * 8
+        params["width"] = params.get("width", default_width)
         params["height"] = params.get("height", noise.shape[2] * 8)
         params["prompt_type"] = params.get("prompt_type", prompt_type)
         for k in kwargs:
@@ -325,6 +328,40 @@ def encode_model_conds(
         conds[t] = x
     return conds
 
+def resolve_areas_and_cond_masks_multidim(conditions, dims, device):
+    # We need to decide on an area outside the sampling loop in order to properly generate opposite areas of equal sizes.
+    # While we're doing this, we can also resolve the mask device and scaling for performance reasons
+    for i in range(len(conditions)):
+        c = conditions[i]
+        if "area" in c:
+            area = c["area"]
+            if area[0] == "percentage":
+                modified = c.copy()
+                a = area[1:]
+                a_len = len(a) // 2
+                area = ()
+                for d in range(len(dims)):
+                    area += (max(1, round(a[d] * dims[d])),)
+                for d in range(len(dims)):
+                    area += (round(a[d + a_len] * dims[d]),)
+
+                modified["area"] = area
+                c = modified
+                conditions[i] = c
+
+        if "mask" in c:
+            mask = c["mask"]
+            mask = mask.to(device=device)
+            modified = c.copy()
+            if len(mask.shape) == len(dims):
+                mask = mask.unsqueeze(0)
+            if mask.shape[1:] != dims:
+                mask = torch.nn.functional.interpolate(
+                    mask.unsqueeze(1), size=dims, mode="bilinear", align_corners=False
+                ).squeeze(1)
+
+            modified["mask"] = mask
+            conditions[i] = modified
 
 def process_conds(
     model: object,
@@ -349,6 +386,13 @@ def process_conds(
     #### Returns:
         - `dict`: The processed conditions.
     """
+    for k in conds:
+        conds[k] = conds[k][:]
+        resolve_areas_and_cond_masks_multidim(conds[k], noise.shape[2:], device)
+
+    for k in conds:
+        ksampler_util.calculate_start_end_timesteps(model, conds[k])
+
     if hasattr(model, "extra_conds"):
         for k in conds:
             conds[k] = encode_model_conds(

@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import torch
 from modules.Model import ModelPatcher
@@ -8,6 +8,8 @@ import torch.nn as nn
 from modules.Attention import Attention
 from modules.AutoEncoders import ResBlock
 from modules.Device import Device
+from modules.UltimateSDUpscale import image_util
+from modules.Utilities import util
 from modules.cond import cast
 
 
@@ -102,7 +104,7 @@ class DiagonalGaussianRegularizer(torch.nn.Module):
 class AutoencodingEngine(nn.Module):
     """#### Class representing an autoencoding engine."""
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, regularizer: nn.Module):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, regularizer: nn.Module, flux: bool = False):
         """#### Initialize the autoencoding engine.
 
         #### Args:
@@ -114,10 +116,14 @@ class AutoencodingEngine(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.regularization = regularizer
-        self.post_quant_conv = cast.disable_weight_init.Conv2d(4, 4, 1)
-        self.quant_conv = cast.disable_weight_init.Conv2d(8, 8, 1)
-
-    def decode(self, z: torch.Tensor, **decoder_kwargs) -> torch.Tensor:
+        if not flux:
+            self.post_quant_conv = cast.disable_weight_init.Conv2d(4, 4, 1)
+            self.quant_conv = cast.disable_weight_init.Conv2d(8, 8, 1)
+        
+    def get_last_layer(self):
+        return self.decoder.get_last_layer()
+    
+    def decode(self, z: torch.Tensor, flux:bool = False, **kwargs) -> torch.Tensor:
         """#### Decode the latent tensor.
 
         #### Args:
@@ -127,12 +133,20 @@ class AutoencodingEngine(nn.Module):
         #### Returns:
             - `torch.Tensor`: The decoded tensor.
         """
+        if flux:
+            x = self.decoder(z, **kwargs)
+            return x
         dec = self.post_quant_conv(z)
-        dec = self.decoder(dec, **decoder_kwargs)
+        dec = self.decoder(dec, **kwargs)
         return dec
 
+
     def encode(
-        self, x: torch.Tensor, return_reg_log: bool = False
+        self,
+        x: torch.Tensor,
+        return_reg_log: bool = False,
+        unregularized: bool = False,
+        flux: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
         """#### Encode the input tensor.
 
@@ -144,10 +158,14 @@ class AutoencodingEngine(nn.Module):
             - `Union[torch.Tensor, Tuple[torch.Tensor, dict]]`: The encoded tensor and optionally the regularization log.
         """
         z = self.encoder(x)
-        z = self.quant_conv(z)
+        if not flux:
+            z = self.quant_conv(z)
+        if unregularized:
+            return z, dict()
         z, reg_log = self.regularization(z)
+        if return_reg_log:
+            return z, reg_log
         return z
-
 
 ops = cast.disable_weight_init
 
@@ -337,6 +355,15 @@ class Encoder(nn.Module):
             stride=1,
             padding=1,
         )
+        self._device = torch.device("cpu")
+        self._dtype = torch.float32
+
+    def to(self, device=None, dtype=None):
+        if device is not None:
+            self._device = device
+        if dtype is not None:
+            self._dtype = dtype
+        return super().to(device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """#### Forward pass for the encoder.
@@ -347,6 +374,8 @@ class Encoder(nn.Module):
         #### Returns:
             - `torch.Tensor`: The encoded tensor.
         """
+        if x.device != self._device or x.dtype != self._dtype:
+            self.to(device=x.device, dtype=x.dtype)
         # timestep embedding
         temb = None
         # downsampling
@@ -534,6 +563,7 @@ class VAE:
         device: Optional[torch.device] = None,
         config: Optional[dict] = None,
         dtype: Optional[torch.dtype] = None,
+        flux: Optional[bool] = False,
     ):
         """#### Initialize the VAE.
 
@@ -554,13 +584,17 @@ class VAE:
         self.downscale_ratio = 8
         self.upscale_ratio = 8
         self.latent_channels = 4
+        self.output_channels = 3
         self.process_input = lambda image: image * 2.0 - 1.0
         self.process_output = lambda image: torch.clamp(
             (image + 1.0) / 2.0, min=0.0, max=1.0
         )
+        self.working_dtypes = [torch.bfloat16, torch.float32]
+
         if config is None:
-            config = {
-                "encoder": {
+            if "decoder.conv_in.weight" in sd:
+                # default SD1.x/SD2.x VAE parameters
+                ddconfig = {
                     "double_z": True,
                     "z_channels": 4,
                     "resolution": 256,
@@ -571,29 +605,39 @@ class VAE:
                     "num_res_blocks": 2,
                     "attn_resolutions": [],
                     "dropout": 0.0,
-                },
-                "decoder": {
-                    "double_z": True,
-                    "z_channels": 4,
-                    "resolution": 256,
-                    "in_channels": 3,
-                    "out_ch": 3,
-                    "ch": 128,
-                    "ch_mult": [1, 2, 4, 4],
-                    "num_res_blocks": 2,
-                    "attn_resolutions": [],
-                    "dropout": 0.0,
-                },
-                "regularizer": {"sample": True},
-            }
-            self.first_stage_model = AutoencodingEngine(
-                Encoder(**config["encoder"]),
-                Decoder(**config["decoder"]),
-                DiagonalGaussianRegularizer(**config["regularizer"]),
-            )
+                }
+
+                if (
+                    "encoder.down.2.downsample.conv.weight" not in sd
+                    and "decoder.up.3.upsample.conv.weight" not in sd
+                ):  # Stable diffusion x4 upscaler VAE
+                    ddconfig["ch_mult"] = [1, 2, 4]
+                    self.downscale_ratio = 4
+                    self.upscale_ratio = 4
+
+                self.latent_channels = ddconfig["z_channels"] = sd[
+                    "decoder.conv_in.weight"
+                ].shape[1]
+                # Initialize model
+                self.first_stage_model = AutoencodingEngine(
+                    Encoder(**ddconfig),
+                    Decoder(**ddconfig), 
+                    DiagonalGaussianRegularizer(),
+                    flux=flux
+                )
+            else:
+                logging.warning("WARNING: No VAE weights detected, VAE not initalized.")
+                self.first_stage_model = None
+                return
+        
         self.first_stage_model = self.first_stage_model.eval()
 
-        self.first_stage_model.load_state_dict(sd, strict=False)
+        m, u = self.first_stage_model.load_state_dict(sd, strict=False)
+        if len(m) > 0:
+            logging.warning("Missing VAE keys {}".format(m))
+
+        if len(u) > 0:
+            logging.debug("Leftover VAE keys {}".format(u))
 
         if device is None:
             device = Device.vae_device()
@@ -610,6 +654,12 @@ class VAE:
             load_device=self.device,
             offload_device=offload_device,
         )
+        logging.debug(
+            "VAE load device: {}, offload device: {}, dtype: {}".format(
+                self.device, offload_device, self.vae_dtype
+            )
+        )
+
 
     def vae_encode_crop_pixels(self, pixels: torch.Tensor) -> torch.Tensor:
         """#### Crop the input pixels to be compatible with the VAE.
@@ -624,7 +674,7 @@ class VAE:
         (pixels.shape[2] // self.downscale_ratio) * self.downscale_ratio
         return pixels
 
-    def decode(self, samples_in: torch.Tensor) -> torch.Tensor:
+    def decode(self, samples_in: torch.Tensor, flux:bool = False) -> torch.Tensor:
         """#### Decode the latent samples to pixel samples.
 
         #### Args:
@@ -653,12 +703,13 @@ class VAE:
                 samples_in[x : x + batch_number].to(self.vae_dtype).to(self.device)
             )
             pixel_samples[x : x + batch_number] = self.process_output(
-                self.first_stage_model.decode(samples).to(self.output_device).float()
+                self.first_stage_model.decode(samples, flux=flux).to(self.output_device).float()
             )
         pixel_samples = pixel_samples.to(self.output_device).movedim(1, -1)
         return pixel_samples
 
-    def encode(self, pixel_samples: torch.Tensor) -> torch.Tensor:
+
+    def encode(self, pixel_samples: torch.Tensor, flux:bool = False) -> torch.Tensor:
         """#### Encode the pixel samples to latent samples.
 
         #### Args:
@@ -690,16 +741,19 @@ class VAE:
                 .to(self.device)
             )
             samples[x : x + batch_number] = (
-                self.first_stage_model.encode(pixels_in).to(self.output_device).float()
+                self.first_stage_model.encode(pixels_in, flux=flux).to(self.output_device).float()
             )
 
         return samples
+
+    def get_sd(self):
+        return self.first_stage_model.state_dict()
 
 
 class VAEDecode:
     """#### Class for decoding VAE samples."""
 
-    def decode(self, vae: VAE, samples: dict) -> Tuple[torch.Tensor]:
+    def decode(self, vae: VAE, samples: dict, flux:bool = False) -> Tuple[torch.Tensor]:
         """#### Decode the VAE samples.
 
         #### Args:
@@ -709,13 +763,13 @@ class VAEDecode:
         #### Returns:
             - `Tuple[torch.Tensor]`: The decoded samples.
         """
-        return (vae.decode(samples["samples"]),)
+        return (vae.decode(samples["samples"], flux=flux),)
 
 
 class VAEEncode:
     """#### Class for encoding VAE samples."""
 
-    def encode(self, vae: VAE, pixels: torch.Tensor) -> Tuple[dict]:
+    def encode(self, vae: VAE, pixels: torch.Tensor, flux:bool = False) -> Tuple[dict]:
         """#### Encode the VAE samples.
 
         #### Args:
@@ -725,5 +779,19 @@ class VAEEncode:
         #### Returns:
             - `Tuple[dict]`: The encoded samples dictionary.
         """
-        t = vae.encode(pixels[:, :, :, :3])
+        t = vae.encode(pixels[:, :, :, :3], flux=flux)
         return ({"samples": t},)
+
+
+class VAELoader:
+    # TODO: scale factor?
+    def load_vae(self, vae_name):
+        if vae_name in ["taesd", "taesdxl", "taesd3", "taef1"]:
+            sd = self.load_taesd(vae_name)
+        else:
+            vae_path = "./_internal/vae/" + vae_name
+            sd = util.load_torch_file(vae_path)
+        vae = VAE(sd=sd)
+        return (vae,)
+
+
