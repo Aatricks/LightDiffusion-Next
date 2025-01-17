@@ -4,6 +4,7 @@ import uuid
 
 import torch
 
+from modules.NeuralNetwork import unet
 from modules.Utilities import util
 from modules.Device import Device
 
@@ -676,3 +677,65 @@ class ModelPatcher:
             full_load=full_load,
         )
         return self.model.model_loaded_weight_memory - current_used
+
+def unet_prefix_from_state_dict(state_dict):
+    candidates = [
+        "model.diffusion_model.",  # ldm/sgm models
+        "model.model.",  # audio models
+    ]
+    counts = {k: 0 for k in candidates}
+    for k in state_dict:
+        for c in candidates:
+            if k.startswith(c):
+                counts[c] += 1
+                break
+
+    top = max(counts, key=counts.get)
+    if counts[top] > 5:
+        return top
+    else:
+        return "model."  # aura flow and others
+
+def load_diffusion_model_state_dict(
+    sd, model_options={}
+):  # load unet in diffusers or regular format
+    dtype = model_options.get("dtype", None)
+
+    # Allow loading unets from checkpoint files
+    diffusion_model_prefix = unet_prefix_from_state_dict(sd)
+    temp_sd = util.state_dict_prefix_replace(
+        sd, {diffusion_model_prefix: ""}, filter_keys=True
+    )
+    if len(temp_sd) > 0:
+        sd = temp_sd
+
+    parameters = util.calculate_parameters(sd)
+    load_device = Device.get_torch_device()
+    model_config = unet.model_config_from_unet(sd, "")
+
+    if model_config is not None:
+        new_sd = sd
+
+    offload_device = Device.unet_offload_device()
+    if dtype is None:
+        unet_dtype2 = Device.unet_dtype(
+            model_params=parameters,
+            supported_dtypes=model_config.supported_inference_dtypes,
+        )
+    else:
+        unet_dtype2 = dtype
+
+    manual_cast_dtype = Device.unet_manual_cast(
+        unet_dtype2, load_device, model_config.supported_inference_dtypes
+    )
+    model_config.set_inference_dtype(unet_dtype2, manual_cast_dtype)
+    model_config.custom_operations = model_options.get(
+        "custom_operations", model_config.custom_operations
+    )
+    model = model_config.get_model(new_sd, "")
+    model = model.to(offload_device)
+    model.load_model_weights(new_sd, "")
+    left_over = sd.keys()
+    if len(left_over) > 0:
+        logging.info("left over keys in unet: {}".format(left_over))
+    return ModelPatcher(model, load_device=load_device, offload_device=offload_device)

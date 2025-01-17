@@ -1,9 +1,13 @@
 from enum import Enum
+import logging
 import torch
 
 from modules.Model import ModelPatcher
 from modules.Attention import Attention
 from modules.Device import Device
+from modules.SD15 import SDToken
+from modules.Utilities import util
+from modules.clip import FluxClip
 from modules.cond import cast
 
 
@@ -284,166 +288,6 @@ class CLIPEmbeddings(torch.nn.Module):
         )
 
 
-class CLIPTextModel_(torch.nn.Module):
-    def __init__(
-        self,
-        config_dict: dict,
-        dtype: torch.dtype,
-        device: torch.device,
-        operations: object,
-    ):
-        """#### Initialize the CLIPTextModel_ module.
-
-        #### Args:
-            - `config_dict` (dict): The configuration dictionary.
-            - `dtype` (torch.dtype): The data type.
-            - `device` (torch.device): The device to use.
-            - `operations` (object): The operations object.
-        """
-        num_layers = config_dict["num_hidden_layers"]
-        embed_dim = config_dict["hidden_size"]
-        heads = config_dict["num_attention_heads"]
-        intermediate_size = config_dict["intermediate_size"]
-        intermediate_activation = config_dict["hidden_act"]
-        num_positions = config_dict["max_position_embeddings"]
-        self.eos_token_id = config_dict["eos_token_id"]
-
-        super().__init__()
-        self.embeddings = CLIPEmbeddings(
-            embed_dim,
-            num_positions=num_positions,
-            dtype=dtype,
-            device=device,
-            operations=operations,
-        )
-        self.encoder = CLIPEncoder(
-            num_layers,
-            embed_dim,
-            heads,
-            intermediate_size,
-            intermediate_activation,
-            dtype,
-            device,
-            operations,
-        )
-        self.final_layer_norm = operations.LayerNorm(
-            embed_dim, dtype=dtype, device=device
-        )
-
-    def forward(
-        self,
-        input_tokens: torch.Tensor,
-        attention_mask: torch.Tensor = None,
-        intermediate_output: int = None,
-        final_layer_norm_intermediate: bool = True,
-        dtype: torch.dtype = torch.float32,
-    ) -> tuple:
-        """#### Forward pass for the CLIPTextModel_ module.
-
-        #### Args:
-            - `input_tokens` (torch.Tensor): The input tokens.
-            - `attention_mask` (torch.Tensor, optional): The attention mask. Defaults to None.
-            - `intermediate_output` (int, optional): The intermediate output layer. Defaults to None.
-            - `final_layer_norm_intermediate` (bool, optional): Whether to apply final layer normalization to the intermediate output. Defaults to True.
-
-        #### Returns:
-            - `tuple`: The output tensor, the intermediate output tensor, and the pooled output tensor.
-        """
-        x = self.embeddings(input_tokens, dtype=dtype)
-        mask = None
-        if attention_mask is not None:
-            mask = 1.0 - attention_mask.to(x.dtype).reshape(
-                (attention_mask.shape[0], 1, -1, attention_mask.shape[-1])
-            ).expand(
-                attention_mask.shape[0],
-                1,
-                attention_mask.shape[-1],
-                attention_mask.shape[-1],
-            )
-            mask = mask.masked_fill(mask.to(torch.bool), float("-inf"))
-
-        causal_mask = (
-            torch.empty(x.shape[1], x.shape[1], dtype=x.dtype, device=x.device)
-            .fill_(float("-inf"))
-            .triu_(1)
-        )
-        if mask is not None:
-            mask += causal_mask
-        else:
-            mask = causal_mask
-
-        x, i = self.encoder(x, mask=mask, intermediate_output=intermediate_output)
-        x = self.final_layer_norm(x)
-        if i is not None and final_layer_norm_intermediate:
-            i = self.final_layer_norm(i)
-
-        pooled_output = x[
-            torch.arange(x.shape[0], device=x.device),
-            (
-                torch.round(input_tokens).to(dtype=torch.int, device=x.device)
-                == self.eos_token_id
-            )
-            .int()
-            .argmax(dim=-1),
-        ]
-        return x, i, pooled_output
-
-
-class CLIPTextModel(torch.nn.Module):
-    def __init__(
-        self,
-        config_dict: dict,
-        dtype: torch.dtype,
-        device: torch.device,
-        operations: object,
-    ):
-        """#### Initialize the CLIPTextModel module.
-
-        #### Args:
-            - `config_dict` (dict): The configuration dictionary.
-            - `dtype` (torch.dtype): The data type.
-            - `device` (torch.device): The device to use.
-            - `operations` (object): The operations object.
-        """
-        super().__init__()
-        self.num_layers = config_dict["num_hidden_layers"]
-        self.text_model = CLIPTextModel_(config_dict, dtype, device, operations)
-        embed_dim = config_dict["hidden_size"]
-        self.text_projection = operations.Linear(
-            embed_dim, embed_dim, bias=False, dtype=dtype, device=device
-        )
-        self.dtype = dtype
-
-    def get_input_embeddings(self) -> torch.nn.Embedding:
-        """#### Get the input embeddings.
-
-        #### Returns:
-            - `torch.nn.Embedding`: The input embeddings.
-        """
-        return self.text_model.embeddings.token_embedding
-
-    def set_input_embeddings(self, embeddings: torch.nn.Embedding) -> None:
-        """#### Set the input embeddings.
-
-        #### Args:
-            - `embeddings` (torch.nn.Embedding): The input embeddings.
-        """
-        self.text_model.embeddings.token_embedding = embeddings
-
-    def forward(self, *args, **kwargs) -> tuple:
-        """#### Forward pass for the CLIPTextModel module.
-
-        #### Args:
-            - `*args`: Variable length argument list.
-            - `**kwargs`: Arbitrary keyword arguments.
-
-        #### Returns:
-            - `tuple`: The output tensors.
-        """
-        x = self.text_model(*args, **kwargs)
-        out = self.text_projection(x[2])
-        return (x[0], x[1], out, x[2])
-
 
 class CLIP:
     def __init__(
@@ -468,20 +312,53 @@ class CLIP:
         clip = target.clip
         tokenizer = target.tokenizer
 
-        load_device = Device.text_encoder_device()
-        offload_device = Device.text_encoder_offload_device()
-        params["device"] = offload_device
-        params["dtype"] = Device.text_encoder_dtype(load_device)
+        load_device = model_options.get("load_device", Device.text_encoder_device())
+        offload_device = model_options.get(
+            "offload_device", Device.text_encoder_offload_device()
+        )
+        dtype = model_options.get("dtype", None)
+        if dtype is None:
+            dtype = Device.text_encoder_dtype(load_device)
+
+        params["dtype"] = dtype
+        params["device"] = model_options.get(
+            "initial_device",
+            Device.text_encoder_initial_device(
+                load_device, offload_device, parameters * Device.dtype_size(dtype)
+            ),
+        )
+        params["model_options"] = model_options
 
         self.cond_stage_model = clip(**(params))
 
-        self.tokenizer = tokenizer(embedding_directory=embedding_directory)
+        # for dt in self.cond_stage_model.dtypes:
+        #     if not Device.supports_cast(load_device, dt):
+        #         load_device = offload_device
+        #         if params["device"] != offload_device:
+        #             self.cond_stage_model.to(offload_device)
+        #             logging.warning("Had to shift TE back.")
+
+        try:
+            self.tokenizer = tokenizer(
+                embedding_directory=embedding_directory, tokenizer_data=tokenizer_data
+            )
+        except TypeError:
+            self.tokenizer = tokenizer(
+                embedding_directory=embedding_directory
+            )
         self.patcher = ModelPatcher.ModelPatcher(
             self.cond_stage_model,
             load_device=load_device,
             offload_device=offload_device,
         )
+        if params["device"] == load_device:
+            Device.load_models_gpu([self.patcher], force_full_load=True, flux_enabled=True)
         self.layer_idx = None
+        logging.debug(
+            "CLIP model load device: {}, offload device: {}, current: {}".format(
+                load_device, offload_device, params["device"]
+            )
+        )
 
     def clone(self) -> "CLIP":
         """#### Clone the CLIP object.
@@ -528,7 +405,7 @@ class CLIP:
         """
         return self.tokenizer.tokenize_with_weights(text, return_word_ids)
 
-    def encode_from_tokens(self, tokens: list, return_pooled: bool = False, flux_enabled:bool = False) -> tuple:
+    def encode_from_tokens(self, tokens: list, return_pooled: bool = False, return_dict: bool = False, flux_enabled:bool = False) -> tuple:
         """#### Encode the input tokens.
 
         #### Args:
@@ -540,12 +417,23 @@ class CLIP:
             - `tuple`: The encoded tokens and the pooled output.
         """
         self.cond_stage_model.reset_clip_options()
+
         if self.layer_idx is not None:
             self.cond_stage_model.set_clip_options({"layer": self.layer_idx})
+
         if return_pooled == "unprojected":
             self.cond_stage_model.set_clip_options({"projected_pooled": False})
+
         self.load_model(flux_enabled=flux_enabled)
-        cond, pooled = self.cond_stage_model.encode_token_weights(tokens)
+        o = self.cond_stage_model.encode_token_weights(tokens)
+        cond, pooled = o[:2]
+        if return_dict:
+            out = {"cond": cond, "pooled_output": pooled}
+            if len(o) > 2:
+                for k in o[2]:
+                    out[k] = o[2][k]
+            return out
+
         if return_pooled:
             return cond, pooled
         return cond
@@ -557,7 +445,10 @@ class CLIP:
             - `sd` (dict): The state dictionary.
             - `full_model` (bool, optional): Whether to load the full model. Defaults to False.
         """
-        return self.cond_stage_model.load_state_dict(sd, strict=False)
+        if full_model:
+            return self.cond_stage_model.load_state_dict(sd, strict=False)
+        else:
+            return self.cond_stage_model.load_sd(sd)
 
     def load_model(self, flux_enabled:bool = False) -> ModelPatcher:
         """#### Load the model.
@@ -567,12 +458,82 @@ class CLIP:
         """
         Device.load_model_gpu(self.patcher, flux_enabled=flux_enabled)
         return self.patcher
+    
+    def encode(self, text):
+        tokens = self.tokenize(text)
+        return self.encode_from_tokens(tokens)
+
+    def get_sd(self):
+        sd_clip = self.cond_stage_model.state_dict()
+        sd_tokenizer = self.tokenizer.state_dict()
+        for k in sd_tokenizer:
+            sd_clip[k] = sd_tokenizer[k]
+        return sd_clip
+
+    def get_key_patches(self):
+        return self.patcher.get_key_patches()
 
 
 class CLIPType(Enum):
     STABLE_DIFFUSION = 1
-    STABLE_CASCADE = 2
+    SD3 = 3
+    FLUX = 6
 
+def load_text_encoder_state_dicts(
+    state_dicts=[],
+    embedding_directory=None,
+    clip_type=CLIPType.STABLE_DIFFUSION,
+    model_options={},
+):
+    clip_data = state_dicts
+
+    class EmptyClass:
+        pass
+
+    for i in range(len(clip_data)):
+        if "text_projection" in clip_data[i]:
+            clip_data[i]["text_projection.weight"] = clip_data[i][
+                "text_projection"
+            ].transpose(
+                0, 1
+            )  # old models saved with the CLIPSave node
+
+    clip_target = EmptyClass()
+    clip_target.params = {}
+    if len(clip_data) == 2:
+        if clip_type == CLIPType.FLUX:
+            weight_name = "encoder.block.23.layer.1.DenseReluDense.wi_1.weight"
+            weight = clip_data[0].get(weight_name, clip_data[1].get(weight_name, None))
+            dtype_t5 = None
+            if weight is not None:
+                dtype_t5 = weight.dtype
+
+            clip_target.clip = FluxClip.flux_clip(dtype_t5=dtype_t5)
+            clip_target.tokenizer = FluxClip.FluxTokenizer
+
+    parameters = 0
+    tokenizer_data = {}
+    for c in clip_data:
+        parameters += util.calculate_parameters(c)
+        tokenizer_data, model_options = SDToken.model_options_long_clip(
+            c, tokenizer_data, model_options
+        )
+
+    clip = CLIP(
+        clip_target,
+        embedding_directory=embedding_directory,
+        parameters=parameters,
+        tokenizer_data=tokenizer_data,
+        model_options=model_options,
+    )
+    for c in clip_data:
+        m, u = clip.load_sd(c)
+        if len(m) > 0:
+            logging.warning("clip missing: {}".format(m))
+
+        if len(u) > 0:
+            logging.debug("clip unexpected: {}".format(u))
+    return clip
 
 class CLIPTextEncode:
     def encode(self, clip: CLIP, text: str, flux_enabled: bool = False) -> tuple:

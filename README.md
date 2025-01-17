@@ -99,7 +99,7 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 
 For a GUI-free experience, use the pipeline:  
 ```bash  
-pipeline.bat <prompt> <width> <height>  
+pipeline.bat <prompt> <width> <height> <num_images>
 ```  
 Use `pipeline.bat -h` for more options.  
 

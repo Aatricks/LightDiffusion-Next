@@ -3,8 +3,9 @@ import logging
 import numbers
 import torch
 from modules.Device import Device
-from modules.clip import Clip
 from modules.cond import cast
+from modules.clip.CLIPTextModel import CLIPTextModel
+
 
 
 def gen_empty_tokens(special_tokens: dict, length: int) -> list:
@@ -110,7 +111,7 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         layer_idx: int = None,
         textmodel_json_config: str = None,
         dtype: torch.dtype = None,
-        model_class: type = Clip.CLIPTextModel,
+        model_class: type = CLIPTextModel,
         special_tokens: dict = {"start": 49406, "end": 49407, "pad": 49407},
         layer_norm_hidden_state: bool = True,
         enable_attention_masks: bool = False,
@@ -130,7 +131,7 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
             - `layer_idx` (int, optional): The index of the layer. Defaults to None.
             - `textmodel_json_config` (str, optional): The path to the JSON config file. Defaults to None.
             - `dtype` (torch.dtype, optional): The data type. Defaults to None.
-            - `model_class` (type, optional): The model class. Defaults to Clip.CLIPTextModel.
+            - `model_class` (type, optional): The model class. Defaults to CLIPTextModel.
             - `special_tokens` (dict, optional): The special tokens. Defaults to {"start": 49406, "end": 49407, "pad": 49407}.
             - `layer_norm_hidden_state` (bool, optional): Whether to normalize the hidden state. Defaults to True.
             - `enable_attention_masks` (bool, optional): Whether to enable attention masks. Defaults to False.

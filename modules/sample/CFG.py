@@ -1,6 +1,5 @@
 import math
 import torch
-from modules.Model import ModelPatcher
 from modules.cond import cond, cond_util
 
 
@@ -129,8 +128,7 @@ def sampling_function(
 
 class CFGGuider:
     """#### Class for guiding the sampling process with CFG."""
-
-    def __init__(self, model_patcher: ModelPatcher.ModelPatcher) -> None:
+    def __init__(self, model_patcher) -> None:
         """#### Initialize the CFGGuider.
 
         #### Args:

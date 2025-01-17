@@ -25,6 +25,7 @@ from modules.Utilities import Enhancer, Latent
 from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale
 from modules.hidiffusion import msw_msa_attention
 from modules.Flux import flux
+from modules.Quantize import Quantizer
 
 torch._dynamo.config.suppress_errors = True
 torch.compiler.allow_in_graph
@@ -162,12 +163,12 @@ def pipeline(
         elif flux_enabled:
             Downloader.CheckAndDownloadFlux()
             with torch.inference_mode():
-                dualcliploadergguf = flux.DualCLIPLoaderGGUF()
+                dualcliploadergguf = Quantizer.DualCLIPLoaderGGUF()
                 emptylatentimage = Latent.EmptyLatentImage()
                 vaeloader = VariationalAE.VAELoader()
-                unetloadergguf = flux.UnetLoaderGGUF()
-                cliptextencodeflux = flux.CLIPTextEncodeFlux()
-                conditioningzeroout = flux.ConditioningZeroOut()
+                unetloadergguf = Quantizer.UnetLoaderGGUF()
+                cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
+                conditioningzeroout = Quantizer.ConditioningZeroOut()
                 ksampler = flux.KSampler()
                 unetloadergguf_10 = unetloadergguf.load_unet(
                     unet_name="flux1-dev-Q8_0.gguf"

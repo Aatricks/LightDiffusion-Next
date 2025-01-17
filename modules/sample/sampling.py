@@ -442,6 +442,22 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
             )
 
         sampler_function = euler_ancestral_function
+    
+    elif sampler_name == "euler":
+
+        def euler_function(model, noise, sigmas, extra_args, callback, disable, pipeline=False):
+            return samplers.sample_euler(
+                model,
+                noise,
+                sigmas,
+                extra_args=extra_args,
+                callback=callback,
+                disable=disable,
+                pipeline=pipeline,
+                **extra_options,
+            )
+
+        sampler_function = euler_function
 
     return KSAMPLER(sampler_function, extra_options, inpaint_options)
 
