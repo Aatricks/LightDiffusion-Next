@@ -59,6 +59,71 @@ class SD15(LatentFormat):
             [-0.2120, -0.2616, -0.7177],
         ]
         self.taesd_decoder_name = "taesd_decoder"
+        
+class SD3(LatentFormat):
+    latent_channels = 16
+
+    def __init__(self):
+        self.scale_factor = 1.5305
+        self.shift_factor = 0.0609
+        self.latent_rgb_factors = [
+            [-0.0645, 0.0177, 0.1052],
+            [0.0028, 0.0312, 0.0650],
+            [0.1848, 0.0762, 0.0360],
+            [0.0944, 0.0360, 0.0889],
+            [0.0897, 0.0506, -0.0364],
+            [-0.0020, 0.1203, 0.0284],
+            [0.0855, 0.0118, 0.0283],
+            [-0.0539, 0.0658, 0.1047],
+            [-0.0057, 0.0116, 0.0700],
+            [-0.0412, 0.0281, -0.0039],
+            [0.1106, 0.1171, 0.1220],
+            [-0.0248, 0.0682, -0.0481],
+            [0.0815, 0.0846, 0.1207],
+            [-0.0120, -0.0055, -0.0867],
+            [-0.0749, -0.0634, -0.0456],
+            [-0.1418, -0.1457, -0.1259],
+        ]
+        self.taesd_decoder_name = "taesd3_decoder"
+
+    def process_in(self, latent):
+        return (latent - self.shift_factor) * self.scale_factor
+
+    def process_out(self, latent):
+        return (latent / self.scale_factor) + self.shift_factor
+
+
+class Flux1(SD3):
+    latent_channels = 16
+
+    def __init__(self):
+        self.scale_factor = 0.3611
+        self.shift_factor = 0.1159
+        self.latent_rgb_factors = [
+            [-0.0404, 0.0159, 0.0609],
+            [0.0043, 0.0298, 0.0850],
+            [0.0328, -0.0749, -0.0503],
+            [-0.0245, 0.0085, 0.0549],
+            [0.0966, 0.0894, 0.0530],
+            [0.0035, 0.0399, 0.0123],
+            [0.0583, 0.1184, 0.1262],
+            [-0.0191, -0.0206, -0.0306],
+            [-0.0324, 0.0055, 0.1001],
+            [0.0955, 0.0659, -0.0545],
+            [-0.0504, 0.0231, -0.0013],
+            [0.0500, -0.0008, -0.0088],
+            [0.0982, 0.0941, 0.0976],
+            [-0.1233, -0.0280, -0.0897],
+            [-0.0005, -0.0530, -0.0020],
+            [-0.1273, -0.0932, -0.0680],
+        ]
+        self.taesd_decoder_name = "taef1_decoder"
+
+    def process_in(self, latent):
+        return (latent - self.shift_factor) * self.scale_factor
+
+    def process_out(self, latent):
+        return (latent / self.scale_factor) + self.shift_factor
 
 class EmptyLatentImage:
     """#### A class to generate an empty latent image.
