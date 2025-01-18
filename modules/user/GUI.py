@@ -424,7 +424,7 @@ class App(tk.Tk):
             self.ultimatesdupscale,
         )
 
-    def _generate_image(self) -> None:
+    def _generate_image(self) -> None: # TODO: add Flux to the GUI
         """Generate an image based on the provided prompt and settings."""
         self.display_most_recent_image_flag = False
         prompt = self.prompt_entry.get("1.0", tk.END)

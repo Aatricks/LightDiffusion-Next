@@ -5,7 +5,7 @@ import torch.nn as nn
 import math
 import torch
 
-from modules.Utilities import util
+from modules.Utilities import Latent, util
 from modules.Device import Device
 from modules.sample import ksampler_util, samplers, sampling_util
 from modules.sample import CFG
@@ -516,6 +516,7 @@ def sample(
     disable_pbar: bool = False,
     seed: int = None,
     pipeline: bool = False,
+    flux: bool = False,
 ) -> torch.Tensor:
     """#### Sample using the given parameters.
 
@@ -539,7 +540,7 @@ def sample(
     #### Returns:
         - `torch.Tensor`: The sampled tensor.
     """
-    cfg_guider = CFG.CFGGuider(model)
+    cfg_guider = CFG.CFGGuider(model, flux=flux)
     cfg_guider.set_conds(positive, negative)
     cfg_guider.set_cfg(cfg)
     return cfg_guider.sample(
@@ -629,9 +630,12 @@ class KSampler1:
         if denoise is None or denoise > 0.9999:
             self.sigmas = self.calculate_sigmas(steps).to(self.device)
         else:
-            new_steps = int(steps / denoise)
-            sigmas = self.calculate_sigmas(new_steps).to(self.device)
-            self.sigmas = sigmas[-(steps + 1) :]
+            if denoise <= 0.0:
+                self.sigmas = torch.FloatTensor([])
+            else:
+                new_steps = int(steps / denoise)
+                sigmas = self.calculate_sigmas(new_steps).to(self.device)
+                self.sigmas = sigmas[-(steps + 1) :]
 
     def sample(
         self,
@@ -649,6 +653,7 @@ class KSampler1:
         disable_pbar: bool = False,
         seed: int = None,
         pipeline: bool = False,
+        flux: bool = False,
     ) -> torch.Tensor:
         """#### Sample using the KSampler1.
 
@@ -674,7 +679,21 @@ class KSampler1:
         if sigmas is None:
             sigmas = self.sigmas
 
-        sampler = sampler_object(self.sampler, pipeline)
+        if last_step is not None and last_step < (len(sigmas) - 1):
+            sigmas = sigmas[: last_step + 1]
+            if force_full_denoise:
+                sigmas[-1] = 0
+
+        if start_step is not None:
+            if start_step < (len(sigmas) - 1):
+                sigmas = sigmas[start_step:]
+            else:
+                if latent_image is not None:
+                    return latent_image
+                else:
+                    return torch.zeros_like(noise)
+
+        sampler = sampler_object(self.sampler, pipeline=pipeline)
 
         return sample(
             self.model,
@@ -692,6 +711,7 @@ class KSampler1:
             disable_pbar=disable_pbar,
             seed=seed,
             pipeline=pipeline,
+            flux=flux
         )
 
 
@@ -716,6 +736,7 @@ def sample1(
     disable_pbar: bool = False,
     seed: int = None,
     pipeline: bool = False,
+    flux: bool = False,
 ) -> torch.Tensor:
     """#### Sample using the given parameters.
 
@@ -770,6 +791,7 @@ def sample1(
         disable_pbar=disable_pbar,
         seed=seed,
         pipeline=pipeline,
+        flux=flux
     )
     samples = samples.to(Device.intermediate_device())
     return samples
@@ -791,6 +813,7 @@ def common_ksampler(
     last_step: int = None,
     force_full_denoise: bool = False,
     pipeline: bool = False,
+    flux: bool = False,
 ) -> tuple:
     """#### Common ksampler function.
 
@@ -815,12 +838,22 @@ def common_ksampler(
         - `tuple`: The output tuple containing the latent dictionary and samples.
     """
     latent_image = latent["samples"]
-    batch_inds = latent["batch_index"] if "batch_index" in latent else None
-    noise = ksampler_util.prepare_noise(latent_image, seed, batch_inds)
+    latent_image = Latent.fix_empty_latent_channels(model, latent_image)
+
+    if disable_noise:
+        noise = torch.zeros(
+            latent_image.size(),
+            dtype=latent_image.dtype,
+            layout=latent_image.layout,
+            device="cpu",
+        )
+    else:
+        batch_inds = latent["batch_index"] if "batch_index" in latent else None
+        noise = ksampler_util.prepare_noise(latent_image, seed, batch_inds)
 
     noise_mask = None
-
-    disable_pbar = not util.PROGRESS_BAR_ENABLED
+    if "noise_mask" in latent:
+        noise_mask = latent["noise_mask"]
     samples = sample1(
         model,
         noise,
@@ -837,9 +870,9 @@ def common_ksampler(
         last_step=last_step,
         force_full_denoise=force_full_denoise,
         noise_mask=noise_mask,
-        disable_pbar=disable_pbar,
         seed=seed,
         pipeline=pipeline,
+        flux=flux
     )
     out = latent.copy()
     out["samples"] = samples
@@ -862,6 +895,7 @@ class KSampler2:
         latent_image: torch.Tensor,
         denoise: float = 1.0,
         pipeline: bool = False,
+        flux: bool = False,
     ) -> tuple:
         """#### Sample using the KSampler2.
 
@@ -893,6 +927,7 @@ class KSampler2:
             latent_image,
             denoise=denoise,
             pipeline=pipeline,
+            flux=flux
         )
 
 

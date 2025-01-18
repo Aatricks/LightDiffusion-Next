@@ -24,7 +24,6 @@ from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent
 from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale
 from modules.hidiffusion import msw_msa_attention
-from modules.Flux import flux
 from modules.Quantize import Quantizer
 
 torch._dynamo.config.suppress_errors = True
@@ -169,7 +168,7 @@ def pipeline(
                 unetloadergguf = Quantizer.UnetLoaderGGUF()
                 cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
                 conditioningzeroout = Quantizer.ConditioningZeroOut()
-                ksampler = flux.KSampler()
+                ksampler = sampling.KSampler2()
                 unetloadergguf_10 = unetloadergguf.load_unet(
                     unet_name="flux1-dev-Q8_0.gguf"
                 )
@@ -204,6 +203,7 @@ def pipeline(
                     negative=conditioningzeroout_16[0],
                     latent_image=emptylatentimage_5[0],
                     pipeline=True,
+                    flux=True,
                 )
 
                 vaedecode_8 = vaedecode.decode(
