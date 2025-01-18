@@ -128,7 +128,7 @@ def sampling_function(
 
 class CFGGuider:
     """#### Class for guiding the sampling process with CFG."""
-    def __init__(self, model_patcher) -> None:
+    def __init__(self, model_patcher, flux=False):
         """#### Initialize the CFGGuider.
 
         #### Args:
@@ -138,8 +138,9 @@ class CFGGuider:
         self.model_options = model_patcher.model_options
         self.original_conds = {}
         self.cfg = 1.0
+        self.flux = flux
 
-    def set_conds(self, positive: torch.Tensor, negative: torch.Tensor) -> None:
+    def set_conds(self, positive, negative):
         """#### Set the conditions for CFG.
 
         #### Args:
@@ -148,7 +149,7 @@ class CFGGuider:
         """
         self.inner_set_conds({"positive": positive, "negative": negative})
 
-    def set_cfg(self, cfg: float) -> None:
+    def set_cfg(self, cfg):
         """#### Set the CFG scale.
 
         #### Args:
@@ -156,7 +157,7 @@ class CFGGuider:
         """
         self.cfg = cfg
 
-    def inner_set_conds(self, conds: dict) -> None:
+    def inner_set_conds(self, conds):
         """#### Set the internal conditions.
 
         #### Args:
@@ -165,7 +166,7 @@ class CFGGuider:
         for k in conds:
             self.original_conds[k] = cond.convert_cond(conds[k])
 
-    def __call__(self, *args, **kwargs) -> torch.Tensor:
+    def __call__(self, *args, **kwargs):
         """#### Call the CFGGuider to predict noise.
 
         #### Returns:
@@ -173,13 +174,7 @@ class CFGGuider:
         """
         return self.predict_noise(*args, **kwargs)
 
-    def predict_noise(
-        self,
-        x: torch.Tensor,
-        timestep: int,
-        model_options: dict = {},
-        seed: int = None,
-    ) -> torch.Tensor:
+    def predict_noise(self, x, timestep, model_options={}, seed=None):
         """#### Predict noise using CFG.
 
         #### Args:
@@ -204,17 +199,17 @@ class CFGGuider:
 
     def inner_sample(
         self,
-        noise: torch.Tensor,
-        latent_image: torch.Tensor,
-        device: torch.device,
-        sampler: object,
-        sigmas: torch.Tensor,
-        denoise_mask: torch.Tensor,
-        callback: callable,
-        disable_pbar: bool,
-        seed: int,
-        pipeline: bool = False,
-    ) -> torch.Tensor:
+        noise,
+        latent_image,
+        device,
+        sampler,
+        sigmas,
+        denoise_mask,
+        callback,
+        disable_pbar,
+        seed,
+        pipeline=False,
+    ):
         """#### Perform the inner sampling process.
 
         #### Args:
@@ -264,16 +259,16 @@ class CFGGuider:
 
     def sample(
         self,
-        noise: torch.Tensor,
-        latent_image: torch.Tensor,
-        sampler: object,
-        sigmas: torch.Tensor,
-        denoise_mask: torch.Tensor = None,
-        callback: callable = None,
-        disable_pbar: bool = False,
-        seed: int = None,
-        pipeline: bool = False,
-    ) -> torch.Tensor:
+        noise,
+        latent_image,
+        sampler,
+        sigmas,
+        denoise_mask=None,
+        callback=None,
+        disable_pbar=False,
+        seed=None,
+        pipeline=False,
+    ):
         """#### Perform the sampling process with CFG.
 
         #### Args:
@@ -295,7 +290,7 @@ class CFGGuider:
             self.conds[k] = list(map(lambda a: a.copy(), self.original_conds[k]))
 
         self.inner_model, self.conds, self.loaded_models = cond_util.prepare_sampling(
-            self.model_patcher, noise.shape, self.conds
+            self.model_patcher, noise.shape, self.conds, flux_enabled=self.flux
         )
         device = self.model_patcher.load_device
 

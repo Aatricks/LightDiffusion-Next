@@ -1,5 +1,4 @@
 
-import collections
 import copy
 import logging
 import gguf
@@ -144,11 +143,6 @@ class GGMLLayer(torch.nn.Module):
             bias = torch.zeros_like(self.bias, device=torch.device("meta"))
             destination[prefix + "bias"] = bias
         return
-
-        # This would return the actual state dict
-        destination[prefix + "weight"] = self.get_weight(self.weight)
-        if bias is not None:
-            destination[prefix + "bias"] = self.get_weight(self.bias)
 
     def get_weight(self, tensor, dtype):
         if tensor is None:
@@ -395,47 +389,6 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
 
 class GGUFModelPatcher(ModelPatcher.ModelPatcher):
     patch_on_device = False
-
-    def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
-        if key not in self.patches:
-            return
-        weight = util.get_attr(self.model, key)
-
-        calculate_weight = self.calculate_weight
-
-        patches = self.patches[key]
-        if is_quantized(weight):
-            out_weight = weight.to(device_to)
-            patches = move_patch_to_device(
-                patches,
-                self.load_device if self.patch_on_device else self.offload_device,
-            )
-            # TODO: do we ever have legitimate duplicate patches? (i.e. patch on top of patched weight)
-            out_weight.patches = [(calculate_weight, patches, key)]
-        else:
-            inplace_update = self.weight_inplace_update or inplace_update
-            if key not in self.backup:
-                self.backup[key] = collections.namedtuple(
-                    "Dimension", ["weight", "inplace_update"]
-                )(
-                    weight.to(device=self.offload_device, copy=inplace_update),
-                    inplace_update,
-                )
-
-            if device_to is not None:
-                temp_weight = Device.cast_to_device(
-                    weight, device_to, torch.float32, copy=True
-                )
-            else:
-                temp_weight = weight.to(torch.float32, copy=True)
-
-            out_weight = calculate_weight(patches, temp_weight, key)
-            out_weight = stochastic_rounding(out_weight, weight.dtype)
-
-        if inplace_update:
-            util.copy_to_param(self.model, key, out_weight)
-        else:
-            util.set_attr_param(self.model, key, out_weight)
 
     def unpatch_model(self, device_to=None, unpatch_weights=True):
         if unpatch_weights:

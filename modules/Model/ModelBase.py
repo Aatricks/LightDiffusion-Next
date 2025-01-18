@@ -37,12 +37,7 @@ class BaseModel(torch.nn.Module):
         self.device = device
         if flux:
             if not unet_config.get("disable_unet_model_creation", False):
-                if model_config.custom_operations is None:
-                    operations = pick_operations(
-                        unet_config.get("dtype", None), self.manual_cast_dtype
-                    )
-                else:
-                    operations = model_config.custom_operations
+                operations = model_config.custom_operations
                 self.diffusion_model = unet_model(
                     **unet_config, device=device, operations=operations
                 )
