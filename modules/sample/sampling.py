@@ -84,6 +84,51 @@ class EPS:
         return latent
 
 
+class CONST:
+    def calculate_input(self, sigma, noise):
+        return noise
+
+    def calculate_denoised(self, sigma, model_output, model_input):
+        sigma = sigma.view(sigma.shape[:1] + (1,) * (model_output.ndim - 1))
+        return model_input - model_output * sigma
+
+    def noise_scaling(self, sigma, noise, latent_image, max_denoise=False):
+        return sigma * noise + (1.0 - sigma) * latent_image
+
+    def inverse_noise_scaling(self, sigma, latent):
+        return latent / (1.0 - sigma)
+
+
+def flux_time_shift(mu: float, sigma: float, t):
+    return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+
+
+class ModelSamplingFlux(torch.nn.Module):
+    def __init__(self, model_config=None):
+        super().__init__()
+        if model_config is not None:
+            sampling_settings = model_config.sampling_settings
+        else:
+            sampling_settings = {}
+
+        self.set_parameters(shift=sampling_settings.get("shift", 1.15))
+
+    def set_parameters(self, shift=1.15, timesteps=10000):
+        self.shift = shift
+        ts = self.sigma((torch.arange(1, timesteps + 1, 1) / timesteps))
+        self.register_buffer("sigmas", ts)
+
+    @property
+    def sigma_max(self):
+        return self.sigmas[-1]
+
+    def timestep(self, sigma):
+        return sigma
+
+    def sigma(self, timestep):
+        return flux_time_shift(self.shift, 1.0, timestep)
+
+
 class ModelSamplingDiscrete(torch.nn.Module):
     """#### Class for discrete model sampling."""
 
@@ -270,13 +315,6 @@ class Sampler:
         max_sigma = float(model_wrap.inner_model.model_sampling.sigma_max)
         sigma = float(sigmas[0])
         return math.isclose(max_sigma, sigma, rel_tol=1e-05) or sigma > max_sigma
-
-
-KSAMPLER_NAMES = [
-    "euler_ancestral",
-    "dpm_adaptive",
-    "dpmpp_2m_sde",
-]
 
 
 class KSAMPLER(Sampler):
@@ -517,17 +555,6 @@ def sample(
     )
 
 
-SCHEDULER_NAMES = [
-    "normal",
-    "karras",
-    "exponential",
-    "sgm_uniform",
-    "simple",
-    "ddim_uniform",
-]
-SAMPLER_NAMES = KSAMPLER_NAMES + ["ddim", "uni_pc", "uni_pc_bh2"]
-
-
 def sampler_object(name: str, pipeline: bool = False) -> KSAMPLER:
     """#### Get a sampler object.
 
@@ -544,12 +571,6 @@ def sampler_object(name: str, pipeline: bool = False) -> KSAMPLER:
 
 class KSampler1:
     """#### Class for KSampler1."""
-
-    SCHEDULERS = SCHEDULER_NAMES
-    SAMPLERS = SAMPLER_NAMES
-    DISCARD_PENULTIMATE_SIGMA_SAMPLERS = set(
-        ("dpm_2", "dpm_2_ancestral", "uni_pc", "uni_pc_bh2")
-    )
 
     def __init__(
         self,
@@ -881,7 +902,7 @@ class ModelType(Enum):
     FLUX = 8
 
 
-def model_sampling(model_config: dict, model_type: ModelType) -> torch.nn.Module:
+def model_sampling(model_config: dict, model_type: ModelType, flux: bool = False) -> torch.nn.Module:
     """#### Create a model sampling instance.
 
     #### Args:
@@ -891,14 +912,23 @@ def model_sampling(model_config: dict, model_type: ModelType) -> torch.nn.Module
     #### Returns:
         - `torch.nn.Module`: The model sampling instance.
     """
-    s = ModelSamplingDiscrete
-    if model_type == ModelType.EPS:
-        c = EPS
+    if not flux:
+        s = ModelSamplingDiscrete
+        if model_type == ModelType.EPS:
+            c = EPS
 
-    class ModelSampling(s, c):
-        pass
+        class ModelSampling(s, c):
+            pass
 
-    return ModelSampling(model_config)
+        return ModelSampling(model_config)
+    else:
+        c = CONST
+        s = ModelSamplingFlux
+
+        class ModelSampling(s, c):
+            pass
+
+        return ModelSampling(model_config)
 
 
 def sample_custom(

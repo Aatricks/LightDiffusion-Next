@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from modules.Attention import Attention
 from modules.Device import Device
-from modules.Flux.flux import BASE, BaseModel
+from modules.Model import ModelBase
 from modules.Utilities import Latent
 from modules.cond import cast, cond
 from modules.sample import sampling, sampling_util
@@ -632,9 +632,9 @@ class Flux3(nn.Module):
         )[:, :, :h, :w]
 
 
-class Flux2(BaseModel):
+class Flux2(ModelBase.BaseModel):
     def __init__(self, model_config, model_type=sampling.ModelType.FLUX, device=None):
-        super().__init__(model_config, model_type, device=device, unet_model=Flux3)
+        super().__init__(model_config, model_type, device=device, unet_model=Flux3, flux=True)
 
     def encode_adm(self, **kwargs):
         return kwargs["pooled_output"]
@@ -648,7 +648,7 @@ class Flux2(BaseModel):
         return out
 
 
-class Flux(BASE):
+class Flux(ModelBase.BASE):
     unet_config = {
         "image_model": "flux",
         "guidance_embed": True,

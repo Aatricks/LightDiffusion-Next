@@ -1,4 +1,5 @@
 import logging
+import math
 import torch
 
 from modules.Utilities import Latent
@@ -17,6 +18,7 @@ class BaseModel(torch.nn.Module):
         model_type: sampling.ModelType = sampling.ModelType.EPS,
         device: torch.device = None,
         unet_model: object = unet.UNetModel1,
+        flux: bool = False,
     ):
         """#### Initialize the BaseModel class.
 
@@ -32,17 +34,34 @@ class BaseModel(torch.nn.Module):
         self.latent_format = model_config.latent_format
         self.model_config = model_config
         self.manual_cast_dtype = model_config.manual_cast_dtype
-
-        if not unet_config.get("disable_unet_model_creation", False):
-            if self.manual_cast_dtype is not None:
-                operations = cast.manual_cast
-            else:
-                operations = cast.disable_weight_init
-            self.diffusion_model = unet_model(
-                **unet_config, device=device, operations=operations
-            )
+        self.device = device
+        if flux:
+            if not unet_config.get("disable_unet_model_creation", False):
+                if model_config.custom_operations is None:
+                    operations = pick_operations(
+                        unet_config.get("dtype", None), self.manual_cast_dtype
+                    )
+                else:
+                    operations = model_config.custom_operations
+                self.diffusion_model = unet_model(
+                    **unet_config, device=device, operations=operations
+                )
+                logging.info(
+                    "model weight dtype {}, manual cast: {}".format(
+                        self.get_dtype(), self.manual_cast_dtype
+                    )
+                )
+        else:
+            if not unet_config.get("disable_unet_model_creation", False):
+                if self.manual_cast_dtype is not None:
+                    operations = cast.manual_cast
+                else:
+                    operations = cast.disable_weight_init
+                self.diffusion_model = unet_model(
+                    **unet_config, device=device, operations=operations
+                )
         self.model_type = model_type
-        self.model_sampling = sampling.model_sampling(model_config, model_type)
+        self.model_sampling = sampling.model_sampling(model_config, model_type, flux=flux)
 
         self.adm_channels = unet_config.get("adm_in_channels", None)
         if self.adm_channels is None:
@@ -51,6 +70,7 @@ class BaseModel(torch.nn.Module):
         self.concat_keys = ()
         logging.info("model_type {}".format(model_type.name))
         logging.debug("adm {}".format(self.adm_channels))
+        self.memory_usage_factor = model_config.memory_usage_factor if flux else 2.0
 
     def apply_model(
         self,
@@ -78,9 +98,14 @@ class BaseModel(torch.nn.Module):
         """
         sigma = t
         xc = self.model_sampling.calculate_input(sigma, x)
+        if c_concat is not None:
+            xc = torch.cat([xc] + [c_concat], dim=1)
 
         context = c_crossattn
         dtype = self.get_dtype()
+
+        if self.manual_cast_dtype is not None:
+            dtype = self.manual_cast_dtype
 
         xc = xc.to(dtype)
         t = self.model_sampling.timestep(t).float()
@@ -88,6 +113,9 @@ class BaseModel(torch.nn.Module):
         extra_conds = {}
         for o in kwargs:
             extra = kwargs[o]
+            if hasattr(extra, "dtype"):
+                if extra.dtype != torch.int and extra.dtype != torch.long:
+                    extra = extra.to(dtype)
             extra_conds[o] = extra
 
         model_output = self.diffusion_model(
@@ -129,8 +157,18 @@ class BaseModel(torch.nn.Module):
             - `dict`: The extra conditions.
         """
         out = {}
+        adm = self.encode_adm(**kwargs)
+        if adm is not None:
+            out["y"] = cond.CONDRegular(adm)
+
         cross_attn = kwargs.get("cross_attn", None)
-        out["c_crossattn"] = cond.CONDCrossAttn(cross_attn)
+        if cross_attn is not None:
+            out["c_crossattn"] = cond.CONDCrossAttn(cross_attn)
+
+        cross_attn_cnet = kwargs.get("cross_attn_controlnet", None)
+        if cross_attn_cnet is not None:
+            out["crossattn_controlnet"] = cond.CONDCrossAttn(cross_attn_cnet)
+
         return out
 
     def load_model_weights(self, sd: dict, unet_prefix: str = "") -> "BaseModel":
@@ -151,6 +189,11 @@ class BaseModel(torch.nn.Module):
 
         to_load = self.model_config.process_unet_state_dict(to_load)
         m, u = self.diffusion_model.load_state_dict(to_load, strict=False)
+        if len(m) > 0:
+            logging.warning("unet missing: {}".format(m))
+
+        if len(u) > 0:
+            logging.warning("unet unexpected: {}".format(u))
         del to_load
         return self
 
@@ -188,31 +231,37 @@ class BaseModel(torch.nn.Module):
         dtype = self.get_dtype()
         if self.manual_cast_dtype is not None:
             dtype = self.manual_cast_dtype
-        area = input_shape[0] * input_shape[2] * input_shape[3]
-        return (area * Device.dtype_size(dtype) / 50) * (1024 * 1024)
+        # TODO: this needs to be tweaked
+        area = input_shape[0] * math.prod(input_shape[2:])
+        return (area * Device.dtype_size(dtype) * 0.01 * self.memory_usage_factor) * (
+            1024 * 1024
+        )
 
 
 class BASE:
     """#### Base class for model configurations."""
 
-    unet_config: dict = {}
-    unet_extra_config: dict = {
+    unet_config = {}
+    unet_extra_config = {
         "num_heads": -1,
         "num_head_channels": 64,
     }
 
-    required_keys: dict = {}
+    required_keys = {}
 
-    clip_prefix: list = []
-    clip_vision_prefix: str = None
-    noise_aug_config: dict = None
-    sampling_settings: dict = {}
-    latent_format: object = Latent.LatentFormat
-    vae_key_prefix: list = ["first_stage_model."]
-    text_encoder_key_prefix: list = ["cond_stage_model."]
-    supported_inference_dtypes: list = [torch.float16, torch.bfloat16, torch.float32]
+    clip_prefix = []
+    clip_vision_prefix = None
+    noise_aug_config = None
+    sampling_settings = {}
+    latent_format = Latent.LatentFormat
+    vae_key_prefix = ["first_stage_model."]
+    text_encoder_key_prefix = ["cond_stage_model."]
+    supported_inference_dtypes = [torch.float16, torch.bfloat16, torch.float32]
 
-    manual_cast_dtype: torch.dtype = None
+    memory_usage_factor = 2.0
+
+    manual_cast_dtype = None
+    custom_operations = None
 
     @classmethod
     def matches(cls, unet_config: dict, state_dict: dict = None) -> bool:
@@ -228,6 +277,10 @@ class BASE:
         for k in cls.unet_config:
             if k not in unet_config or cls.unet_config[k] != unet_config[k]:
                 return False
+        if state_dict is not None:
+            for k in cls.required_keys:
+                if k not in state_dict:
+                    return False
         return True
 
     def model_type(self, state_dict: dict, prefix: str = "") -> sampling.ModelType:

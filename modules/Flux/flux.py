@@ -1,16 +1,13 @@
 from __future__ import annotations
-from abc import abstractmethod
 import logging
 import math
 import os
 import torch
 
 import packaging.version
-import torch.nn as nn
 
 from typing import Callable, List, Optional, Protocol, TypedDict
 
-from modules.NeuralNetwork import unet
 from modules.Utilities import Latent
 from modules.Device import Device
 from modules.cond import cast, cond, cond_util
@@ -55,13 +52,6 @@ PROGRESS_BAR_HOOK = None
 logging_level = logging.INFO
 
 logging.basicConfig(format="%(message)s", level=logging_level)
-
-
-class Sampler:
-    def max_denoise(self, model_wrap, sigmas):
-        max_sigma = float(model_wrap.inner_model.model_sampling.sigma_max)
-        sigma = float(sigmas[0])
-        return math.isclose(max_sigma, sigma, rel_tol=1e-05) or sigma > max_sigma
 
 
 KSAMPLER_NAMES = [
@@ -291,207 +281,6 @@ _ATTN_PRECISION = "fp32"
 ops = cast.manual_cast
 
 
-def model_sampling(model_config, model_type):
-    c = CONST
-    s = ModelSamplingFlux
-
-    class ModelSampling(s, c):
-        pass
-
-    return ModelSampling(model_config)
-
-
-class BaseModel(torch.nn.Module):
-    def __init__(
-        self, model_config, model_type=sampling.ModelType.EPS, device=None, unet_model=unet.UNetModel1
-    ):
-        super().__init__()
-
-        unet_config = model_config.unet_config
-        self.latent_format = model_config.latent_format
-        self.model_config = model_config
-        self.manual_cast_dtype = model_config.manual_cast_dtype
-        self.device = device
-
-        if not unet_config.get("disable_unet_model_creation", False):
-            if model_config.custom_operations is None:
-                operations = pick_operations(
-                    unet_config.get("dtype", None), self.manual_cast_dtype
-                )
-            else:
-                operations = model_config.custom_operations
-            self.diffusion_model = unet_model(
-                **unet_config, device=device, operations=operations
-            )
-            logging.info(
-                "model weight dtype {}, manual cast: {}".format(
-                    self.get_dtype(), self.manual_cast_dtype
-                )
-            )
-        self.model_type = model_type
-        self.model_sampling = model_sampling(model_config, model_type)
-
-        self.adm_channels = unet_config.get("adm_in_channels", None)
-        if self.adm_channels is None:
-            self.adm_channels = 0
-
-        self.concat_keys = ()
-        logging.info("model_type {}".format(model_type.name))
-        logging.debug("adm {}".format(self.adm_channels))
-        self.memory_usage_factor = model_config.memory_usage_factor
-
-    def apply_model(
-        self,
-        x,
-        t,
-        c_concat=None,
-        c_crossattn=None,
-        control=None,
-        transformer_options={},
-        **kwargs,
-    ):
-        sigma = t
-        xc = self.model_sampling.calculate_input(sigma, x)
-        if c_concat is not None:
-            xc = torch.cat([xc] + [c_concat], dim=1)
-
-        context = c_crossattn
-        dtype = self.get_dtype()
-
-        if self.manual_cast_dtype is not None:
-            dtype = self.manual_cast_dtype
-
-        xc = xc.to(dtype)
-        t = self.model_sampling.timestep(t).float()
-        context = context.to(dtype)
-        extra_conds = {}
-        for o in kwargs:
-            extra = kwargs[o]
-            if hasattr(extra, "dtype"):
-                if extra.dtype != torch.int and extra.dtype != torch.long:
-                    extra = extra.to(dtype)
-            extra_conds[o] = extra
-
-        model_output = self.diffusion_model(
-            xc,
-            t,
-            context=context,
-            control=control,
-            transformer_options=transformer_options,
-            **extra_conds,
-        ).float()
-        return self.model_sampling.calculate_denoised(sigma, model_output, x)
-
-    def get_dtype(self):
-        return self.diffusion_model.dtype
-
-    def extra_conds(self, **kwargs):
-        out = {}
-        adm = self.encode_adm(**kwargs)
-        if adm is not None:
-            out["y"] = cond.CONDRegular(adm)
-
-        cross_attn = kwargs.get("cross_attn", None)
-        if cross_attn is not None:
-            out["c_crossattn"] = cond.CONDCrossAttn(cross_attn)
-
-        cross_attn_cnet = kwargs.get("cross_attn_controlnet", None)
-        if cross_attn_cnet is not None:
-            out["crossattn_controlnet"] = cond.CONDCrossAttn(cross_attn_cnet)
-
-        return out
-
-    def load_model_weights(self, sd, unet_prefix=""):
-        to_load = {}
-        keys = list(sd.keys())
-        for k in keys:
-            if k.startswith(unet_prefix):
-                to_load[k[len(unet_prefix) :]] = sd.pop(k)
-
-        to_load = self.model_config.process_unet_state_dict(to_load)
-        m, u = self.diffusion_model.load_state_dict(to_load, strict=False)
-        if len(m) > 0:
-            logging.warning("unet missing: {}".format(m))
-
-        if len(u) > 0:
-            logging.warning("unet unexpected: {}".format(u))
-        del to_load
-        return self
-
-    def process_latent_out(self, latent):
-        return self.latent_format.process_out(latent)
-
-    def memory_required(self, input_shape):
-        if Device.xformers_enabled() or Device.pytorch_attention_flash_attention():
-            dtype = self.get_dtype()
-            if self.manual_cast_dtype is not None:
-                dtype = self.manual_cast_dtype
-            # TODO: this needs to be tweaked
-            area = input_shape[0] * math.prod(input_shape[2:])
-            return (area * Device.dtype_size(dtype) * 0.01 * self.memory_usage_factor) * (
-                1024 * 1024
-            )
-        else:
-            # TODO: this formula might be too aggressive since I tweaked the sub-quad and split algorithms to use less memory.
-            area = input_shape[0] * math.prod(input_shape[2:])
-            return (area * 0.15 * self.memory_usage_factor) * (1024 * 1024)
-
-
-class BASE:
-    unet_config = {}
-    unet_extra_config = {
-        "num_heads": -1,
-        "num_head_channels": 64,
-    }
-
-    required_keys = {}
-
-    clip_prefix = []
-    clip_vision_prefix = None
-    noise_aug_config = None
-    sampling_settings = {}
-    latent_format = Latent.LatentFormat
-    vae_key_prefix = ["first_stage_model."]
-    text_encoder_key_prefix = ["cond_stage_model."]
-    supported_inference_dtypes = [torch.float16, torch.bfloat16, torch.float32]
-
-    memory_usage_factor = 2.0
-
-    manual_cast_dtype = None
-    custom_operations = None
-
-    @classmethod
-    def matches(s, unet_config, state_dict=None):
-        for k in s.unet_config:
-            if k not in unet_config or s.unet_config[k] != unet_config[k]:
-                return False
-        if state_dict is not None:
-            for k in s.required_keys:
-                if k not in state_dict:
-                    return False
-        return True
-
-    def __init__(self, unet_config):
-        self.unet_config = unet_config.copy()
-        self.sampling_settings = self.sampling_settings.copy()
-        self.latent_format = self.latent_format()
-        for x in self.unet_extra_config:
-            self.unet_config[x] = self.unet_extra_config[x]
-
-    def process_unet_state_dict(self, state_dict):
-        return state_dict
-
-    def set_inference_dtype(self, dtype, manual_cast_dtype):
-        self.unet_config["dtype"] = dtype
-        self.manual_cast_dtype = manual_cast_dtype
-
-    def model_type(self, state_dict, prefix=""):
-        return sampling.ModelType.EPS
-
-    def inpaint_model(self):
-        return self.unet_config["in_channels"] > 4
-
-
 MAX_RESOLUTION = 16384
 
 
@@ -580,82 +369,6 @@ class KSampler2:
             denoise=denoise,
         )
 
-logger = logging.getLogger()
-
-
-class UnetApplyFunction(Protocol):
-    """Function signature protocol on comfy.model_base.BaseModel.apply_model"""
-
-    def __call__(self, x: torch.Tensor, t: torch.Tensor, **kwargs) -> torch.Tensor:
-        pass
-
-
-class UnetApplyConds(TypedDict):
-    """Optional conditions for unet apply function."""
-
-    c_concat: Optional[torch.Tensor]
-    c_crossattn: Optional[torch.Tensor]
-    control: Optional[torch.Tensor]
-    transformer_options: Optional[dict]
-
-
-class UnetParams(TypedDict):
-    # Tensor of shape [B, C, H, W]
-    input: torch.Tensor
-    # Tensor of shape [B]
-    timestep: torch.Tensor
-    c: UnetApplyConds
-    # List of [0, 1], [0], [1], ...
-    # 0 means conditional, 1 means conditional unconditional
-    cond_or_uncond: List[int]
-
-
-UnetWrapperFunction = Callable[[UnetApplyFunction, UnetParams], torch.Tensor]
-
-
-class CONST:
-    def calculate_input(self, sigma, noise):
-        return noise
-
-    def calculate_denoised(self, sigma, model_output, model_input):
-        sigma = sigma.view(sigma.shape[:1] + (1,) * (model_output.ndim - 1))
-        return model_input - model_output * sigma
-
-    def noise_scaling(self, sigma, noise, latent_image, max_denoise=False):
-        return sigma * noise + (1.0 - sigma) * latent_image
-
-    def inverse_noise_scaling(self, sigma, latent):
-        return latent / (1.0 - sigma)
-
-
-def flux_time_shift(mu: float, sigma: float, t):
-    return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
-
-
-class ModelSamplingFlux(torch.nn.Module):
-    def __init__(self, model_config=None):
-        super().__init__()
-        if model_config is not None:
-            sampling_settings = model_config.sampling_settings
-        else:
-            sampling_settings = {}
-
-        self.set_parameters(shift=sampling_settings.get("shift", 1.15))
-
-    def set_parameters(self, shift=1.15, timesteps=10000):
-        self.shift = shift
-        ts = self.sigma((torch.arange(1, timesteps + 1, 1) / timesteps))
-        self.register_buffer("sigmas", ts)
-
-    @property
-    def sigma_max(self):
-        return self.sigmas[-1]
-
-    def timestep(self, sigma):
-        return sigma
-
-    def sigma(self, timestep):
-        return flux_time_shift(self.shift, 1.0, timestep)
 
 ops = cast.disable_weight_init
 
