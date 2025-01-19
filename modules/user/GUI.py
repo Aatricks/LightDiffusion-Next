@@ -86,7 +86,7 @@ class App(tk.Tk):
         self.neg.grid(row=1, column=0, sticky="ew", pady=(5,0))
 
         # Add model dropdown with error handling for empty lists
-        model_values = ["flux"] + (file_names if file_names else ["No models found"])
+        model_values = (file_names if file_names else ["No models found"])+ ["flux"]
         
         # Model dropdown and Flux checkbox
         self.dropdown = ctk.CTkOptionMenu(
