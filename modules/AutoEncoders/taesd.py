@@ -260,10 +260,28 @@ def taesd_preview(x: torch.Tensor):
     """
     if app_instance.app.previewer_var.get() is True:
         taesd_instance = TAESD()
-        for image in taesd_instance.decode(x[0].unsqueeze(0))[0]:
+        
+        # Ensure input has correct number of channels (4)
+        if x.shape[1] != 4:
+            # If more than 4 channels, take first 4
+            # If fewer than 4 channels, pad with zeros
+            desired_channels = 4
+            current_channels = x.shape[1]
+            
+            if current_channels > desired_channels:
+                x = x[:, :desired_channels, :, :]
+            elif current_channels < desired_channels:
+                padding = torch.zeros(x.shape[0], desired_channels - current_channels, x.shape[2], x.shape[3], device=x.device)
+                x = torch.cat([x, padding], dim=1)
+
+        # Process one image at a time
+        output = taesd_instance.decode(x[0].unsqueeze(0))[0]
+        
+        # Convert to PIL Image
+        for image in output:
             i = 255.0 * image.cpu().detach().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             img = img.convert("RGB")
-        app_instance.app.update_image(img)
+            app_instance.app.update_image(img)
     else:
         pass

@@ -11,7 +11,6 @@ import glob
 
 import torch
 
-
 # Add the directory containing LightDiffusion.py to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -26,6 +25,7 @@ from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale as USDU
 from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent, upscale
+from modules.Quantize import Quantizer
 
 Downloader.CheckAndDownload()
 
@@ -54,27 +54,79 @@ class App(tk.Tk):
             selected_lora.set(lora_names[0])
 
         # Create a frame for the sidebar
-        self.sidebar = tk.Frame(self, width=300, bg="black")
+        self.sidebar = tk.Frame(self, width=300, bg="#FBFBFB")
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
 
         # Text input for the prompt
-        self.prompt_entry = ctk.CTkTextbox(self.sidebar, height=200, width=300)
+        self.prompt_entry = ctk.CTkTextbox(
+            self.sidebar,
+            height=150,
+            width=300,
+            fg_color="#E8F9FF",
+            text_color="black",
+            border_color="gray",
+            border_width=2,
+        )
         self.prompt_entry.pack(pady=10, padx=10)
 
-        self.neg = ctk.CTkTextbox(self.sidebar, height=50, width=300)
+        self.neg = ctk.CTkTextbox(
+            self.sidebar,
+            height=75,
+            width=300,
+            fg_color="#E8F9FF",
+            text_color="black",
+            border_color="gray",
+            border_width=2,
+        )
         self.neg.pack(pady=10, padx=10)
 
-        self.dropdown = ctk.CTkOptionMenu(self.sidebar, values=file_names)
-        self.dropdown.pack()
+        # Create and configure the model frame
+        self.modelFrame = tk.Frame(self.sidebar, bg="#FBFBFB")
+        self.modelFrame.pack(fill="x", padx=5, pady=5)  # Pack the frame into sidebar
 
-        self.lora_selection = ctk.CTkOptionMenu(self.sidebar, values=lora_names)
+        # Add model dropdown with error handling for empty lists
+        model_values = file_names if file_names else ["No models found"]
+        self.dropdown = ctk.CTkOptionMenu(
+            self.modelFrame,
+            values=model_values,
+            fg_color="#F5EFFF",
+            text_color="black",
+        )
+        self.dropdown.grid(
+            row=0, 
+            column=0, 
+            padx=20, 
+            sticky="ew"
+        )
+
+        # Initialize BooleanVar properly and store as instance variable
+        self.flux_var = tk.BooleanVar()
+        self.flux_model = ctk.CTkCheckBox(
+            self.modelFrame,
+            text="Flux",
+            variable=self.flux_var,
+            command=self.validate_flux,
+            text_color="black",
+        )
+        self.flux_model.grid(
+            row=0,
+            column=1,
+            padx=20,
+        )
+
+        self.lora_selection = ctk.CTkOptionMenu(
+            self.sidebar,
+            values=lora_names,
+            fg_color="#F5EFFF",
+            text_color="black",
+        )
         self.lora_selection.pack(pady=10)
 
         # Sliders for the resolution
         self.width_label = ctk.CTkLabel(self.sidebar, text="")
         self.width_label.pack()
         self.width_slider = ctk.CTkSlider(
-            self.sidebar, from_=1, to=2048, number_of_steps=16
+            self.sidebar, from_=1, to=2048, number_of_steps=16, fg_color="#F5EFFF"
         )
         self.width_slider.pack()
 
@@ -85,18 +137,19 @@ class App(tk.Tk):
             from_=1,
             to=2048,
             number_of_steps=16,
+            fg_color="#F5EFFF",
         )
         self.height_slider.pack()
 
         self.cfg_label = ctk.CTkLabel(self.sidebar, text="")
         self.cfg_label.pack()
         self.cfg_slider = ctk.CTkSlider(
-            self.sidebar, from_=1, to=15, number_of_steps=14
+            self.sidebar, from_=1, to=15, number_of_steps=14, fg_color="#F5EFFF"
         )
         self.cfg_slider.pack()
 
         # Create a frame for the checkboxes
-        self.checkbox_frame = tk.Frame(self.sidebar, bg="black")
+        self.checkbox_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
         self.checkbox_frame.pack(pady=10)
 
         # checkbox for hiresfix
@@ -106,6 +159,7 @@ class App(tk.Tk):
             text="Hires Fix",
             variable=self.hires_fix_var,
             command=self.print_hires_fix,
+            text_color="black",
         )
         self.hires_fix_checkbox.grid(row=0, column=0, padx=5, pady=5)
 
@@ -116,6 +170,7 @@ class App(tk.Tk):
             text="Adetailer",
             variable=self.adetailer_var,
             command=self.print_adetailer,
+            text_color="black",
         )
         self.adetailer_checkbox.grid(row=0, column=1, padx=5, pady=5)
 
@@ -125,6 +180,7 @@ class App(tk.Tk):
             self.checkbox_frame,
             text="Stable Fast",
             variable=self.stable_fast_var,
+            text_color="black",
         )
         self.stable_fast_checkbox.grid(row=1, column=0, padx=5, pady=5)
 
@@ -134,26 +190,37 @@ class App(tk.Tk):
             self.checkbox_frame,
             text="Prompt enhancer",
             variable=self.enhancer_var,
+            text_color="black",
         )
         self.enhancer_checkbox.grid(row=1, column=1, padx=5, pady=5)
 
         # Button to launch the generation
         self.generate_button = ctk.CTkButton(
-            self.sidebar, text="Generate", command=self.generate_image
+            self.sidebar,
+            text="Generate",
+            command=self.generate_image,
+            fg_color="#C4D9FF",
+            text_color="black",
+            border_color="gray",
+            border_width=2,
         )
         self.generate_button.pack(pady=10)
 
         # Create a frame for the image display, without border
-        self.display = tk.Frame(self, bg="black", border=0)
+        self.display = tk.Frame(self, bg="#FBFBFB", border=0)
         self.display.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
 
         # centered Label to display the generated image
-        self.image_label = tk.Label(self.display, bg="black")
+        self.image_label = tk.Label(self.display, bg="#FBFBFB")
         self.image_label.pack(expand=True, padx=10, pady=10)
 
         self.previewer_var = tk.BooleanVar()
         self.previewer_checkbox = ctk.CTkCheckBox(
-            self.display, text="Previewer", variable=self.previewer_var, command=self.print_previewer
+            self.display,
+            text="Previewer",
+            variable=self.previewer_var,
+            command=self.print_previewer,
+            text_color="black",
         )
         self.previewer_checkbox.pack(pady=10)
 
@@ -162,19 +229,31 @@ class App(tk.Tk):
         # load the checkpoint on an another thread
         threading.Thread(target=self._prep, daemon=True).start()
 
-        self.button_frame = tk.Frame(self.sidebar, bg="black")
+        self.button_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
         self.button_frame.pack(pady=10)
 
         # add an img2img button, the button opens the file selector, run img2img on the selected image
         self.img2img_button = ctk.CTkButton(
-            self.button_frame, text="img2img", command=self.img2img
+            self.button_frame,
+            text="img2img",
+            command=self.img2img,
+            fg_color="#F5EFFF",
+            text_color="black",
+            border_color="gray",
+            border_width=2,
         )
         self.img2img_button.grid(row=0, column=0, padx=5)
 
         self.interrupt_flag = False
 
         self.interrupt_button = ctk.CTkButton(
-            self.button_frame, text="Interrupt", command=self.interrupt_generation
+            self.button_frame,
+            text="Interrupt",
+            command=self.interrupt_generation,
+            fg_color="#F5EFFF",
+            text_color="black",
+            border_color="gray",
+            border_width=2,
         )
         self.interrupt_button.grid(row=0, column=1, padx=5)
 
@@ -282,6 +361,7 @@ class App(tk.Tk):
 
             if self.stable_fast_var.get() is True:
                 from modules.StableFast import StableFast
+
                 try:
                     app.title("LigtDiffusion - Generating StableFast model")
                 except:
@@ -377,7 +457,7 @@ class App(tk.Tk):
             print("Adetailer is ON")
         else:
             print("Adetailer is OFF")
-            
+
     def print_previewer(self) -> None:
         """Print the status of the previewer checkbox."""
         if self.previewer_var.get() is True:
@@ -388,6 +468,10 @@ class App(tk.Tk):
     def generate_image(self) -> None:
         """Start the image generation process."""
         threading.Thread(target=self._generate_image, daemon=True).start()
+
+    def generate_image_flux(self) -> None:
+        """Start the image generation process."""
+        threading.Thread(target=self._generate_image_flux, daemon=True).start()
 
     def _prep(self) -> tuple:
         """Prepare the necessary components for image generation.
@@ -424,7 +508,7 @@ class App(tk.Tk):
             self.ultimatesdupscale,
         )
 
-    def _generate_image(self) -> None: # TODO: add Flux to the GUI
+    def _generate_image(self) -> None:  # TODO: add Flux to the GUI
         """Generate an image based on the provided prompt and settings."""
         self.display_most_recent_image_flag = False
         prompt = self.prompt_entry.get("1.0", tk.END)
@@ -494,6 +578,7 @@ class App(tk.Tk):
             )
             if self.stable_fast_var.get() is True:
                 from modules.StableFast import StableFast
+
                 try:
                     self.title("LightDiffusion - Generating StableFast model")
                 except:
@@ -680,6 +765,97 @@ class App(tk.Tk):
                 )
         self.update_image(img)
         self.display_most_recent_image_flag = True
+        
+
+    def _generate_image_flux(self) -> None:
+        self.display_most_recent_image_flag = False
+        w = int(self.width_slider.get())
+        h = int(self.height_slider.get())
+        prompt = self.prompt_entry.get("1.0", tk.END)
+        if self.enhancer_var.get() is True:
+            prompt = Enhancer.enhance_prompt()
+            while prompt is None:
+                pass
+        Downloader.CheckAndDownloadFlux()
+        with torch.inference_mode():
+            dualcliploadergguf = Quantizer.DualCLIPLoaderGGUF()
+            emptylatentimage = Latent.EmptyLatentImage()
+            vaeloader = VariationalAE.VAELoader()
+            unetloadergguf = Quantizer.UnetLoaderGGUF()
+            cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
+            conditioningzeroout = Quantizer.ConditioningZeroOut()
+            ksampler = sampling.KSampler2()
+            vaedecode = VariationalAE.VAEDecode()
+            saveimage = ImageSaver.SaveImage()
+            unetloadergguf_10 = unetloadergguf.load_unet(
+                unet_name="flux1-dev-Q8_0.gguf"
+            )
+            vaeloader_11 = vaeloader.load_vae(vae_name="ae.safetensors")
+            dualcliploadergguf_19 = dualcliploadergguf.load_clip(
+                clip_name1="clip_l.safetensors",
+                clip_name2="t5-v1_1-xxl-encoder-Q8_0.gguf",
+                type="flux",
+            )
+            emptylatentimage_5 = emptylatentimage.generate(
+                width=w, height=h, batch_size=1
+            )
+            cliptextencodeflux_15 = cliptextencodeflux.encode(
+                clip_l=prompt,
+                t5xxl=prompt,
+                guidance=3.5,
+                clip=dualcliploadergguf_19[0],
+                flux_enabled=True,
+            )
+            conditioningzeroout_16 = conditioningzeroout.zero_out(
+                conditioning=cliptextencodeflux_15[0]
+            )
+            ksampler_3 = ksampler.sample(
+                seed=random.randint(1, 2**64),
+                steps=20,
+                cfg=1,
+                sampler_name="euler",
+                scheduler="simple",
+                denoise=1,
+                model=unetloadergguf_10[0],
+                positive=cliptextencodeflux_15[0],
+                negative=conditioningzeroout_16[0],
+                latent_image=emptylatentimage_5[0],
+                flux=True,
+            )
+            vaedecode_8 = vaedecode.decode(
+                samples=ksampler_3[0],
+                vae=vaeloader_11[0],
+                flux=True,
+            )
+            saveimage.save_images(filename_prefix="Flux", images=vaedecode_8[0])
+            for image in vaedecode_8[0]:
+                i = 255.0 * image.cpu().numpy()
+                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+        self.update_image(img)
+        self.display_most_recent_image_flag = True
+
+    def validate_flux(self) -> None:
+        """Print the status of the flux checkbox."""
+        if self.flux_var.get() is True:
+            print("Flux is ON")
+            # disable the adetailer, hires fix and stable fast checkboxes and the model and lora dropdowns
+            self.adetailer_checkbox._state = tk.DISABLED
+            self.hires_fix_checkbox._state = tk.DISABLED
+            self.stable_fast_checkbox._state = tk.DISABLED
+            self.dropdown._state = tk.DISABLED
+            self.lora_selection._state = tk.DISABLED
+            self.cfg_slider._state = tk.DISABLED
+            self.generate_button._command = self.generate_image_flux
+        else:
+            print("Flux is OFF")
+            # enable the adetailer, hires fix and stable fast checkboxes and the model and lora dropdowns
+            self.adetailer_checkbox._state = tk.NORMAL
+            self.hires_fix_checkbox._state = tk.NORMAL
+            self.stable_fast_checkbox._state = tk.NORMAL
+            self.dropdown._state = tk.NORMAL
+            self.lora_selection._state = tk.NORMAL
+            self.cfg_slider._state = tk.NORMAL
+            self.generate_button._command = self.generate_image
 
     def update_labels(self) -> None:
         """Update the labels for the sliders."""
@@ -708,7 +884,7 @@ class App(tk.Tk):
             new_width = int(label_height * aspect_ratio)
 
         # Resize the image to the new dimensions
-        try :
+        try:
             img = img.resize((new_width, new_height), Image.LANCZOS)
         except RecursionError:
             pass
