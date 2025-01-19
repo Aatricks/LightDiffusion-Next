@@ -14,7 +14,8 @@ class LatentFormat:
     """
 
     scale_factor: float = 1.0
-
+    latent_channels: int = 4
+    
     def process_in(self, latent: torch.Tensor) -> torch.Tensor:
         """#### Process the latent input, by multiplying it by the scale factor.
 
@@ -43,7 +44,7 @@ class SD15(LatentFormat):
     #### Args:
         - `LatentFormat` (LatentFormat): The base latent format class.
     """
-
+    latent_channels: int = 4
     def __init__(self, scale_factor: float = 0.18215):
         """#### Initialize the SD15 latent format.
 
