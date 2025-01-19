@@ -41,7 +41,7 @@ class App(tk.Tk):
         """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
-        self.geometry("800x700")
+        self.geometry("800x600")
 
         file_names = [os.path.basename(file) for file in files]
         lora_names = [os.path.basename(lora) for lora in loras]
@@ -53,104 +53,113 @@ class App(tk.Tk):
         if lora_names:
             selected_lora.set(lora_names[0])
 
-        # Create a frame for the sidebar
-        self.sidebar = tk.Frame(self, width=300, bg="#FBFBFB")
+        # Create main sidebar frame with padding
+        self.sidebar = tk.Frame(self, width=300, bg="#FBFBFB", padx=10, pady=10)
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        self.sidebar.grid_columnconfigure(0, weight=1)
 
-        # Text input for the prompt
+        # Text input frames
+        self.prompt_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
+        self.prompt_frame.grid(row=0, column=0, sticky="ew", pady=(0,5))
+        self.prompt_frame.grid_columnconfigure(0, weight=1)
+
+        # Prompt textbox
         self.prompt_entry = ctk.CTkTextbox(
-            self.sidebar,
+            self.prompt_frame,
             height=150,
-            width=300,
             fg_color="#E8F9FF",
             text_color="black",
-            border_color="gray",
-            border_width=2,
+            border_color="gray", 
+            border_width=2
         )
-        self.prompt_entry.pack(pady=10, padx=10)
+        self.prompt_entry.grid(row=0, column=0, sticky="ew")
 
+        # Negative prompt textbox
         self.neg = ctk.CTkTextbox(
-            self.sidebar,
+            self.prompt_frame,
             height=75,
-            width=300,
-            fg_color="#E8F9FF",
+            fg_color="#E8F9FF", 
             text_color="black",
             border_color="gray",
-            border_width=2,
+            border_width=2
         )
-        self.neg.pack(pady=10, padx=10)
-
-        # Create and configure the model frame
-        self.modelFrame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.modelFrame.pack(fill="x", padx=5, pady=5)  # Pack the frame into sidebar
+        self.neg.grid(row=1, column=0, sticky="ew", pady=(5,0))
 
         # Add model dropdown with error handling for empty lists
-        model_values = file_names if file_names else ["No models found"]
+        model_values = ["flux"] + (file_names if file_names else ["No models found"])
+        
+        # Model dropdown and Flux checkbox
         self.dropdown = ctk.CTkOptionMenu(
-            self.modelFrame,
+            self.sidebar,
             values=model_values,
             fg_color="#F5EFFF",
             text_color="black",
+            command=self.on_model_selected,
         )
-        self.dropdown.grid(
-            row=0, 
-            column=0, 
-            padx=20, 
-            sticky="ew"
-        )
+        self.dropdown.grid(row=2, column=0, sticky="ew")
 
-        # Initialize BooleanVar properly and store as instance variable
-        self.flux_var = tk.BooleanVar()
-        self.flux_model = ctk.CTkCheckBox(
-            self.modelFrame,
-            text="Flux",
-            variable=self.flux_var,
-            command=self.validate_flux,
-            text_color="black",
-        )
-        self.flux_model.grid(
-            row=0,
-            column=1,
-            padx=20,
-        )
-
+        # LoRA selection
         self.lora_selection = ctk.CTkOptionMenu(
             self.sidebar,
             values=lora_names,
             fg_color="#F5EFFF",
-            text_color="black",
+            text_color="black"
         )
-        self.lora_selection.pack(pady=10)
+        self.lora_selection.grid(row=3, column=0, sticky="ew", pady=5)
 
-        # Sliders for the resolution
-        self.width_label = ctk.CTkLabel(self.sidebar, text="")
-        self.width_label.pack()
+        # Sliders frame
+        self.sliders_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
+        self.sliders_frame.grid(row=4, column=0, sticky="ew", pady=5)
+        self.sliders_frame.grid_columnconfigure(1, weight=1)
+
+        # Width slider
+        tk.Label(self.sliders_frame, text="Width:", bg="#FBFBFB").grid(row=0, column=0, padx=(0,5))
         self.width_slider = ctk.CTkSlider(
-            self.sidebar, from_=1, to=2048, number_of_steps=16, fg_color="#F5EFFF"
-        )
-        self.width_slider.pack()
-
-        self.height_label = ctk.CTkLabel(self.sidebar, text="")
-        self.height_label.pack()
-        self.height_slider = ctk.CTkSlider(
-            self.sidebar,
+            self.sliders_frame,
             from_=1,
             to=2048,
             number_of_steps=16,
-            fg_color="#F5EFFF",
+            fg_color="#F5EFFF"
         )
-        self.height_slider.pack()
+        self.width_slider.grid(row=0, column=1, sticky="ew")
+        self.width_label = ctk.CTkLabel(self.sliders_frame, text="")
+        self.width_label.grid(row=0, column=2, padx=(5,0))
 
-        self.cfg_label = ctk.CTkLabel(self.sidebar, text="")
-        self.cfg_label.pack()
-        self.cfg_slider = ctk.CTkSlider(
-            self.sidebar, from_=1, to=15, number_of_steps=14, fg_color="#F5EFFF"
+        # Height slider
+        tk.Label(self.sliders_frame, text="Height:", bg="#FBFBFB").grid(row=1, column=0, padx=(0,5))
+        self.height_slider = ctk.CTkSlider(
+            self.sliders_frame,
+            from_=1,
+            to=2048,
+            number_of_steps=16,
+            fg_color="#F5EFFF"
         )
-        self.cfg_slider.pack()
+        self.height_slider.grid(row=1, column=1, sticky="ew")
+        self.height_label = ctk.CTkLabel(self.sliders_frame, text="")
+        self.height_label.grid(row=1, column=2, padx=(5,0))
+
+        # CFG slider
+        tk.Label(self.sliders_frame, text="CFG:", bg="#FBFBFB").grid(row=2, column=0, padx=(0,5))
+        self.cfg_slider = ctk.CTkSlider(
+            self.sliders_frame,
+            from_=1,
+            to=15,
+            number_of_steps=14,
+            fg_color="#F5EFFF"
+        )
+        self.cfg_slider.grid(row=2, column=1, sticky="ew")
+        self.cfg_label = ctk.CTkLabel(self.sliders_frame, text="")  
+        self.cfg_label.grid(row=2, column=2, padx=(5,0))
 
         # Create a frame for the checkboxes
         self.checkbox_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.checkbox_frame.pack(pady=10)
+        self.checkbox_frame.grid(row=5, column=0, sticky="ew", pady=10)
+
+        # Configure grid columns and rows to distribute space evenly
+        self.checkbox_frame.grid_columnconfigure(0, weight=1)
+        self.checkbox_frame.grid_columnconfigure(1, weight=1)
+        self.checkbox_frame.grid_rowconfigure(0, weight=1)
+        self.checkbox_frame.grid_rowconfigure(1, weight=1)
 
         # checkbox for hiresfix
         self.hires_fix_var = tk.BooleanVar()
@@ -161,20 +170,20 @@ class App(tk.Tk):
             command=self.print_hires_fix,
             text_color="black",
         )
-        self.hires_fix_checkbox.grid(row=0, column=0, padx=5, pady=5)
+        self.hires_fix_checkbox.grid(row=0, column=0, padx=(75,5), pady=5, sticky="nsew")
 
-        # add a checkbox for Adetailer
+        # checkbox for Adetailer  
         self.adetailer_var = tk.BooleanVar()
         self.adetailer_checkbox = ctk.CTkCheckBox(
-            self.checkbox_frame,
+            self.checkbox_frame, 
             text="Adetailer",
             variable=self.adetailer_var,
             command=self.print_adetailer,
             text_color="black",
         )
-        self.adetailer_checkbox.grid(row=0, column=1, padx=5, pady=5)
+        self.adetailer_checkbox.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
 
-        # add a checkbox to enable stable-fast optimization
+        # checkbox to enable stable-fast optimization
         self.stable_fast_var = tk.BooleanVar()
         self.stable_fast_checkbox = ctk.CTkCheckBox(
             self.checkbox_frame,
@@ -182,9 +191,9 @@ class App(tk.Tk):
             variable=self.stable_fast_var,
             text_color="black",
         )
-        self.stable_fast_checkbox.grid(row=1, column=0, padx=5, pady=5)
+        self.stable_fast_checkbox.grid(row=1, column=0, padx=(75,5), pady=5, sticky="nsew")
 
-        # add a checkbox to enable prompt enhancer
+        # checkbox to enable prompt enhancer
         self.enhancer_var = tk.BooleanVar()
         self.enhancer_checkbox = ctk.CTkCheckBox(
             self.checkbox_frame,
@@ -192,7 +201,7 @@ class App(tk.Tk):
             variable=self.enhancer_var,
             text_color="black",
         )
-        self.enhancer_checkbox.grid(row=1, column=1, padx=5, pady=5)
+        self.enhancer_checkbox.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
         # Button to launch the generation
         self.generate_button = ctk.CTkButton(
@@ -204,7 +213,7 @@ class App(tk.Tk):
             border_color="gray",
             border_width=2,
         )
-        self.generate_button.pack(pady=10)
+        self.generate_button.grid(row=6, column=0, pady=10, sticky="ew")  # Changed from pack to grid
 
         # Create a frame for the image display, without border
         self.display = tk.Frame(self, bg="#FBFBFB", border=0)
@@ -229,10 +238,13 @@ class App(tk.Tk):
         # load the checkpoint on an another thread
         threading.Thread(target=self._prep, daemon=True).start()
 
+        # Create button frame 
         self.button_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.button_frame.pack(pady=10)
+        self.button_frame.grid(row=7, column=0, pady=10, sticky="ew")  # Changed from pack to grid
+        self.button_frame.grid_columnconfigure(0, weight=1)
+        self.button_frame.grid_columnconfigure(1, weight=1)
 
-        # add an img2img button, the button opens the file selector, run img2img on the selected image
+        # img2img button
         self.img2img_button = ctk.CTkButton(
             self.button_frame,
             text="img2img",
@@ -242,10 +254,10 @@ class App(tk.Tk):
             border_color="gray",
             border_width=2,
         )
-        self.img2img_button.grid(row=0, column=0, padx=5)
+        self.img2img_button.grid(row=0, column=0, padx=5, sticky="ew")
 
+        # interrupt button 
         self.interrupt_flag = False
-
         self.interrupt_button = ctk.CTkButton(
             self.button_frame,
             text="Interrupt",
@@ -254,8 +266,9 @@ class App(tk.Tk):
             text_color="black",
             border_color="gray",
             border_width=2,
+            
         )
-        self.interrupt_button.grid(row=0, column=1, padx=5)
+        self.interrupt_button.grid(row=0, column=1, padx=5, sticky="ew")
 
         prompt, neg, width, height, cfg = util.load_parameters_from_file()
         self.prompt_entry.insert(tk.END, prompt)
@@ -335,6 +348,7 @@ class App(tk.Tk):
         img_array = np.array(img)
         img_tensor = torch.from_numpy(img_array).float().to("cpu") / 255.0
         img_tensor = img_tensor.unsqueeze(0)
+        self.interrupt_flag = False
         with torch.inference_mode():
             (
                 checkpointloadersimple_241,
@@ -467,11 +481,10 @@ class App(tk.Tk):
 
     def generate_image(self) -> None:
         """Start the image generation process."""
-        threading.Thread(target=self._generate_image, daemon=True).start()
-
-    def generate_image_flux(self) -> None:
-        """Start the image generation process."""
-        threading.Thread(target=self._generate_image_flux, daemon=True).start()
+        if self.dropdown.get() == "flux":
+            threading.Thread(target=self._generate_image_flux, daemon=True).start()
+        else:
+            threading.Thread(target=self._generate_image, daemon=True).start()
 
     def _prep(self) -> tuple:
         """Prepare the necessary components for image generation.
@@ -479,7 +492,7 @@ class App(tk.Tk):
         Returns:
             tuple: The prepared components.
         """
-        if self.dropdown.get() != self.ckpt:
+        if self.dropdown.get() != self.ckpt and self.dropdown.get() != "flux":
             self.ckpt = self.dropdown.get()
             with torch.inference_mode():
                 self.checkpointloadersimple = Loader.CheckpointLoaderSimple()
@@ -508,7 +521,7 @@ class App(tk.Tk):
             self.ultimatesdupscale,
         )
 
-    def _generate_image(self) -> None:  # TODO: add Flux to the GUI
+    def _generate_image(self) -> None:
         """Generate an image based on the provided prompt and settings."""
         self.display_most_recent_image_flag = False
         prompt = self.prompt_entry.get("1.0", tk.END)
@@ -520,6 +533,7 @@ class App(tk.Tk):
         w = int(self.width_slider.get())
         h = int(self.height_slider.get())
         cfg = int(self.cfg_slider.get())
+        self.interrupt_flag = False
         with torch.inference_mode():
             (
                 checkpointloadersimple_241,
@@ -776,6 +790,7 @@ class App(tk.Tk):
             prompt = Enhancer.enhance_prompt()
             while prompt is None:
                 pass
+        self.interrupt_flag = False
         Downloader.CheckAndDownloadFlux()
         with torch.inference_mode():
             dualcliploadergguf = Quantizer.DualCLIPLoaderGGUF()
@@ -834,34 +849,28 @@ class App(tk.Tk):
         self.update_image(img)
         self.display_most_recent_image_flag = True
 
-    def validate_flux(self) -> None:
-        """Print the status of the flux checkbox."""
-        if self.flux_var.get() is True:
-            print("Flux is ON")
-            # disable the adetailer, hires fix and stable fast checkboxes and the model and lora dropdowns
-            self.adetailer_checkbox._state = tk.DISABLED
+    def on_model_selected(self, *args):
+        """Handle model selection changes"""
+        if self.dropdown.get() == "flux":
+            # Disable incompatible controls
+            self.adetailer_checkbox._state = tk.DISABLED 
             self.hires_fix_checkbox._state = tk.DISABLED
             self.stable_fast_checkbox._state = tk.DISABLED
-            self.dropdown._state = tk.DISABLED
             self.lora_selection._state = tk.DISABLED
             self.cfg_slider._state = tk.DISABLED
-            self.generate_button._command = self.generate_image_flux
         else:
-            print("Flux is OFF")
-            # enable the adetailer, hires fix and stable fast checkboxes and the model and lora dropdowns
+            # Enable controls
             self.adetailer_checkbox._state = tk.NORMAL
             self.hires_fix_checkbox._state = tk.NORMAL
             self.stable_fast_checkbox._state = tk.NORMAL
-            self.dropdown._state = tk.NORMAL
             self.lora_selection._state = tk.NORMAL
             self.cfg_slider._state = tk.NORMAL
-            self.generate_button._command = self.generate_image
 
     def update_labels(self) -> None:
         """Update the labels for the sliders."""
-        self.width_label.configure(text=f"Width: {int(self.width_slider.get())}")
-        self.height_label.configure(text=f"Height: {int(self.height_slider.get())}")
-        self.cfg_label.configure(text=f"CFG: {int(self.cfg_slider.get())}")
+        self.width_label.configure(text=f"{int(self.width_slider.get())}")
+        self.height_label.configure(text=f"{int(self.height_slider.get())}")
+        self.cfg_label.configure(text=f"{int(self.cfg_slider.get())}")
 
     def update_image(self, img: Image.Image) -> None:
         """Update the displayed image.

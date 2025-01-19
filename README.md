@@ -7,7 +7,7 @@
 </br>
 </br>
   <a href="https://github.com/LightDiffusion/LightDiffusion-Next">
-    <img src="https://github.com/user-attachments/assets/3b883c4e-2730-43aa-9013-3d967d743662" alt="Logo">
+    <img src="./HomeImage.png" alt="Logo">
 
   </a>
 </br>
