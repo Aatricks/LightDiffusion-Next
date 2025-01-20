@@ -1,4 +1,5 @@
 import os
+import queue
 import sys
 import random
 import threading
@@ -8,6 +9,8 @@ from PIL import Image, ImageTk
 import numpy as np
 import customtkinter as ctk
 import glob
+import time
+from functools import wraps
 
 import torch
 
@@ -34,6 +37,19 @@ loras = glob.glob("./_internal/loras/*.safetensors")
 loras += glob.glob("./_internal/loras/*.pt")
 
 
+
+def debounce(wait):
+    """Decorator to debounce resize events"""
+    def decorator(fn):
+        last_call = [0]
+        def debounced(*args, **kwargs):
+            current_time = time.time()
+            if current_time - last_call[0] >= wait:
+                fn(*args, **kwargs)
+                last_call[0] = current_time
+        return debounced
+    return decorator
+
 class App(tk.Tk):
     """Main application class for the LightDiffusion GUI."""
 
@@ -41,8 +57,12 @@ class App(tk.Tk):
         """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
-        self.geometry("800x600")
+        self.geometry("800x650")
 
+        # Configure main window grid
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
         file_names = [os.path.basename(file) for file in files]
         lora_names = [os.path.basename(lora) for lora in loras]
 
@@ -53,40 +73,47 @@ class App(tk.Tk):
         if lora_names:
             selected_lora.set(lora_names[0])
 
-        # Create main sidebar frame with padding
-        self.sidebar = tk.Frame(self, width=300, bg="#FBFBFB", padx=10, pady=10)
-        self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        # Create main sidebar frame with padding and grid
+        self.sidebar = tk.Frame(self, bg="#FBFBFB", padx=10, pady=10)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_columnconfigure(0, weight=1)
+        
+        # Configure sidebar grid rows
+        for i in range(8):
+            self.sidebar.grid_rowconfigure(i, weight=1)
 
-        # Text input frames
+        # Text input frames with expansion
         self.prompt_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.prompt_frame.grid(row=0, column=0, sticky="ew", pady=(0,5))
+        self.prompt_frame.grid(row=0, column=0, sticky="nsew", pady=(0,5))
         self.prompt_frame.grid_columnconfigure(0, weight=1)
+        self.prompt_frame.grid_rowconfigure(0, weight=2)
+        self.prompt_frame.grid_rowconfigure(1, weight=1)
 
-        # Prompt textbox
+        # Prompt textbox with expansion
         self.prompt_entry = ctk.CTkTextbox(
             self.prompt_frame,
             height=150,
             fg_color="#E8F9FF",
             text_color="black",
-            border_color="gray", 
-            border_width=2
-        )
-        self.prompt_entry.grid(row=0, column=0, sticky="ew")
-
-        # Negative prompt textbox
-        self.neg = ctk.CTkTextbox(
-            self.prompt_frame,
-            height=75,
-            fg_color="#E8F9FF", 
-            text_color="black",
             border_color="gray",
             border_width=2
         )
-        self.neg.grid(row=1, column=0, sticky="ew", pady=(5,0))
+        self.prompt_entry.grid(row=0, column=0, sticky="nsew")
+
+        # Negative prompt textbox with expansion 
+        self.neg = ctk.CTkTextbox(
+            self.prompt_frame,
+            height=75,
+            fg_color="#E8F9FF",
+            text_color="black", 
+            border_color="gray",
+            border_width=2
+        )
+        self.neg.grid(row=1, column=0, sticky="nsew", pady=(5,0))
+
 
         # Add model dropdown with error handling for empty lists
-        model_values = (file_names if file_names else ["No models found"])+ ["flux"]
+        model_values = (file_names if file_names else ["No models found"]) + ["flux"] 
         
         # Model dropdown and Flux checkbox
         self.dropdown = ctk.CTkOptionMenu(
@@ -107,10 +134,51 @@ class App(tk.Tk):
         )
         self.lora_selection.grid(row=3, column=0, sticky="ew", pady=5)
 
-        # Sliders frame
-        self.sliders_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.sliders_frame.grid(row=4, column=0, sticky="ew", pady=5)
+        # Display frame with expansion
+        self.display = tk.Frame(self, bg="#FBFBFB")
+        self.display.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.display.grid_columnconfigure(0, weight=1)
+        # Add row configuration for both image and checkbox
+        self.display.grid_rowconfigure(0, weight=1)  # For image
+        self.display.grid_rowconfigure(1, weight=0)  # For checkbox
+
+        # Image label with expansion
+        self.image_label = tk.Label(self.display, bg="#FBFBFB")
+        self.image_label.grid(row=0, column=0, sticky="nsew")
+
+        # Previewer checkbox - changed from pack to grid
+        self.previewer_var = tk.BooleanVar()
+        self.previewer_checkbox = ctk.CTkCheckBox(
+            self.display,
+            text="Previewer",
+            variable=self.previewer_var,
+            command=self.print_previewer,
+            text_color="black",
+        )
+        self.previewer_checkbox.grid(row=1, column=0, pady=10)
+
+
+        # Make sliders frame expand
+        self.sliders_frame = tk.Frame(self.sidebar, bg="#FBFBFB") 
+        self.sliders_frame.grid(row=4, column=0, sticky="nsew", pady=5)
         self.sliders_frame.grid_columnconfigure(1, weight=1)
+
+        # Configure slider weights
+        for i in range(3):
+            self.sliders_frame.grid_rowconfigure(i, weight=1)
+
+        # Make checkbox frame expand
+        self.checkbox_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
+        self.checkbox_frame.grid(row=5, column=0, sticky="nsew", pady=10)
+        self.checkbox_frame.grid_columnconfigure(0, weight=1)
+        self.checkbox_frame.grid_columnconfigure(1, weight=1)
+
+        # Make button frame expand
+        self.button_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
+        self.button_frame.grid(row=7, column=0, sticky="nsew", pady=10)
+        self.button_frame.grid_columnconfigure(0, weight=1)
+        self.button_frame.grid_columnconfigure(1, weight=1)
+
 
         # Width slider
         tk.Label(self.sliders_frame, text="Width:", bg="#FBFBFB").grid(row=0, column=0, padx=(0,5))
@@ -150,10 +218,6 @@ class App(tk.Tk):
         self.cfg_slider.grid(row=2, column=1, sticky="ew")
         self.cfg_label = ctk.CTkLabel(self.sliders_frame, text="")  
         self.cfg_label.grid(row=2, column=2, padx=(5,0))
-
-        # Create a frame for the checkboxes
-        self.checkbox_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.checkbox_frame.grid(row=5, column=0, sticky="ew", pady=10)
 
         # Configure grid columns and rows to distribute space evenly
         self.checkbox_frame.grid_columnconfigure(0, weight=1)
@@ -215,35 +279,11 @@ class App(tk.Tk):
         )
         self.generate_button.grid(row=6, column=0, pady=10, sticky="ew")  # Changed from pack to grid
 
-        # Create a frame for the image display, without border
-        self.display = tk.Frame(self, bg="#FBFBFB", border=0)
-        self.display.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
-
-        # centered Label to display the generated image
-        self.image_label = tk.Label(self.display, bg="#FBFBFB")
-        self.image_label.pack(expand=True, padx=10, pady=10)
-
-        self.previewer_var = tk.BooleanVar()
-        self.previewer_checkbox = ctk.CTkCheckBox(
-            self.display,
-            text="Previewer",
-            variable=self.previewer_var,
-            command=self.print_previewer,
-            text_color="black",
-        )
-        self.previewer_checkbox.pack(pady=10)
-
         self.ckpt = None
 
         # load the checkpoint on an another thread
         threading.Thread(target=self._prep, daemon=True).start()
-
-        # Create button frame 
-        self.button_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.button_frame.grid(row=7, column=0, pady=10, sticky="ew")  # Changed from pack to grid
-        self.button_frame.grid_columnconfigure(0, weight=1)
-        self.button_frame.grid_columnconfigure(1, weight=1)
-
+        
         # img2img button
         self.img2img_button = ctk.CTkButton(
             self.button_frame,
@@ -331,7 +371,25 @@ class App(tk.Tk):
                 self.cfg_slider.get(),
             ),
         )
-        self.bind("<Configure>", self.on_resize)
+        # Add resize handling variables
+        self._resize_queue = queue.Queue()
+        self._resize_thread = None
+        self._resize_event = threading.Event()
+        self._resize_lock = threading.Lock()
+        self._resize_running = True
+        self._last_resize_time = 0
+        self._resize_delay = 0.1
+        self._image_cache = {}
+        self._current_image = None
+        
+        # Start resize worker thread
+        self._start_resize_worker()
+        
+        # Bind resize event
+        self.bind("<Configure>", self._queue_resize)
+        
+        # Bind cleanup
+        self.protocol("WM_DELETE_WINDOW", self._cleanup)
         self.display_most_recent_image_flag = False
         self.display_most_recent_image()
 
@@ -929,15 +987,113 @@ class App(tk.Tk):
         img = Image.open(image_files[0])
         self.update_image(img)
 
-    def on_resize(self, event: tk.Event) -> None:
-        """Handle the window resize event.
+    def _start_resize_worker(self):
+        """Start the resize worker thread"""
+        self._resize_thread = threading.Thread(target=self._resize_worker, daemon=True)
+        self._resize_thread.start()
 
-        Args:
-            event (tk.Event): The resize event.
-        """
+    def _resize_worker(self):
+        """Worker thread for handling resize operations"""
+        while self._resize_running:
+            try:
+                # Wait for resize event or timeout
+                if self._resize_queue.qsize() > 0:
+                    event = self._resize_queue.get(timeout=0.1)
+                    self._do_resize(event)
+                    self._resize_queue.task_done()
+                else:
+                    self._resize_event.wait(timeout=0.1)
+                    self._resize_event.clear()
+            except queue.Empty:
+                continue
+        
+    def _queue_resize(self, event):
+        """Queue a resize event"""
+        current_time = time.time()
+        
+        # Debounce resize events
+        if current_time - self._last_resize_time > self._resize_delay:
+            self._last_resize_time = current_time
+            self._resize_queue.put(event)
+            self._resize_event.set()
+
+    def _do_resize(self, event):
+        """Handle resize operation in worker thread"""
+        width = self.winfo_width()
+        height = self.winfo_height()
+        
+        # Update UI components in main thread
+        self.after(0, lambda: self._update_components(width, height))
+        
+        # Update image if exists
         if hasattr(self, "img"):
-            self.update_image(self.img)
+            self._update_image_threaded(self.img)
+    
+    def _update_components(self, width, height):
+        """Update UI components sizes"""
+        # Update component sizes based on window dimensions
+        width = self.winfo_width()
+        height = self.winfo_height()
+        
+        # Scale text boxes
+        prompt_height = int(height * 0.25)
+        neg_height = int(height * 0.15)
+        self.prompt_entry.configure(height=prompt_height)
+        self.neg.configure(height=neg_height)
 
+    def _update_image_threaded(self, img):
+        """Thread-safe image update with caching"""
+        if img is None:
+            return
+            
+        with self._resize_lock:
+            # Calculate dimensions
+            aspect_ratio = img.width / img.height
+            label_width = int(4 * self.winfo_width() / 7)
+            label_height = int(4 * self.winfo_height() / 7)
+
+            if label_width / aspect_ratio <= label_height:
+                new_width = label_width
+                new_height = int(label_width / aspect_ratio)
+            else:
+                new_height = label_height
+                new_width = int(label_height * aspect_ratio)
+
+            # Check cache
+            cache_key = (new_width, new_height)
+            if cache_key in self._image_cache:
+                resized_img = self._image_cache[cache_key]
+            else:
+                try:
+                    resized_img = img.resize(
+                        (new_width, new_height),
+                        Image.LANCZOS
+                    )
+                    self._image_cache[cache_key] = resized_img
+                    
+                    # Limit cache size
+                    if len(self._image_cache) > 5:
+                        self._image_cache.pop(next(iter(self._image_cache)))
+                except:
+                    return
+            if not self.display_most_recent_image_flag:
+                # Update image in main thread
+                self.after(0, lambda: self._update_image_label_safe(resized_img))
+                
+    def _update_image_label_safe(self, img):
+        """Thread-safe image label update"""
+        if not self.display_most_recent_image_flag:
+            self._current_image = ImageTk.PhotoImage(img)
+            self.image_label.configure(image=self._current_image)
+
+    def _cleanup(self):
+        """Clean up threads before closing"""
+        self._resize_running = False
+        self._resize_event.set()
+        if self._resize_thread:
+            self._resize_thread.join(timeout=1.0)
+        self.destroy()
+        
     def interrupt_generation(self) -> None:
         """Interrupt the image generation process."""
         self.interrupt_flag = True
