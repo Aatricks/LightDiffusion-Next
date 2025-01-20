@@ -250,7 +250,7 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
-def taesd_preview(x: torch.Tensor):
+def taesd_preview(x: torch.Tensor, flux: bool = False): # FIXME: fix decoding for flux
     """#### Preview the input latent as an image.
 
     Uses the TAESD model to decode the latent and updates the image in the App.
@@ -263,8 +263,6 @@ def taesd_preview(x: torch.Tensor):
         
         # Ensure input has correct number of channels (4)
         if x.shape[1] != 4:
-            # If more than 4 channels, take first 4
-            # If fewer than 4 channels, pad with zeros
             desired_channels = 4
             current_channels = x.shape[1]
             
@@ -274,14 +272,27 @@ def taesd_preview(x: torch.Tensor):
                 padding = torch.zeros(x.shape[0], desired_channels - current_channels, x.shape[2], x.shape[3], device=x.device)
                 x = torch.cat([x, padding], dim=1)
 
-        # Process one image at a time
-        output = taesd_instance.decode(x[0].unsqueeze(0))[0]
+        # Process one image at a time and decode
+        decoded = taesd_instance.decode(x[0].unsqueeze(0))[0]
         
-        # Convert to PIL Image
-        for image in output:
-            i = 255.0 * image.cpu().detach().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            img = img.convert("RGB")
-            app_instance.app.update_image(img)
+        # Handle channel dimension properly
+        if decoded.shape[0] == 1:
+            decoded = decoded.repeat(3, 1, 1)
+        elif decoded.shape[0] == 3:
+            # Reorder channels from BGR to RGB if needed
+            if flux:
+                decoded = decoded[[2,1,0], :, :]  # Swap R and B channels
+        else:
+            raise ValueError(f"Unexpected number of channels in decoded image: {decoded.shape[0]}")
+        
+        # Proper normalization from [-1,1] to [0,255] range
+        decoded = (decoded + 1.0) / 2.0  # Normalize from [-1,1] to [0,1]
+        image_np = (decoded.cpu().detach().numpy() * 255.0)
+        image_np = np.transpose(image_np, (1, 2, 0))  # Change from CxHxW to HxWxC
+        image_np = np.clip(image_np, 0, 255).astype(np.uint8)
+        
+        # Create RGB PIL Image
+        img = Image.fromarray(image_np, mode='RGB')
+        app_instance.app.update_image(img)
     else:
         pass

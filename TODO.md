@@ -3,3 +3,4 @@
 *   TODO: Try making a file compile the others into a single file
 *   TODO: Optimize the code
 *   TODO: Change UI
+*   TODO: Add a progress bar

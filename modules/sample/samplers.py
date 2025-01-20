@@ -326,7 +326,7 @@ def sample_euler(
         x = x + d * dt
         if pipeline is False:
             if app_instance.app.previewer_var.get() is True:
-                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+                threading.Thread(target=taesd.taesd_preview, args=(x, True)).start()
             else:
                 pass
     return x
