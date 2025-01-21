@@ -13,6 +13,7 @@ import glob
 import time
 from functools import wraps
 
+from sympy import im
 import torch
 
 # Add the directory containing LightDiffusion.py to the Python path
@@ -157,6 +158,11 @@ class App(tk.Tk):
             text_color="black",
         )
         self.previewer_checkbox.grid(row=1, column=0, pady=10)
+        
+        # Progress Bar
+        self.progress = ctk.CTkProgressBar(self.display, fg_color="#FBFBFB")
+        self.progress.grid(row=2, column=0, sticky="ew", pady=10, padx=10)
+        self.progress.set(0)
 
         # Make sliders frame expand
         self.sliders_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
@@ -307,6 +313,7 @@ class App(tk.Tk):
         self.img2img_button.grid(row=0, column=0, padx=5, sticky="ew")
 
         # interrupt button
+        self.generation_threads = []
         self.interrupt_flag = False
         self.interrupt_button = ctk.CTkButton(
             self.button_frame,
@@ -403,6 +410,7 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._cleanup)
         self.display_most_recent_image_flag = False
         self.display_most_recent_image()
+        self.is_generating = False
 
     def _img2img(self, file_path: str) -> None:
         """Perform img2img on the selected image.
@@ -410,6 +418,8 @@ class App(tk.Tk):
         Args:
             file_path (str): The path to the selected image.
         """
+        self.is_generating = True
+        self.img2img_button.configure(state="disabled")
         self.display_most_recent_image_flag = False
         prompt = self.prompt_entry.get("1.0", tk.END)
         neg = self.neg.get("1.0", tk.END)
@@ -518,9 +528,12 @@ class App(tk.Tk):
             app.title("LightDiffusion")
         except:
             pass
+        self.is_generating = False
 
     def img2img(self) -> None:
         """Open the file selector and run img2img on the selected image."""
+        if self.is_generating:
+            return
         file_path = filedialog.askopenfilename()
         if file_path:
             threading.Thread(
@@ -550,10 +563,13 @@ class App(tk.Tk):
 
     def generate_image(self) -> None:
         """Start the image generation process."""
+        if self.is_generating:
+            return
+        
         if self.dropdown.get() == "flux":
-            threading.Thread(target=self._generate_image_flux, daemon=True).start()
+            self.generate_thread = threading.Thread(target=self._generate_image_flux, daemon=True).start()
         else:
-            threading.Thread(target=self._generate_image, daemon=True).start()
+            self.generate_thread = threading.Thread(target=self._generate_image, daemon=True).start()
 
     def _prep(self) -> tuple:
         """Prepare the necessary components for image generation.
@@ -591,338 +607,396 @@ class App(tk.Tk):
         )
 
     def _generate_image(self) -> None:
-        """Generate an image based on the provided prompt and settings."""
-        self.display_most_recent_image_flag = False
-        prompt = self.prompt_entry.get("1.0", tk.END)
-        if self.enhancer_var.get() is True:
-            prompt = Enhancer.enhance_prompt()
-            while prompt is None:
-                pass
-        neg = self.neg.get("1.0", tk.END)
-        w = int(self.width_slider.get())
-        h = int(self.height_slider.get())
-        cfg = int(self.cfg_slider.get())
-        self.interrupt_flag = False
+        """Generate image with proper interrupt handling."""
+        self.is_generating = True
+        self.generate_button.configure(state="disabled")
+        
+        current_thread = threading.current_thread()
+        self.generation_threads.append(current_thread)
         images = []
-        with torch.inference_mode():
-            (
-                checkpointloadersimple_241,
-                cliptextencode,
-                emptylatentimage,
-                ksampler_instance,
-                vaedecode,
-                saveimage,
-                latentupscale,
-                upscalemodelloader,
-                ultimatesdupscale,
-            ) = self._prep()
-            try:
-                loraloader = LoRas.LoraLoader()
-                loraloader_274 = loraloader.load_lora(
-                    lora_name=self.lora_selection.get().replace(
-                        "./_internal/loras/", ""
-                    ),
-                    strength_model=0.7,
-                    strength_clip=0.7,
-                    model=checkpointloadersimple_241[0],
-                    clip=checkpointloadersimple_241[1],
-                )
-                print(
-                    "loading",
-                    self.lora_selection.get().replace("./_internal/loras/", ""),
-                )
-            except:
-                loraloader_274 = checkpointloadersimple_241
-            try:
-                samloader = SAM.SAMLoader()
-                samloader_87 = samloader.load_model(
-                    model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
-                )
-
-                cliptextencode_124 = cliptextencode.encode(
-                    text="royal, detailed, magnificient, beautiful, seducing",
-                    clip=loraloader_274[1],
-                )
-
-                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
-                ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
-                    # model_name="face_yolov8m.pt"
-                    model_name="person_yolov8m-seg.pt"
-                )
-
-                bboxdetectorsegs = bbox.BboxDetectorForEach()
-                samdetectorcombined = SAM.SAMDetectorCombined()
-                impactsegsandmask = SEGS.SegsBitwiseAndMask()
-                detailerforeachdebug = ADetailer.DetailerForEachTest()
-            except:
-                pass
-            clipsetlastlayer = Clip.CLIPSetLastLayer()
-            clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
-                stop_at_clip_layer=-2, clip=loraloader_274[1]
-            )
-            if self.stable_fast_var.get() is True:
-                from modules.StableFast import StableFast
-
+        self.interrupt_flag = False
+        
+        try:
+            # Disable generate button during generation
+            self.generate_button.configure(state="disabled")
+            self.display_most_recent_image_flag = False
+            self.progress.set(0)
+            
+            # Early interrupt check
+            if self.interrupt_flag:
+                return
+                
+            # Get generation parameters
+            prompt = self.prompt_entry.get("1.0", tk.END)
+            neg = self.neg.get("1.0", tk.END)
+            w = int(self.width_slider.get())
+            h = int(self.height_slider.get())
+            cfg = int(self.cfg_slider.get())
+            
+            # Main generation with proper interrupt handling
+            with torch.inference_mode():
+                components = self._prep()
+                if self.interrupt_flag:
+                    return
+                (
+                    checkpointloadersimple_241,
+                    cliptextencode,
+                    emptylatentimage,
+                    ksampler_instance,
+                    vaedecode,
+                    saveimage,
+                    latentupscale,
+                    upscalemodelloader,
+                    ultimatesdupscale,
+                ) = self._prep()
                 try:
-                    self.title("LightDiffusion - Generating StableFast model")
+                    loraloader = LoRas.LoraLoader()
+                    loraloader_274 = loraloader.load_lora(
+                        lora_name=self.lora_selection.get().replace(
+                            "./_internal/loras/", ""
+                        ),
+                        strength_model=0.7,
+                        strength_clip=0.7,
+                        model=checkpointloadersimple_241[0],
+                        clip=checkpointloadersimple_241[1],
+                    )
+                    print(
+                        "loading",
+                        self.lora_selection.get().replace("./_internal/loras/", ""),
+                    )
+                except:
+                    loraloader_274 = checkpointloadersimple_241
+                try:
+                    samloader = SAM.SAMLoader()
+                    samloader_87 = samloader.load_model(
+                        model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
+                    )
+
+                    cliptextencode_124 = cliptextencode.encode(
+                        text="royal, detailed, magnificient, beautiful, seducing",
+                        clip=loraloader_274[1],
+                    )
+
+                    ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
+                    ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
+                        # model_name="face_yolov8m.pt"
+                        model_name="person_yolov8m-seg.pt"
+                    )
+
+                    bboxdetectorsegs = bbox.BboxDetectorForEach()
+                    samdetectorcombined = SAM.SAMDetectorCombined()
+                    impactsegsandmask = SEGS.SegsBitwiseAndMask()
+                    detailerforeachdebug = ADetailer.DetailerForEachTest()
                 except:
                     pass
-                applystablefast = StableFast.ApplyStableFastUnet()
-                applystablefast_158 = applystablefast.apply_stable_fast(
-                    enable_cuda_graph=False,
-                    model=loraloader_274[0],
+                clipsetlastlayer = Clip.CLIPSetLastLayer()
+                clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
+                    stop_at_clip_layer=-2, clip=loraloader_274[1]
                 )
-            else:
-                applystablefast_158 = loraloader_274
-            cliptextencode_242 = cliptextencode.encode(
-                text=prompt,
-                clip=clipsetlastlayer_257[0],
-            )
-            cliptextencode_243 = cliptextencode.encode(
-                text=neg,
-                clip=clipsetlastlayer_257[0],
-            )
-            emptylatentimage_244 = emptylatentimage.generate(
-                width=w, height=h, batch_size=int(self.batch_slider.get())
-            )
-            ksampler_239 = ksampler_instance.sample(
-                seed=random.randint(1, 2**64),
-                steps=40,
-                cfg=cfg,
-                sampler_name="dpm_adaptive",
-                scheduler="karras",
-                denoise=1,
-                model=applystablefast_158[0],
-                positive=cliptextencode_242[0],
-                negative=cliptextencode_243[0],
-                latent_image=emptylatentimage_244[0],
-            )
-            if self.hires_fix_var.get() is True:
-                latentupscale_254 = latentupscale.upscale(
-                    width=w * 2,
-                    height=h * 2,
-                    samples=ksampler_239[0],
+                self.progress.set(0.2)
+                if self.stable_fast_var.get() is True:
+                    from modules.StableFast import StableFast
+
+                    try:
+                        self.title("LightDiffusion - Generating StableFast model")
+                    except:
+                        pass
+                    applystablefast = StableFast.ApplyStableFastUnet()
+                    applystablefast_158 = applystablefast.apply_stable_fast(
+                        enable_cuda_graph=False,
+                        model=loraloader_274[0],
+                    )
+                else:
+                    applystablefast_158 = loraloader_274
+                cliptextencode_242 = cliptextencode.encode(
+                    text=prompt,
+                    clip=clipsetlastlayer_257[0],
                 )
-                ksampler_253 = ksampler_instance.sample(
+                cliptextencode_243 = cliptextencode.encode(
+                    text=neg,
+                    clip=clipsetlastlayer_257[0],
+                )
+                emptylatentimage_244 = emptylatentimage.generate(
+                    width=w, height=h, batch_size=int(self.batch_slider.get())
+                )
+                ksampler_239 = ksampler_instance.sample(
                     seed=random.randint(1, 2**64),
-                    steps=10,
-                    cfg=8,
-                    sampler_name="euler_ancestral",
-                    scheduler="normal",
-                    denoise=0.45,
+                    steps=40,
+                    cfg=cfg,
+                    sampler_name="dpm_adaptive",
+                    scheduler="karras",
+                    denoise=1,
                     model=applystablefast_158[0],
                     positive=cliptextencode_242[0],
                     negative=cliptextencode_243[0],
-                    latent_image=latentupscale_254[0],
+                    latent_image=emptylatentimage_244[0],
                 )
-                vaedecode_240 = vaedecode.decode(
-                    samples=ksampler_253[0],
-                    vae=checkpointloadersimple_241[2],
-                )
-                saveimage.save_images(
-                    filename_prefix="LD-HiresFix", images=vaedecode_240[0]
-                )
-                for image in vaedecode_240[0]:
-                    i = 255.0 * image.cpu().numpy()
-                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                    images.append(img)
-            else:
-                vaedecode_240 = vaedecode.decode(
-                    samples=ksampler_239[0],
-                    vae=checkpointloadersimple_241[2],
-                )
-                saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
-                for image in vaedecode_240[0]:
-                    i = 255.0 * image.cpu().numpy()
-                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                    images.append(img)
-            if self.adetailer_var.get() is True:
-                bboxdetectorsegs_132 = bboxdetectorsegs.doit(
-                    threshold=0.5,
-                    dilation=10,
-                    crop_factor=2,
-                    drop_size=10,
-                    labels="all",
-                    bbox_detector=ultralyticsdetectorprovider_151[0],
-                    image=vaedecode_240[0],
-                )
-                samdetectorcombined_139 = samdetectorcombined.doit(
-                    detection_hint="center-1",
-                    dilation=0,
-                    threshold=0.93,
-                    bbox_expansion=0,
-                    mask_hint_threshold=0.7,
-                    mask_hint_use_negative="False",
-                    sam_model=samloader_87[0],
-                    segs=bboxdetectorsegs_132,
-                    image=vaedecode_240[0],
-                )
-                if samdetectorcombined_139[0] is None:
+                self.progress.set(0.4)
+                if self.hires_fix_var.get() is True:
+                    latentupscale_254 = latentupscale.upscale(
+                        width=w * 2,
+                        height=h * 2,
+                        samples=ksampler_239[0],
+                    )
+                    ksampler_253 = ksampler_instance.sample(
+                        seed=random.randint(1, 2**64),
+                        steps=10,
+                        cfg=8,
+                        sampler_name="euler_ancestral",
+                        scheduler="normal",
+                        denoise=0.45,
+                        model=applystablefast_158[0],
+                        positive=cliptextencode_242[0],
+                        negative=cliptextencode_243[0],
+                        latent_image=latentupscale_254[0],
+                    )
+                    vaedecode_240 = vaedecode.decode(
+                        samples=ksampler_253[0],
+                        vae=checkpointloadersimple_241[2],
+                    )
+                    saveimage.save_images(
+                        filename_prefix="LD-HiresFix", images=vaedecode_240[0]
+                    )
+                    for image in vaedecode_240[0]:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        images.append(img)
+                else:
+                    vaedecode_240 = vaedecode.decode(
+                        samples=ksampler_239[0],
+                        vae=checkpointloadersimple_241[2],
+                    )
+                    saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
+                    for image in vaedecode_240[0]:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        images.append(img)
+                if self.interrupt_flag:
                     return
-                impactsegsandmask_152 = impactsegsandmask.doit(
-                    segs=bboxdetectorsegs_132,
-                    mask=samdetectorcombined_139[0],
-                )
-                detailerforeachdebug_145 = detailerforeachdebug.doit(
-                    guide_size=512,
-                    guide_size_for=False,
-                    max_size=768,
-                    seed=random.randint(1, 2**64),
-                    steps=40,
-                    cfg=6.5,
-                    sampler_name="dpmpp_2m_sde",
-                    scheduler="karras",
-                    denoise=0.5,
-                    feather=5,
-                    noise_mask=True,
-                    force_inpaint=True,
-                    wildcard="",
-                    cycle=1,
-                    inpaint_model=False,
-                    noise_mask_feather=20,
-                    image=vaedecode_240[0],
-                    segs=impactsegsandmask_152[0],
-                    model=checkpointloadersimple_241[0],
-                    clip=checkpointloadersimple_241[1],
-                    vae=checkpointloadersimple_241[2],
-                    positive=cliptextencode_124[0],
-                    negative=cliptextencode_243[0],
-                )
-                saveimage.save_images(
-                    filename_prefix="LD-refined",
-                    images=detailerforeachdebug_145[0],
-                )
-                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
-                ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
-                    model_name="face_yolov9c.pt"
-                )
-                bboxdetectorsegs_132 = bboxdetectorsegs.doit(
-                    threshold=0.5,
-                    dilation=10,
-                    crop_factor=2,
-                    drop_size=10,
-                    labels="all",
-                    bbox_detector=ultralyticsdetectorprovider_151[0],
-                    image=detailerforeachdebug_145[0],
-                )
-                samdetectorcombined_139 = samdetectorcombined.doit(
-                    detection_hint="center-1",
-                    dilation=0,
-                    threshold=0.93,
-                    bbox_expansion=0,
-                    mask_hint_threshold=0.7,
-                    mask_hint_use_negative="False",
-                    sam_model=samloader_87[0],
-                    segs=bboxdetectorsegs_132,
-                    image=detailerforeachdebug_145[0],
-                )
-                impactsegsandmask_152 = impactsegsandmask.doit(
-                    segs=bboxdetectorsegs_132,
-                    mask=samdetectorcombined_139[0],
-                )
-                detailerforeachdebug_145 = detailerforeachdebug.doit(
-                    guide_size=512,
-                    guide_size_for=False,
-                    max_size=768,
-                    seed=random.randint(1, 2**64),
-                    steps=40,
-                    cfg=6.5,
-                    sampler_name="dpmpp_2m_sde",
-                    scheduler="karras",
-                    denoise=0.5,
-                    feather=5,
-                    noise_mask=True,
-                    force_inpaint=True,
-                    wildcard="",
-                    cycle=1,
-                    inpaint_model=False,
-                    noise_mask_feather=20,
-                    image=detailerforeachdebug_145[0],
-                    segs=impactsegsandmask_152[0],
-                    model=checkpointloadersimple_241[0],
-                    clip=checkpointloadersimple_241[1],
-                    vae=checkpointloadersimple_241[2],
-                    positive=cliptextencode_124[0],
-                    negative=cliptextencode_243[0],
-                )
-                saveimage.save_images(
-                    filename_prefix="lD-2ndrefined",
-                    images=detailerforeachdebug_145[0],
-                )
-                for image in detailerforeachdebug_145[0]:
-                    i = 255.0 * image.cpu().numpy()
-                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                    images.append(img)
-        self.update_image(images)
-        self.display_most_recent_image_flag = True
+                    
+                self.progress.set(0.6)
+                if self.adetailer_var.get() is True:
+                    bboxdetectorsegs_132 = bboxdetectorsegs.doit(
+                        threshold=0.5,
+                        dilation=10,
+                        crop_factor=2,
+                        drop_size=10,
+                        labels="all",
+                        bbox_detector=ultralyticsdetectorprovider_151[0],
+                        image=vaedecode_240[0],
+                    )
+                    samdetectorcombined_139 = samdetectorcombined.doit(
+                        detection_hint="center-1",
+                        dilation=0,
+                        threshold=0.93,
+                        bbox_expansion=0,
+                        mask_hint_threshold=0.7,
+                        mask_hint_use_negative="False",
+                        sam_model=samloader_87[0],
+                        segs=bboxdetectorsegs_132,
+                        image=vaedecode_240[0],
+                    )
+                    if samdetectorcombined_139[0] is None:
+                        return
+                    impactsegsandmask_152 = impactsegsandmask.doit(
+                        segs=bboxdetectorsegs_132,
+                        mask=samdetectorcombined_139[0],
+                    )
+                    detailerforeachdebug_145 = detailerforeachdebug.doit(
+                        guide_size=512,
+                        guide_size_for=False,
+                        max_size=768,
+                        seed=random.randint(1, 2**64),
+                        steps=40,
+                        cfg=6.5,
+                        sampler_name="dpmpp_2m_sde",
+                        scheduler="karras",
+                        denoise=0.5,
+                        feather=5,
+                        noise_mask=True,
+                        force_inpaint=True,
+                        wildcard="",
+                        cycle=1,
+                        inpaint_model=False,
+                        noise_mask_feather=20,
+                        image=vaedecode_240[0],
+                        segs=impactsegsandmask_152[0],
+                        model=checkpointloadersimple_241[0],
+                        clip=checkpointloadersimple_241[1],
+                        vae=checkpointloadersimple_241[2],
+                        positive=cliptextencode_124[0],
+                        negative=cliptextencode_243[0],
+                    )
+                    saveimage.save_images(
+                        filename_prefix="LD-refined",
+                        images=detailerforeachdebug_145[0],
+                    )
+                    ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
+                    ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
+                        model_name="face_yolov9c.pt"
+                    )
+                    bboxdetectorsegs_132 = bboxdetectorsegs.doit(
+                        threshold=0.5,
+                        dilation=10,
+                        crop_factor=2,
+                        drop_size=10,
+                        labels="all",
+                        bbox_detector=ultralyticsdetectorprovider_151[0],
+                        image=detailerforeachdebug_145[0],
+                    )
+                    samdetectorcombined_139 = samdetectorcombined.doit(
+                        detection_hint="center-1",
+                        dilation=0,
+                        threshold=0.93,
+                        bbox_expansion=0,
+                        mask_hint_threshold=0.7,
+                        mask_hint_use_negative="False",
+                        sam_model=samloader_87[0],
+                        segs=bboxdetectorsegs_132,
+                        image=detailerforeachdebug_145[0],
+                    )
+                    impactsegsandmask_152 = impactsegsandmask.doit(
+                        segs=bboxdetectorsegs_132,
+                        mask=samdetectorcombined_139[0],
+                    )
+                    detailerforeachdebug_145 = detailerforeachdebug.doit(
+                        guide_size=512,
+                        guide_size_for=False,
+                        max_size=768,
+                        seed=random.randint(1, 2**64),
+                        steps=40,
+                        cfg=6.5,
+                        sampler_name="dpmpp_2m_sde",
+                        scheduler="karras",
+                        denoise=0.5,
+                        feather=5,
+                        noise_mask=True,
+                        force_inpaint=True,
+                        wildcard="",
+                        cycle=1,
+                        inpaint_model=False,
+                        noise_mask_feather=20,
+                        image=detailerforeachdebug_145[0],
+                        segs=impactsegsandmask_152[0],
+                        model=checkpointloadersimple_241[0],
+                        clip=checkpointloadersimple_241[1],
+                        vae=checkpointloadersimple_241[2],
+                        positive=cliptextencode_124[0],
+                        negative=cliptextencode_243[0],
+                    )
+                    saveimage.save_images(
+                        filename_prefix="lD-2ndrefined",
+                        images=detailerforeachdebug_145[0],
+                    )
+                    for image in detailerforeachdebug_145[0]:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        images.append(img)
+                        
+                self.progress.set(0.8)
+                
+                if not self.interrupt_flag:
+                    self.progress.set(1.0)
+                    self.update_image(images)
+                    self.display_most_recent_image_flag = True
+                
+        except Exception as e:
+            print(f"Generation error: {e}")
+            self.title(f"LightDiffusion - Error: {str(e)}")
+            
+        finally:
+            # Reset state when done
+            self.is_generating = False
+            self.generate_button.configure(state="normal")
+            if current_thread in self.generation_threads:
+                self.generation_threads.remove(current_thread)
+            self.progress.set(0)
+            
+            # Clear CUDA cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     def _generate_image_flux(self) -> None:
+        """Generate an image using the Flux model."""
+        self.is_generating = True
+        self.generate_button.configure(state="disabled")
+        # Add current thread to list at start 
+        current_thread = threading.current_thread()
+        self.generation_threads.append(current_thread)
         self.display_most_recent_image_flag = False
         w = int(self.width_slider.get())
         h = int(self.height_slider.get())
         prompt = self.prompt_entry.get("1.0", tk.END)
-        if self.enhancer_var.get() is True:
-            prompt = Enhancer.enhance_prompt()
-            while prompt is None:
-                pass
-        self.interrupt_flag = False
-        Downloader.CheckAndDownloadFlux()
-        with torch.inference_mode():
-            dualcliploadergguf = Quantizer.DualCLIPLoaderGGUF()
-            emptylatentimage = Latent.EmptyLatentImage()
-            vaeloader = VariationalAE.VAELoader()
-            unetloadergguf = Quantizer.UnetLoaderGGUF()
-            cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
-            conditioningzeroout = Quantizer.ConditioningZeroOut()
-            ksampler = sampling.KSampler2()
-            vaedecode = VariationalAE.VAEDecode()
-            saveimage = ImageSaver.SaveImage()
-            unetloadergguf_10 = unetloadergguf.load_unet(
-                unet_name="flux1-dev-Q8_0.gguf"
-            )
-            vaeloader_11 = vaeloader.load_vae(vae_name="ae.safetensors")
-            dualcliploadergguf_19 = dualcliploadergguf.load_clip(
-                clip_name1="clip_l.safetensors",
-                clip_name2="t5-v1_1-xxl-encoder-Q8_0.gguf",
-                type="flux",
-            )
-            emptylatentimage_5 = emptylatentimage.generate(
-                width=w, height=h, batch_size=int(self.batch_slider.get())
-            )
-            cliptextencodeflux_15 = cliptextencodeflux.encode(
-                clip_l=prompt,
-                t5xxl=prompt,
-                guidance=3.5,
-                clip=dualcliploadergguf_19[0],
-                flux_enabled=True,
-            )
-            conditioningzeroout_16 = conditioningzeroout.zero_out(
-                conditioning=cliptextencodeflux_15[0]
-            )
-            ksampler_3 = ksampler.sample(
-                seed=random.randint(1, 2**64),
-                steps=20,
-                cfg=1,
-                sampler_name="euler",
-                scheduler="simple",
-                denoise=1,
-                model=unetloadergguf_10[0],
-                positive=cliptextencodeflux_15[0],
-                negative=conditioningzeroout_16[0],
-                latent_image=emptylatentimage_5[0],
-                flux=True,
-            )
-            vaedecode_8 = vaedecode.decode(
-                samples=ksampler_3[0],
-                vae=vaeloader_11[0],
-                flux=True,
-            )
-            saveimage.save_images(filename_prefix="Flux", images=vaedecode_8[0])
-            for image in vaedecode_8[0]:
-                i = 255.0 * image.cpu().numpy()
-                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-        self.update_image(img)
-        self.display_most_recent_image_flag = True
+        try:
+            if self.enhancer_var.get() is True:
+                prompt = Enhancer.enhance_prompt()
+                while prompt is None:
+                    pass
+            self.interrupt_flag = False
+            Downloader.CheckAndDownloadFlux()
+            with torch.inference_mode():
+                dualcliploadergguf = Quantizer.DualCLIPLoaderGGUF()
+                emptylatentimage = Latent.EmptyLatentImage()
+                vaeloader = VariationalAE.VAELoader()
+                unetloadergguf = Quantizer.UnetLoaderGGUF()
+                cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
+                conditioningzeroout = Quantizer.ConditioningZeroOut()
+                ksampler = sampling.KSampler2()
+                vaedecode = VariationalAE.VAEDecode()
+                saveimage = ImageSaver.SaveImage()
+                unetloadergguf_10 = unetloadergguf.load_unet(
+                    unet_name="flux1-dev-Q8_0.gguf"
+                )
+                vaeloader_11 = vaeloader.load_vae(vae_name="ae.safetensors")
+                dualcliploadergguf_19 = dualcliploadergguf.load_clip(
+                    clip_name1="clip_l.safetensors",
+                    clip_name2="t5-v1_1-xxl-encoder-Q8_0.gguf",
+                    type="flux",
+                )
+                emptylatentimage_5 = emptylatentimage.generate(
+                    width=w, height=h, batch_size=int(self.batch_slider.get())
+                )
+                cliptextencodeflux_15 = cliptextencodeflux.encode(
+                    clip_l=prompt,
+                    t5xxl=prompt,
+                    guidance=3.5,
+                    clip=dualcliploadergguf_19[0],
+                    flux_enabled=True,
+                )
+                conditioningzeroout_16 = conditioningzeroout.zero_out(
+                    conditioning=cliptextencodeflux_15[0]
+                )
+                ksampler_3 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=20,
+                    cfg=1,
+                    sampler_name="euler",
+                    scheduler="simple",
+                    denoise=1,
+                    model=unetloadergguf_10[0],
+                    positive=cliptextencodeflux_15[0],
+                    negative=conditioningzeroout_16[0],
+                    latent_image=emptylatentimage_5[0],
+                    flux=True,
+                )
+                vaedecode_8 = vaedecode.decode(
+                    samples=ksampler_3[0],
+                    vae=vaeloader_11[0],
+                    flux=True,
+                )
+                saveimage.save_images(filename_prefix="Flux", images=vaedecode_8[0])
+                for image in vaedecode_8[0]:
+                    i = 255.0 * image.cpu().numpy()
+                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+            self.update_image(img)
+            self.display_most_recent_image_flag = True
+        finally:
+            # Reset state when done
+            self.is_generating = False
+            self.generate_button.configure(state="normal")
+            if current_thread in self.generation_threads:
+                self.generation_threads.remove(current_thread)
+
 
     def on_model_selected(self, *args):
         """Handle model selection changes"""
@@ -1169,8 +1243,46 @@ class App(tk.Tk):
         self.destroy()
 
     def interrupt_generation(self) -> None:
-        """Interrupt the image generation process."""
+        """Interrupt ongoing image generation process."""
+        if not self.is_generating:
+            return
+        
+        # Set interrupt flag first
         self.interrupt_flag = True
+        
+        # Clear CUDA cache and release memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            
+        # Stop and cleanup threads
+        for thread in self.generation_threads[:]:
+            if thread and thread.is_alive():
+                thread.join(timeout=1.0)
+            if thread in self.generation_threads:
+                self.generation_threads.remove(thread)
+                
+        # Reset UI state
+        self.progress.set(0)
+        self.title("LightDiffusion")
+        self.generate_button.configure(state="normal")
+        self.display_most_recent_image_flag = True
+        
+        # Clear any pending resize tasks
+        with self._resize_lock:
+            self._resize_queue.queue.clear()
+            
+        # Reset model state if needed
+        if hasattr(self, 'checkpointloadersimple_241'):
+            del self.checkpointloadersimple_241
+            self.ckpt = None
+                
+            
+        # Always reset flags
+        self.generation_threads.clear()
+        # Reset generation state
+        self.is_generating = False
+        self.generate_button.configure(state="normal")
 
 
 if __name__ == "__main__":

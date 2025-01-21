@@ -552,13 +552,14 @@ class DPMSolver(nn.Module):
         )
         info = {"steps": 0, "nfe": 0, "n_accept": 0, "n_reject": 0}
         while s < t_end - 1e-5 if forward else s > t_end + 1e-5:
+            if not pipeline and hasattr(app_instance.app, 'interrupt_flag') and app_instance.app.interrupt_flag is True:
+                return x
             if disable_gui is False:
                 try:
                     app_instance.app.title(f"LightDiffusion - {info['steps']*3}it")
+                    app_instance.app.progress.set((info["steps"]*3)/100)
                 except:
                     pass
-                if app_instance.app.interrupt_flag is True:
-                    break
             eps_cache = {}
             t = (
                 torch.minimum(t_end, s + pid.h)

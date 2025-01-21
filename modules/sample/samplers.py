@@ -44,35 +44,34 @@ def sample_euler_ancestral(
         from modules.AutoEncoders import taesd
         from modules.user import app_instance
     extra_args = {} if extra_args is None else extra_args
-    noise_sampler = (
-        sampling_util.default_noise_sampler(x)
-        if noise_sampler is None
-        else noise_sampler
-    )
+    noise_sampler = sampling_util.default_noise_sampler(x) if noise_sampler is None else noise_sampler
     s_in = x.new_ones([x.shape[0]])
+    
     for i in trange(len(sigmas) - 1, disable=disable):
+        # Move interrupt check outside pipeline condition
+        if not pipeline and hasattr(app_instance.app, 'interrupt_flag') and app_instance.app.interrupt_flag is True:
+            return x
+            
         if pipeline is False:
-            if app_instance.app.interrupt_flag is True:
-                break
             try:
                 app_instance.app.title(f"LightDiffusion - {i}it")
+                app_instance.app.progress.set(((len(sigmas)-1-i)/(len(sigmas)-1))*100)
             except:
                 pass
+                
+        # Rest of sampling code remains the same
         denoised = model(x, sigmas[i] * s_in, **extra_args)
-        sigma_down, sigma_up = sampling_util.get_ancestral_step(
-            sigmas[i], sigmas[i + 1], eta=eta
-        )
+        sigma_down, sigma_up = sampling_util.get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         d = util.to_d(x, sigmas[i], denoised)
-        # Euler method
         dt = sigma_down - sigmas[i]
         x = x + d * dt
         if sigmas[i + 1] > 0:
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
+            
         if pipeline is False:
             if app_instance.app.previewer_var.get() is True:
                 threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
-            else:
-                pass
+            
     return x
 
 
@@ -225,9 +224,11 @@ def sample_dpmpp_2m_sde(
     h_last = None
     h = None
     for i in trange(len(sigmas) - 1, disable=disable):
+        if not pipeline and hasattr(app_instance.app, 'interrupt_flag') and app_instance.app.interrupt_flag is True:
+            return x
+            
         if pipeline is False:
-            if app_instance.app.interrupt_flag is True:
-                break
+            app_instance.app.progress.set(((len(sigmas)-1-i)/(len(sigmas)-1))*100)
         denoised = model(x, sigmas[i] * s_in, **extra_args)
         if sigmas[i + 1] == 0:
             # Denoising step
@@ -289,12 +290,16 @@ def sample_euler(
     if disable_gui is False:
         from modules.AutoEncoders import taesd
         from modules.user import app_instance
+        
     extra_args = {} if extra_args is None else extra_args
     s_in = x.new_ones([x.shape[0]])
+    
     for i in trange(len(sigmas) - 1, disable=disable):
+        if not pipeline and hasattr(app_instance.app, 'interrupt_flag') and app_instance.app.interrupt_flag is True:
+            return x
+            
         if pipeline is False:
-            if app_instance.app.interrupt_flag is True:
-                break
+            app_instance.app.progress.set(((len(sigmas)-1-i)/(len(sigmas)-1))*100)
         if s_churn > 0:
             gamma = (
                 min(s_churn / (len(sigmas) - 1), 2**0.5 - 1)

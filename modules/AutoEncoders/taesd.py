@@ -251,7 +251,7 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
-def taesd_preview(x: torch.Tensor, flux: bool = False): # FIXME: decoding for flux
+def taesd_preview(x: torch.Tensor, flux: bool = False):
     """Preview the batched latent tensors as images.
     
     Args:
@@ -273,29 +273,34 @@ def taesd_preview(x: torch.Tensor, flux: bool = False): # FIXME: decoding for fl
                                    x.shape[2], x.shape[3], device=x.device)
                 x = torch.cat([x, padding], dim=1)
 
-        images = []
-        
         # Process entire batch at once
         decoded_batch = taesd_instance.decode(x)
         
-        # Convert each image in batch
+        images = []
+        
+        # Convert each image in batch 
         for decoded in decoded_batch:
             # Handle channel dimension
             if decoded.shape[0] == 1:
                 decoded = decoded.repeat(3, 1, 1)
-            elif decoded.shape[0] == 3:
-                if flux:
-                    decoded = decoded[[2,1,0], :, :]  # RGB to BGR if needed
-                    
-            # Normalize to [0,255] range
-            decoded = (decoded + 1.0) / 2.0
-            image_np = (decoded.cpu().detach().numpy() * 255.0)
+                
+            # Apply different normalization for flux vs standard mode
+            if flux:
+                # For flux: Assume BGR ordering and different normalization
+                decoded = decoded[[2,1,0], :, :] # BGR -> RGB
+                # Adjust normalization for flux model range
+                decoded = decoded.clamp(-1, 1)
+                decoded = (decoded + 1.0) * 0.5 # Scale from [-1,1] to [0,1]
+            else:
+                # Standard normalization
+                decoded = (decoded + 1.0) / 2.0
             
-            # Transpose and convert
+            # Convert to numpy and uint8
+            image_np = (decoded.cpu().detach().numpy() * 255.0)
             image_np = np.transpose(image_np, (1, 2, 0))
             image_np = np.clip(image_np, 0, 255).astype(np.uint8)
             
-            # Create PIL Image and append
+            # Create PIL Image
             img = Image.fromarray(image_np, mode='RGB')
             images.append(img)
             

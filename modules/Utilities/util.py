@@ -73,7 +73,7 @@ def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> d
         if safe_load:
             pl_sd = torch.load(ckpt, map_location=device, weights_only=True)
         else:
-            pl_sd = torch.load(ckpt, map_location=device, pickle_module=Unpickler)
+            pl_sd = torch.load(ckpt, map_location=device)
         if "global_step" in pl_sd:
             logging.debug(f"Global Step: {pl_sd['global_step']}")
         if "state_dict" in pl_sd:
