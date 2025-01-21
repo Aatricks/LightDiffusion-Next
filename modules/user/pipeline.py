@@ -38,6 +38,7 @@ def pipeline(
     w: int,
     h: int,
     number: int = 1,
+    batch: int = 1,
     hires_fix: bool = False,
     adetailer: bool = False,
     enhance_prompt: bool = False,
@@ -179,7 +180,7 @@ def pipeline(
                     type="flux",
                 )
                 emptylatentimage_5 = emptylatentimage.generate(
-                    width=w, height=h, batch_size=1
+                    width=w, height=h, batch_size=batch
                 )
                 cliptextencodeflux_15 = cliptextencodeflux.encode(
                     clip_l=prompt,
@@ -259,7 +260,7 @@ def pipeline(
                     clip=clipsetlastlayer_257[0],
                 )
                 emptylatentimage_244 = emptylatentimage.generate(
-                    width=w, height=h, batch_size=1
+                    width=w, height=h, batch_size=batch
                 )
                 ksampler_239 = ksampler_instance.sample(
                     seed=seed,
@@ -448,6 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("width", type=int, help="The width of the generated image.")
     parser.add_argument("height", type=int, help="The height of the generated image.")
     parser.add_argument("number", type=int, help="The number of images to generate.")
+    parser.add_argument("batch", type=int, help="The batch size. aka the number of images to generate at once.")
     parser.add_argument(
         "--hires-fix", action="store_true", help="Enable high-resolution fix."
     )
@@ -488,6 +490,7 @@ if __name__ == "__main__":
         args.width,
         args.height,
         args.number,
+        args.batch,
         args.hires_fix,
         args.adetailer,
         args.enhance_prompt,

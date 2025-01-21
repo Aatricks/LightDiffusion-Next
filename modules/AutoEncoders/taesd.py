@@ -6,6 +6,7 @@ Tiny AutoEncoder for Stable Diffusion
 # TODO: Check if multiprocessing is possible for this module
 from PIL import Image
 import numpy as np
+from sympy import im
 import torch
 from modules.Utilities import util
 import torch.nn as nn
@@ -250,49 +251,55 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
-def taesd_preview(x: torch.Tensor, flux: bool = False): # FIXME: fix decoding for flux
-    """#### Preview the input latent as an image.
-
-    Uses the TAESD model to decode the latent and updates the image in the App.
-
-    #### Args:
-        - `x` (torch.Tensor): The input latent.
+def taesd_preview(x: torch.Tensor, flux: bool = False): # FIXME: decoding for flux
+    """Preview the batched latent tensors as images.
+    
+    Args:
+        x (torch.Tensor): Input latent tensor with shape [B,C,H,W] 
+        flux (bool): Whether using flux model (for channel ordering)
     """
     if app_instance.app.previewer_var.get() is True:
         taesd_instance = TAESD()
         
-        # Ensure input has correct number of channels (4)
+        # Handle channel dimension
         if x.shape[1] != 4:
             desired_channels = 4
             current_channels = x.shape[1]
             
             if current_channels > desired_channels:
                 x = x[:, :desired_channels, :, :]
-            elif current_channels < desired_channels:
-                padding = torch.zeros(x.shape[0], desired_channels - current_channels, x.shape[2], x.shape[3], device=x.device)
+            else:
+                padding = torch.zeros(x.shape[0], desired_channels - current_channels, 
+                                   x.shape[2], x.shape[3], device=x.device)
                 x = torch.cat([x, padding], dim=1)
 
-        # Process one image at a time and decode
-        decoded = taesd_instance.decode(x[0].unsqueeze(0))[0]
+        images = []
         
-        # Handle channel dimension properly
-        if decoded.shape[0] == 1:
-            decoded = decoded.repeat(3, 1, 1)
-        elif decoded.shape[0] == 3:
-            # Reorder channels from BGR to RGB if needed
-            if flux:
-                decoded = decoded[[2,1,0], :, :]  # Swap R and B channels
-        else:
-            raise ValueError(f"Unexpected number of channels in decoded image: {decoded.shape[0]}")
+        # Process entire batch at once
+        decoded_batch = taesd_instance.decode(x)
         
-        # Proper normalization from [-1,1] to [0,255] range
-        decoded = (decoded + 1.0) / 2.0  # Normalize from [-1,1] to [0,1]
-        image_np = (decoded.cpu().detach().numpy() * 255.0)
-        image_np = np.transpose(image_np, (1, 2, 0))  # Change from CxHxW to HxWxC
-        image_np = np.clip(image_np, 0, 255).astype(np.uint8)
-        
-        # Create RGB PIL Image
-        img = Image.fromarray(image_np, mode='RGB')
-        app_instance.app.update_image(img)
+        # Convert each image in batch
+        for decoded in decoded_batch:
+            # Handle channel dimension
+            if decoded.shape[0] == 1:
+                decoded = decoded.repeat(3, 1, 1)
+            elif decoded.shape[0] == 3:
+                if flux:
+                    decoded = decoded[[2,1,0], :, :]  # RGB to BGR if needed
+                    
+            # Normalize to [0,255] range
+            decoded = (decoded + 1.0) / 2.0
+            image_np = (decoded.cpu().detach().numpy() * 255.0)
+            
+            # Transpose and convert
+            image_np = np.transpose(image_np, (1, 2, 0))
+            image_np = np.clip(image_np, 0, 255).astype(np.uint8)
+            
+            # Create PIL Image and append
+            img = Image.fromarray(image_np, mode='RGB')
+            images.append(img)
+            
+        # Update display with all images
+        app_instance.app.update_image(images)
     else:
         pass

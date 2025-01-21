@@ -5,6 +5,7 @@ import random
 import threading
 import tkinter as tk
 from tkinter import filedialog
+from typing import Union
 from PIL import Image, ImageTk
 import numpy as np
 import customtkinter as ctk
@@ -37,18 +38,22 @@ loras = glob.glob("./_internal/loras/*.safetensors")
 loras += glob.glob("./_internal/loras/*.pt")
 
 
-
 def debounce(wait):
     """Decorator to debounce resize events"""
+
     def decorator(fn):
         last_call = [0]
+
         def debounced(*args, **kwargs):
             current_time = time.time()
             if current_time - last_call[0] >= wait:
                 fn(*args, **kwargs)
                 last_call[0] = current_time
+
         return debounced
+
     return decorator
+
 
 class App(tk.Tk):
     """Main application class for the LightDiffusion GUI."""
@@ -57,12 +62,12 @@ class App(tk.Tk):
         """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
-        self.geometry("800x650")
+        self.geometry("800x700")
 
         # Configure main window grid
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-        
+
         file_names = [os.path.basename(file) for file in files]
         lora_names = [os.path.basename(lora) for lora in loras]
 
@@ -77,14 +82,14 @@ class App(tk.Tk):
         self.sidebar = tk.Frame(self, bg="#FBFBFB", padx=10, pady=10)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_columnconfigure(0, weight=1)
-        
+
         # Configure sidebar grid rows
         for i in range(8):
             self.sidebar.grid_rowconfigure(i, weight=1)
 
         # Text input frames with expansion
         self.prompt_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
-        self.prompt_frame.grid(row=0, column=0, sticky="nsew", pady=(0,5))
+        self.prompt_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 5))
         self.prompt_frame.grid_columnconfigure(0, weight=1)
         self.prompt_frame.grid_rowconfigure(0, weight=2)
         self.prompt_frame.grid_rowconfigure(1, weight=1)
@@ -96,25 +101,24 @@ class App(tk.Tk):
             fg_color="#E8F9FF",
             text_color="black",
             border_color="gray",
-            border_width=2
+            border_width=2,
         )
         self.prompt_entry.grid(row=0, column=0, sticky="nsew")
 
-        # Negative prompt textbox with expansion 
+        # Negative prompt textbox with expansion
         self.neg = ctk.CTkTextbox(
             self.prompt_frame,
             height=75,
             fg_color="#E8F9FF",
-            text_color="black", 
+            text_color="black",
             border_color="gray",
-            border_width=2
+            border_width=2,
         )
-        self.neg.grid(row=1, column=0, sticky="nsew", pady=(5,0))
-
+        self.neg.grid(row=1, column=0, sticky="nsew", pady=(5, 0))
 
         # Add model dropdown with error handling for empty lists
-        model_values = (file_names if file_names else ["No models found"]) + ["flux"] 
-        
+        model_values = (file_names if file_names else ["No models found"]) + ["flux"]
+
         # Model dropdown and Flux checkbox
         self.dropdown = ctk.CTkOptionMenu(
             self.sidebar,
@@ -127,10 +131,7 @@ class App(tk.Tk):
 
         # LoRA selection
         self.lora_selection = ctk.CTkOptionMenu(
-            self.sidebar,
-            values=lora_names,
-            fg_color="#F5EFFF",
-            text_color="black"
+            self.sidebar, values=lora_names, fg_color="#F5EFFF", text_color="black"
         )
         self.lora_selection.grid(row=3, column=0, sticky="ew", pady=5)
 
@@ -157,9 +158,8 @@ class App(tk.Tk):
         )
         self.previewer_checkbox.grid(row=1, column=0, pady=10)
 
-
         # Make sliders frame expand
-        self.sliders_frame = tk.Frame(self.sidebar, bg="#FBFBFB") 
+        self.sliders_frame = tk.Frame(self.sidebar, bg="#FBFBFB")
         self.sliders_frame.grid(row=4, column=0, sticky="nsew", pady=5)
         self.sliders_frame.grid_columnconfigure(1, weight=1)
 
@@ -179,45 +179,49 @@ class App(tk.Tk):
         self.button_frame.grid_columnconfigure(0, weight=1)
         self.button_frame.grid_columnconfigure(1, weight=1)
 
-
         # Width slider
-        tk.Label(self.sliders_frame, text="Width:", bg="#FBFBFB").grid(row=0, column=0, padx=(0,5))
+        tk.Label(self.sliders_frame, text="Width:", bg="#FBFBFB").grid(
+            row=0, column=0, padx=(0, 5)
+        )
         self.width_slider = ctk.CTkSlider(
-            self.sliders_frame,
-            from_=1,
-            to=2048,
-            number_of_steps=16,
-            fg_color="#F5EFFF"
+            self.sliders_frame, from_=1, to=2048, number_of_steps=16, fg_color="#F5EFFF"
         )
         self.width_slider.grid(row=0, column=1, sticky="ew")
         self.width_label = ctk.CTkLabel(self.sliders_frame, text="")
-        self.width_label.grid(row=0, column=2, padx=(5,0))
+        self.width_label.grid(row=0, column=2, padx=(5, 0))
 
         # Height slider
-        tk.Label(self.sliders_frame, text="Height:", bg="#FBFBFB").grid(row=1, column=0, padx=(0,5))
+        tk.Label(self.sliders_frame, text="Height:", bg="#FBFBFB").grid(
+            row=1, column=0, padx=(0, 5)
+        )
         self.height_slider = ctk.CTkSlider(
-            self.sliders_frame,
-            from_=1,
-            to=2048,
-            number_of_steps=16,
-            fg_color="#F5EFFF"
+            self.sliders_frame, from_=1, to=2048, number_of_steps=16, fg_color="#F5EFFF"
         )
         self.height_slider.grid(row=1, column=1, sticky="ew")
         self.height_label = ctk.CTkLabel(self.sliders_frame, text="")
-        self.height_label.grid(row=1, column=2, padx=(5,0))
+        self.height_label.grid(row=1, column=2, padx=(5, 0))
 
         # CFG slider
-        tk.Label(self.sliders_frame, text="CFG:", bg="#FBFBFB").grid(row=2, column=0, padx=(0,5))
+        tk.Label(self.sliders_frame, text="CFG:", bg="#FBFBFB").grid(
+            row=2, column=0, padx=(0, 5)
+        )
         self.cfg_slider = ctk.CTkSlider(
-            self.sliders_frame,
-            from_=1,
-            to=15,
-            number_of_steps=14,
-            fg_color="#F5EFFF"
+            self.sliders_frame, from_=1, to=15, number_of_steps=14, fg_color="#F5EFFF"
         )
         self.cfg_slider.grid(row=2, column=1, sticky="ew")
-        self.cfg_label = ctk.CTkLabel(self.sliders_frame, text="")  
-        self.cfg_label.grid(row=2, column=2, padx=(5,0))
+        self.cfg_label = ctk.CTkLabel(self.sliders_frame, text="")
+        self.cfg_label.grid(row=2, column=2, padx=(5, 0))
+
+        # Batch size slider
+        tk.Label(self.sliders_frame, text="Batch Size:", bg="#FBFBFB").grid(
+            row=3, column=0, padx=(0, 5)
+        )
+        self.batch_slider = ctk.CTkSlider(
+            self.sliders_frame, from_=1, to=10, number_of_steps=9, fg_color="#F5EFFF"
+        )
+        self.batch_slider.grid(row=3, column=1, sticky="ew")
+        self.batch_label = ctk.CTkLabel(self.sliders_frame, text="")
+        self.batch_label.grid(row=3, column=2, padx=(5, 0))
 
         # Configure grid columns and rows to distribute space evenly
         self.checkbox_frame.grid_columnconfigure(0, weight=1)
@@ -234,12 +238,14 @@ class App(tk.Tk):
             command=self.print_hires_fix,
             text_color="black",
         )
-        self.hires_fix_checkbox.grid(row=0, column=0, padx=(75,5), pady=5, sticky="nsew")
+        self.hires_fix_checkbox.grid(
+            row=0, column=0, padx=(75, 5), pady=5, sticky="nsew"
+        )
 
-        # checkbox for Adetailer  
+        # checkbox for Adetailer
         self.adetailer_var = tk.BooleanVar()
         self.adetailer_checkbox = ctk.CTkCheckBox(
-            self.checkbox_frame, 
+            self.checkbox_frame,
             text="Adetailer",
             variable=self.adetailer_var,
             command=self.print_adetailer,
@@ -255,7 +261,9 @@ class App(tk.Tk):
             variable=self.stable_fast_var,
             text_color="black",
         )
-        self.stable_fast_checkbox.grid(row=1, column=0, padx=(75,5), pady=5, sticky="nsew")
+        self.stable_fast_checkbox.grid(
+            row=1, column=0, padx=(75, 5), pady=5, sticky="nsew"
+        )
 
         # checkbox to enable prompt enhancer
         self.enhancer_var = tk.BooleanVar()
@@ -277,13 +285,15 @@ class App(tk.Tk):
             border_color="gray",
             border_width=2,
         )
-        self.generate_button.grid(row=6, column=0, pady=10, sticky="ew")  # Changed from pack to grid
+        self.generate_button.grid(
+            row=6, column=0, pady=10, sticky="ew"
+        )  # Changed from pack to grid
 
         self.ckpt = None
 
         # load the checkpoint on an another thread
         threading.Thread(target=self._prep, daemon=True).start()
-        
+
         # img2img button
         self.img2img_button = ctk.CTkButton(
             self.button_frame,
@@ -296,7 +306,7 @@ class App(tk.Tk):
         )
         self.img2img_button.grid(row=0, column=0, padx=5, sticky="ew")
 
-        # interrupt button 
+        # interrupt button
         self.interrupt_flag = False
         self.interrupt_button = ctk.CTkButton(
             self.button_frame,
@@ -306,7 +316,6 @@ class App(tk.Tk):
             text_color="black",
             border_color="gray",
             border_width=2,
-            
         )
         self.interrupt_button.grid(row=0, column=1, padx=5, sticky="ew")
 
@@ -316,10 +325,12 @@ class App(tk.Tk):
         self.width_slider.set(width)
         self.height_slider.set(height)
         self.cfg_slider.set(cfg)
+        self.batch_slider.set(1)
 
         self.width_slider.bind("<B1-Motion>", lambda event: self.update_labels())
         self.height_slider.bind("<B1-Motion>", lambda event: self.update_labels())
         self.cfg_slider.bind("<B1-Motion>", lambda event: self.update_labels())
+        self.batch_slider.bind("<B1-Motion>", lambda event: self.update_labels())
         self.update_labels()
         self.prompt_entry.bind(
             "<KeyRelease>",
@@ -381,13 +392,13 @@ class App(tk.Tk):
         self._resize_delay = 0.1
         self._image_cache = {}
         self._current_image = None
-        
+
         # Start resize worker thread
         self._start_resize_worker()
-        
+
         # Bind resize event
         self.bind("<Configure>", self._queue_resize)
-        
+
         # Bind cleanup
         self.protocol("WM_DELETE_WINDOW", self._cleanup)
         self.display_most_recent_image_flag = False
@@ -592,6 +603,7 @@ class App(tk.Tk):
         h = int(self.height_slider.get())
         cfg = int(self.cfg_slider.get())
         self.interrupt_flag = False
+        images = []
         with torch.inference_mode():
             (
                 checkpointloadersimple_241,
@@ -671,7 +683,7 @@ class App(tk.Tk):
                 clip=clipsetlastlayer_257[0],
             )
             emptylatentimage_244 = emptylatentimage.generate(
-                width=w, height=h, batch_size=1
+                width=w, height=h, batch_size=int(self.batch_slider.get())
             )
             ksampler_239 = ksampler_instance.sample(
                 seed=random.randint(1, 2**64),
@@ -713,6 +725,7 @@ class App(tk.Tk):
                 for image in vaedecode_240[0]:
                     i = 255.0 * image.cpu().numpy()
                     img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                    images.append(img)
             else:
                 vaedecode_240 = vaedecode.decode(
                     samples=ksampler_239[0],
@@ -722,6 +735,7 @@ class App(tk.Tk):
                 for image in vaedecode_240[0]:
                     i = 255.0 * image.cpu().numpy()
                     img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                    images.append(img)
             if self.adetailer_var.get() is True:
                 bboxdetectorsegs_132 = bboxdetectorsegs.doit(
                     threshold=0.5,
@@ -835,9 +849,12 @@ class App(tk.Tk):
                     filename_prefix="lD-2ndrefined",
                     images=detailerforeachdebug_145[0],
                 )
-        self.update_image(img)
+                for image in detailerforeachdebug_145[0]:
+                    i = 255.0 * image.cpu().numpy()
+                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                    images.append(img)
+        self.update_image(images)
         self.display_most_recent_image_flag = True
-        
 
     def _generate_image_flux(self) -> None:
         self.display_most_recent_image_flag = False
@@ -870,7 +887,7 @@ class App(tk.Tk):
                 type="flux",
             )
             emptylatentimage_5 = emptylatentimage.generate(
-                width=w, height=h, batch_size=1
+                width=w, height=h, batch_size=int(self.batch_slider.get())
             )
             cliptextencodeflux_15 = cliptextencodeflux.encode(
                 clip_l=prompt,
@@ -911,7 +928,7 @@ class App(tk.Tk):
         """Handle model selection changes"""
         if self.dropdown.get() == "flux":
             # Disable incompatible controls
-            self.adetailer_checkbox._state = tk.DISABLED 
+            self.adetailer_checkbox._state = tk.DISABLED
             self.hires_fix_checkbox._state = tk.DISABLED
             self.stable_fast_checkbox._state = tk.DISABLED
             self.lora_selection._state = tk.DISABLED
@@ -929,15 +946,55 @@ class App(tk.Tk):
         self.width_label.configure(text=f"{int(self.width_slider.get())}")
         self.height_label.configure(text=f"{int(self.height_slider.get())}")
         self.cfg_label.configure(text=f"{int(self.cfg_slider.get())}")
+        self.batch_label.configure(text=f"{int(self.batch_slider.get())}")
 
-    def update_image(self, img: Image.Image) -> None:
-        """Update the displayed image.
+    def create_image_grid(self, images: list[Image.Image]) -> Image.Image:
+        """Create a grid of images.
 
         Args:
-            img (Image.Image): The image to display.
+            images (list[Image.Image]): List of images to arrange in grid
+
+        Returns:
+            Image.Image: Combined grid image
         """
-        # Calculate the aspect ratio of the original image
-        aspect_ratio = img.width / img.height
+        # Calculate grid dimensions
+        n = len(images)
+        if n <= 1:
+            return images[0]
+
+        cols = int(np.ceil(np.sqrt(n)))
+        rows = int(np.ceil(n / cols))
+
+        # Get max dimensions
+        w_max = max(img.width for img in images)
+        h_max = max(img.height for img in images)
+
+        # Create output image
+        grid = Image.new("RGB", (w_max * cols, h_max * rows))
+
+        # Paste images into grid
+        for idx, img in enumerate(images):
+            i = idx // cols
+            j = idx % cols
+            grid.paste(img, (j * w_max, i * h_max))
+
+        return grid
+
+    def update_image(self, images: Union[Image.Image, list[Image.Image]]) -> None:
+        """Update the displayed image(s).
+
+        Args:
+            images: Single image or list of images to display
+        """
+        # Convert single image to list
+        if isinstance(images, Image.Image):
+            images = [images]
+
+        # Create grid of all images
+        grid_img = self.create_image_grid(images)
+
+        # Calculate the aspect ratio of the grid
+        aspect_ratio = grid_img.width / grid_img.height
 
         # Determine the new dimensions while maintaining the aspect ratio
         label_width = int(4 * self.winfo_width() / 7)
@@ -950,13 +1007,14 @@ class App(tk.Tk):
             new_height = label_height
             new_width = int(label_height * aspect_ratio)
 
-        # Resize the image to the new dimensions
+        # Resize the grid image
         try:
-            img = img.resize((new_width, new_height), Image.LANCZOS)
+            grid_img = grid_img.resize((new_width, new_height), Image.LANCZOS)
         except RecursionError:
             pass
+
         if self.display_most_recent_image_flag is False:
-            self._update_image_label(img)
+            self._update_image_label(grid_img)
 
     def _update_image_label(self, img: Image.Image) -> None:
         """Update the image label with the provided image.
@@ -972,7 +1030,7 @@ class App(tk.Tk):
         self.image_label.image = tk_image
 
     def display_most_recent_image(self) -> None:
-        """Display the most recent image from the output directory."""
+        """Display the most recent image(s) from the output directory."""
         # Get a list of all image files in the output directory
         image_files = glob.glob("./_internal/output/*")
 
@@ -980,12 +1038,31 @@ class App(tk.Tk):
         if not image_files:
             return
 
-        # Sort the files by modification time in descending order
+        # Sort files by modification time in descending order
         image_files.sort(key=os.path.getmtime, reverse=True)
+        
+        # Get most recent timestamp
+        latest_time = os.path.getmtime(image_files[0])
+        
+        # Get all images from same batch (within 1 second of most recent)
+        batch_images = []
+        for file in image_files:
+            if abs(os.path.getmtime(file) - latest_time) < 1.0:
+                try:
+                    img = Image.open(file)
+                    batch_images.append(img)
+                except:
+                    continue
+                    
+        if not batch_images:
+            return
+            
+        # Display single image or grid of batch
+        if len(batch_images) == 1:
+            self.update_image(batch_images[0]) 
+        else:
+            self.update_image(batch_images)
 
-        # Open the most recent image file
-        img = Image.open(image_files[0])
-        self.update_image(img)
 
     def _start_resize_worker(self):
         """Start the resize worker thread"""
@@ -1006,11 +1083,11 @@ class App(tk.Tk):
                     self._resize_event.clear()
             except queue.Empty:
                 continue
-        
+
     def _queue_resize(self, event):
         """Queue a resize event"""
         current_time = time.time()
-        
+
         # Debounce resize events
         if current_time - self._last_resize_time > self._resize_delay:
             self._last_resize_time = current_time
@@ -1021,20 +1098,20 @@ class App(tk.Tk):
         """Handle resize operation in worker thread"""
         width = self.winfo_width()
         height = self.winfo_height()
-        
+
         # Update UI components in main thread
         self.after(0, lambda: self._update_components(width, height))
-        
+
         # Update image if exists
         if hasattr(self, "img"):
             self._update_image_threaded(self.img)
-    
+
     def _update_components(self, width, height):
         """Update UI components sizes"""
         # Update component sizes based on window dimensions
         width = self.winfo_width()
         height = self.winfo_height()
-        
+
         # Scale text boxes
         prompt_height = int(height * 0.25)
         neg_height = int(height * 0.15)
@@ -1045,7 +1122,7 @@ class App(tk.Tk):
         """Thread-safe image update with caching"""
         if img is None:
             return
-            
+
         with self._resize_lock:
             # Calculate dimensions
             aspect_ratio = img.width / img.height
@@ -1065,12 +1142,9 @@ class App(tk.Tk):
                 resized_img = self._image_cache[cache_key]
             else:
                 try:
-                    resized_img = img.resize(
-                        (new_width, new_height),
-                        Image.LANCZOS
-                    )
+                    resized_img = img.resize((new_width, new_height), Image.LANCZOS)
                     self._image_cache[cache_key] = resized_img
-                    
+
                     # Limit cache size
                     if len(self._image_cache) > 5:
                         self._image_cache.pop(next(iter(self._image_cache)))
@@ -1079,7 +1153,7 @@ class App(tk.Tk):
             if not self.display_most_recent_image_flag:
                 # Update image in main thread
                 self.after(0, lambda: self._update_image_label_safe(resized_img))
-                
+
     def _update_image_label_safe(self, img):
         """Thread-safe image label update"""
         if not self.display_most_recent_image_flag:
@@ -1093,7 +1167,7 @@ class App(tk.Tk):
         if self._resize_thread:
             self._resize_thread.join(timeout=1.0)
         self.destroy()
-        
+
     def interrupt_generation(self) -> None:
         """Interrupt the image generation process."""
         self.interrupt_flag = True
