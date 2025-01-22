@@ -328,7 +328,14 @@ def encode_model_conds(
         conds[t] = x
     return conds
 
-def resolve_areas_and_cond_masks_multidim(conditions, dims, device):
+def resolve_areas_and_cond_masks_multidim(conditions: list, dims: tuple, device: torch.device) -> None:
+    """#### Resolve areas and condition masks for multidimensional conditions.
+    
+    #### Args:
+        - `conditions` (list): The list of conditions.
+        - `dims` (tuple): The dimensions.
+        - `device` (torch.device): The device.
+    """
     # We need to decide on an area outside the sampling loop in order to properly generate opposite areas of equal sizes.
     # While we're doing this, we can also resolve the mask device and scaling for performance reasons
     for i in range(len(conditions)):

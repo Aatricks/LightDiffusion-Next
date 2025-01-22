@@ -12,6 +12,7 @@ from modules.cond import cast
 
 
 class CLIPAttention(torch.nn.Module):
+    """#### The CLIPAttention module."""
     def __init__(
         self,
         embed_dim: int,
@@ -77,6 +78,8 @@ ACTIVATIONS = {
 
 
 class CLIPMLP(torch.nn.Module):
+    """#### The CLIPMLP module.
+    (MLP stands for Multi-Layer Perceptron.)"""
     def __init__(
         self,
         embed_dim: int,
@@ -121,6 +124,7 @@ class CLIPMLP(torch.nn.Module):
 
 
 class CLIPLayer(torch.nn.Module):
+    """#### The CLIPLayer module."""
     def __init__(
         self,
         embed_dim: int,
@@ -177,6 +181,7 @@ class CLIPLayer(torch.nn.Module):
 
 
 class CLIPEncoder(torch.nn.Module):
+    """#### The CLIPEncoder module."""
     def __init__(
         self,
         num_layers: int,
@@ -247,6 +252,7 @@ class CLIPEncoder(torch.nn.Module):
 
 
 class CLIPEmbeddings(torch.nn.Module):
+    """#### The CLIPEmbeddings module."""
     def __init__(
         self,
         embed_dim: int,
@@ -290,6 +296,7 @@ class CLIPEmbeddings(torch.nn.Module):
 
 
 class CLIP:
+    """#### The CLIP class."""
     def __init__(
         self,
         target: object = None,
@@ -460,10 +467,23 @@ class CLIP:
         return self.patcher
     
     def encode(self, text):
+        """#### Encode the input text.
+        
+        #### Args:
+            - `text` (str): The input text.
+        
+        #### Returns:
+            - `torch.Tensor`: The encoded text.
+        """
         tokens = self.tokenize(text)
         return self.encode_from_tokens(tokens)
 
     def get_sd(self):
+        """#### Get the state dictionary.
+        
+        #### Returns:
+            - `dict`: The state dictionary.
+        """
         sd_clip = self.cond_stage_model.state_dict()
         sd_tokenizer = self.tokenizer.state_dict()
         for k in sd_tokenizer:
@@ -471,6 +491,11 @@ class CLIP:
         return sd_clip
 
     def get_key_patches(self):
+        """#### Get the key patches.
+        
+        #### Returns:
+            - `list`: The key patches.
+        """
         return self.patcher.get_key_patches()
 
 
@@ -485,6 +510,17 @@ def load_text_encoder_state_dicts(
     clip_type=CLIPType.STABLE_DIFFUSION,
     model_options={},
 ):
+    """#### Load the text encoder state dictionaries.
+    
+    #### Args:
+        - `state_dicts` (list, optional): The state dictionaries. Defaults to [].
+        - `embedding_directory` (str, optional): The embedding directory. Defaults to None.
+        - `clip_type` (CLIPType, optional): The CLIP type. Defaults to CLIPType.STABLE_DIFFUSION.
+        - `model_options` (dict, optional): The model options. Defaults to {}.
+    
+    #### Returns:
+        - `CLIP`: The CLIP object.
+    """
     clip_data = state_dicts
 
     class EmptyClass:
@@ -536,6 +572,7 @@ def load_text_encoder_state_dicts(
     return clip
 
 class CLIPTextEncode:
+    """#### Text encoding class for the CLIP model."""
     def encode(self, clip: CLIP, text: str, flux_enabled: bool = False) -> tuple:
         """#### Encode the input text.
 
@@ -553,9 +590,12 @@ class CLIPTextEncode:
 
 
 class CLIPSetLastLayer:
+    """#### Set the last layer class for the CLIP model."""
     def set_last_layer(self, clip: CLIP, stop_at_clip_layer: int) -> tuple:
         """#### Set the last layer of the CLIP model.
-
+        
+        works same as Automatic1111 clip skip
+        
         #### Args:
             - `clip` (CLIP): The CLIP object.
             - `stop_at_clip_layer` (int): The layer to stop at.

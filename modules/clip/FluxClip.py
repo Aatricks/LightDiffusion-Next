@@ -13,7 +13,18 @@ activations = {
 }
 
 class T5DenseGatedActDense(torch.nn.Module):
-    def __init__(self, model_dim, ff_dim, ff_activation, dtype, device, operations):
+    """#### Dense Gated Activation Layer"""
+    def __init__(self, model_dim: int, ff_dim: int, ff_activation: str, dtype: torch.dtype, device: torch.device, operations):
+        """#### Initialize Dense Gated Activation Layer
+
+        #### Args:
+            - `model_dim` (int): Model dimension.
+            - `ff_dim` (int): Feedforward dimension.
+            - `ff_activation` (str): Feedforward activation function.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
         self.wi_0 = operations.Linear(
             model_dim, ff_dim, bias=False, dtype=dtype, device=device
@@ -27,7 +38,15 @@ class T5DenseGatedActDense(torch.nn.Module):
         # self.dropout = nn.Dropout(config.dropout_rate)
         self.act = activations[ff_activation]
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward Pass
+        
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+            
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         hidden_gelu = self.act(self.wi_0(x))
         hidden_linear = self.wi_1(x)
         x = hidden_gelu * hidden_linear
@@ -37,9 +56,21 @@ class T5DenseGatedActDense(torch.nn.Module):
 
 
 class T5LayerFF(torch.nn.Module):
+    """#### Feedforward Layer"""
     def __init__(
-        self, model_dim, ff_dim, ff_activation, gated_act, dtype, device, operations
+        self, model_dim: int, ff_dim: int, ff_activation: str, gated_act: bool, dtype: torch.dtype, device: torch.device, operations
     ):
+        """#### Initialize Feedforward Layer
+        
+        #### Args:
+            - `model_dim` (int): Model dimension.
+            - `ff_dim` (int): Feedforward dimension.
+            - `ff_activation` (str): Feedforward activation function.
+            - `gated_act` (bool): Whether to use gated activation.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
         if gated_act:
             self.DenseReluDense = T5DenseGatedActDense(
@@ -51,7 +82,15 @@ class T5LayerFF(torch.nn.Module):
         )
         # self.dropout = nn.Dropout(config.dropout_rate)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward Pass
+        
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+            
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         forwarded_states = self.layer_norm(x)
         forwarded_states = self.DenseReluDense(forwarded_states)
         # x = x + self.dropout(forwarded_states)
@@ -60,16 +99,28 @@ class T5LayerFF(torch.nn.Module):
 
 
 class T5Attention(torch.nn.Module):
+    """#### Attention Layer"""
     def __init__(
         self,
-        model_dim,
-        inner_dim,
-        num_heads,
-        relative_attention_bias,
-        dtype,
-        device,
+        model_dim: int,
+        inner_dim: int,
+        num_heads: int,
+        relative_attention_bias: bool,
+        dtype: torch.dtype,
+        device: torch.device,
         operations,
     ):
+        """#### Initialize Attention Layer
+        
+        #### Args:
+            - `model_dim` (int): Model dimension.
+            - `inner_dim` (int): Inner dimension.
+            - `num_heads` (int): Number of attention heads.
+            - `relative_attention_bias` (bool): Whether to use relative attention bias.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
 
         # Mesh TensorFlow initialization to avoid scaling before softmax
@@ -100,8 +151,8 @@ class T5Attention(torch.nn.Module):
 
     @staticmethod
     def _relative_position_bucket(
-        relative_position, bidirectional=True, num_buckets=32, max_distance=128
-    ):
+        relative_position: torch.Tensor, bidirectional: bool = True, num_buckets: int = 32, max_distance: int = 128
+    ) -> torch.Tensor:
         """
         Adapted from Mesh Tensorflow:
         https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
@@ -113,14 +164,14 @@ class T5Attention(torch.nn.Module):
         positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
         This should allow for more graceful generalization to longer sequences than the model has been trained on
 
-        Args:
-            relative_position: an int32 Tensor
-            bidirectional: a boolean - whether the attention is bidirectional
-            num_buckets: an integer
-            max_distance: an integer
+        #### Args:
+            - `relative_position` (torch.Tensor): Relative position tensor.
+            - `bidirectional` (bool): Whether the attention is bidirectional.
+            - `num_buckets` (int): Number of buckets.
+            - `max_distance` (int): Maximum distance.
 
-        Returns:
-            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
+        #### Returns:
+            - `torch.Tensor`: Bucketed relative positions.
         """
         relative_buckets = 0
         if bidirectional:
@@ -153,8 +204,18 @@ class T5Attention(torch.nn.Module):
         )
         return relative_buckets
 
-    def compute_bias(self, query_length, key_length, device, dtype):
-        """Compute binned relative position bias"""
+    def compute_bias(self, query_length: int, key_length: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        """#### Compute binned relative position bias
+        
+        #### Args:
+            - `query_length` (int): Length of the query.
+            - `key_length` (int): Length of the key.
+            - `device` (torch.device): Device.
+            - `dtype` (torch.dtype): Data type.
+            
+        #### Returns:
+            - `torch.Tensor`: Computed bias.
+        """
         context_position = torch.arange(query_length, dtype=torch.long, device=device)[
             :, None
         ]
@@ -178,7 +239,18 @@ class T5Attention(torch.nn.Module):
         )  # shape (1, num_heads, query_length, key_length)
         return values
 
-    def forward(self, x, mask=None, past_bias=None, optimized_attention=None):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, past_bias: torch.Tensor = None, optimized_attention = None) -> torch.Tensor:
+        """#### Forward Pass
+        
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+            - `mask` (torch.Tensor, optional): Attention mask. Defaults to None.
+            - `past_bias` (torch.Tensor, optional): Past bias. Defaults to None.
+            - `optimized_attention` (callable, optional): Optimized attention function. Defaults to None.
+            
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         q = self.q(x)
         k = self.k(x)
         v = self.v(x)
@@ -198,17 +270,30 @@ class T5Attention(torch.nn.Module):
 
 
 class T5LayerSelfAttention(torch.nn.Module):
+    """#### Self-Attention Layer"""
     def __init__(
         self,
-        model_dim,
-        inner_dim,
-        ff_dim,
-        num_heads,
-        relative_attention_bias,
-        dtype,
-        device,
+        model_dim: int,
+        inner_dim: int,
+        ff_dim: int,
+        num_heads: int,
+        relative_attention_bias: bool,
+        dtype: torch.dtype,
+        device: torch.device,
         operations,
     ):
+        """#### Initialize Self-Attention Layer
+        
+        #### Args:
+            - `model_dim` (int): Model dimension.
+            - `inner_dim` (int): Inner dimension.
+            - `ff_dim` (int): Feedforward dimension.
+            - `num_heads` (int): Number of attention heads.
+            - `relative_attention_bias` (bool): Whether to use relative attention bias.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
         self.SelfAttention = T5Attention(
             model_dim,
@@ -224,7 +309,18 @@ class T5LayerSelfAttention(torch.nn.Module):
         )
         # self.dropout = nn.Dropout(config.dropout_rate)
 
-    def forward(self, x, mask=None, past_bias=None, optimized_attention=None):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, past_bias: torch.Tensor = None, optimized_attention = None) -> torch.Tensor:
+        """#### Forward Pass
+        
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+            - `mask` (torch.Tensor, optional): Attention mask. Defaults to None.
+            - `past_bias` (torch.Tensor, optional): Past bias. Defaults to None.
+            - `optimized_attention` (callable, optional): Optimized attention function. Defaults to None.
+            
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         self.layer_norm(x)
         output, past_bias = self.SelfAttention(
             self.layer_norm(x),
@@ -238,19 +334,34 @@ class T5LayerSelfAttention(torch.nn.Module):
 
 
 class T5Block(torch.nn.Module):
+    """#### T5 Block"""
     def __init__(
         self,
-        model_dim,
-        inner_dim,
-        ff_dim,
-        ff_activation,
-        gated_act,
-        num_heads,
-        relative_attention_bias,
-        dtype,
-        device,
+        model_dim: int,
+        inner_dim: int,
+        ff_dim: int,
+        ff_activation: str,
+        gated_act: bool,
+        num_heads: int,
+        relative_attention_bias: bool,
+        dtype: torch.dtype,
+        device: torch.device,
         operations,
     ):
+        """#### Initialize T5 Block
+        
+        #### Args:
+            - `model_dim` (int): Model dimension.
+            - `inner_dim` (int): Inner dimension.
+            - `ff_dim` (int): Feedforward dimension.
+            - `ff_activation` (str): Feedforward activation function.
+            - `gated_act` (bool): Whether to use gated activation.
+            - `num_heads` (int): Number of attention heads.
+            - `relative_attention_bias` (bool): Whether to use relative attention bias.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
         self.layer = torch.nn.ModuleList()
         self.layer.append(
@@ -271,27 +382,54 @@ class T5Block(torch.nn.Module):
             )
         )
 
-    def forward(self, x, mask=None, past_bias=None, optimized_attention=None):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, past_bias: torch.Tensor = None, optimized_attention = None) -> torch.Tensor:
+        """#### Forward Pass
+        
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+            - `mask` (torch.Tensor, optional): Attention mask. Defaults to None.
+            - `past_bias` (torch.Tensor, optional): Past bias. Defaults to None.
+            - `optimized_attention` (callable, optional): Optimized attention function. Defaults to None.
+            
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         x, past_bias = self.layer[0](x, mask, past_bias, optimized_attention)
         x = self.layer[-1](x)
         return x, past_bias
 
 
 class T5Stack(torch.nn.Module):
+    """#### T5 Stack"""
     def __init__(
         self,
-        num_layers,
-        model_dim,
-        inner_dim,
-        ff_dim,
-        ff_activation,
-        gated_act,
-        num_heads,
-        relative_attention,
-        dtype,
-        device,
+        num_layers: int,
+        model_dim: int,
+        inner_dim: int,
+        ff_dim: int,
+        ff_activation: str,
+        gated_act: bool,
+        num_heads: int,
+        relative_attention: bool,
+        dtype: torch.dtype,
+        device: torch.device,
         operations,
     ):
+        """#### Initialize T5 Stack
+        
+        #### Args:
+            - `num_layers` (int): Number of layers.
+            - `model_dim` (int): Model dimension.
+            - `inner_dim` (int): Inner dimension.
+            - `ff_dim` (int): Feedforward dimension.
+            - `ff_activation` (str): Feedforward activation function.
+            - `gated_act` (bool): Whether to use gated activation.
+            - `num_heads` (int): Number of attention heads.
+            - `relative_attention` (bool): Whether to use relative attention.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
 
         self.block = torch.nn.ModuleList(
@@ -318,12 +456,24 @@ class T5Stack(torch.nn.Module):
 
     def forward(
         self,
-        x,
-        attention_mask=None,
-        intermediate_output=None,
-        final_layer_norm_intermediate=True,
-        dtype=None,
-    ):
+        x: torch.Tensor,
+        attention_mask: torch.Tensor = None,
+        intermediate_output: int = None,
+        final_layer_norm_intermediate: bool = True,
+        dtype: torch.dtype = None,
+    ) -> torch.Tensor:
+        """#### Forward Pass
+        
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+            - `attention_mask` (torch.Tensor, optional): Attention mask. Defaults to None.
+            - `intermediate_output` (int, optional): Intermediate output index. Defaults to None.
+            - `final_layer_norm_intermediate` (bool, optional): Whether to apply final layer norm to intermediate output. Defaults to True.
+            - `dtype` (torch.dtype, optional): Data type. Defaults to None.
+            
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         mask = None
         if attention_mask is not None:
             mask = 1.0 - attention_mask.to(x.dtype).reshape(
@@ -348,9 +498,16 @@ class T5Stack(torch.nn.Module):
             intermediate = self.final_layer_norm(intermediate)
         return x, intermediate
 
-
 class T5(torch.nn.Module):
     def __init__(self, config_dict, dtype, device, operations):
+        """#### Initialize T5 Model
+
+        #### Args:
+            - `config_dict` (dict): Configuration dictionary.
+            - `dtype` (torch.dtype): Data type.
+            - `device` (torch.device): Device.
+            - `operations` (Operations): Operations.
+        """
         super().__init__()
         self.num_layers = config_dict["num_layers"]
         model_dim = config_dict["d_model"]
@@ -373,13 +530,33 @@ class T5(torch.nn.Module):
             config_dict["vocab_size"], model_dim, device=device, dtype=dtype
         )
 
-    def get_input_embeddings(self):
+    def get_input_embeddings(self) -> torch.nn.Embedding:
+        """#### Get input embeddings
+
+        #### Returns:
+            - `torch.nn.Embedding`: The input embeddings.
+        """
         return self.shared
 
-    def set_input_embeddings(self, embeddings):
+    def set_input_embeddings(self, embeddings: torch.nn.Embedding) -> None:
+        """#### Set input embeddings
+
+        #### Args:
+            - `embeddings` (torch.nn.Embedding): The input embeddings.
+        """
         self.shared = embeddings
 
-    def forward(self, input_ids, *args, **kwargs):
+    def forward(self, input_ids: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        """#### Forward pass
+
+        #### Args:
+            - `input_ids` (torch.Tensor): Input tensor.
+            - `*args`: Additional arguments.
+            - `**kwargs`: Additional keyword arguments.
+
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         x = self.shared(input_ids, out_dtype=kwargs.get("dtype", torch.float32))
         if self.dtype not in [torch.float32, torch.float16, torch.bfloat16]:
             x = torch.nan_to_num(x)  # Fix for fp8 T5 base
@@ -389,6 +566,15 @@ class T5XXLModel(SDClip.SDClipModel):
     def __init__(
         self, device="cpu", layer="last", layer_idx=None, dtype=None, model_options={}
     ):
+        """#### Initialize T5XXL Model
+
+        #### Args:
+            - `device` (str, optional): Device. Defaults to "cpu".
+            - `layer` (str, optional): Layer. Defaults to "last".
+            - `layer_idx` (int, optional): Layer index. Defaults to None.
+            - `dtype` (torch.dtype, optional): Data type. Defaults to None.
+            - `model_options` (dict, optional): Model options. Defaults to {}.
+        """
         textmodel_json_config = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             "./clip/t5_config_xxl.json",
@@ -404,9 +590,14 @@ class T5XXLModel(SDClip.SDClipModel):
             model_options=model_options,
         )
 
-
 class T5XXLTokenizer(SDToken.SDTokenizer):
     def __init__(self, embedding_directory=None, tokenizer_data={}):
+        """#### Initialize T5XXL Tokenizer
+
+        #### Args:
+            - `embedding_directory` (str, optional): Embedding directory. Defaults to None.
+            - `tokenizer_data` (dict, optional): Tokenizer data. Defaults to {}.
+        """
         tokenizer_path = os.path.join(
             os.path.dirname(os.path.realpath(__file__)), "./clip/t5_tokenizer"
         )
@@ -422,38 +613,75 @@ class T5XXLTokenizer(SDToken.SDTokenizer):
             min_length=256,
         )
 
-
 class T5LayerNorm(torch.nn.Module):
     def __init__(self, hidden_size, eps=1e-6, dtype=None, device=None, operations=None):
+        """#### Initialize T5 Layer Normalization
+
+        #### Args:
+            - `hidden_size` (int): Hidden size.
+            - `eps` (float, optional): Epsilon. Defaults to 1e-6.
+            - `dtype` (torch.dtype, optional): Data type. Defaults to None.
+            - `device` (torch.device, optional): Device. Defaults to None.
+            - `operations` (Operations, optional): Operations. Defaults to None.
+        """
         super().__init__()
         self.weight = torch.nn.Parameter(
             torch.empty(hidden_size, dtype=dtype, device=device)
         )
         self.variance_epsilon = eps
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass
+
+        #### Args:
+            - `x` (torch.Tensor): Input tensor.
+
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.variance_epsilon)
         return cast.cast_to_input(self.weight, x) * x
 
-
 class FluxTokenizer:
     def __init__(self, embedding_directory=None, tokenizer_data={}):
+        """#### Initialize Flux Tokenizer
+
+        #### Args:
+            - `embedding_directory` (str, optional): Embedding directory. Defaults to None.
+            - `tokenizer_data` (dict, optional): Tokenizer data. Defaults to {}.
+        """
         clip_l_tokenizer_class = tokenizer_data.get(
             "clip_l_tokenizer_class", SDToken.SDTokenizer
         )
         self.clip_l = clip_l_tokenizer_class(embedding_directory=embedding_directory)
         self.t5xxl = T5XXLTokenizer(embedding_directory=embedding_directory)
 
-    def tokenize_with_weights(self, text: str, return_word_ids=False):
+    def tokenize_with_weights(self, text: str, return_word_ids=False) -> dict:
+        """#### Tokenize text with weights
+
+        #### Args:
+            - `text` (str): Text to tokenize.
+            - `return_word_ids` (bool, optional): Whether to return word IDs. Defaults to False.
+
+        #### Returns:
+            - `dict`: Tokenized text with weights.
+        """
         out = {}
         out["l"] = self.clip_l.tokenize_with_weights(text, return_word_ids)
         out["t5xxl"] = self.t5xxl.tokenize_with_weights(text, return_word_ids)
         return out
 
-
 class FluxClipModel(torch.nn.Module):
     def __init__(self, dtype_t5=None, device="cpu", dtype=None, model_options={}):
+        """#### Initialize FluxClip Model
+
+        #### Args:
+            - `dtype_t5` (torch.dtype, optional): T5 data type. Defaults to None.
+            - `device` (str, optional): Device. Defaults to "cpu".
+            - `dtype` (torch.dtype, optional): Data type. Defaults to None.
+            - `model_options` (dict, optional): Model options. Defaults to {}.
+        """
         super().__init__()
         dtype_t5 = Device.pick_weight_dtype(dtype_t5, dtype, device)
         clip_l_class = model_options.get("clip_l_class", SDClip.SDClipModel)
@@ -468,11 +696,20 @@ class FluxClipModel(torch.nn.Module):
         )
         self.dtypes = set([dtype, dtype_t5])
 
-    def reset_clip_options(self):
+    def reset_clip_options(self) -> None:
+        """#### Reset CLIP options"""
         self.clip_l.reset_clip_options()
         self.t5xxl.reset_clip_options()
 
-    def encode_token_weights(self, token_weight_pairs):
+    def encode_token_weights(self, token_weight_pairs: dict) -> tuple:
+        """#### Encode token weights
+
+        #### Args:
+            - `token_weight_pairs` (dict): Token weight pairs.
+
+        #### Returns:
+            - `tuple`: Encoded token weights.
+        """
         token_weight_pairs_l = token_weight_pairs["l"]
         token_weight_pairs_t5 = token_weight_pairs["t5xxl"]
 
@@ -480,16 +717,35 @@ class FluxClipModel(torch.nn.Module):
         l_out, l_pooled = self.clip_l.encode_token_weights(token_weight_pairs_l)
         return t5_out, l_pooled
 
-    def load_sd(self, sd):
+    def load_sd(self, sd: dict) -> None:
+        """#### Load state dictionary
+
+        #### Args:
+            - `sd` (dict): State dictionary.
+        """
         if "text_model.encoder.layers.1.mlp.fc1.weight" in sd:
             return self.clip_l.load_sd(sd)
         else:
             return self.t5xxl.load_sd(sd)
 
-
 def flux_clip(dtype_t5=None):
+    """#### Create FluxClip Model
+
+    #### Args:
+        - `dtype_t5` (torch.dtype, optional): T5 data type. Defaults to None.
+
+    #### Returns:
+        - `FluxClipModel`: FluxClip Model class.
+    """
     class FluxClipModel_(FluxClipModel):
         def __init__(self, device="cpu", dtype=None, model_options={}):
+            """#### Initialize FluxClip Model
+
+            #### Args:
+                - `device` (str, optional): Device. Defaults to "cpu".
+                - `dtype` (torch.dtype, optional): Data type. Defaults to None.
+                - `model_options` (dict, optional): Model options. Defaults to {}.
+            """
             super().__init__(
                 dtype_t5=dtype_t5,
                 device=device,

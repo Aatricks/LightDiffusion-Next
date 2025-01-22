@@ -1,4 +1,3 @@
-
 import copy
 import logging
 import gguf
@@ -10,7 +9,7 @@ from modules.Utilities import util
 from modules.clip import Clip
 from modules.cond import cast
 
-
+# Constants for torch-compatible quantization types
 TORCH_COMPATIBLE_QTYPES = {
     None,
     gguf.GGMLQuantizationType.F32,
@@ -18,40 +17,95 @@ TORCH_COMPATIBLE_QTYPES = {
 }
 
 
-def is_torch_compatible(tensor):
+def is_torch_compatible(tensor: torch.Tensor) -> bool:
+    """#### Check if a tensor is compatible with PyTorch operations.
+
+    #### Args:
+        - `tensor` (torch.Tensor): The tensor to check.
+
+    #### Returns:
+        - `bool`: Whether the tensor is torch-compatible.
+    """
     return (
         tensor is None
         or getattr(tensor, "tensor_type", None) in TORCH_COMPATIBLE_QTYPES
     )
 
 
-def is_quantized(tensor):
+def is_quantized(tensor: torch.Tensor) -> bool:
+    """#### Check if a tensor is quantized.
+
+    #### Args:
+        - `tensor` (torch.Tensor): The tensor to check.
+
+    #### Returns:
+        - `bool`: Whether the tensor is quantized.
+    """
     return not is_torch_compatible(tensor)
 
 
-def dequantize(data, qtype, oshape, dtype=None):
+def dequantize(
+    data: torch.Tensor,
+    qtype: gguf.GGMLQuantizationType,
+    oshape: tuple,
+    dtype: torch.dtype = None,
+) -> torch.Tensor:
+    """#### Dequantize tensor back to usable shape/dtype.
+
+    #### Args:
+        - `data` (torch.Tensor): The quantized data.
+        - `qtype` (gguf.GGMLQuantizationType): The quantization type.
+        - `oshape` (tuple): The output shape.
+        - `dtype` (torch.dtype, optional): The output dtype. Defaults to None.
+
+    #### Returns:
+        - `torch.Tensor`: The dequantized tensor.
     """
-    Dequantize tensor back to usable shape/dtype
-    """
+    # Get block size and type size for quantization format
     block_size, type_size = gguf.GGML_QUANT_SIZES[qtype]
     dequantize_blocks = dequantize_functions[qtype]
 
+    # Reshape data into blocks
     rows = data.reshape((-1, data.shape[-1])).view(torch.uint8)
-
     n_blocks = rows.numel() // type_size
     blocks = rows.reshape((n_blocks, type_size))
+
+    # Dequantize blocks and reshape to target shape
     blocks = dequantize_blocks(blocks, block_size, type_size, dtype)
     return blocks.reshape(oshape)
 
 
-def split_block_dims(blocks, *args):
+def split_block_dims(blocks: torch.Tensor, *args) -> list:
+    """#### Split blocks into dimensions.
+
+    #### Args:
+        - `blocks` (torch.Tensor): The blocks to split.
+        - `*args`: The dimensions to split into.
+
+    #### Returns:
+        - `list`: The split blocks.
+    """
     n_max = blocks.shape[1]
     dims = list(args) + [n_max - sum(args)]
     return torch.split(blocks, dims, dim=1)
 
 
-# Legacy Quants #
-def dequantize_blocks_Q8_0(blocks, block_size, type_size, dtype=None):
+# Legacy Quantization Functions
+def dequantize_blocks_Q8_0(
+    blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None
+) -> torch.Tensor:
+    """#### Dequantize Q8_0 quantized blocks.
+
+    #### Args:
+        - `blocks` (torch.Tensor): The quantized blocks.
+        - `block_size` (int): The block size.
+        - `type_size` (int): The type size.
+        - `dtype` (torch.dtype, optional): The output dtype. Defaults to None.
+
+    #### Returns:
+        - `torch.Tensor`: The dequantized blocks.
+    """
+    # Split blocks into scale and quantized values
     d, x = split_block_dims(blocks, 2)
     d = d.view(torch.float16).to(dtype)
     x = x.view(torch.int8)
@@ -62,13 +116,25 @@ def dequantize_blocks_Q8_0(blocks, block_size, type_size, dtype=None):
 QK_K = 256
 K_SCALE_SIZE = 12
 
-
+# Mapping of quantization types to dequantization functions
 dequantize_functions = {
     gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
 }
 
 
-def dequantize_tensor(tensor, dtype=None, dequant_dtype=None):
+def dequantize_tensor(
+    tensor: torch.Tensor, dtype: torch.dtype = None, dequant_dtype: torch.dtype = None
+) -> torch.Tensor:
+    """#### Dequantize a potentially quantized tensor.
+
+    #### Args:
+        - `tensor` (torch.Tensor): The tensor to dequantize.
+        - `dtype` (torch.dtype, optional): Target dtype. Defaults to None.
+        - `dequant_dtype` (torch.dtype, optional): Intermediate dequantization dtype. Defaults to None.
+
+    #### Returns:
+        - `torch.Tensor`: The dequantized tensor.
+    """
     qtype = getattr(tensor, "tensor_type", None)
     oshape = getattr(tensor, "tensor_shape", tensor.shape)
 
@@ -80,31 +146,52 @@ def dequantize_tensor(tensor, dtype=None, dequant_dtype=None):
 
 
 class GGMLLayer(torch.nn.Module):
-    """
-    This (should) be responsible for de-quantizing on the fly
+    """#### Base class for GGML quantized layers.
+
+    Handles dynamic dequantization of weights during forward pass.
     """
 
-    comfy_cast_weights = True
-    dequant_dtype = None
-    patch_dtype = None
-    torch_compatible_tensor_types = {
+    comfy_cast_weights: bool = True
+    dequant_dtype: torch.dtype = None
+    patch_dtype: torch.dtype = None
+    torch_compatible_tensor_types: set = {
         None,
         gguf.GGMLQuantizationType.F32,
         gguf.GGMLQuantizationType.F16,
     }
 
-    def is_ggml_quantized(self, *, weight=None, bias=None):
+    def is_ggml_quantized(
+        self, *, weight: torch.Tensor = None, bias: torch.Tensor = None
+    ) -> bool:
+        """#### Check if layer weights are GGML quantized.
+
+        #### Args:
+            - `weight` (torch.Tensor, optional): Weight tensor to check. Defaults to self.weight.
+            - `bias` (torch.Tensor, optional): Bias tensor to check. Defaults to self.bias.
+
+        #### Returns:
+            - `bool`: Whether weights are quantized.
+        """
         if weight is None:
             weight = self.weight
         if bias is None:
             bias = self.bias
         return is_quantized(weight) or is_quantized(bias)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
-        weight, bias = state_dict.get(f"{prefix}weight"), state_dict.get(
-            f"{prefix}bias"
-        )
-        # NOTE: using modified load for linear due to not initializing on creation, see GGMLOps todo
+    def _load_from_state_dict(
+        self, state_dict: dict, prefix: str, *args, **kwargs
+    ) -> None:
+        """#### Load quantized weights from state dict.
+
+        #### Args:
+            - `state_dict` (dict): State dictionary.
+            - `prefix` (str): Key prefix.
+            - `*args`: Additional arguments.
+            - `**kwargs`: Additional keyword arguments.
+        """
+        weight = state_dict.get(f"{prefix}weight")
+        bias = state_dict.get(f"{prefix}bias")
+        # Use modified loader for quantized or linear layers
         if self.is_ggml_quantized(weight=weight, bias=bias) or isinstance(
             self, torch.nn.Linear
         ):
@@ -113,14 +200,25 @@ class GGMLLayer(torch.nn.Module):
 
     def ggml_load_from_state_dict(
         self,
-        state_dict,
-        prefix,
-        local_metadata,
-        strict,
-        missing_keys,
-        unexpected_keys,
-        error_msgs,
-    ):
+        state_dict: dict,
+        prefix: str,
+        local_metadata: dict,
+        strict: bool,
+        missing_keys: list,
+        unexpected_keys: list,
+        error_msgs: list,
+    ) -> None:
+        """#### Load GGML quantized weights from state dict.
+
+        #### Args:
+            - `state_dict` (dict): State dictionary.
+            - `prefix` (str): Key prefix.
+            - `local_metadata` (dict): Local metadata.
+            - `strict` (bool): Strict loading mode.
+            - `missing_keys` (list): Keys missing from state dict.
+            - `unexpected_keys` (list): Unexpected keys found.
+            - `error_msgs` (list): Error messages.
+        """
         prefix_len = len(prefix)
         for k, v in state_dict.items():
             if k[prefix_len:] == "weight":
@@ -130,13 +228,28 @@ class GGMLLayer(torch.nn.Module):
             else:
                 missing_keys.append(k)
 
-    def _save_to_state_dict(self, *args, **kwargs):
+    def _save_to_state_dict(self, *args, **kwargs) -> None:
+        """#### Save layer state to state dict.
+
+        #### Args:
+            - `*args`: Additional arguments.
+            - `**kwargs`: Additional keyword arguments.
+        """
         if self.is_ggml_quantized():
             return self.ggml_save_to_state_dict(*args, **kwargs)
         return super()._save_to_state_dict(*args, **kwargs)
 
-    def ggml_save_to_state_dict(self, destination, prefix, keep_vars):
-        # This is a fake state dict for vram estimation
+    def ggml_save_to_state_dict(
+        self, destination: dict, prefix: str, keep_vars: bool
+    ) -> None:
+        """#### Save GGML layer state to state dict.
+
+        #### Args:
+            - `destination` (dict): Destination dictionary.
+            - `prefix` (str): Key prefix.
+            - `keep_vars` (bool): Whether to keep variables.
+        """
+        # Create fake tensors for VRAM estimation
         weight = torch.zeros_like(self.weight, device=torch.device("meta"))
         destination[prefix + "weight"] = weight
         if self.bias is not None:
@@ -144,32 +257,58 @@ class GGMLLayer(torch.nn.Module):
             destination[prefix + "bias"] = bias
         return
 
-    def get_weight(self, tensor, dtype):
+    def get_weight(self, tensor: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        """#### Get dequantized weight tensor.
+
+        #### Args:
+            - `tensor` (torch.Tensor): Input tensor.
+            - `dtype` (torch.dtype): Target dtype.
+
+        #### Returns:
+            - `torch.Tensor`: Dequantized tensor.
+        """
         if tensor is None:
             return
 
-        # consolidate and load patches to GPU in async
+        # Consolidate and load patches to GPU asynchronously
         patch_list = []
         device = tensor.device
         for function, patches, key in getattr(tensor, "patches", []):
             patch_list += move_patch_to_device(patches, device)
 
-        # dequantize tensor while patches load
+        # Dequantize tensor while patches load
         weight = dequantize_tensor(tensor, dtype, self.dequant_dtype)
 
-        # apply patches
+        # Apply patches
         if patch_list:
             if self.patch_dtype is None:
                 weight = function(patch_list, weight, key)
             else:
-                # for testing, may degrade image quality
+                # For testing, may degrade image quality
                 patch_dtype = (
                     dtype if self.patch_dtype == "target" else self.patch_dtype
                 )
                 weight = function(patch_list, weight, key, patch_dtype)
         return weight
 
-    def cast_bias_weight(s, input=None, dtype=None, device=None, bias_dtype=None):
+    def cast_bias_weight(
+        self,
+        input: torch.Tensor = None,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+        bias_dtype: torch.dtype = None,
+    ) -> tuple:
+        """#### Cast layer weights and bias to target dtype/device.
+
+        #### Args:
+            - `input` (torch.Tensor, optional): Input tensor for type/device inference.
+            - `dtype` (torch.dtype, optional): Target dtype.
+            - `device` (torch.device, optional): Target device.
+            - `bias_dtype` (torch.dtype, optional): Target bias dtype.
+
+        #### Returns:
+            - `tuple`: (cast_weight, cast_bias)
+        """
         if input is not None:
             if dtype is None:
                 dtype = getattr(input, "dtype", torch.float32)
@@ -180,17 +319,31 @@ class GGMLLayer(torch.nn.Module):
 
         bias = None
         non_blocking = Device.device_supports_non_blocking(device)
-        if s.bias is not None:
-            bias = s.get_weight(s.bias.to(device), dtype)
+        if self.bias is not None:
+            bias = self.get_weight(self.bias.to(device), dtype)
             bias = cast.cast_to(
                 bias, bias_dtype, device, non_blocking=non_blocking, copy=False
             )
 
-        weight = s.get_weight(s.weight.to(device), dtype)
-        weight = cast.cast_to(weight, dtype, device, non_blocking=non_blocking, copy=False)
+        weight = self.get_weight(self.weight.to(device), dtype)
+        weight = cast.cast_to(
+            weight, dtype, device, non_blocking=non_blocking, copy=False
+        )
         return weight, bias
 
-    def forward_comfy_cast_weights(self, input, *args, **kwargs):
+    def forward_comfy_cast_weights(
+        self, input: torch.Tensor, *args, **kwargs
+    ) -> torch.Tensor:
+        """#### Forward pass with weight casting.
+
+        #### Args:
+            - `input` (torch.Tensor): Input tensor.
+            - `*args`: Additional arguments.
+            - `**kwargs`: Additional keyword arguments.
+
+        #### Returns:
+            - `torch.Tensor`: Output tensor.
+        """
         if self.is_ggml_quantized():
             return self.forward_ggml_cast_weights(input, *args, **kwargs)
         return super().forward_comfy_cast_weights(input, *args, **kwargs)
@@ -205,6 +358,16 @@ class GGMLOps(cast.manual_cast):
         def __init__(
             self, in_features, out_features, bias=True, device=None, dtype=None
         ):
+            """
+            Initialize the Linear layer.
+
+            Args:
+                in_features (int): Number of input features.
+                out_features (int): Number of output features.
+                bias (bool, optional): If set to False, the layer will not learn an additive bias. Defaults to True.
+                device (torch.device, optional): The device to store the layer's parameters. Defaults to None.
+                dtype (torch.dtype, optional): The data type of the layer's parameters. Defaults to None.
+            """
             torch.nn.Module.__init__(self)
             # TODO: better workaround for reserved memory spike on windows
             # Issue is with `torch.empty` still reserving the full memory for the layer
@@ -214,12 +377,33 @@ class GGMLOps(cast.manual_cast):
             self.weight = None
             self.bias = None
 
-        def forward_ggml_cast_weights(self, input):
+        def forward_ggml_cast_weights(self, input: torch.Tensor) -> torch.Tensor:
+            """
+            Forward pass with GGML cast weights.
+
+            Args:
+                input (torch.Tensor): The input tensor.
+
+            Returns:
+                torch.Tensor: The output tensor.
+            """
             weight, bias = self.cast_bias_weight(input)
             return torch.nn.functional.linear(input, weight, bias)
 
     class Embedding(GGMLLayer, cast.manual_cast.Embedding):
-        def forward_ggml_cast_weights(self, input, out_dtype=None):
+        def forward_ggml_cast_weights(
+            self, input: torch.Tensor, out_dtype: torch.dtype = None
+        ) -> torch.Tensor:
+            """
+            Forward pass with GGML cast weights for embedding.
+
+            Args:
+                input (torch.Tensor): The input tensor.
+                out_dtype (torch.dtype, optional): The output data type. Defaults to None.
+
+            Returns:
+                torch.Tensor: The output tensor.
+            """
             output_dtype = out_dtype
             if (
                 self.weight.dtype == torch.float16
@@ -240,7 +424,18 @@ class GGMLOps(cast.manual_cast):
             ).to(dtype=output_dtype)
 
 
-def gguf_sd_loader_get_orig_shape(reader, tensor_name):
+def gguf_sd_loader_get_orig_shape(
+    reader: gguf.GGUFReader, tensor_name: str
+) -> torch.Size:
+    """#### Get the original shape of a tensor from a GGUF reader.
+
+    #### Args:
+        - `reader` (gguf.GGUFReader): The GGUF reader.
+        - `tensor_name` (str): The name of the tensor.
+
+    #### Returns:
+        - `torch.Size`: The original shape of the tensor.
+    """
     field_key = f"comfy.gguf.orig_shape.{tensor_name}"
     field = reader.get_field(field_key)
     if field is None:
@@ -263,15 +458,48 @@ class GGMLTensor(torch.Tensor):
     """
 
     def __init__(self, *args, tensor_type, tensor_shape, patches=[], **kwargs):
+        """
+        Initialize the GGMLTensor.
+
+        Args:
+            *args: Variable length argument list.
+            tensor_type: The type of the tensor.
+            tensor_shape: The shape of the tensor.
+            patches (list, optional): List of patches. Defaults to [].
+            **kwargs: Arbitrary keyword arguments.
+        """
         super().__init__()
         self.tensor_type = tensor_type
         self.tensor_shape = tensor_shape
         self.patches = patches
 
     def __new__(cls, *args, tensor_type, tensor_shape, patches=[], **kwargs):
+        """
+        Create a new instance of GGMLTensor.
+
+        Args:
+            *args: Variable length argument list.
+            tensor_type: The type of the tensor.
+            tensor_shape: The shape of the tensor.
+            patches (list, optional): List of patches. Defaults to [].
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGMLTensor: A new instance of GGMLTensor.
+        """
         return super().__new__(cls, *args, **kwargs)
 
     def to(self, *args, **kwargs):
+        """
+        Convert the tensor to a specified device and/or dtype.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGMLTensor: The converted tensor.
+        """
         new = super().to(*args, **kwargs)
         new.tensor_type = getattr(self, "tensor_type", None)
         new.tensor_shape = getattr(self, "tensor_shape", new.data.shape)
@@ -279,20 +507,58 @@ class GGMLTensor(torch.Tensor):
         return new
 
     def clone(self, *args, **kwargs):
+        """
+        Clone the tensor.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGMLTensor: The cloned tensor.
+        """
         return self
 
     def detach(self, *args, **kwargs):
+        """
+        Detach the tensor from the computation graph.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGMLTensor: The detached tensor.
+        """
         return self
 
     def copy_(self, *args, **kwargs):
-        # fixes .weight.copy_ in comfy/clip_model/CLIPTextModel
+        """
+        Copy the values from another tensor into this tensor.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGMLTensor: The tensor with copied values.
+        """
         try:
             return super().copy_(*args, **kwargs)
         except Exception as e:
             print(f"ignoring 'copy_' on tensor: {e}")
 
     def __deepcopy__(self, *args, **kwargs):
-        # Intel Arc fix, ref#50
+        """
+        Create a deep copy of the tensor.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGMLTensor: The deep copied tensor.
+        """
         new = super().__deepcopy__(*args, **kwargs)
         new.tensor_type = getattr(self, "tensor_type", None)
         new.tensor_shape = getattr(self, "tensor_shape", new.data.shape)
@@ -301,14 +567,26 @@ class GGMLTensor(torch.Tensor):
 
     @property
     def shape(self):
+        """
+        Get the shape of the tensor.
+
+        Returns:
+            torch.Size: The shape of the tensor.
+        """
         if not hasattr(self, "tensor_shape"):
             self.tensor_shape = self.size()
         return self.tensor_shape
 
 
-def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
-    """
-    Read state dict as fake tensors
+def gguf_sd_loader(path: str, handle_prefix: str = "model.diffusion_model."):
+    """#### Load a GGUF file into a state dict.
+
+    #### Args:
+        - `path` (str): The path to the GGUF file.
+        - `handle_prefix` (str, optional): The prefix to handle. Defaults to "model.diffusion_model.".
+
+    #### Returns:
+        - `dict`: The loaded state dict.
     """
     reader = gguf.GGUFReader(path)
 
@@ -391,6 +669,16 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
     patch_on_device = False
 
     def unpatch_model(self, device_to=None, unpatch_weights=True):
+        """
+        Unpatch the model.
+
+        Args:
+            device_to (torch.device, optional): The device to move the model to. Defaults to None.
+            unpatch_weights (bool, optional): Whether to unpatch the weights. Defaults to True.
+
+        Returns:
+            GGUFModelPatcher: The unpatched model.
+        """
         if unpatch_weights:
             for p in self.model.parameters():
                 if is_torch_compatible(p):
@@ -406,7 +694,14 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
     mmap_released = False
 
     def load(self, *args, force_patch_weights=False, **kwargs):
-        # always call `patch_weight_to_device` even for lowvram
+        """
+        Load the model.
+
+        Args:
+            *args: Variable length argument list.
+            force_patch_weights (bool, optional): Whether to force patch weights. Defaults to False.
+            **kwargs: Arbitrary keyword arguments.
+        """
         super().load(*args, force_patch_weights=True, **kwargs)
 
         # make sure nothing stays linked to mmap after first load
@@ -432,6 +727,16 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
             self.mmap_released = True
 
     def clone(self, *args, **kwargs):
+        """
+        Clone the model patcher.
+
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            GGUFModelPatcher: The cloned model patcher.
+        """
         n = GGUFModelPatcher(
             self.model,
             self.load_device,
@@ -453,10 +758,25 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
 
 
 class UnetLoaderGGUF:
-
     def load_unet(
-        self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None
-    ):
+        self,
+        unet_name: str,
+        dequant_dtype: str = None,
+        patch_dtype: str = None,
+        patch_on_device: bool = None,
+    ) -> tuple:
+        """
+        Load the UNet model.
+
+        Args:
+            unet_name (str): The name of the UNet model.
+            dequant_dtype (str, optional): The dequantization data type. Defaults to None.
+            patch_dtype (str, optional): The patch data type. Defaults to None.
+            patch_on_device (bool, optional): Whether to patch on device. Defaults to None.
+
+        Returns:
+            tuple: The loaded model.
+        """
         ops = GGMLOps()
 
         if dequant_dtype in ("default", None):
@@ -473,7 +793,6 @@ class UnetLoaderGGUF:
         else:
             ops.Linear.patch_dtype = getattr(torch, patch_dtype)
 
-        # init model
         unet_path = "./_internal/unet/" + unet_name
         sd = gguf_sd_loader(unet_path)
         model = ModelPatcher.load_diffusion_model_state_dict(
@@ -487,6 +806,7 @@ class UnetLoaderGGUF:
         model = GGUFModelPatcher.clone(model)
         model.patch_on_device = patch_on_device
         return (model,)
+
 
 clip_sd_map = {
     "enc.": "encoder.",
@@ -513,7 +833,15 @@ clip_name_dict = {
 }
 
 
-def gguf_clip_loader(path):
+def gguf_clip_loader(path: str) -> dict:
+    """#### Load a CLIP model from a GGUF file.
+
+    #### Args:
+        - `path` (str): The path to the GGUF file.
+
+    #### Returns:
+        - `dict`: The loaded CLIP model.
+    """
     raw_sd = gguf_sd_loader(path)
     assert "enc.blk.23.ffn_up.weight" in raw_sd, "Invalid Text Encoder!"
     sd = {}
@@ -525,7 +853,16 @@ def gguf_clip_loader(path):
 
 
 class CLIPLoaderGGUF:
-    def load_data(self, ckpt_paths):
+    def load_data(self, ckpt_paths: list) -> list:
+        """
+        Load data from checkpoint paths.
+
+        Args:
+            ckpt_paths (list): List of checkpoint paths.
+
+        Returns:
+            list: List of loaded data.
+        """
         clip_data = []
         for p in ckpt_paths:
             if p.endswith(".gguf"):
@@ -544,7 +881,18 @@ class CLIPLoaderGGUF:
                 )
         return clip_data
 
-    def load_patcher(self, clip_paths, clip_type, clip_data):
+    def load_patcher(self, clip_paths: list, clip_type: str, clip_data: list) -> Clip:
+        """
+        Load the model patcher.
+
+        Args:
+            clip_paths (list): List of clip paths.
+            clip_type (str): The type of the clip.
+            clip_data (list): List of clip data.
+
+        Returns:
+            Clip: The loaded clip.
+        """
         clip = Clip.load_text_encoder_state_dicts(
             clip_type=clip_type,
             state_dicts=clip_data,
@@ -586,7 +934,18 @@ class CLIPLoaderGGUF:
 
 
 class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
-    def load_clip(self, clip_name1, clip_name2, type):
+    def load_clip(self, clip_name1: str, clip_name2: str, type: str) -> tuple:
+        """
+        Load dual clips.
+
+        Args:
+            clip_name1 (str): The name of the first clip.
+            clip_name2 (str): The name of the second clip.
+            type (str): The type of the clip.
+
+        Returns:
+            tuple: The loaded clips.
+        """
         clip_path1 = "./_internal/clip/" + clip_name1
         clip_path2 = "./_internal/clip/" + clip_name2
         clip_paths = (clip_path1, clip_path2)
@@ -595,19 +954,49 @@ class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
 
 
 class CLIPTextEncodeFlux:
-    def encode(self, clip, clip_l, t5xxl, guidance, flux_enabled:bool = False):
+    def encode(
+        self,
+        clip: Clip,
+        clip_l: str,
+        t5xxl: str,
+        guidance: str,
+        flux_enabled: bool = False,
+    ) -> tuple:
+        """
+        Encode text using CLIP and T5XXL.
+
+        Args:
+            clip (Clip): The clip object.
+            clip_l (str): The clip text.
+            t5xxl (str): The T5XXL text.
+            guidance (str): The guidance text.
+            flux_enabled (bool, optional): Whether flux is enabled. Defaults to False.
+
+        Returns:
+            tuple: The encoded text.
+        """
         tokens = clip.tokenize(clip_l)
         tokens["t5xxl"] = clip.tokenize(t5xxl)["t5xxl"]
 
-        output = clip.encode_from_tokens(tokens, return_pooled=True, return_dict=True, flux_enabled=flux_enabled)
+        output = clip.encode_from_tokens(
+            tokens, return_pooled=True, return_dict=True, flux_enabled=flux_enabled
+        )
         cond = output.pop("cond")
         output["guidance"] = guidance
         return ([[cond, output]],)
 
 
 class ConditioningZeroOut:
+    def zero_out(self, conditioning: list) -> list:
+        """
+        Zero out the conditioning.
 
-    def zero_out(self, conditioning):
+        Args:
+            conditioning (list): The conditioning list.
+
+        Returns:
+            list: The zeroed out conditioning.
+        """
         c = []
         for t in conditioning:
             d = t[1].copy()

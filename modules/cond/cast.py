@@ -2,6 +2,18 @@ from modules.Device import Device
 import torch
 
 def cast_to(weight, dtype=None, device=None, non_blocking=False, copy=False):
+    """#### Cast a weight tensor to a specified dtype and device.
+    
+    #### Args:
+        - `weight` (torch.Tensor): The weight tensor.
+        - `dtype` (torch.dtype): The data type.
+        - `device` (torch.device): The device.
+        - `non_blocking` (bool): Whether to use non-blocking transfer.
+        - `copy` (bool): Whether to copy the tensor.
+        
+    #### Returns:
+        - `torch.Tensor`: The casted weight tensor.
+    """
     if device is None or weight.device == device:
         if not copy:
             if dtype is None or weight.dtype == dtype:
@@ -14,6 +26,17 @@ def cast_to(weight, dtype=None, device=None, non_blocking=False, copy=False):
 
 
 def cast_to_input(weight, input, non_blocking=False, copy=True):
+    """#### Cast a weight tensor to match the input tensor.
+    
+    #### Args:
+        - `weight` (torch.Tensor): The weight tensor.
+        - `input` (torch.Tensor): The input tensor.
+        - `non_blocking` (bool): Whether to use non-blocking transfer.
+        - `copy` (bool): Whether to copy the tensor.
+    
+    #### Returns:
+        - `torch.Tensor`: The casted weight tensor.
+    """
     return cast_to(
         weight, input.dtype, input.device, non_blocking=non_blocking, copy=copy
     )
@@ -66,28 +89,66 @@ class disable_weight_init:
     """#### Class representing a module with disabled weight initialization."""
 
     class Linear(torch.nn.Linear, CastWeightBiasOp):
+        """#### Linear layer with disabled weight initialization."""
         def reset_parameters(self):
+            """#### Reset the parameters of the Linear layer."""
             return None
 
         def forward_comfy_cast_weights(self, input):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             weight, bias = cast_bias_weight(self, input)
             return torch.nn.functional.linear(input, weight, bias)
 
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the Linear layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
                 return super().forward(*args, **kwargs)
 
     class Conv1d(torch.nn.Conv1d, CastWeightBiasOp):
+        """#### Conv1d layer with disabled weight initialization."""
         def reset_parameters(self):
+            """#### Reset the parameters of the Conv1d layer."""
             return None
 
         def forward_comfy_cast_weights(self, input):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+            
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             weight, bias = cast_bias_weight(self, input)
             return self._conv_forward(input, weight, bias)
 
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the Conv1d layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+            
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
@@ -128,14 +189,33 @@ class disable_weight_init:
                 return super().forward(*args, **kwargs)
         
     class Conv3d(torch.nn.Conv3d, CastWeightBiasOp):
+        """#### Conv3d layer with disabled weight initialization."""
         def reset_parameters(self):
+            """#### Reset the parameters of the Conv3d layer."""
             return None
         
         def forward_comfy_cast_weights(self, input):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             weight, bias = cast_bias_weight(self, input)
             return self._conv_forward(input, weight, bias)
         
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the Conv3d layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
@@ -149,12 +229,29 @@ class disable_weight_init:
             return None
 
         def forward_comfy_cast_weights(self, input):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             weight, bias = cast_bias_weight(self, input)
             return torch.nn.functional.group_norm(
                 input, self.num_groups, weight, bias, self.eps
             )
 
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the GroupNorm layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
@@ -201,10 +298,21 @@ class disable_weight_init:
                 return super().forward(*args, **kwargs)
 
     class ConvTranspose2d(torch.nn.ConvTranspose2d, CastWeightBiasOp):
+        """#### ConvTranspose2d layer with disabled weight initialization."""
         def reset_parameters(self):
+            """#### Reset the parameters of the ConvTranspose2d layer."""
             return None
 
         def forward_comfy_cast_weights(self, input, output_size=None):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+                - `output_size` (torch.Size): The output size.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             num_spatial_dims = 2
             output_padding = self._output_padding(
                 input,
@@ -229,16 +337,36 @@ class disable_weight_init:
             )
 
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the ConvTranspose2d layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
                 return super().forward(*args, **kwargs)
 
     class ConvTranspose1d(torch.nn.ConvTranspose1d, CastWeightBiasOp):
+        """#### ConvTranspose1d layer with disabled weight initialization."""
         def reset_parameters(self):
+            """#### Reset the parameters of the ConvTranspose1d layer."""
             return None
 
         def forward_comfy_cast_weights(self, input, output_size=None):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+                - `output_size` (torch.Size): The output size.
+            
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             num_spatial_dims = 1
             output_padding = self._output_padding(
                 input,
@@ -263,17 +391,37 @@ class disable_weight_init:
             )
 
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the ConvTranspose1d layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+            
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
                 return super().forward(*args, **kwargs)
 
     class Embedding(torch.nn.Embedding, CastWeightBiasOp):
+        """#### Embedding layer with disabled weight initialization."""
         def reset_parameters(self):
+            """#### Reset the parameters of the Embedding layer."""
             self.bias = None
             return None
 
         def forward_comfy_cast_weights(self, input, out_dtype=None):
+            """#### Forward pass with comfy cast weights.
+            
+            #### Args:
+                - `input` (torch.Tensor): The input tensor.
+                - `out_dtype` (torch.dtype): The output data type.
+                
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             output_dtype = out_dtype
             if (
                 self.weight.dtype == torch.float16
@@ -292,6 +440,15 @@ class disable_weight_init:
             ).to(dtype=output_dtype)
 
         def forward(self, *args, **kwargs):
+            """#### Forward pass for the Embedding layer.
+            
+            #### Args:
+                - `*args`: Variable length argument list.
+                - `**kwargs`: Arbitrary keyword arguments.
+            
+            #### Returns:
+                - `torch.Tensor`: The output tensor.
+            """
             if self.comfy_cast_weights:
                 return self.forward_comfy_cast_weights(*args, **kwargs)
             else:
@@ -328,6 +485,8 @@ class manual_cast(disable_weight_init):
         comfy_cast_weights: bool = True
     
     class Conv1d(disable_weight_init.Conv1d):
+        """#### Conv1d layer with manual casting."""
+        
         comfy_cast_weights = True
 
     class Conv2d(disable_weight_init.Conv2d):
@@ -336,6 +495,8 @@ class manual_cast(disable_weight_init):
         comfy_cast_weights: bool = True
         
     class Conv3d(disable_weight_init.Conv3d):
+        """#### Conv3d layer with manual casting."""
+        
         comfy_cast_weights = True
 
     class GroupNorm(disable_weight_init.GroupNorm):
@@ -349,10 +510,16 @@ class manual_cast(disable_weight_init):
         comfy_cast_weights: bool = True
     
     class ConvTranspose2d(disable_weight_init.ConvTranspose2d):
+        """#### ConvTranspose2d layer with manual casting."""
+        
         comfy_cast_weights = True
 
     class ConvTranspose1d(disable_weight_init.ConvTranspose1d):
+        """#### ConvTranspose1d layer with manual casting."""
+        
         comfy_cast_weights = True
 
     class Embedding(disable_weight_init.Embedding):
+        """#### Embedding layer with manual casting."""
+        
         comfy_cast_weights = True

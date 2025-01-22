@@ -1,6 +1,7 @@
 import torch
 
 class CLIPTextModel_(torch.nn.Module):
+    """#### The CLIPTextModel_ module."""
     def __init__(
         self,
         config_dict: dict,
@@ -106,6 +107,7 @@ class CLIPTextModel_(torch.nn.Module):
         return x, i, pooled_output
 
 class CLIPTextModel(torch.nn.Module):
+    """#### The CLIPTextModel module."""
     def __init__(
         self,
         config_dict: dict,

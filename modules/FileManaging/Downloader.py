@@ -73,6 +73,7 @@ def CheckAndDownload():
         )
 
 def CheckAndDownloadFlux():
+    """#### Check and download all the necessary safetensors and checkpoints models for FLUX"""
     if glob.glob("./_internal/embeddings/*.pt") == []:
         from huggingface_hub import hf_hub_download
         hf_hub_download(

@@ -120,6 +120,11 @@ class AutoencodingEngine(nn.Module):
             self.quant_conv = cast.disable_weight_init.Conv2d(8, 8, 1)
         
     def get_last_layer(self):
+        """#### Get the last layer of the decoder.
+
+        Returns:
+            - `nn.Module`: The last layer of the decoder.
+        """
         return self.decoder.get_last_layer()
     
     def decode(self, z: torch.Tensor, flux:bool = False, **kwargs) -> torch.Tensor:
@@ -358,6 +363,15 @@ class Encoder(nn.Module):
         self._dtype = torch.float32
 
     def to(self, device=None, dtype=None):
+        """#### Move the encoder to a device and data type.
+        
+        #### Args:
+            - `device` (torch.device, optional): The device to move to. Defaults to None.
+            - `dtype` (torch.dtype, optional): The data type to move to. Defaults to None.
+        
+        #### Returns:
+            - `nn.Module`: The encoder.
+        """
         if device is not None:
             self._device = device
         if dtype is not None:
@@ -746,6 +760,11 @@ class VAE:
         return samples
 
     def get_sd(self):
+        """#### Get the state dictionary.
+        
+        #### Returns:
+            - `dict`: The state dictionary.
+        """
         return self.first_stage_model.state_dict()
 
 
@@ -783,8 +802,17 @@ class VAEEncode:
 
 
 class VAELoader:
+    """#### Class for loading VAEs."""
     # TODO: scale factor?
     def load_vae(self, vae_name):
+        """#### Load the VAE.
+        
+        #### Args:
+            - `vae_name`: The name of the VAE.
+        
+        #### Returns:
+            - `Tuple[VAE]`: The VAE instance.
+        """
         if vae_name in ["taesd", "taesdxl", "taesd3", "taef1"]:
             sd = self.load_taesd(vae_name)
         else:

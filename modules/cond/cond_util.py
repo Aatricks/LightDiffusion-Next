@@ -84,8 +84,12 @@ def prepare_sampling(
 
     return real_model, conds, models
 
-def cleanup_additional_models(models):
-    """cleanup additional models that were loaded"""
+def cleanup_additional_models(models: List[object]) -> None:
+    """#### Clean up additional models.
+    
+    #### Args:
+        - `models` (List[object]): The list of models.
+    """
     for m in models:
         if hasattr(m, "cleanup"):
             m.cleanup()
@@ -137,6 +141,7 @@ def can_concat_cond(c1: Any, c2: Any) -> bool:
         return False
 
     def objects_concatable(obj1, obj2):
+        """#### Check if two objects can be concatenated."""
         if (obj1 is None) != (obj2 is None):
             return False
         if obj1 is not None:

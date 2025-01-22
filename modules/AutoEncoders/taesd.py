@@ -252,11 +252,11 @@ class TAESD(nn.Module):
 
 
 def taesd_preview(x: torch.Tensor, flux: bool = False):
-    """Preview the batched latent tensors as images.
+    """#### Preview the batched latent tensors as images.
     
-    Args:
-        x (torch.Tensor): Input latent tensor with shape [B,C,H,W] 
-        flux (bool): Whether using flux model (for channel ordering)
+    #### Args:
+        - `x` (torch.Tensor): Input latent tensor with shape [B,C,H,W] 
+        - `flux` (bool, optional): Whether using flux model (for channel ordering). Defaults to False.
     """
     if app_instance.app.previewer_var.get() is True:
         taesd_instance = TAESD()

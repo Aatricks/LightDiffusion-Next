@@ -14,15 +14,36 @@ from modules.cond import cast, cond
 from modules.sample import sampling, sampling_util
 
 
+# Define the attention mechanism
 def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tensor) -> torch.Tensor:
-    q, k = apply_rope(q, k, pe)
+    """#### Compute the attention mechanism.
 
+    #### Args:
+        - `q` (Tensor): The query tensor.
+        - `k` (Tensor): The key tensor.
+        - `v` (Tensor): The value tensor.
+        - `pe` (Tensor): The positional encoding tensor.
+
+    #### Returns:
+        - `Tensor`: The attention tensor.
+    """
+    q, k = apply_rope(q, k, pe)
     heads = q.shape[1]
     x = Attention.optimized_attention(q, k, v, heads, skip_reshape=True)
     return x
 
-
+# Define the rotary positional encoding (RoPE)
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
+    """#### Compute the rotary positional encoding.
+
+    #### Args:
+        - `pos` (Tensor): The position tensor.
+        - `dim` (int): The dimension of the tensor.
+        - `theta` (int): The theta value for scaling.
+
+    #### Returns:
+        - `Tensor`: The rotary positional encoding tensor.
+    """
     assert dim % 2 == 0
     if Device.is_device_mps(pos.device) or Device.is_intel_xpu():
         device = torch.device("cpu")
@@ -42,36 +63,67 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     out = rearrange(out, "b n d (i j) -> b n d i j", i=2, j=2)
     return out.to(dtype=torch.float32, device=pos.device)
 
+# Apply the rotary positional encoding to the query and key tensors
+def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> tuple:
+    """#### Apply the rotary positional encoding to the query and key tensors.
 
-def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor):
+    #### Args:
+        - `xq` (Tensor): The query tensor.
+        - `xk` (Tensor): The key tensor.
+        - `freqs_cis` (Tensor): The frequency tensor.
+
+    #### Returns:
+        - `tuple`: The modified query and key tensors.
+    """
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
     xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
     xk_out = freqs_cis[..., 0] * xk_[..., 0] + freqs_cis[..., 1] * xk_[..., 1]
     return xq_out.reshape(*xq.shape).type_as(xq), xk_out.reshape(*xk.shape).type_as(xk)
 
-
+# Define the embedding class
 class EmbedND(nn.Module):
     def __init__(self, dim: int, theta: int, axes_dim: list):
+        """#### Initialize the EmbedND class.
+
+        #### Args:
+            - `dim` (int): The dimension of the tensor.
+            - `theta` (int): The theta value for scaling.
+            - `axes_dim` (list): The list of axis dimensions.
+        """
         super().__init__()
         self.dim = dim
         self.theta = theta
         self.axes_dim = axes_dim
 
     def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the EmbedND class.
+
+        #### Args:
+            - `ids` (Tensor): The input tensor.
+
+        #### Returns:
+            - `Tensor`: The embedded tensor.
+        """
         n_axes = ids.shape[-1]
         emb = torch.cat(
             [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
             dim=-3,
         )
-
         return emb.unsqueeze(1)
 
-
+# Define the MLP embedder class
 class MLPEmbedder(nn.Module):
-    def __init__(
-        self, in_dim: int, hidden_dim: int, dtype=None, device=None, operations=None
-    ):
+    def __init__(self, in_dim: int, hidden_dim: int, dtype=None, device=None, operations=None):
+        """#### Initialize the MLPEmbedder class.
+
+        #### Args:
+            - `in_dim` (int): The input dimension.
+            - `hidden_dim` (int): The hidden dimension.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
         self.in_layer = operations.Linear(
             in_dim, hidden_dim, bias=True, dtype=dtype, device=device
@@ -82,155 +134,179 @@ class MLPEmbedder(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the MLPEmbedder class.
+
+        #### Args:
+            - `x` (Tensor): The input tensor.
+
+        #### Returns:
+            - `Tensor`: The output tensor.
+        """
         return self.out_layer(self.silu(self.in_layer(x)))
 
-
-class RMSNorm(torch.nn.Module):
+# Define the RMS normalization class
+class RMSNorm(nn.Module):
     def __init__(self, dim: int, dtype=None, device=None, operations=None):
+        """#### Initialize the RMSNorm class.
+
+        #### Args:
+            - `dim` (int): The dimension of the tensor.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
         self.scale = nn.Parameter(torch.empty((dim), dtype=dtype, device=device))
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the RMSNorm class.
+
+        #### Args:
+            - `x` (Tensor): The input tensor.
+
+        #### Returns:
+            - `Tensor`: The normalized tensor.
+        """
         return rms_norm(x, self.scale, 1e-6)
 
-
-class QKNorm(torch.nn.Module):
+# Define the query-key normalization class
+class QKNorm(nn.Module):
     def __init__(self, dim: int, dtype=None, device=None, operations=None):
+        """#### Initialize the QKNorm class.
+
+        #### Args:
+            - `dim` (int): The dimension of the tensor.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
-        self.query_norm = RMSNorm(
-            dim, dtype=dtype, device=device, operations=operations
-        )
+        self.query_norm = RMSNorm(dim, dtype=dtype, device=device, operations=operations)
         self.key_norm = RMSNorm(dim, dtype=dtype, device=device, operations=operations)
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> tuple:
+        """#### Forward pass for the QKNorm class.
+
+        #### Args:
+            - `q` (Tensor): The query tensor.
+            - `k` (Tensor): The key tensor.
+            - `v` (Tensor): The value tensor.
+
+        #### Returns:
+            - `tuple`: The normalized query and key tensors.
+        """
         q = self.query_norm(q)
         k = self.key_norm(k)
         return q.to(v), k.to(v)
 
-
+# Define the self-attention class
 class SelfAttention(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        num_heads: int = 8,
-        qkv_bias: bool = False,
-        dtype=None,
-        device=None,
-        operations=None,
-    ):
+    def __init__(self, dim: int, num_heads: int = 8, qkv_bias: bool = False, dtype=None, device=None, operations=None):
+        """#### Initialize the SelfAttention class.
+
+        #### Args:
+            - `dim` (int): The dimension of the tensor.
+            - `num_heads` (int, optional): The number of attention heads. Defaults to 8.
+            - `qkv_bias` (bool, optional): Whether to use bias in QKV projection. Defaults to False.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
 
-        self.qkv = operations.Linear(
-            dim, dim * 3, bias=qkv_bias, dtype=dtype, device=device
-        )
+        self.qkv = operations.Linear(dim, dim * 3, bias=qkv_bias, dtype=dtype, device=device)
         self.norm = QKNorm(head_dim, dtype=dtype, device=device, operations=operations)
         self.proj = operations.Linear(dim, dim, dtype=dtype, device=device)
 
-
+# Define the modulation output dataclass
 @dataclass
 class ModulationOut:
     shift: torch.Tensor
     scale: torch.Tensor
     gate: torch.Tensor
 
-
+# Define the modulation class
 class Modulation(nn.Module):
-    def __init__(
-        self, dim: int, double: bool, dtype=None, device=None, operations=None
-    ):
+    def __init__(self, dim: int, double: bool, dtype=None, device=None, operations=None):
+        """#### Initialize the Modulation class.
+
+        #### Args:
+            - `dim` (int): The dimension of the tensor.
+            - `double` (bool): Whether to use double modulation.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
         self.is_double = double
         self.multiplier = 6 if double else 3
-        self.lin = operations.Linear(
-            dim, self.multiplier * dim, bias=True, dtype=dtype, device=device
-        )
+        self.lin = operations.Linear(dim, self.multiplier * dim, bias=True, dtype=dtype, device=device)
 
     def forward(self, vec: torch.Tensor) -> tuple:
-        out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(
-            self.multiplier, dim=-1
-        )
+        """#### Forward pass for the Modulation class.
 
-        return (
-            ModulationOut(*out[:3]),
-            ModulationOut(*out[3:]) if self.is_double else None,
-        )
+        #### Args:
+            - `vec` (Tensor): The input tensor.
 
+        #### Returns:
+            - `tuple`: The modulation output.
+        """
+        out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
+        return (ModulationOut(*out[:3]), ModulationOut(*out[3:]) if self.is_double else None)
 
+# Define the double stream block class
 class DoubleStreamBlock(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        num_heads: int,
-        mlp_ratio: float,
-        qkv_bias: bool = False,
-        dtype=None,
-        device=None,
-        operations=None,
-    ):
+    def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False, dtype=None, device=None, operations=None):
+        """#### Initialize the DoubleStreamBlock class.
+
+        #### Args:
+            - `hidden_size` (int): The hidden size.
+            - `num_heads` (int): The number of attention heads.
+            - `mlp_ratio` (float): The MLP ratio.
+            - `qkv_bias` (bool, optional): Whether to use bias in QKV projection. Defaults to False.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
 
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
         self.num_heads = num_heads
         self.hidden_size = hidden_size
-        self.img_mod = Modulation(
-            hidden_size, double=True, dtype=dtype, device=device, operations=operations
-        )
-        self.img_norm1 = operations.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device
-        )
-        self.img_attn = SelfAttention(
-            dim=hidden_size,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            dtype=dtype,
-            device=device,
-            operations=operations,
-        )
-
-        self.img_norm2 = operations.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device
-        )
+        self.img_mod = Modulation(hidden_size, double=True, dtype=dtype, device=device, operations=operations)
+        self.img_norm1 = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
+        self.img_attn = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias, dtype=dtype, device=device, operations=operations)
+        self.img_norm2 = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
         self.img_mlp = nn.Sequential(
-            operations.Linear(
-                hidden_size, mlp_hidden_dim, bias=True, dtype=dtype, device=device
-            ),
+            operations.Linear(hidden_size, mlp_hidden_dim, bias=True, dtype=dtype, device=device),
             nn.GELU(approximate="tanh"),
-            operations.Linear(
-                mlp_hidden_dim, hidden_size, bias=True, dtype=dtype, device=device
-            ),
+            operations.Linear(mlp_hidden_dim, hidden_size, bias=True, dtype=dtype, device=device),
         )
 
-        self.txt_mod = Modulation(
-            hidden_size, double=True, dtype=dtype, device=device, operations=operations
-        )
-        self.txt_norm1 = operations.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device
-        )
-        self.txt_attn = SelfAttention(
-            dim=hidden_size,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            dtype=dtype,
-            device=device,
-            operations=operations,
-        )
-
-        self.txt_norm2 = operations.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device
-        )
+        self.txt_mod = Modulation(hidden_size, double=True, dtype=dtype, device=device, operations=operations)
+        self.txt_norm1 = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
+        self.txt_attn = SelfAttention(dim=hidden_size, num_heads=num_heads, qkv_bias=qkv_bias, dtype=dtype, device=device, operations=operations)
+        self.txt_norm2 = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
         self.txt_mlp = nn.Sequential(
-            operations.Linear(
-                hidden_size, mlp_hidden_dim, bias=True, dtype=dtype, device=device
-            ),
+            operations.Linear(hidden_size, mlp_hidden_dim, bias=True, dtype=dtype, device=device),
             nn.GELU(approximate="tanh"),
-            operations.Linear(
-                mlp_hidden_dim, hidden_size, bias=True, dtype=dtype, device=device
-            ),
+            operations.Linear(mlp_hidden_dim, hidden_size, bias=True, dtype=dtype, device=device),
         )
 
-    def forward(self, img: torch.Tensor, txt: torch.Tensor, vec: torch.Tensor, pe: torch.Tensor):
+    def forward(self, img: torch.Tensor, txt: torch.Tensor, vec: torch.Tensor, pe: torch.Tensor) -> tuple:
+        """#### Forward pass for the DoubleStreamBlock class.
+
+        #### Args:
+            - `img` (Tensor): The image tensor.
+            - `txt` (Tensor): The text tensor.
+            - `vec` (Tensor): The vector tensor.
+            - `pe` (Tensor): The positional encoding tensor.
+
+        #### Returns:
+            - `tuple`: The modified image and text tensors.
+        """
         img_mod1, img_mod2 = self.img_mod(vec)
         txt_mod1, txt_mod2 = self.txt_mod(vec)
 
@@ -238,18 +314,14 @@ class DoubleStreamBlock(nn.Module):
         img_modulated = self.img_norm1(img)
         img_modulated = (1 + img_mod1.scale) * img_modulated + img_mod1.shift
         img_qkv = self.img_attn.qkv(img_modulated)
-        img_q, img_k, img_v = img_qkv.view(
-            img_qkv.shape[0], img_qkv.shape[1], 3, self.num_heads, -1
-        ).permute(2, 0, 3, 1, 4)
+        img_q, img_k, img_v = img_qkv.view(img_qkv.shape[0], img_qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         img_q, img_k = self.img_attn.norm(img_q, img_k, img_v)
 
         # prepare txt for attention
         txt_modulated = self.txt_norm1(txt)
         txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
         txt_qkv = self.txt_attn.qkv(txt_modulated)
-        txt_q, txt_k, txt_v = txt_qkv.view(
-            txt_qkv.shape[0], txt_qkv.shape[1], 3, self.num_heads, -1
-        ).permute(2, 0, 3, 1, 4)
+        txt_q, txt_k, txt_v = txt_qkv.view(txt_qkv.shape[0], txt_qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         txt_q, txt_k = self.txt_attn.norm(txt_q, txt_k, txt_v)
 
         # run actual attention
@@ -264,38 +336,36 @@ class DoubleStreamBlock(nn.Module):
 
         # calculate the img bloks
         img = img + img_mod1.gate * self.img_attn.proj(img_attn)
-        img = img + img_mod2.gate * self.img_mlp(
-            (1 + img_mod2.scale) * self.img_norm2(img) + img_mod2.shift
-        )
+        img = img + img_mod2.gate * self.img_mlp((1 + img_mod2.scale) * self.img_norm2(img) + img_mod2.shift)
 
         # calculate the txt bloks
         txt += txt_mod1.gate * self.txt_attn.proj(txt_attn)
-        txt += txt_mod2.gate * self.txt_mlp(
-            (1 + txt_mod2.scale) * self.txt_norm2(txt) + txt_mod2.shift
-        )
+        txt += txt_mod2.gate * self.txt_mlp((1 + txt_mod2.scale) * self.txt_norm2(txt) + txt_mod2.shift)
 
         if txt.dtype == torch.float16:
             txt = torch.nan_to_num(txt, nan=0.0, posinf=65504, neginf=-65504)
 
         return img, txt
 
-
+# Define the single stream block class
 class SingleStreamBlock(nn.Module):
     """
     A DiT block with parallel linear layers as described in
     https://arxiv.org/abs/2302.05442 and adapted modulation interface.
     """
 
-    def __init__(
-        self,
-        hidden_size: int,
-        num_heads: int,
-        mlp_ratio: float = 4.0,
-        qk_scale: float = None,
-        dtype=None,
-        device=None,
-        operations=None,
-    ):
+    def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float = 4.0, qk_scale: float = None, dtype=None, device=None, operations=None):
+        """#### Initialize the SingleStreamBlock class.
+
+        #### Args:
+            - `hidden_size` (int): The hidden size.
+            - `num_heads` (int): The number of attention heads.
+            - `mlp_ratio` (float, optional): The MLP ratio. Defaults to 4.0.
+            - `qk_scale` (float, optional): The QK scale. Defaults to None.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
         self.hidden_dim = hidden_size
         self.num_heads = num_heads
@@ -304,30 +374,29 @@ class SingleStreamBlock(nn.Module):
 
         self.mlp_hidden_dim = int(hidden_size * mlp_ratio)
         # qkv and mlp_in
-        self.linear1 = operations.Linear(
-            hidden_size,
-            hidden_size * 3 + self.mlp_hidden_dim,
-            dtype=dtype,
-            device=device,
-        )
+        self.linear1 = operations.Linear(hidden_size, hidden_size * 3 + self.mlp_hidden_dim, dtype=dtype, device=device)
         # proj and mlp_out
-        self.linear2 = operations.Linear(
-            hidden_size + self.mlp_hidden_dim, hidden_size, dtype=dtype, device=device
-        )
+        self.linear2 = operations.Linear(hidden_size + self.mlp_hidden_dim, hidden_size, dtype=dtype, device=device)
 
         self.norm = QKNorm(head_dim, dtype=dtype, device=device, operations=operations)
 
         self.hidden_size = hidden_size
-        self.pre_norm = operations.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device
-        )
+        self.pre_norm = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
 
         self.mlp_act = nn.GELU(approximate="tanh")
-        self.modulation = Modulation(
-            hidden_size, double=False, dtype=dtype, device=device, operations=operations
-        )
+        self.modulation = Modulation(hidden_size, double=False, dtype=dtype, device=device, operations=operations)
 
     def forward(self, x: torch.Tensor, vec: torch.Tensor, pe: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the SingleStreamBlock class.
+
+        #### Args:
+            - `x` (Tensor): The input tensor.
+            - `vec` (Tensor): The vector tensor.
+            - `pe` (Tensor): The positional encoding tensor.
+
+        #### Returns:
+            - `Tensor`: The modified tensor.
+        """
         mod, _ = self.modulation(vec)
         x_mod = (1 + mod.scale) * self.pre_norm(x) + mod.shift
         qkv, mlp = torch.split(
@@ -348,7 +417,6 @@ class SingleStreamBlock(nn.Module):
             x = torch.nan_to_num(x, nan=0.0, posinf=65504, neginf=-65504)
         return x
 
-
 class LastLayer(nn.Module):
     def __init__(
         self,
@@ -359,6 +427,16 @@ class LastLayer(nn.Module):
         device=None,
         operations=None,
     ):
+        """#### Initialize the LastLayer class.
+
+        #### Args:
+            - `hidden_size` (int): The hidden size.
+            - `patch_size` (int): The patch size.
+            - `out_channels` (int): The number of output channels.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+        """
         super().__init__()
         self.norm_final = operations.LayerNorm(
             hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device
@@ -378,13 +456,32 @@ class LastLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
+        """#### Forward pass for the LastLayer class.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `vec` (torch.Tensor): The vector tensor.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)
         x = (1 + scale[:, None, :]) * self.norm_final(x) + shift[:, None, :]
         x = self.linear(x)
         return x
 
 
-def pad_to_patch_size(img, patch_size=(2, 2), padding_mode="circular"):
+def pad_to_patch_size(img: torch.Tensor, patch_size: tuple = (2, 2), padding_mode: str = "circular") -> torch.Tensor:
+    """#### Pad the image to the specified patch size.
+
+    #### Args:
+        - `img` (torch.Tensor): The input image tensor.
+        - `patch_size` (tuple, optional): The patch size. Defaults to (2, 2).
+        - `padding_mode` (str, optional): The padding mode. Defaults to "circular".
+
+    #### Returns:
+        - `torch.Tensor`: The padded image tensor.
+    """
     if (
         padding_mode == "circular"
         and torch.jit.is_tracing()
@@ -398,11 +495,21 @@ def pad_to_patch_size(img, patch_size=(2, 2), padding_mode="circular"):
 
 try:
     rms_norm_torch = torch.nn.functional.rms_norm
-except:
+except Exception:
     rms_norm_torch = None
 
 
-def rms_norm(x, weight, eps=1e-6):
+def rms_norm(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    """#### Apply RMS normalization to the input tensor.
+
+    #### Args:
+        - `x` (torch.Tensor): The input tensor.
+        - `weight` (torch.Tensor): The weight tensor.
+        - `eps` (float, optional): The epsilon value for numerical stability. Defaults to 1e-6.
+
+    #### Returns:
+        - `torch.Tensor`: The normalized tensor.
+    """
     if rms_norm_torch is not None and not (
         torch.jit.is_tracing() or torch.jit.is_scripting()
     ):
@@ -441,12 +548,22 @@ class Flux3(nn.Module):
     def __init__(
         self,
         image_model=None,
-        final_layer=True,
+        final_layer: bool = True,
         dtype=None,
         device=None,
         operations=None,
         **kwargs,
     ):
+        """#### Initialize the Flux3 class.
+
+        #### Args:
+            - `image_model` (optional): The image model.
+            - `final_layer` (bool, optional): Whether to include the final layer. Defaults to True.
+            - `dtype` (optional): The data type.
+            - `device` (optional): The device.
+            - `operations` (optional): The operations module.
+            - `**kwargs`: Additional keyword arguments.
+        """
         super().__init__()
         self.dtype = dtype
         params = FluxParams(**kwargs)
@@ -549,6 +666,21 @@ class Flux3(nn.Module):
         guidance: torch.Tensor = None,
         control=None,
     ) -> torch.Tensor:
+        """#### Original forward pass for the Flux3 class.
+
+        #### Args:
+            - `img` (torch.Tensor): The image tensor.
+            - `img_ids` (torch.Tensor): The image IDs tensor.
+            - `txt` (torch.Tensor): The text tensor.
+            - `txt_ids` (torch.Tensor): The text IDs tensor.
+            - `timesteps` (torch.Tensor): The timesteps tensor.
+            - `y` (torch.Tensor): The vector tensor.
+            - `guidance` (torch.Tensor, optional): The guidance tensor. Defaults to None.
+            - `control` (optional): The control tensor. Defaults to None.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         if img.ndim != 3 or txt.ndim != 3:
             raise ValueError("Input img and txt tensors must have 3 dimensions.")
 
@@ -597,7 +729,21 @@ class Flux3(nn.Module):
         img = self.final_layer(img, vec)  # (N, T, patch_size ** 2 * out_channels)
         return img
 
-    def forward(self, x, timestep, context, y, guidance, control=None, **kwargs):
+    def forward(self, x: torch.Tensor, timestep: torch.Tensor, context: torch.Tensor, y: torch.Tensor, guidance: torch.Tensor, control=None, **kwargs) -> torch.Tensor:
+        """#### Forward pass for the Flux3 class.
+
+        #### Args:
+            - `x` (torch.Tensor): The input tensor.
+            - `timestep` (torch.Tensor): The timestep tensor.
+            - `context` (torch.Tensor): The context tensor.
+            - `y` (torch.Tensor): The vector tensor.
+            - `guidance` (torch.Tensor): The guidance tensor.
+            - `control` (optional): The control tensor. Defaults to None.
+            - `**kwargs`: Additional keyword arguments.
+
+        #### Returns:
+            - `torch.Tensor`: The output tensor.
+        """
         bs, c, h, w = x.shape
         patch_size = 2
         x = pad_to_patch_size(x, (patch_size, patch_size))
@@ -633,13 +779,36 @@ class Flux3(nn.Module):
 
 
 class Flux2(ModelBase.BaseModel):
-    def __init__(self, model_config, model_type=sampling.ModelType.FLUX, device=None):
+    def __init__(self, model_config: dict, model_type=sampling.ModelType.FLUX, device=None):
+        """#### Initialize the Flux2 class.
+
+        #### Args:
+            - `model_config` (dict): The model configuration.
+            - `model_type` (sampling.ModelType, optional): The model type. Defaults to sampling.ModelType.FLUX.
+            - `device` (optional): The device.
+        """
         super().__init__(model_config, model_type, device=device, unet_model=Flux3, flux=True)
 
-    def encode_adm(self, **kwargs):
+    def encode_adm(self, **kwargs) -> torch.Tensor:
+        """#### Encode the ADM.
+
+        #### Args:
+            - `**kwargs`: Additional keyword arguments.
+
+        #### Returns:
+            - `torch.Tensor`: The encoded ADM tensor.
+        """
         return kwargs["pooled_output"]
 
-    def extra_conds(self, **kwargs):
+    def extra_conds(self, **kwargs) -> dict:
+        """#### Get extra conditions.
+
+        #### Args:
+            - `**kwargs`: Additional keyword arguments.
+
+        #### Returns:
+            - `dict`: The extra conditions.
+        """
         out = super().extra_conds(**kwargs)
         cross_attn = kwargs.get("cross_attn", None)
         if cross_attn is not None:
@@ -666,7 +835,17 @@ class Flux(ModelBase.BASE):
     vae_key_prefix = ["vae."]
     text_encoder_key_prefix = ["text_encoders."]
 
-    def get_model(self, state_dict, prefix="", device=None):
+    def get_model(self, state_dict: dict, prefix: str = "", device=None) -> Flux2:
+        """#### Get the model.
+
+        #### Args:
+            - `state_dict` (dict): The state dictionary.
+            - `prefix` (str, optional): The prefix. Defaults to "".
+            - `device` (optional): The device.
+
+        #### Returns:
+            - `Flux2`: The Flux2 model.
+        """
         out = Flux2(self, device=device)
         return out
 

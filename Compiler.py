@@ -1,12 +1,6 @@
 import os
 import re
 
-from httpx import get
-
-# list every file in the modules directory
-
-
-
 files_ordered = [
     "./modules/Utilities/util.py",
     "./modules/sample/sampling_util.py",

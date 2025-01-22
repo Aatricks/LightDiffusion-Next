@@ -37,16 +37,6 @@ def to_d(x: torch.Tensor, sigma: torch.Tensor, denoised: torch.Tensor) -> torch.
     """
     return (x - denoised) / append_dims(sigma, x.ndim)
 
-load = pickle.load
-
-class Empty:
-    pass
-
-class Unpickler(pickle.Unpickler):
-    def find_class(self, module, name):
-        if module.startswith("pytorch_lightning"):
-            return Empty
-        return super().find_class(module, name)
 
 def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> dict:
     """#### Load a PyTorch checkpoint file.
@@ -130,7 +120,9 @@ def state_dict_prefix_replace(
     return out
 
 
-def repeat_to_batch_size(tensor: torch.Tensor, batch_size: int, dim: int = 0) -> torch.Tensor:
+def repeat_to_batch_size(
+    tensor: torch.Tensor, batch_size: int, dim: int = 0
+) -> torch.Tensor:
     """#### Repeat a tensor to match a specific batch size.
 
     #### Args:
@@ -199,23 +191,22 @@ def copy_to_param(obj: object, attr: str, value: any) -> None:
     prev = getattr(obj, attrs[-1])
     prev.data.copy_(value)
 
-def get_obj_from_str(string, reload=False):
+
+def get_obj_from_str(string: str, reload: bool = False) -> object:
+    """#### Get an object from a string.
+
+    #### Args:
+        - `string` (str): The string.
+        - `reload` (bool, optional): Whether to reload the module. Defaults to False.
+
+    #### Returns:
+        - `object`: The object.
+    """
     module, cls = string.rsplit(".", 1)
     if reload:
         module_imp = importlib.import_module(module)
         importlib.reload(module_imp)
     return getattr(importlib.import_module(module, package=None), cls)
-
-
-def instantiate_from_config(config):
-    if "target" not in config:
-        if config == "__is_first_stage__":
-            return None
-        elif config == "__is_unconditional__":
-            return None
-        raise KeyError("Expected key `target` to instantiate.")
-    return get_obj_from_str(config["target"])(**config.get("params", dict()))
-
 
 
 def get_attr(obj: object, attr: str) -> any:
@@ -379,13 +370,57 @@ class ProgressBar:
         self.current = 0
         self.hook = PROGRESS_BAR_HOOK
 
-def get_tiled_scale_steps(width, height, tile_x, tile_y, overlap):
+
+def get_tiled_scale_steps(
+    width: int, height: int, tile_x: int, tile_y: int, overlap: int
+) -> int:
+    """#### Get the number of steps for tiled scaling.
+
+    #### Args:
+        - `width` (int): The width.
+        - `height` (int): The height.
+        - `tile_x` (int): The tile width.
+        - `tile_y` (int): The tile height.
+        - `overlap` (int): The overlap.
+
+    #### Returns:
+        - `int`: The number of steps.
+    """
     rows = 1 if height <= tile_y else math.ceil((height - overlap) / (tile_y - overlap))
     cols = 1 if width <= tile_x else math.ceil((width - overlap) / (tile_x - overlap))
     return rows * cols
 
+
 @torch.inference_mode()
-def tiled_scale_multidim(samples, function, tile=(64, 64), overlap=8, upscale_amount=4, out_channels=3, output_device="cpu", downscale=False, index_formulas=None, pbar=None):
+def tiled_scale_multidim(
+    samples: torch.Tensor,
+    function,
+    tile: tuple = (64, 64),
+    overlap: int = 8,
+    upscale_amount: int = 4,
+    out_channels: int = 3,
+    output_device: str = "cpu",
+    downscale: bool = False,
+    index_formulas: any = None,
+    pbar: any = None,
+):
+    """#### Scale an image using a tiled approach.
+
+    #### Args:
+        - `samples` (torch.Tensor): The input samples.
+        - `function` (function): The scaling function.
+        - `tile` (tuple, optional): The tile size. Defaults to (64, 64).
+        - `overlap` (int, optional): The overlap. Defaults to 8.
+        - `upscale_amount` (int, optional): The upscale amount. Defaults to 4.
+        - `out_channels` (int, optional): The number of output channels. Defaults to 3.
+        - `output_device` (str, optional): The output device. Defaults to "cpu".
+        - `downscale` (bool, optional): Whether to downscale. Defaults to False.
+        - `index_formulas` (any, optional): The index formulas. Defaults to None.
+        - `pbar` (any, optional): The progress bar. Defaults to None.
+
+    #### Returns:
+        - `torch.Tensor`: The scaled image.
+    """
     dims = len(tile)
 
     if not (isinstance(upscale_amount, (tuple, list))):
@@ -400,28 +435,64 @@ def tiled_scale_multidim(samples, function, tile=(64, 64), overlap=8, upscale_am
     if not (isinstance(index_formulas, (tuple, list))):
         index_formulas = [index_formulas] * dims
 
-    def get_upscale(dim, val):
+    def get_upscale(dim: int, val: int) -> int:
+        """#### Get the upscale value.
+        
+        #### Args:
+            - `dim` (int): The dimension.
+            - `val` (int): The value.
+            
+        #### Returns:
+            - `int`: The upscaled value.
+        """
         up = upscale_amount[dim]
         if callable(up):
             return up(val)
         else:
             return up * val
 
-    def get_downscale(dim, val):
+    def get_downscale(dim: int, val: int) -> int:
+        """#### Get the downscale value.
+        
+        #### Args:
+            - `dim` (int): The dimension.
+            - `val` (int): The value.
+            
+        #### Returns:
+            - `int`: The downscaled value.
+        """
         up = upscale_amount[dim]
         if callable(up):
             return up(val)
         else:
             return val / up
 
-    def get_upscale_pos(dim, val):
+    def get_upscale_pos(dim: int, val: int) -> int:
+        """#### Get the upscaled position.
+        
+        #### Args:
+            - `dim` (int): The dimension.
+            - `val` (int): The value.
+            
+        #### Returns:
+            - `int`: The upscaled position.
+        """
         up = index_formulas[dim]
         if callable(up):
             return up(val)
         else:
             return up * val
 
-    def get_downscale_pos(dim, val):
+    def get_downscale_pos(dim: int, val: int) -> int:
+        """#### Get the downscaled position.
+        
+        #### Args:
+            - `dim` (int): The dimension.
+            - `val` (int): The value.
+            
+        #### Returns:
+            - `int`: The downscaled position.
+        """
         up = index_formulas[dim]
         if callable(up):
             return up(val)
@@ -435,28 +506,50 @@ def tiled_scale_multidim(samples, function, tile=(64, 64), overlap=8, upscale_am
         get_scale = get_upscale
         get_pos = get_upscale_pos
 
-    def mult_list_upscale(a):
+    def mult_list_upscale(a: list) -> list:
+        """#### Multiply a list by the upscale amount.
+        
+        #### Args:
+            - `a` (list): The list.
+        
+        #### Returns:
+            - `list`: The multiplied list.
+        """
         out = []
         for i in range(len(a)):
             out.append(round(get_scale(i, a[i])))
         return out
 
-    output = torch.empty([samples.shape[0], out_channels] + mult_list_upscale(samples.shape[2:]), device=output_device)
+    output = torch.empty(
+        [samples.shape[0], out_channels] + mult_list_upscale(samples.shape[2:]),
+        device=output_device,
+    )
 
     for b in range(samples.shape[0]):
-        s = samples[b:b+1]
+        s = samples[b : b + 1]
 
         # handle entire input fitting in a single tile
-        if all(s.shape[d+2] <= tile[d] for d in range(dims)):
-            output[b:b+1] = function(s).to(output_device)
+        if all(s.shape[d + 2] <= tile[d] for d in range(dims)):
+            output[b : b + 1] = function(s).to(output_device)
             if pbar is not None:
                 pbar.update(1)
             continue
 
-        out = torch.zeros([s.shape[0], out_channels] + mult_list_upscale(s.shape[2:]), device=output_device)
-        out_div = torch.zeros([s.shape[0], out_channels] + mult_list_upscale(s.shape[2:]), device=output_device)
+        out = torch.zeros(
+            [s.shape[0], out_channels] + mult_list_upscale(s.shape[2:]),
+            device=output_device,
+        )
+        out_div = torch.zeros(
+            [s.shape[0], out_channels] + mult_list_upscale(s.shape[2:]),
+            device=output_device,
+        )
 
-        positions = [range(0, s.shape[d+2] - overlap[d], tile[d] - overlap[d]) if s.shape[d+2] > tile[d] else [0] for d in range(dims)]
+        positions = [
+            range(0, s.shape[d + 2] - overlap[d], tile[d] - overlap[d])
+            if s.shape[d + 2] > tile[d]
+            else [0]
+            for d in range(dims)
+        ]
 
         for it in itertools.product(*positions):
             s_in = s
@@ -492,8 +585,44 @@ def tiled_scale_multidim(samples, function, tile=(64, 64), overlap=8, upscale_am
             if pbar is not None:
                 pbar.update(1)
 
-        output[b:b+1] = out/out_div
+        output[b : b + 1] = out / out_div
     return output
 
-def tiled_scale(samples, function, tile_x=64, tile_y=64, overlap = 8, upscale_amount = 4, out_channels = 3, output_device="cpu", pbar = None):
-    return tiled_scale_multidim(samples, function, (tile_y, tile_x), overlap=overlap, upscale_amount=upscale_amount, out_channels=out_channels, output_device=output_device, pbar=pbar)
+
+def tiled_scale(
+    samples: torch.Tensor,
+    function,
+    tile_x: int = 64,
+    tile_y: int = 64,
+    overlap: int = 8,
+    upscale_amount: int = 4,
+    out_channels: int = 3,
+    output_device: str = "cpu",
+    pbar: any = None,
+):
+    """#### Scale an image using a tiled approach.
+    
+    #### Args:
+        - `samples` (torch.Tensor): The input samples.
+        - `function` (function): The scaling function.
+        - `tile_x` (int, optional): The tile width. Defaults to 64.
+        - `tile_y` (int, optional): The tile height. Defaults to 64.
+        - `overlap` (int, optional): The overlap. Defaults to 8.
+        - `upscale_amount` (int, optional): The upscale amount. Defaults to 4.
+        - `out_channels` (int, optional): The number of output channels. Defaults to 3.
+        - `output_device` (str, optional): The output device. Defaults to "cpu".
+        - `pbar` (any, optional): The progress bar. Defaults to None.
+    
+    #### Returns:
+        - The scaled image.
+    """
+    return tiled_scale_multidim(
+        samples,
+        function,
+        (tile_y, tile_x),
+        overlap=overlap,
+        upscale_amount=upscale_amount,
+        out_channels=out_channels,
+        output_device=output_device,
+        pbar=pbar,
+    )

@@ -451,7 +451,12 @@ class LoadedModel:
         self.weights_loaded = self.weights_loaded and not unpatch_weights
         self.real_model = None
 
-    def model_use_more_vram(self, extra_memory):
+    def model_use_more_vram(self, extra_memory: int) -> int:
+        """#### Use more VRAM
+        
+        #### Args:
+            - `extra_memory`: The extra memory
+        """
         return self.model.partially_load(self.device, extra_memory)
     
     def __eq__(self, other: torch.nn.Module) -> bool:
@@ -552,7 +557,14 @@ def free_memory(memory_required: int, device: torch.device, keep_loaded: list = 
             if mem_free_torch > mem_free_total * 0.25:
                 soft_empty_cache()
 
-def use_more_memory(extra_memory, loaded_models, device):
+def use_more_memory(extra_memory: int, loaded_models: list, device: torch.device) -> None:
+    """#### Use more memory
+    
+    #### Args:
+        - `extra_memory` (int): The extra memory
+        - `loaded_models` (list): The loaded models
+        - `device` (torch.device): The device
+    """
     for m in loaded_models:
         if m.device == device:
             extra_memory -= m.model_use_more_vram(extra_memory)
@@ -567,10 +579,24 @@ if WINDOWS:
         600 * 1024 * 1024
     )  # Windows is higher because of the shared vram issue
 
-def extra_reserved_memory():
+def extra_reserved_memory() -> int:
+    """#### Extra reserved memory
+    
+    #### Returns:
+        - `int`: The extra reserved memory
+    """
     return EXTRA_RESERVED_VRAM
 
-def offloaded_memory(loaded_models, device):
+def offloaded_memory(loaded_models: list, device: torch.device) -> int:
+    """#### Offloaded memory
+    
+    #### Args:
+        - `loaded_models` (list): The loaded models
+        - `device` (torch.device): The device
+        
+    #### Returns:
+        - `int`: The offloaded memory
+    """
     offloaded_mem = 0
     for m in loaded_models:
         if m.device == device:
@@ -1015,7 +1041,17 @@ def text_encoder_device() -> torch.device:
     else:
         return torch.device("cpu")
     
-def text_encoder_initial_device(load_device, offload_device, model_size=0):
+def text_encoder_initial_device(load_device: torch.device, offload_device: torch.device, model_size: int = 0) -> torch.device:
+    """#### Get the initial device for the text encoder
+    
+    #### Args:
+        - `load_device` (torch.device): The load device
+        - `offload_device` (torch.device): The offload device
+        - `model_size` (int, optional): The model size. Defaults to 0.
+    
+    #### Returns:
+        - `torch.device`: The initial device
+    """
     if load_device == offload_device or model_size <= 1024 * 1024 * 1024:
         return offload_device
 
@@ -1130,7 +1166,16 @@ def device_supports_non_blocking(device: torch.device) -> bool:
         return False  # pytorch bug? mps doesn't support non blocking
     return True
 
-def supports_cast(device, dtype):  # TODO
+def supports_cast(device: torch.device, dtype: torch.dtype):  # TODO
+    """#### Check if the device supports casting
+    
+    #### Args:
+        - `device`: The device
+        - `dtype`: The dtype
+    
+    #### Returns:
+        - `bool`: Whether the device supports casting
+    """
     if dtype == torch.float32:
         return True
     if dtype == torch.float16:
@@ -1184,7 +1229,17 @@ def cast_to_device(tensor: torch.Tensor, device: torch.device, dtype: torch.dtyp
     else:
         return tensor.to(device, dtype, copy=copy, non_blocking=non_blocking)
 
-def pick_weight_dtype(dtype, fallback_dtype, device=None):
+def pick_weight_dtype(dtype: torch.dtype, fallback_dtype: torch.dtype, device: torch.device) -> torch.dtype:
+    """#### Pick the weight dtype
+    
+    #### Args:
+        - `dtype`: The dtype
+        - `fallback_dtype`: The fallback dtype
+        - `device`: The device
+        
+    #### Returns:
+        - `torch.dtype`: The weight dtype
+    """
     if dtype is None:
         dtype = fallback_dtype
     elif dtype_size(dtype) > dtype_size(fallback_dtype):

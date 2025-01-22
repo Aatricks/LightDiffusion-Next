@@ -272,19 +272,36 @@ def sample_dpmpp_2m_sde(
 
 @torch.no_grad()
 def sample_euler(
-    model,
-    x,
-    sigmas,
-    extra_args=None,
-    callback=None,
-    disable=None,
-    s_churn=0.0,
-    s_tmin=0.0,
-    s_tmax=float("inf"),
-    s_noise=1.0,
-    pipeline=False,
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    sigmas: torch.Tensor,
+    extra_args: dict = None,
+    callback: callable = None,
+    disable: bool = None,
+    s_churn: float = 0.0,
+    s_tmin: float = 0.0,
+    s_tmax: float = float("inf"),
+    s_noise: float = 1.0,
+    pipeline: bool = False,
 ):
-    """Implements Algorithm 2 (Euler steps) from Karras et al. (2022)."""
+    """#### Implements Algorithm 2 (Euler steps) from Karras et al. (2022).
+    
+    #### Args:
+        - `model` (torch.nn.Module): The model to use for denoising.
+        - `x` (torch.Tensor): The input tensor to be denoised.
+        - `sigmas` (list or torch.Tensor): A list or tensor of sigma values for the noise schedule.
+        - `extra_args` (dict, optional): Additional arguments to pass to the model. Defaults to None.
+        - `callback` (callable, optional): A callback function to be called at each iteration. Defaults to None.
+        - `disable` (bool, optional): If True, disables the progress bar. Defaults to None.
+        - `s_churn` (float, optional): The churn rate. Defaults to 0.0.
+        - `s_tmin` (float, optional): The minimum sigma value for churn. Defaults to 0.0.
+        - `s_tmax` (float, optional): The maximum sigma value for churn. Defaults to float("inf").
+        - `s_noise` (float, optional): The noise scaling factor. Defaults to 1.0.
+        - `pipeline` (bool, optional): If True, disables the progress bar. Defaults to False.
+    
+    #### Returns:
+        - `torch.Tensor`: The denoised tensor after Euler sampling.
+    """
     global disable_gui
     disable_gui = True if pipeline is True else False
     if disable_gui is False:

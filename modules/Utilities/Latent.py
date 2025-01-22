@@ -65,6 +65,7 @@ class SD3(LatentFormat):
     latent_channels = 16
 
     def __init__(self):
+        """#### Initialize the SD3 latent format."""
         self.scale_factor = 1.5305
         self.shift_factor = 0.0609
         self.latent_rgb_factors = [
@@ -87,10 +88,26 @@ class SD3(LatentFormat):
         ]
         self.taesd_decoder_name = "taesd3_decoder"
 
-    def process_in(self, latent):
+    def process_in(self, latent: torch.Tensor) -> torch.Tensor:
+        """#### Process the latent input, by multiplying it by the scale factor and subtracting the shift factor.
+        
+        #### Args:
+            - `latent` (torch.Tensor): The latent tensor.
+            
+        #### Returns:
+            - `torch.Tensor`: The processed latent tensor.
+        """
         return (latent - self.shift_factor) * self.scale_factor
 
-    def process_out(self, latent):
+    def process_out(self, latent: torch.Tensor) -> torch.Tensor:
+        """#### Process the latent output, by dividing it by the scale factor and adding the shift factor.
+        
+        #### Args:
+            - `latent` (torch.Tensor): The latent tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The processed latent tensor.
+        """
         return (latent / self.scale_factor) + self.shift_factor
 
 
@@ -98,6 +115,7 @@ class Flux1(SD3):
     latent_channels = 16
 
     def __init__(self):
+        """#### Initialize the Flux1 latent format."""
         self.scale_factor = 0.3611
         self.shift_factor = 0.1159
         self.latent_rgb_factors = [
@@ -120,10 +138,26 @@ class Flux1(SD3):
         ]
         self.taesd_decoder_name = "taef1_decoder"
 
-    def process_in(self, latent):
+    def process_in(self, latent: torch.Tensor) -> torch.Tensor:
+        """#### Process the latent input, by multiplying it by the scale factor and subtracting the shift factor.
+        
+        #### Args:
+            - `latent` (torch.Tensor): The latent tensor.
+            
+        #### Returns:
+            - `torch.Tensor`: The processed latent tensor.
+        """
         return (latent - self.shift_factor) * self.scale_factor
 
-    def process_out(self, latent):
+    def process_out(self, latent: torch.Tensor) -> torch.Tensor:
+        """#### Process the latent output, by dividing it by the scale factor and adding the shift factor.
+        
+        #### Args:
+            - `latent` (torch.Tensor): The latent tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The processed latent tensor.
+        """
         return (latent / self.scale_factor) + self.shift_factor
 
 class EmptyLatentImage:
@@ -156,6 +190,15 @@ class EmptyLatentImage:
         return ({"samples": latent},)
 
 def fix_empty_latent_channels(model, latent_image):
+    """#### Fix the empty latent image channels.
+    
+    #### Args:
+        - `model` (Model): The model object.
+        - `latent_image` (torch.Tensor): The latent image.
+        
+    #### Returns:
+        - `torch.Tensor`: The fixed latent image.
+    """
     latent_channels = model.get_model_object(
         "latent_format"
     ).latent_channels  # Resize the empty latent image so it has the right number of channels

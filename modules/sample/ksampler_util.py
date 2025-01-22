@@ -157,7 +157,16 @@ def normal_scheduler(
     sigs += [0.0]
     return torch.FloatTensor(sigs)
 
-def simple_scheduler(model_sampling, steps):
+def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.FloatTensor:
+    """#### Create a simple scheduler.
+    
+    #### Args:
+        - `model_sampling` (torch.nn.Module): The model sampling module.
+        - `steps` (int): The number of steps.
+        
+    #### Returns:
+        - `torch.FloatTensor`: The scheduler.
+    """
     s = model_sampling
     sigs = []
     ss = len(s.sigmas) / steps

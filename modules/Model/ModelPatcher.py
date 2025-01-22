@@ -299,11 +299,19 @@ class ModelPatcher:
     
     def load(
         self,
-        device_to=None,
-        lowvram_model_memory=0,
-        force_patch_weights=False,
-        full_load=False,
+        device_to: torch.device = None,
+        lowvram_model_memory: int = 0,
+        force_patch_weights: bool = False,
+        full_load: bool = False,
     ):
+        """#### Load the model.
+        
+        #### Args:
+            - `device_to` (torch.device, optional): The device to load to. Defaults to None.
+            - `lowvram_model_memory` (int, optional): The low VRAM model memory. Defaults to 0.
+            - `force_patch_weights` (bool, optional): Whether to force patch weights. Defaults to False.
+            - `full_load` (bool, optional): Whether to fully load the model. Defaults to False.
+        """
         mem_counter = 0
         patch_counter = 0
         lowvram_counter = 0
@@ -662,7 +670,16 @@ class ModelPatcher:
         keys = list(self.object_patches_backup.keys())
         self.object_patches_backup.clear()
     
-    def partially_load(self, device_to, extra_memory=0):
+    def partially_load(self, device_to: torch.device, extra_memory: int = 0) -> int:
+        """#### Partially load the model.
+        
+        #### Args:
+            - `device_to` (torch.device): The device to load to.
+            - `extra_memory` (int, optional): The extra memory. Defaults to 0.
+            
+        #### Returns:
+            - `int`: The memory loaded.
+        """
         self.unpatch_model(unpatch_weights=False)
         self.patch_model(patch_weights=False)
         full_load = False
@@ -678,7 +695,15 @@ class ModelPatcher:
         )
         return self.model.model_loaded_weight_memory - current_used
 
-def unet_prefix_from_state_dict(state_dict):
+def unet_prefix_from_state_dict(state_dict: dict) -> str:
+    """#### Get the UNet prefix from the state dictionary.
+    
+    #### Args:
+        - `state_dict` (dict): The state dictionary.
+        
+    #### Returns:
+        - `str`: The UNet prefix.
+    """
     candidates = [
         "model.diffusion_model.",  # ldm/sgm models
         "model.model.",  # audio models
@@ -698,7 +723,17 @@ def unet_prefix_from_state_dict(state_dict):
 
 def load_diffusion_model_state_dict(
     sd, model_options={}
-):  # load unet in diffusers or regular format
+) -> ModelPatcher:
+    """#### Load the diffusion model state dictionary.
+
+    #### Args:
+        - `sd`: The state dictionary.
+        - `model_options` (dict, optional): The model options. Defaults to {}.
+    
+    #### Returns:
+        - `ModelPatcher`: The model patcher.
+    """
+    # load unet in diffusers or regular format
     dtype = model_options.get("dtype", None)
 
     # Allow loading unets from checkpoint files

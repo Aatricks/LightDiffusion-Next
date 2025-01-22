@@ -85,21 +85,70 @@ class EPS:
 
 
 class CONST:
-    def calculate_input(self, sigma, noise):
+    def calculate_input(self, sigma: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
+        """#### Calculate the input for CONST.
+        
+        #### Args:
+            - `sigma` (torch.Tensor): The sigma value.
+            - `noise` (torch.Tensor): The noise tensor.
+            
+        #### Returns:
+            - `torch.Tensor`: The calculated input tensor.
+        """
         return noise
 
-    def calculate_denoised(self, sigma, model_output, model_input):
+    def calculate_denoised(self, sigma: torch.Tensor, model_output: torch.Tensor, model_input: torch.Tensor) -> torch.Tensor:
+        """#### Calculate the denoised tensor.
+        
+        #### Args:
+            - `sigma` (torch.Tensor): The sigma value.
+            - `model_output` (torch.Tensor): The model output tensor.
+            - `model_input` (torch.Tensor): The model input tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The denoised tensor.
+        """
         sigma = sigma.view(sigma.shape[:1] + (1,) * (model_output.ndim - 1))
         return model_input - model_output * sigma
 
     def noise_scaling(self, sigma, noise, latent_image, max_denoise=False):
+        """#### Scale the noise.
+        
+        #### Args:
+            - `sigma` (torch.Tensor): The sigma value.
+            - `noise` (torch.Tensor): The noise tensor.
+            - `latent_image` (torch.Tensor): The latent image tensor.
+            - `max_denoise` (bool, optional): Whether to apply maximum denoising. Defaults to False.
+        
+        #### Returns:
+            - `torch.Tensor`: The scaled noise tensor.
+        """
         return sigma * noise + (1.0 - sigma) * latent_image
 
-    def inverse_noise_scaling(self, sigma, latent):
+    def inverse_noise_scaling(self, sigma: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
+        """#### Inverse the noise scaling.
+        
+        #### Args:
+            - `sigma` (torch.Tensor): The sigma value.
+            - `latent` (torch.Tensor): The latent tensor.
+        
+        #### Returns:
+            - `torch.Tensor`: The inversely scaled noise tensor.
+        """
         return latent / (1.0 - sigma)
 
 
-def flux_time_shift(mu: float, sigma: float, t):
+def flux_time_shift(mu: float, sigma: float, t) -> float:
+    """#### Calculate the flux time shift.
+    
+    #### Args:
+        - `mu` (float): The mu value.
+        - `sigma` (float): The sigma value.
+        - `t` (float): The t value.
+        
+    #### Returns:
+        - `float`: The calculated flux time shift.
+    """
     return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
 
 
@@ -114,18 +163,41 @@ class ModelSamplingFlux(torch.nn.Module):
         self.set_parameters(shift=sampling_settings.get("shift", 1.15))
 
     def set_parameters(self, shift=1.15, timesteps=10000):
+        """#### Set the parameters for the model.
+        
+        #### Args:
+            - `shift` (float, optional): The shift value. Defaults to 1.15.
+            - `timesteps` (int, optional): The number of timesteps. Defaults to 10000.
+        """
         self.shift = shift
         ts = self.sigma((torch.arange(1, timesteps + 1, 1) / timesteps))
         self.register_buffer("sigmas", ts)
 
     @property
     def sigma_max(self):
+        """#### Get the maximum sigma value."""
         return self.sigmas[-1]
 
-    def timestep(self, sigma):
+    def timestep(self, sigma: torch.Tensor)-> torch.Tensor:
+        """#### Convert sigma to timestep.
+        
+        #### Args:
+            - `sigma` (torch.Tensor): The sigma value.
+            
+        #### Returns:
+            - `torch.Tensor`: The timestep value.
+        """
         return sigma
 
-    def sigma(self, timestep):
+    def sigma(self, timestep: torch.Tensor) -> torch.Tensor:
+        """#### Convert timestep to sigma.
+        
+        #### Args:
+            - `timestep` (torch.Tensor): The timestep value.
+            
+        #### Returns:
+            - `torch.Tensor`: The sigma value.
+        """
         return flux_time_shift(self.shift, 1.0, timestep)
 
 
@@ -250,7 +322,15 @@ class ModelSamplingDiscrete(torch.nn.Module):
         log_sigma = (1 - w) * self.log_sigmas[low_idx] + w * self.log_sigmas[high_idx]
         return log_sigma.exp().to(timestep.device)
     
-    def percent_to_sigma(self, percent):
+    def percent_to_sigma(self, percent: float) -> float:
+        """#### Convert percent to sigma.
+        
+        #### Args:
+            - `percent` (float): The percent value.
+            
+        #### Returns:
+            - `float`: The sigma value.
+        """
         if percent <= 0.0:
             return 999999999.9
         if percent >= 1.0:
