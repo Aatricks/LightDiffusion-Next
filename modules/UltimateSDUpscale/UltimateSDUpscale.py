@@ -24,7 +24,7 @@ class StableDiffusionProcessing:
         model: torch.nn.Module,
         positive: str,
         negative: str,
-        vae: VariationalAE,
+        vae: VariationalAE.VAE,
         seed: int,
         steps: int,
         cfg: float,
@@ -42,7 +42,7 @@ class StableDiffusionProcessing:
             - `model` (torch.nn.Module): The model.
             - `positive` (str): The positive prompt.
             - `negative` (str): The negative prompt.
-            - `vae` (VariationalAE): The variational autoencoder.
+            - `vae` (VariationalAE.VAE): The variational autoencoder.
             - `seed` (int): The seed.
             - `steps` (int): The number of steps.
             - `cfg` (float): The CFG scale.
@@ -907,7 +907,7 @@ class UltimateSDUpscale:
         model: torch.nn.Module,
         positive: str,
         negative: str,
-        vae: VariationalAE,
+        vae: VariationalAE.VAE,
         upscale_by: float,
         seed: int,
         steps: int,
@@ -936,7 +936,7 @@ class UltimateSDUpscale:
             - `model` (torch.nn.Module): The model.
             - `positive` (str): The positive prompt.
             - `negative` (str): The negative prompt.
-            - `vae` (VariationalAE): The variational autoencoder.
+            - `vae` (VariationalAE.VAE): The variational autoencoder.
             - `upscale_by` (float): The upscale factor.
             - `seed` (int): The seed.
             - `steps` (int): The number of steps.

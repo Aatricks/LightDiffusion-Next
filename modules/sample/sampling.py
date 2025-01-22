@@ -5,7 +5,7 @@ import torch.nn as nn
 import math
 import torch
 
-from modules.Utilities import Latent, util
+from modules.Utilities import Latent
 from modules.Device import Device
 from modules.sample import ksampler_util, samplers, sampling_util
 from modules.sample import CFG

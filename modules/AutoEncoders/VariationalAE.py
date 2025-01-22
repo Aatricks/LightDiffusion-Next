@@ -8,7 +8,6 @@ import torch.nn as nn
 from modules.Attention import Attention
 from modules.AutoEncoders import ResBlock
 from modules.Device import Device
-from modules.UltimateSDUpscale import image_util
 from modules.Utilities import util
 from modules.cond import cast
 

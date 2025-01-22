@@ -58,12 +58,12 @@ class DifferentialDiffusion:
         return (denoise_mask >= threshold).to(denoise_mask.dtype)
 
 
-def to_latent_image(pixels: torch.Tensor, vae: VariationalAE) -> torch.Tensor:
+def to_latent_image(pixels: torch.Tensor, vae: VariationalAE.VAE) -> torch.Tensor:
     """#### Convert pixels to a latent image using a VAE.
 
     #### Args:
         - `pixels` (torch.Tensor): The input pixel tensor.
-        - `vae` (VariationalAE): The VAE model.
+        - `vae` (VariationalAE.VAE): The VAE model.
 
     #### Returns:
         - `torch.Tensor`: The latent image tensor.
@@ -408,7 +408,7 @@ def enhance_detail(
     image: torch.Tensor,
     model: torch.nn.Module,
     clip: Any,
-    vae: VariationalAE,
+    vae: VariationalAE.VAE,
     guide_size: int,
     guide_size_for_bbox: bool,
     max_size: int,
@@ -444,7 +444,7 @@ def enhance_detail(
         - `image` (torch.Tensor): The input image tensor.
         - `model` (torch.nn.Module): The model.
         - `clip` (Any): The clip model.
-        - `vae` (VariationalAE): The VAE model.
+        - `vae` (VariationalAE.VAE): The VAE model.
         - `guide_size` (int): The guide size.
         - `guide_size_for_bbox` (bool): Whether to use guide size for bbox.
         - `max_size` (int): The maximum size.
@@ -602,7 +602,7 @@ class DetailerForEach:
         segs: Tuple[torch.Tensor, Any],
         model: torch.nn.Module,
         clip: Any,
-        vae: VariationalAE,
+        vae: VariationalAE.VAE,
         guide_size: int,
         guide_size_for_bbox: bool,
         max_size: int,
@@ -637,7 +637,7 @@ class DetailerForEach:
             - `segs` (Tuple[torch.Tensor, Any]): The segments.
             - `model` (torch.nn.Module): The model.
             - `clip` (Any): The clip model.
-            - `vae` (VariationalAE): The VAE model.
+            - `vae` (VariationalAE.VAE): The VAE model.
             - `guide_size` (int): The guide size.
             - `guide_size_for_bbox` (bool): Whether to use guide size for bbox.
             - `max_size` (int): The maximum size.
@@ -849,7 +849,7 @@ class DetailerForEachTest(DetailerForEach):
         segs: Any,
         model: torch.nn.Module,
         clip: Any,
-        vae: VariationalAE,
+        vae: VariationalAE.VAE,
         guide_size: int,
         guide_size_for: bool,
         max_size: int,
@@ -879,7 +879,7 @@ class DetailerForEachTest(DetailerForEach):
             - `segs` (Any): The segments.
             - `model` (torch.nn.Module): The model.
             - `clip` (Any): The clip model.
-            - `vae` (VariationalAE): The VAE model.
+            - `vae` (VariationalAE.VAE): The VAE model.
             - `guide_size` (int): The guide size.
             - `guide_size_for` (bool): Whether to use guide size for.
             - `max_size` (int): The maximum size.

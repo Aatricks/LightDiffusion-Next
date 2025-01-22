@@ -11,9 +11,7 @@ import numpy as np
 import customtkinter as ctk
 import glob
 import time
-from functools import wraps
 
-from sympy import im
 import torch
 
 # Add the directory containing LightDiffusion.py to the Python path
@@ -25,7 +23,7 @@ from modules.clip import Clip
 from modules.sample import sampling
 
 from modules.Utilities import util
-from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale as USDU
+from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale
 
 from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
@@ -158,7 +156,7 @@ class App(tk.Tk):
             text_color="black",
         )
         self.previewer_checkbox.grid(row=1, column=0, pady=10)
-        
+
         # Progress Bar
         self.progress = ctk.CTkProgressBar(self.display, fg_color="#FBFBFB")
         self.progress.grid(row=2, column=0, sticky="ew", pady=10, padx=10)
@@ -565,11 +563,15 @@ class App(tk.Tk):
         """Start the image generation process."""
         if self.is_generating:
             return
-        
+
         if self.dropdown.get() == "flux":
-            self.generate_thread = threading.Thread(target=self._generate_image_flux, daemon=True).start()
+            self.generate_thread = threading.Thread(
+                target=self._generate_image_flux, daemon=True
+            ).start()
         else:
-            self.generate_thread = threading.Thread(target=self._generate_image, daemon=True).start()
+            self.generate_thread = threading.Thread(
+                target=self._generate_image, daemon=True
+            ).start()
 
     def _prep(self) -> tuple:
         """Prepare the necessary components for image generation.
@@ -593,7 +595,7 @@ class App(tk.Tk):
                 self.saveimage = ImageSaver.SaveImage()
                 self.latent_upscale = upscale.LatentUpscale()
                 self.upscalemodelloader = USDU_upscaler.UpscaleModelLoader()
-                self.ultimatesdupscale = USDU.UltimateSDUpscale()
+                self.ultimatesdupscale = UltimateSDUpscale.UltimateSDUpscale()
         return (
             self.checkpointloadersimple_241,
             self.cliptextencode,
@@ -610,29 +612,29 @@ class App(tk.Tk):
         """Generate image with proper interrupt handling."""
         self.is_generating = True
         self.generate_button.configure(state="disabled")
-        
+
         current_thread = threading.current_thread()
         self.generation_threads.append(current_thread)
         images = []
         self.interrupt_flag = False
-        
+
         try:
             # Disable generate button during generation
             self.generate_button.configure(state="disabled")
             self.display_most_recent_image_flag = False
             self.progress.set(0)
-            
+
             # Early interrupt check
             if self.interrupt_flag:
                 return
-                
+
             # Get generation parameters
             prompt = self.prompt_entry.get("1.0", tk.END)
             neg = self.neg.get("1.0", tk.END)
             w = int(self.width_slider.get())
             h = int(self.height_slider.get())
             cfg = int(self.cfg_slider.get())
-            
+
             # Main generation with proper interrupt handling
             with torch.inference_mode():
                 components = self._prep()
@@ -773,7 +775,7 @@ class App(tk.Tk):
                         images.append(img)
                 if self.interrupt_flag:
                     return
-                    
+
                 self.progress.set(0.6)
                 if self.adetailer_var.get() is True:
                     bboxdetectorsegs_132 = bboxdetectorsegs.doit(
@@ -892,18 +894,18 @@ class App(tk.Tk):
                         i = 255.0 * image.cpu().numpy()
                         img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
                         images.append(img)
-                        
+
                 self.progress.set(0.8)
-                
+
                 if not self.interrupt_flag:
                     self.progress.set(1.0)
                     self.update_image(images)
                     self.display_most_recent_image_flag = True
-                
+
         except Exception as e:
             print(f"Generation error: {e}")
             self.title(f"LightDiffusion - Error: {str(e)}")
-            
+
         finally:
             # Reset state when done
             self.is_generating = False
@@ -911,7 +913,7 @@ class App(tk.Tk):
             if current_thread in self.generation_threads:
                 self.generation_threads.remove(current_thread)
             self.progress.set(0)
-            
+
             # Clear CUDA cache
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -920,7 +922,7 @@ class App(tk.Tk):
         """Generate an image using the Flux model."""
         self.is_generating = True
         self.generate_button.configure(state="disabled")
-        # Add current thread to list at start 
+        # Add current thread to list at start
         current_thread = threading.current_thread()
         self.generation_threads.append(current_thread)
         self.display_most_recent_image_flag = False
@@ -996,7 +998,6 @@ class App(tk.Tk):
             self.generate_button.configure(state="normal")
             if current_thread in self.generation_threads:
                 self.generation_threads.remove(current_thread)
-
 
     def on_model_selected(self, *args):
         """Handle model selection changes"""
@@ -1114,10 +1115,10 @@ class App(tk.Tk):
 
         # Sort files by modification time in descending order
         image_files.sort(key=os.path.getmtime, reverse=True)
-        
+
         # Get most recent timestamp
         latest_time = os.path.getmtime(image_files[0])
-        
+
         # Get all images from same batch (within 1 second of most recent)
         batch_images = []
         for file in image_files:
@@ -1127,16 +1128,15 @@ class App(tk.Tk):
                     batch_images.append(img)
                 except:
                     continue
-                    
+
         if not batch_images:
             return
-            
+
         # Display single image or grid of batch
         if len(batch_images) == 1:
-            self.update_image(batch_images[0]) 
+            self.update_image(batch_images[0])
         else:
             self.update_image(batch_images)
-
 
     def _start_resize_worker(self):
         """Start the resize worker thread"""
@@ -1246,38 +1246,37 @@ class App(tk.Tk):
         """Interrupt ongoing image generation process."""
         if not self.is_generating:
             return
-        
+
         # Set interrupt flag first
         self.interrupt_flag = True
-        
+
         # Clear CUDA cache and release memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
-            
+
         # Stop and cleanup threads
         for thread in self.generation_threads[:]:
             if thread and thread.is_alive():
                 thread.join(timeout=1.0)
             if thread in self.generation_threads:
                 self.generation_threads.remove(thread)
-                
+
         # Reset UI state
         self.progress.set(0)
         self.title("LightDiffusion")
         self.generate_button.configure(state="normal")
         self.display_most_recent_image_flag = True
-        
+
         # Clear any pending resize tasks
         with self._resize_lock:
             self._resize_queue.queue.clear()
-            
+
         # Reset model state if needed
-        if hasattr(self, 'checkpointloadersimple_241'):
+        if hasattr(self, "checkpointloadersimple_241"):
             del self.checkpointloadersimple_241
             self.ckpt = None
-                
-            
+
         # Always reset flags
         self.generation_threads.clear()
         # Reset generation state

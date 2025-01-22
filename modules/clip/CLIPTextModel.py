@@ -1,5 +1,4 @@
 import torch
-from modules.Attention import Attention
 
 class CLIPTextModel_(torch.nn.Module):
     def __init__(
