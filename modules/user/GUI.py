@@ -29,6 +29,7 @@ from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent, upscale
 from modules.Quantize import Quantizer
+from modules.WaveSpeed import fbcache_nodes
 
 Downloader.CheckAndDownload()
 
@@ -968,6 +969,9 @@ class App(tk.Tk):
                 conditioningzeroout_16 = conditioningzeroout.zero_out(
                     conditioning=cliptextencodeflux_15[0]
                 )
+                fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
+                
                 ksampler_3 = ksampler.sample(
                     seed=random.randint(1, 2**64),
                     steps=20,
