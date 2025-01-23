@@ -299,14 +299,12 @@ class UNetModel1(nn.Module):
         super().__init__()
 
         if context_dim is not None:
-            assert use_spatial_transformer, "Fool!! You forgot to use the spatial transformer for your cross-attention conditioning..."
+            self.context_dim = context_dim
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
         if num_head_channels == -1:
-            assert (
-                num_heads != -1
-            ), "Either num_heads or num_head_channels has to be set"
+            assert num_heads != -1, "Either num_heads or num_head_channels has to be set"
 
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -452,6 +450,7 @@ class UNetModel1(nn.Module):
                 operations=operations,
             )
 
+        self.double_blocks = nn.ModuleList()
         for level, mult in enumerate(channel_mult):
             for nr in range(self.num_res_blocks[level]):
                 layers = [
@@ -701,7 +700,7 @@ class UNetModel1(nn.Module):
         """
         transformer_options["original_shape"] = list(x.shape)
         transformer_options["transformer_index"] = 0
-        transformer_options.get("patches", {})
+        transformer_patches = transformer_options.get("patches", {})
 
         num_video_frames = kwargs.get("num_video_frames", self.default_num_video_frames)
         image_only_indicator = kwargs.get("image_only_indicator", None)

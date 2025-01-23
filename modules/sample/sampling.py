@@ -87,11 +87,11 @@ class EPS:
 class CONST:
     def calculate_input(self, sigma: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
         """#### Calculate the input for CONST.
-        
+
         #### Args:
             - `sigma` (torch.Tensor): The sigma value.
             - `noise` (torch.Tensor): The noise tensor.
-            
+
         #### Returns:
             - `torch.Tensor`: The calculated input tensor.
         """
@@ -99,12 +99,12 @@ class CONST:
 
     def calculate_denoised(self, sigma: torch.Tensor, model_output: torch.Tensor, model_input: torch.Tensor) -> torch.Tensor:
         """#### Calculate the denoised tensor.
-        
+
         #### Args:
             - `sigma` (torch.Tensor): The sigma value.
             - `model_output` (torch.Tensor): The model output tensor.
             - `model_input` (torch.Tensor): The model input tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The denoised tensor.
         """
@@ -113,13 +113,13 @@ class CONST:
 
     def noise_scaling(self, sigma, noise, latent_image, max_denoise=False):
         """#### Scale the noise.
-        
+
         #### Args:
             - `sigma` (torch.Tensor): The sigma value.
             - `noise` (torch.Tensor): The noise tensor.
             - `latent_image` (torch.Tensor): The latent image tensor.
             - `max_denoise` (bool, optional): Whether to apply maximum denoising. Defaults to False.
-        
+
         #### Returns:
             - `torch.Tensor`: The scaled noise tensor.
         """
@@ -127,11 +127,11 @@ class CONST:
 
     def inverse_noise_scaling(self, sigma: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
         """#### Inverse the noise scaling.
-        
+
         #### Args:
             - `sigma` (torch.Tensor): The sigma value.
             - `latent` (torch.Tensor): The latent tensor.
-        
+
         #### Returns:
             - `torch.Tensor`: The inversely scaled noise tensor.
         """
@@ -140,12 +140,12 @@ class CONST:
 
 def flux_time_shift(mu: float, sigma: float, t) -> float:
     """#### Calculate the flux time shift.
-    
+
     #### Args:
         - `mu` (float): The mu value.
         - `sigma` (float): The sigma value.
         - `t` (float): The t value.
-        
+
     #### Returns:
         - `float`: The calculated flux time shift.
     """
@@ -164,7 +164,7 @@ class ModelSamplingFlux(torch.nn.Module):
 
     def set_parameters(self, shift=1.15, timesteps=10000):
         """#### Set the parameters for the model.
-        
+
         #### Args:
             - `shift` (float, optional): The shift value. Defaults to 1.15.
             - `timesteps` (int, optional): The number of timesteps. Defaults to 10000.
@@ -180,10 +180,10 @@ class ModelSamplingFlux(torch.nn.Module):
 
     def timestep(self, sigma: torch.Tensor)-> torch.Tensor:
         """#### Convert sigma to timestep.
-        
+
         #### Args:
             - `sigma` (torch.Tensor): The sigma value.
-            
+
         #### Returns:
             - `torch.Tensor`: The timestep value.
         """
@@ -191,10 +191,10 @@ class ModelSamplingFlux(torch.nn.Module):
 
     def sigma(self, timestep: torch.Tensor) -> torch.Tensor:
         """#### Convert timestep to sigma.
-        
+
         #### Args:
             - `timestep` (torch.Tensor): The timestep value.
-            
+
         #### Returns:
             - `torch.Tensor`: The sigma value.
         """
@@ -321,13 +321,13 @@ class ModelSamplingDiscrete(torch.nn.Module):
         w = t.frac()
         log_sigma = (1 - w) * self.log_sigmas[low_idx] + w * self.log_sigmas[high_idx]
         return log_sigma.exp().to(timestep.device)
-    
+
     def percent_to_sigma(self, percent: float) -> float:
         """#### Convert percent to sigma.
-        
+
         #### Args:
             - `percent` (float): The percent value.
-            
+
         #### Returns:
             - `float`: The sigma value.
         """
@@ -479,40 +479,9 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
     #### Returns:
         - `KSAMPLER`: The KSAMPLER object.
     """
-    if sampler_name == "dpm_adaptive":
+    if sampler_name == "dpmpp_2m":
 
-        def dpm_adaptive_function(
-            model: torch.nn.Module,
-            noise: torch.Tensor,
-            sigmas: torch.Tensor,
-            extra_args: dict,
-            callback: callable,
-            disable: bool,
-            pipeline: bool,
-            **extra_options,
-        ) -> torch.Tensor:
-            if len(sigmas) <= 1:
-                return noise
-
-            sigma_min = sigmas[-1]
-            if sigma_min == 0:
-                sigma_min = sigmas[-2]
-            return samplers.sample_dpm_adaptive(
-                model,
-                noise,
-                sigma_min,
-                sigmas[0],
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = dpm_adaptive_function
-    elif sampler_name == "dpmpp_2m_sde":
-
-        def dpmpp_sde_function(
+        def dpmpp_2m_function(
             model: torch.nn.Module,
             noise: torch.Tensor,
             sigmas: torch.Tensor,
@@ -525,7 +494,7 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
             sigma_min = sigmas[-1]
             if sigma_min == 0:
                 sigma_min = sigmas[-2]
-            return samplers.sample_dpmpp_2m_sde(
+            return samplers.sample_dpmpp_2m(
                 model,
                 noise,
                 sigmas,
@@ -536,7 +505,7 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
                 **extra_options,
             )
 
-        sampler_function = dpmpp_sde_function
+        sampler_function = dpmpp_2m_function
     elif sampler_name == "euler_ancestral":
 
         def euler_ancestral_function(
@@ -560,7 +529,7 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
             )
 
         sampler_function = euler_ancestral_function
-    
+
     elif sampler_name == "euler":
 
         def euler_function(model, noise, sigmas, extra_args, callback, disable, pipeline=False):

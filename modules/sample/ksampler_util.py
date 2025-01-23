@@ -1,6 +1,7 @@
 import collections
 import logging
 import numpy as np
+import scipy
 import torch
 from modules.sample import sampling_util
 
@@ -159,11 +160,11 @@ def normal_scheduler(
 
 def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.FloatTensor:
     """#### Create a simple scheduler.
-    
+
     #### Args:
         - `model_sampling` (torch.nn.Module): The model sampling module.
         - `steps` (int): The number of steps.
-        
+
     #### Returns:
         - `torch.FloatTensor`: The scheduler.
     """
@@ -172,6 +173,21 @@ def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.Float
     ss = len(s.sigmas) / steps
     for x in range(steps):
         sigs += [float(s.sigmas[-(1 + int(x * ss))])]
+    sigs += [0.0]
+    return torch.FloatTensor(sigs)
+
+# Implemented based on: https://arxiv.org/abs/2407.12173
+def beta_scheduler(model_sampling, steps, alpha=0.6, beta=0.6):
+    total_timesteps = (len(model_sampling.sigmas) - 1)
+    ts = 1 - np.linspace(0, 1, steps, endpoint=False)
+    ts = np.rint(scipy.stats.beta.ppf(ts, alpha, beta) * total_timesteps)
+
+    sigs = []
+    last_t = -1
+    for t in ts:
+        if t != last_t:
+            sigs += [float(model_sampling.sigmas[int(t)])]
+        last_t = t
     sigs += [0.0]
     return torch.FloatTensor(sigs)
 
@@ -198,6 +214,8 @@ def calculate_sigmas(
         sigmas = normal_scheduler(model_sampling, steps)
     elif scheduler_name == "simple":
         sigmas = simple_scheduler(model_sampling, steps)
+    elif scheduler_name == "beta":
+        sigmas = beta_scheduler(model_sampling, steps)
     else:
         logging.error("error invalid scheduler {}".format(scheduler_name))
     return sigmas

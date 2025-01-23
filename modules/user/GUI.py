@@ -189,7 +189,7 @@ class App(tk.Tk):
             row=0, column=0, padx=(0, 5)
         )
         self.width_slider = ctk.CTkSlider(
-            self.sliders_frame, from_=1, to=2048, number_of_steps=16, fg_color="#F5EFFF"
+            self.sliders_frame, from_=1, to=2048, number_of_steps=32, fg_color="#F5EFFF"
         )
         self.width_slider.grid(row=0, column=1, sticky="ew")
         self.width_label = ctk.CTkLabel(self.sliders_frame, text="")
@@ -200,7 +200,7 @@ class App(tk.Tk):
             row=1, column=0, padx=(0, 5)
         )
         self.height_slider = ctk.CTkSlider(
-            self.sliders_frame, from_=1, to=2048, number_of_steps=16, fg_color="#F5EFFF"
+            self.sliders_frame, from_=1, to=2048, number_of_steps=32, fg_color="#F5EFFF"
         )
         self.height_slider.grid(row=1, column=1, sticky="ew")
         self.height_label = ctk.CTkLabel(self.sliders_frame, text="")
@@ -465,7 +465,8 @@ class App(tk.Tk):
                 )
             else:
                 applystablefast_158 = loraloader_274
-
+            fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+            applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
             clipsetlastlayer = Clip.CLIPSetLastLayer()
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
@@ -491,7 +492,7 @@ class App(tk.Tk):
                 seed=random.randint(1, 2**64),
                 steps=8,
                 cfg=6,
-                sampler_name="dpmpp_2m_sde",
+                sampler_name="dpmpp_2m",
                 scheduler="karras",
                 denoise=0.3,
                 mode_type="Linear",
@@ -711,6 +712,9 @@ class App(tk.Tk):
                     )
                 else:
                     applystablefast_158 = loraloader_274
+
+                fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
                 cliptextencode_242 = cliptextencode.encode(
                     text=prompt,
                     clip=clipsetlastlayer_257[0],
@@ -724,9 +728,9 @@ class App(tk.Tk):
                 )
                 ksampler_239 = ksampler_instance.sample(
                     seed=random.randint(1, 2**64),
-                    steps=40,
+                    steps=20,
                     cfg=cfg,
-                    sampler_name="dpm_adaptive",
+                    sampler_name="dpmpp_2m",
                     scheduler="karras",
                     denoise=1,
                     model=applystablefast_158[0],
@@ -810,9 +814,9 @@ class App(tk.Tk):
                         guide_size_for=False,
                         max_size=768,
                         seed=random.randint(1, 2**64),
-                        steps=40,
+                        steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_2m_sde",
+                        sampler_name="dpmpp_2m",
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -824,7 +828,7 @@ class App(tk.Tk):
                         noise_mask_feather=20,
                         image=vaedecode_240[0],
                         segs=impactsegsandmask_152[0],
-                        model=checkpointloadersimple_241[0],
+                        model=applystablefast_158[0],
                         clip=checkpointloadersimple_241[1],
                         vae=checkpointloadersimple_241[2],
                         positive=cliptextencode_124[0],
@@ -867,9 +871,9 @@ class App(tk.Tk):
                         guide_size_for=False,
                         max_size=768,
                         seed=random.randint(1, 2**64),
-                        steps=40,
+                        steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_2m_sde",
+                        sampler_name="dpmpp_2m",
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -881,7 +885,7 @@ class App(tk.Tk):
                         noise_mask_feather=20,
                         image=detailerforeachdebug_145[0],
                         segs=impactsegsandmask_152[0],
-                        model=checkpointloadersimple_241[0],
+                        model=applystablefast_158[0],
                         clip=checkpointloadersimple_241[1],
                         vae=checkpointloadersimple_241[2],
                         positive=cliptextencode_124[0],
@@ -971,13 +975,13 @@ class App(tk.Tk):
                 )
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
                 unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
-                
+
                 ksampler_3 = ksampler.sample(
                     seed=random.randint(1, 2**64),
                     steps=20,
                     cfg=1,
                     sampler_name="euler",
-                    scheduler="simple",
+                    scheduler="beta",
                     denoise=1,
                     model=unetloadergguf_10[0],
                     positive=cliptextencodeflux_15[0],
