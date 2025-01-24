@@ -1,30 +1,27 @@
+import argparse
 import os
 import random
 import sys
-import argparse
 
 import numpy as np
 import torch
 import torch._dynamo
-
 from PIL import Image
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from modules.Device import Device
+from modules.AutoDetailer import SAM, SEGS, ADetailer, bbox
 from modules.AutoEncoders import VariationalAE
 from modules.clip import Clip
-from modules.sample import sampling
-
-from modules.Utilities import upscale
-from modules.AutoDetailer import SAM, ADetailer, bbox, SEGS
-
+from modules.Device import Device
 from modules.FileManaging import Downloader, ImageSaver, Loader
-from modules.Model import LoRas
-from modules.Utilities import Enhancer, Latent
-from modules.UltimateSDUpscale import USDU_upscaler, UltimateSDUpscale
 from modules.hidiffusion import msw_msa_attention
+from modules.Model import LoRas
 from modules.Quantize import Quantizer
+from modules.sample import sampling
+from modules.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
+from modules.Utilities import Enhancer, Latent, upscale
+from modules.WaveSpeed import fbcache_nodes
 
 torch._dynamo.config.suppress_errors = True
 torch.compiler.allow_in_graph
@@ -173,6 +170,8 @@ def pipeline(
                 unetloadergguf_10 = unetloadergguf.load_unet(
                     unet_name="flux1-dev-Q8_0.gguf"
                 )
+                fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
                 vaeloader_11 = vaeloader.load_vae(vae_name="ae.safetensors")
                 dualcliploadergguf_19 = dualcliploadergguf.load_clip(
                     clip_name1="clip_l.safetensors",
@@ -262,6 +261,8 @@ def pipeline(
                 emptylatentimage_244 = emptylatentimage.generate(
                     width=w, height=h, batch_size=batch
                 )
+                fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
                 ksampler_239 = ksampler_instance.sample(
                     seed=seed,
                     steps=20,
