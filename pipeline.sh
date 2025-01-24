@@ -2,7 +2,7 @@
 
 VENV_DIR=.venv
 
-sudo apt-get install python3.10 python3.10-venv
+sudo apt-get install python3.12 python3.12-venv
 
 # Check if .venv exists
 if [ ! -d "$VENV_DIR" ]; then
@@ -19,11 +19,11 @@ pip install --upgrade pip
 
 # Install specific packages
 echo "Installing required packages..."
-pip install xformers==0.0.26post1 torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121
+pip install xformers torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 # Install tkinter
 echo "Installing tkinter..."
-sudo apt-get install python3.10-tk
+sudo apt-get install python3.12-tk
 
 # Install additional requirements
 if [ -f requirements.txt ]; then
@@ -43,7 +43,7 @@ fi
 
 # Launch the script
 echo "Launching LightDiffusion..."
-python3.10 "./modules/user/pipeline.py" %*
+python3.12 "./modules/user/pipeline.py" "$@"
 
 # Deactivate the virtual environment
 deactivate

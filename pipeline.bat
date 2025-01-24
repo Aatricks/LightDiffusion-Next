@@ -17,7 +17,7 @@ python -m pip install --upgrade pip
 REM Install specific packages
 echo Installing required packages...
 pip install uv
-uv pip install xformers torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+uv pip install xformers torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 REM Install additional requirements
 IF EXIST requirements.txt (
