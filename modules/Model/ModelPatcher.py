@@ -57,21 +57,21 @@ class ModelPatcher:
 
         if not hasattr(self.model, "model_loaded_weight_memory"):
             self.model.model_loaded_weight_memory = 0
-            
+
         if not hasattr(self.model, "model_lowvram"):
             self.model.model_lowvram = False
-        
+
         if not hasattr(self.model, "lowvram_patch_counter"):
             self.model.lowvram_patch_counter = 0
-    
+
     def loaded_size(self) -> int:
         """#### Get the loaded size
-        
+
         #### Returns:
             - `int`: The loaded size
         """
         return self.model.model_loaded_weight_memory
-    
+
     def model_size(self) -> int:
         """#### Get the size of the model.
 
@@ -206,7 +206,7 @@ class ModelPatcher:
 
         self.patches_uuid = uuid.uuid4()
         return list(p)
-    
+
     def set_model_patch(self, patch: list, name: str):
         """#### Set a patch for the model.
 
@@ -221,7 +221,7 @@ class ModelPatcher:
 
     def set_model_attn1_patch(self, patch: list):
         """#### Set the attention 1 patch for the model.
-        
+
         #### Args:
             - `patch` (list): The patch.
         """
@@ -229,12 +229,12 @@ class ModelPatcher:
 
     def set_model_attn2_patch(self, patch: list):
         """#### Set the attention 2 patch for the model.
-        
+
         #### Args:
             - `patch` (list): The patch.
         """
         self.set_model_patch(patch, "attn2_patch")
-        
+
     def set_model_attn1_output_patch(self, patch: list):
         """#### Set the attention 1 output patch for the model.
 
@@ -245,12 +245,12 @@ class ModelPatcher:
 
     def set_model_attn2_output_patch(self, patch: list):
         """#### Set the attention 2 output patch for the model.
-        
+
         #### Args:
             - `patch` (list): The patch.
         """
         self.set_model_patch(patch, "attn2_output_patch")
-    
+
     def model_state_dict(self, filter_prefix: str = None) -> dict:
         """#### Get the state dictionary of the model.
 
@@ -296,7 +296,7 @@ class ModelPatcher:
             util.copy_to_param(self.model, key, out_weight)
         else:
             util.set_attr_param(self.model, key, out_weight)
-    
+
     def load(
         self,
         device_to: torch.device = None,
@@ -305,7 +305,7 @@ class ModelPatcher:
         full_load: bool = False,
     ):
         """#### Load the model.
-        
+
         #### Args:
             - `device_to` (torch.device, optional): The device to load to. Defaults to None.
             - `lowvram_model_memory` (int, optional): The low VRAM model memory. Defaults to 0.
@@ -398,11 +398,11 @@ class ModelPatcher:
                 self.model.to(device_to)
                 mem_counter = self.model_size()
 
-        
+
         self.model.lowvram_patch_counter += patch_counter
         self.model.device = device_to
         self.model.model_loaded_weight_memory = mem_counter
-    
+
     def patch_model_flux(
         self,
         device_to: torch.device = None,
@@ -511,7 +511,7 @@ class ModelPatcher:
         self.model_lowvram = True
         self.lowvram_patch_counter = patch_counter
         return self.model
-    
+
     def patch_model(
         self, device_to: torch.device = None, patch_weights: bool = True
     ) -> torch.nn.Module:
@@ -669,14 +669,14 @@ class ModelPatcher:
 
         keys = list(self.object_patches_backup.keys())
         self.object_patches_backup.clear()
-    
+
     def partially_load(self, device_to: torch.device, extra_memory: int = 0) -> int:
         """#### Partially load the model.
-        
+
         #### Args:
             - `device_to` (torch.device): The device to load to.
             - `extra_memory` (int, optional): The extra memory. Defaults to 0.
-            
+
         #### Returns:
             - `int`: The memory loaded.
         """
@@ -695,12 +695,15 @@ class ModelPatcher:
         )
         return self.model.model_loaded_weight_memory - current_used
 
+    def add_object_patch(self, name, obj):
+            self.object_patches[name] = obj
+
 def unet_prefix_from_state_dict(state_dict: dict) -> str:
     """#### Get the UNet prefix from the state dictionary.
-    
+
     #### Args:
         - `state_dict` (dict): The state dictionary.
-        
+
     #### Returns:
         - `str`: The UNet prefix.
     """
@@ -729,7 +732,7 @@ def load_diffusion_model_state_dict(
     #### Args:
         - `sd`: The state dictionary.
         - `model_options` (dict, optional): The model options. Defaults to {}.
-    
+
     #### Returns:
         - `ModelPatcher`: The model patcher.
     """

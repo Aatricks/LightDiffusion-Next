@@ -686,6 +686,7 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
                 patches = getattr(p, "patches", [])
                 if len(patches) > 0:
                     p.patches = []
+        self.object_patches = {}
         # TODO: Find another way to not unload after patches
         return super().unpatch_model(
             device_to=device_to, unpatch_weights=unpatch_weights
@@ -725,6 +726,9 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
                     # TODO: possible to OOM, find better way to detach
                     m.to(self.load_device).to(self.offload_device)
             self.mmap_released = True
+
+    def add_object_patch(self, name, obj):
+            self.object_patches[name] = obj
 
     def clone(self, *args, **kwargs):
         """

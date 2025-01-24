@@ -29,7 +29,7 @@ from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent, upscale
 from modules.Quantize import Quantizer
-from modules.WaveSpeed import fbcache_nodes
+from modules.WaveSpeed import fbcache_nodes, misc_nodes
 
 Downloader.CheckAndDownload()
 
@@ -715,6 +715,13 @@ class App(tk.Tk):
 
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
                 applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                try :
+                    import triton
+
+                    compiler = misc_nodes.EnhancedCompileModel()
+                    applystablefast_158 = compiler.patch(applystablefast_158, True, "diffusion_model", "torch.compile", False, False, None, None, False, "inductor")
+                except ImportError:
+                    print("Triton not found, skipping compilation")
                 cliptextencode_242 = cliptextencode.encode(
                     text=prompt,
                     clip=clipsetlastlayer_257[0],
@@ -974,8 +981,13 @@ class App(tk.Tk):
                     conditioning=cliptextencodeflux_15[0]
                 )
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
-
+                compiler = misc_nodes.EnhancedCompileModel()
+                try:
+                    import triton
+                    unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
+                    unetloadergguf_10 = compiler.patch(unetloadergguf_10, True, "diffusion_model", "torch.compile", False, False, None, None, False, "inductor")
+                except ImportError:
+                    print("Triton not found, skipping compilation")
                 ksampler_3 = ksampler.sample(
                     seed=random.randint(1, 2**64),
                     steps=20,
