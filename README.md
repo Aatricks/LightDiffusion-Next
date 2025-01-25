@@ -32,7 +32,7 @@ That's when the first version of LightDiffusion was born which only counted [300
 
 Advanced users can take advantage of features like **attention syntax**, **Hires-Fix** or **ADetailer**. These tools provide better quality and flexibility for generating complex and high-resolution outputs.
 
-**LightDiffusion-Next** is fine-tuned for **performance**. Features such as **Xformers** acceleration, **BFloat16** precision support, and **Stable-Fast** model compilation (which offers up to a 70% speed boost) ensure smooth and efficient operation, even on demanding workloads.
+**LightDiffusion-Next** is fine-tuned for **performance**. Features such as **Xformers** acceleration, **BFloat16** precision support, WaveSpeed attention block cache, and **Stable-Fast** model compilation (which offers up to a 70% speed boost) ensure smooth and efficient operation, even on demanding workloads.
 
 ---
 
@@ -41,7 +41,7 @@ Advanced users can take advantage of features like **attention syntax**, **Hires
 Here’s what makes LightDiffusion-Next stand out:  
 
 - **Speed and Efficiency**:  
-  Enjoy industry-leading performance with built-in Xformers, Pytorch and Stable-Fast optimizations, achieving up to 30% faster speeds compared to the comfyUI.
+  Enjoy industry-leading performance with built-in Xformers, Pytorch, Wavespeed and Stable-Fast optimizations, achieving up to 30% faster speeds compared to the rest of the AI image generation backends in SD1.5 and up to 2x for Flux.
 
 - **Automatic Detailing**:  
   Effortlessly enhance faces and body details with AI-driven tools based on the [Impact Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack).  
