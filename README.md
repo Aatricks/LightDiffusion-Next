@@ -84,9 +84,10 @@ Here’s what makes LightDiffusion-Next stand out:
 | **SDForge**                        | 1.3              |  
 | **SDWebUI**                        | 0.9              |  
 
+(All benchmarks are based on a 1024x1024 resolution with a batch size of 1 using BFloat16 precision without tweaking installations. Made with a 3060 mobile GPU using SD1.5.)
+
 With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark for AI image generation tools.  
 
-(All benchmarks are based on a 1024x1024 resolution with a batch size of 1 using BFloat16 precision without tweaking installations. Made with a 3060 mobile GPU using SD1.5.)
 ---
 
 ## 🛠 Installation  
