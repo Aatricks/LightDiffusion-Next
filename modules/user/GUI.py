@@ -139,6 +139,8 @@ class App(tk.Tk):
         self.display = tk.Frame(self, bg="#FBFBFB")
         self.display.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.display.grid_columnconfigure(0, weight=1)
+        self.img = None
+        
         # Add row configuration for both image and checkbox
         self.display.grid_rowconfigure(0, weight=1)  # For image
         self.display.grid_rowconfigure(1, weight=0)  # For checkbox
@@ -671,11 +673,6 @@ class App(tk.Tk):
                 except:
                     loraloader_274 = checkpointloadersimple_241
                 try:
-                    samloader = SAM.SAMLoader()
-                    samloader_87 = samloader.load_model(
-                        model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
-                    )
-
                     cliptextencode_124 = cliptextencode.encode(
                         text="royal, detailed, magnificient, beautiful, seducing",
                         clip=loraloader_274[1],
@@ -789,6 +786,10 @@ class App(tk.Tk):
 
                 self.progress.set(0.6)
                 if self.adetailer_var.get() is True:
+                    samloader = SAM.SAMLoader()
+                    samloader_87 = samloader.load_model(
+                    model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
+                    )
                     bboxdetectorsegs_132 = bboxdetectorsegs.doit(
                         threshold=0.5,
                         dilation=10,
@@ -910,6 +911,7 @@ class App(tk.Tk):
 
                 if not self.interrupt_flag:
                     self.progress.set(1.0)
+                    self.img = img
                     self.update_image(images)
                     self.display_most_recent_image_flag = True
 
@@ -1009,6 +1011,7 @@ class App(tk.Tk):
                 for image in vaedecode_8[0]:
                     i = 255.0 * image.cpu().numpy()
                     img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+            self.img = img
             self.update_image(img)
             self.display_most_recent_image_flag = True
         finally:
@@ -1106,7 +1109,7 @@ class App(tk.Tk):
             grid_img = grid_img.resize((new_width, new_height), Image.LANCZOS)
         except RecursionError:
             pass
-
+        self.img = grid_img
         if self.display_most_recent_image_flag is False:
             self._update_image_label(grid_img)
 

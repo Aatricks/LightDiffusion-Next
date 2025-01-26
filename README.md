@@ -78,13 +78,15 @@ Here’s what makes LightDiffusion-Next stand out:
 
 | **Tool**                           | **Speed (it/s)** |  
 |------------------------------------|------------------|  
-| **LightDiffusion with Stable-Fast** | 9.2              |  
-| **LightDiffusion**                 | 7.8              |  
-| **ComfyUI**                        | 7.1              |  
+| **LightDiffusion with Stable-Fast** | 13.5              |  
+| **LightDiffusion**                 | 8.0              |  
+| **ComfyUI**                        | 7.8              | 
+| **SDForge**                        | 7.3              |  
 | **SDWebUI**                        | 6.6              |  
 
 With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark for AI image generation tools.  
 
+(All benchmarks are based on a 512x512 resolution with a batch size of 1 using BFloat16 precision without tweaking installations. Made with a 3060 mobile GPU using SD1.5.)
 ---
 
 ## 🛠 Installation  

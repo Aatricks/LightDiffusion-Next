@@ -69,7 +69,7 @@ def sample_euler_ancestral(
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
 
         if pipeline is False:
-            if app_instance.app.previewer_var.get() is True:
+            if app_instance.app.previewer_var.get() is True and i % 5 == 0:
                 threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
 
     return x
@@ -133,7 +133,7 @@ def sample_dpmpp_2m(
             x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).expm1() * denoised_d
         old_denoised = denoised
         if pipeline is False:
-            if app_instance.app.previewer_var.get() is True:
+            if app_instance.app.previewer_var.get() is True and i % 5 == 0:
                 threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
             else:
                 pass
@@ -217,7 +217,7 @@ def sample_euler(
         # Euler method
         x = x + d * dt
         if pipeline is False:
-            if app_instance.app.previewer_var.get() is True:
+            if app_instance.app.previewer_var.get() is True and i % 5 == 0:
                 threading.Thread(target=taesd.taesd_preview, args=(x, True)).start()
             else:
                 pass
