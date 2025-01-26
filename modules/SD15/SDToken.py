@@ -2,7 +2,7 @@ import logging
 import os
 import traceback
 import torch
-from transformers import CLIPTokenizer
+from transformers import CLIPTokenizerFast
 
 def model_options_long_clip(sd, tokenizer_data, model_options):
     w = sd.get("clip_l.text_model.embeddings.position_embedding.weight", None)
@@ -217,7 +217,7 @@ class SDTokenizer:
         embedding_directory: str = None,
         embedding_size: int = 768,
         embedding_key: str = "clip_l",
-        tokenizer_class: type = CLIPTokenizer,
+        tokenizer_class: type = CLIPTokenizerFast,
         has_start_token: bool = True,
         pad_to_max_length: bool = True,
         min_length: int = None,
