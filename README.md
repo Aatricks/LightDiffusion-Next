@@ -28,6 +28,8 @@ That's when the first version of LightDiffusion was born which only counted [300
 
 ## 🌟 Highlights  
 
+![image](https://github.com/user-attachments/assets/b994fe0d-3a2e-44ff-93a4-46919cf865e3)
+
 **LightDiffusion-Next** offers a powerful suite of tools to cater to creators at every level. At its core, it supports **Text-to-Image** (Txt2Img) and **Image-to-Image** (Img2Img) generation, offering a variety of upscale methods and samplers, to make it easier to create stunning images with minimal effort.
 
 Advanced users can take advantage of features like **attention syntax**, **Hires-Fix** or **ADetailer**. These tools provide better quality and flexibility for generating complex and high-resolution outputs.
@@ -79,7 +81,7 @@ Here’s what makes LightDiffusion-Next stand out:
 | **Tool**                           | **Speed (it/s)** |  
 |------------------------------------|------------------|  
 | **LightDiffusion with Stable-Fast** | 2.8              |  
-| **LightDiffusion**                 | 1.7              |  
+| **LightDiffusion**                 | 1.8              |  
 | **ComfyUI**                        | 1.4              | 
 | **SDForge**                        | 1.3              |  
 | **SDWebUI**                        | 0.9              |  
