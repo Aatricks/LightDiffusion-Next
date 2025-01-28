@@ -140,7 +140,7 @@ class App(tk.Tk):
         self.display.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.display.grid_columnconfigure(0, weight=1)
         self.img = None
-        
+
         # Add row configuration for both image and checkbox
         self.display.grid_rowconfigure(0, weight=1)  # For image
         self.display.grid_rowconfigure(1, weight=0)  # For checkbox
@@ -974,7 +974,7 @@ class App(tk.Tk):
                 cliptextencodeflux_15 = cliptextencodeflux.encode(
                     clip_l=prompt,
                     t5xxl=prompt,
-                    guidance=3.5,
+                    guidance=2.5,
                     clip=dualcliploadergguf_19[0],
                     flux_enabled=True,
                 )

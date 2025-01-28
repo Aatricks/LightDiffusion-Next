@@ -184,7 +184,7 @@ def pipeline(
                 cliptextencodeflux_15 = cliptextencodeflux.encode(
                     clip_l=prompt,
                     t5xxl=prompt,
-                    guidance=3.5,
+                    guidance=2.5,
                     clip=dualcliploadergguf_19[0],
                     flux_enabled=True,
                 )
