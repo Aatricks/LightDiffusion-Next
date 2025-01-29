@@ -68,4 +68,4 @@ def enhance_prompt(p: str) -> str:
     else:
         enhanced = content.strip()
     print("here's the enhanced prompt:", enhanced)
-    return enhanced
+    return "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), high contrast, (best illumination), ((cinematic light)), hyper detail, dramatic light, depth of field," + enhanced

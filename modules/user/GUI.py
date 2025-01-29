@@ -494,7 +494,7 @@ class App(tk.Tk):
                 seed=random.randint(1, 2**64),
                 steps=8,
                 cfg=6,
-                sampler_name="dpmpp_2m",
+                sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                 scheduler="karras",
                 denoise=0.3,
                 mode_type="Linear",
@@ -741,7 +741,7 @@ class App(tk.Tk):
                     seed=random.randint(1, 2**64),
                     steps=20,
                     cfg=cfg,
-                    sampler_name="dpmpp_sde",
+                    sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                     scheduler="karras",
                     denoise=1,
                     model=applystablefast_158[0],
@@ -831,7 +831,7 @@ class App(tk.Tk):
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_2m",
+                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -888,7 +888,7 @@ class App(tk.Tk):
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_2m",
+                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,

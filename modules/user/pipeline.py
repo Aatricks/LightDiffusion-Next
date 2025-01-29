@@ -64,6 +64,11 @@ def pipeline(
     else:
         seed = random.randint(1, 2**64)
         last_seed = seed
+    if enhance_prompt:
+        try:
+            prompt = Enhancer.enhance_prompt(prompt)
+        except:
+            pass
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         if not flux_enabled:
@@ -131,7 +136,7 @@ def pipeline(
                     seed=random.randint(1, 2**64),
                     steps=8,
                     cfg=6,
-                    sampler_name="dpmpp_2m",
+                    sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                     scheduler="karras",
                     denoise=0.3,
                     mode_type="Linear",
@@ -216,11 +221,6 @@ def pipeline(
                     filename_prefix="Flux", images=vaedecode_8[0]
                 )
         else:
-            if enhance_prompt:
-                try:
-                    prompt = Enhancer.enhance_prompt(prompt)
-                except:
-                    pass
             while prompt is None:
                 pass
             if Device.should_use_bf16():
@@ -267,7 +267,7 @@ def pipeline(
                     seed=seed,
                     steps=20,
                     cfg=7,
-                    sampler_name="dpmpp_2m",
+                    sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                     scheduler="karras",
                     denoise=1,
                     pipeline=True,
@@ -359,7 +359,7 @@ def pipeline(
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_2m",
+                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -417,7 +417,7 @@ def pipeline(
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_2m",
+                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
