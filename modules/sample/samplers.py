@@ -74,6 +74,67 @@ def sample_euler_ancestral(
 
     return x
 
+@torch.no_grad()
+def sample_dpmpp_sde(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., noise_sampler=None, r=1 / 2, pipeline=False, seed=None):
+    """DPM-Solver++ (stochastic)."""
+    global disable_gui
+    disable_gui = True if pipeline is True else False
+    if disable_gui is False:
+        from modules.AutoEncoders import taesd
+        from modules.user import app_instance
+    if len(sigmas) <= 1:
+        return x
+
+    sigma_min, sigma_max = sigmas[sigmas > 0].min(), sigmas.max()
+    noise_sampler = sampling_util.BrownianTreeNoiseSampler(x, sigma_min, sigma_max, seed=seed, cpu=True) if noise_sampler is None else noise_sampler
+    extra_args = {} if extra_args is None else extra_args
+    s_in = x.new_ones([x.shape[0]])
+    sigma_fn = lambda t: t.neg().exp()
+    t_fn = lambda sigma: sigma.log().neg()
+
+    for i in trange(len(sigmas) - 1, disable=disable):
+        # Move interrupt check outside pipeline condition
+        if not pipeline and hasattr(app_instance.app, 'interrupt_flag') and app_instance.app.interrupt_flag is True:
+            return x
+
+        if pipeline is False:
+            try:
+                app_instance.app.title(f"LightDiffusion - {i}it")
+                app_instance.app.progress.set(((i)/(len(sigmas)-1)))
+            except:
+                pass
+        denoised = model(x, sigmas[i] * s_in, **extra_args)
+        if callback is not None:
+            callback({'x': x, 'i': i, 'sigma': sigmas[i], 'sigma_hat': sigmas[i], 'denoised': denoised})
+        if sigmas[i + 1] == 0:
+            # Euler method
+            d = util.to_d(x, sigmas[i], denoised)
+            dt = sigmas[i + 1] - sigmas[i]
+            x = x + d * dt
+        else:
+            # DPM-Solver++
+            t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
+            h = t_next - t
+            s = t + h * r
+            fac = 1 / (2 * r)
+
+            # Step 1
+            sd, su = sampling_util.get_ancestral_step(sigma_fn(t), sigma_fn(s), eta)
+            s_ = t_fn(sd)
+            x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * denoised
+            x_2 = x_2 + noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
+            denoised_2 = model(x_2, sigma_fn(s) * s_in, **extra_args)
+
+            # Step 2
+            sd, su = sampling_util.get_ancestral_step(sigma_fn(t), sigma_fn(t_next), eta)
+            t_next_ = t_fn(sd)
+            denoised_d = (1 - fac) * denoised + fac * denoised_2
+            x = (sigma_fn(t_next_) / sigma_fn(t)) * x - (t - t_next_).expm1() * denoised_d
+            x = x + noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
+        if pipeline is False:
+            if app_instance.app.previewer_var.get() is True and i % 5 == 0:
+                threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+    return x
 
 @torch.no_grad()
 def sample_dpmpp_2m(

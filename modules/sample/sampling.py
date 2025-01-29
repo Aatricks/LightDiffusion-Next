@@ -506,6 +506,29 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
             )
 
         sampler_function = dpmpp_2m_function
+    elif sampler_name == "dpmpp_sde":
+        def dpmpp_sde_function(
+            model: torch.nn.Module,
+            noise: torch.Tensor,
+            sigmas: torch.Tensor,
+            extra_args: dict,
+            callback: callable,
+            disable: bool,
+            pipeline: bool,
+            **extra_options,
+        ) -> torch.Tensor:
+            return samplers.sample_dpmpp_sde(
+                model,
+                noise,
+                sigmas,
+                extra_args=extra_args,
+                callback=callback,
+                disable=disable,
+                pipeline=pipeline,
+                **extra_options,
+            )
+        sampler_function = dpmpp_sde_function
+    
     elif sampler_name == "euler_ancestral":
 
         def euler_ancestral_function(

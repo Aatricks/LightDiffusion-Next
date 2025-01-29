@@ -741,7 +741,7 @@ class App(tk.Tk):
                     seed=random.randint(1, 2**64),
                     steps=20,
                     cfg=cfg,
-                    sampler_name="dpmpp_2m",
+                    sampler_name="dpmpp_sde",
                     scheduler="karras",
                     denoise=1,
                     model=applystablefast_158[0],
