@@ -3,7 +3,7 @@ import ollama
 from modules.Utilities import util
 
 
-def enhance_prompt(p: str = None) -> str:
+def enhance_prompt(p: str) -> str:
     """#### Enhance a text-to-image prompt using Ollama.
 
     #### Args:
@@ -19,7 +19,7 @@ def enhance_prompt(p: str = None) -> str:
         prompt = p
     print(prompt)
     response = ollama.chat(
-        model="llama3.2",
+        model="deepseek-r1",
         messages=[
             {
                 "role": "user",
@@ -50,7 +50,7 @@ def enhance_prompt(p: str = None) -> str:
                         This is an example of a user's input: "a beautiful blonde lady in lingerie sitting in seiza in a seducing way with a focus on her assets"
 
                         And this is an example of a desired output: "portrait| serene and mysterious| soft, diffused lighting| close-up shot, emphasizing facial features| simple and blurred background| earthy tones with a hint of warm highlights| renaissance painting| a beautiful lady with freckles and dark makeup"
-                        
+
                         Here is the user's input: {prompt}
 
                         Write the prompt in the same style as the example above, in a single line , with absolutely no additional information, words or symbols other than the enhanced prompt.
@@ -59,5 +59,13 @@ def enhance_prompt(p: str = None) -> str:
             },
         ],
     )
-    print("here's the enhanced prompt :", response["message"]["content"])
-    return response["message"]["content"]
+    content = response["message"]["content"]
+    print("here's the enhanced prompt :", content)
+
+    if "<think>" in content and "</think>" in content:
+        # Get everything after </think>
+        enhanced = content.split("</think>")[-1].strip()
+    else:
+        enhanced = content.strip()
+    print("here's the enhanced prompt:", enhanced)
+    return enhanced

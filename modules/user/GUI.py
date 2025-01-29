@@ -639,6 +639,14 @@ class App(tk.Tk):
             h = int(self.height_slider.get())
             cfg = int(self.cfg_slider.get())
 
+            try:
+                if self.enhancer_var.get() is True:
+                    prompt = Enhancer.enhance_prompt(prompt)
+                    while prompt is None:
+                        pass
+            except:
+                pass
+
             # Main generation with proper interrupt handling
             with torch.inference_mode():
                 components = self._prep()
@@ -944,7 +952,7 @@ class App(tk.Tk):
         prompt = self.prompt_entry.get("1.0", tk.END)
         try:
             if self.enhancer_var.get() is True:
-                prompt = Enhancer.enhance_prompt()
+                prompt = Enhancer.enhance_prompt(prompt)
                 while prompt is None:
                     pass
             self.interrupt_flag = False
