@@ -543,6 +543,7 @@ class App(tk.Tk):
         except:
             pass
         self.is_generating = False
+        self.img2img_button.configure(state="normal")
 
     def img2img(self) -> None:
         """Open the file selector and run img2img on the selected image."""

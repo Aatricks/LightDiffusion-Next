@@ -1,4 +1,5 @@
 import ollama
+import os
 
 from modules.Utilities import util
 
@@ -12,6 +13,8 @@ def enhance_prompt(p: str) -> str:
     #### Returns:
         - `str`: The enhanced prompt
     """
+
+    # Load the prompt from the file
     prompt = util.load_parameters_from_file()[0]
     if p is None:
         pass
@@ -68,4 +71,5 @@ def enhance_prompt(p: str) -> str:
     else:
         enhanced = content.strip()
     print("here's the enhanced prompt:", enhanced)
+    os.system("ollama stop deepseek-r1")
     return "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), high contrast, (best illumination), ((cinematic light)), hyper detail, dramatic light, depth of field," + enhanced
