@@ -1,18 +1,22 @@
 import glob
+from huggingface_hub import hf_hub_download
 
 
 def CheckAndDownload():
     """#### Check and download all the necessary safetensors and checkpoints models"""
     if glob.glob("./_internal/checkpoints/*.safetensors") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="Meina/MeinaMix",
             filename="Meina V10 - baked VAE.safetensors",
             local_dir="./_internal/checkpoints/",
         )
+        hf_hub_download(
+            repo_id="Lykon/DreamShaper",
+            filename="DreamShaper_8_pruned.safetensors",
+            local_dir="./_internal/checkpoints/",
+        )
     if glob.glob("./_internal/yolos/*.pt") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="Bingsu/adetailer",
@@ -35,7 +39,6 @@ def CheckAndDownload():
             local_dir="./_internal/yolos/",
         )
     if glob.glob("./_internal/ESRGAN/*.pth") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="lllyasviel/Annotators",
@@ -43,7 +46,6 @@ def CheckAndDownload():
             local_dir="./_internal/ESRGAN/",
         )
     if glob.glob("./_internal/loras/*.safetensors") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="EvilEngine/add_detail",
@@ -51,7 +53,6 @@ def CheckAndDownload():
             local_dir="./_internal/loras/",
         )
     if glob.glob("./_internal/embeddings/*.pt") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="EvilEngine/badhandv4",
@@ -64,7 +65,6 @@ def CheckAndDownload():
         #     local_dir="./_internal/embeddings/",
         # )
     if glob.glob("./_internal/vae_approx/*.pth") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="madebyollin/taesd",
@@ -75,14 +75,12 @@ def CheckAndDownload():
 def CheckAndDownloadFlux():
     """#### Check and download all the necessary safetensors and checkpoints models for FLUX"""
     if glob.glob("./_internal/embeddings/*.pt") == []:
-        from huggingface_hub import hf_hub_download
         hf_hub_download(
             repo_id="EvilEngine/badhandv4",
             filename="badhandv4.pt",
             local_dir="./_internal/embeddings",
         )
     if glob.glob("./_internal/unet/*.gguf") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="city96/FLUX.1-dev-gguf",
@@ -90,7 +88,6 @@ def CheckAndDownloadFlux():
             local_dir="./_internal/unet",
         )
     if glob.glob("./_internal/clip/*.gguf") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="city96/t5-v1_1-xxl-encoder-gguf",
@@ -103,17 +100,15 @@ def CheckAndDownloadFlux():
             local_dir="./_internal/clip",
         )
     if glob.glob("./_internal/vae/*.safetensors") == []:
-        from huggingface_hub import hf_hub_download
 
         hf_hub_download(
             repo_id="black-forest-labs/FLUX.1-schnell",
             filename="ae.safetensors",
             local_dir="./_internal/vae",
         )
-        
+
     if glob.glob("./_internal/vae_approx/*.pth") == []:
-        from huggingface_hub import hf_hub_download
-        
+
         hf_hub_download(
             repo_id="madebyollin/taef1",
             filename="diffusion_pytorch_model.safetensors",

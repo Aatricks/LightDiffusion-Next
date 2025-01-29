@@ -235,6 +235,7 @@ class App(tk.Tk):
         self.checkbox_frame.grid_columnconfigure(1, weight=1)
         self.checkbox_frame.grid_rowconfigure(0, weight=1)
         self.checkbox_frame.grid_rowconfigure(1, weight=1)
+        self.checkbox_frame.grid_rowconfigure(2, weight=1)
 
         # checkbox for hiresfix
         self.hires_fix_var = tk.BooleanVar()
@@ -281,6 +282,15 @@ class App(tk.Tk):
             text_color="black",
         )
         self.enhancer_checkbox.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+
+        self.prioritize_speed_var = tk.BooleanVar()
+        self.prioritize_speed_checkbox = ctk.CTkCheckBox(
+            self.checkbox_frame,
+            text="Prioritize Speed",
+            variable=self.prioritize_speed_var,
+            text_color="black",
+        )
+        self.prioritize_speed_checkbox.grid(row=2, column=0, padx=(75, 5), pady=5, sticky="nsew")
 
         # Button to launch the generation
         self.generate_button = ctk.CTkButton(
@@ -412,6 +422,7 @@ class App(tk.Tk):
         self.display_most_recent_image_flag = False
         self.display_most_recent_image()
         self.is_generating = False
+        self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
 
     def _img2img(self, file_path: str) -> None:
         """Perform img2img on the selected image.
@@ -429,6 +440,7 @@ class App(tk.Tk):
         img_tensor = torch.from_numpy(img_array).float().to("cpu") / 255.0
         img_tensor = img_tensor.unsqueeze(0)
         self.interrupt_flag = False
+        self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
         with torch.inference_mode():
             (
                 checkpointloadersimple_241,
@@ -494,7 +506,7 @@ class App(tk.Tk):
                 seed=random.randint(1, 2**64),
                 steps=8,
                 cfg=6,
-                sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                sampler_name=self.sampler,
                 scheduler="karras",
                 denoise=0.3,
                 mode_type="Linear",
@@ -621,7 +633,7 @@ class App(tk.Tk):
         self.generation_threads.append(current_thread)
         images = []
         self.interrupt_flag = False
-
+        self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
         try:
             # Disable generate button during generation
             self.generate_button.configure(state="disabled")
@@ -741,7 +753,7 @@ class App(tk.Tk):
                     seed=random.randint(1, 2**64),
                     steps=20,
                     cfg=cfg,
-                    sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                    sampler_name=self.sampler,
                     scheduler="karras",
                     denoise=1,
                     model=applystablefast_158[0],
@@ -831,7 +843,7 @@ class App(tk.Tk):
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                        sampler_name=self.sampler,
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -888,7 +900,7 @@ class App(tk.Tk):
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                        sampler_name=self.sampler,
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,

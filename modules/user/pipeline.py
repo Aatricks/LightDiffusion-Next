@@ -43,6 +43,7 @@ def pipeline(
     stable_fast: bool = False,
     reuse_seed: bool = False,
     flux_enabled: bool = False,
+    prio_speed: bool = False,
 ) -> None:
     """#### Run the LightDiffusion pipeline.
 
@@ -57,6 +58,7 @@ def pipeline(
         - `stable_fast` (bool, optional): Enable Stable-Fast speedup offering a 70% speed improvement in return of a compilation time. Defaults to False.
         - `reuse_seed` (bool, optional): Reuse the last used seed, if False the seed will be kept random. Default to False.
         - `flux_enabled` (bool, optional): Enable the flux mode. Defaults to False.
+        - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
     """
     global last_seed
     if reuse_seed:
@@ -69,6 +71,7 @@ def pipeline(
             prompt = Enhancer.enhance_prompt(prompt)
         except:
             pass
+    sampler_name = "dpmpp_sde" if not prio_speed else "dpmpp_2m"
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         if not flux_enabled:
@@ -136,7 +139,7 @@ def pipeline(
                     seed=random.randint(1, 2**64),
                     steps=8,
                     cfg=6,
-                    sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                    sampler_name=sampler_name,
                     scheduler="karras",
                     denoise=0.3,
                     mode_type="Linear",
@@ -267,7 +270,7 @@ def pipeline(
                     seed=seed,
                     steps=20,
                     cfg=7,
-                    sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                    sampler_name=sampler_name,
                     scheduler="karras",
                     denoise=1,
                     pipeline=True,
@@ -359,7 +362,7 @@ def pipeline(
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                        sampler_name=sampler_name,
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -417,7 +420,7 @@ def pipeline(
                         seed=random.randint(1, 2**64),
                         steps=20,
                         cfg=6.5,
-                        sampler_name="dpmpp_sde", # sampler_name = "dpmpp_2m" if you want the faster version at the cost of quality
+                        sampler_name=sampler_name,
                         scheduler="karras",
                         denoise=0.5,
                         feather=5,
@@ -484,6 +487,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable the flux mode.",
     )
+    parser.add_argument(
+        "--prio-speed",
+        action="store_true",
+        help="Prioritize speed over quality.",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -499,4 +507,5 @@ if __name__ == "__main__":
         args.stable_fast,
         args.reuse_seed,
         args.flux,
+        args.prio_speed,
     )
