@@ -33,7 +33,7 @@ echo %* | findstr /i /c:"--enhance-prompt" >nul
 IF %ERRORLEVEL% EQU 0 (
     echo Installing ollama with winget...
     winget install --id ollama.ollama
-    ollama pull llama3.2
+    ollama pull deepseek-r1
 )
 
 REM Launch the script

@@ -38,7 +38,7 @@ echo Checking for enhance-prompt argument...
 if [[ " $* " == *" --enhance-prompt "* ]]; then
     echo "Installing ollama..."
     curl -fsSL https://ollama.com/install.sh | sh
-    ollama pull llama3.2
+    ollama pull deepseek-r1
 fi
 
 # Launch the script

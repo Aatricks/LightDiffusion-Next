@@ -52,7 +52,7 @@ def pipeline(
         - `h` (int): The height of the generated image.
         - `hires_fix` (bool, optional): Enable high-resolution fix. Defaults to False.
         - `adetailer` (bool, optional): Enable automatic face and body enhancing. Defaults to False.
-        - `enhance_prompt` (bool, optional): Enable llama3.2 prompt enhancement. Defaults to False.
+        - `enhance_prompt` (bool, optional): Enable Ollama prompt enhancement. Defaults to False.
         - `img2img` (bool, optional): Use LightDiffusion in Image to Image mode, the prompt input becomes the path to the input image. Defaults to False.
         - `stable_fast` (bool, optional): Enable Stable-Fast speedup offering a 70% speed improvement in return of a compilation time. Defaults to False.
         - `reuse_seed` (bool, optional): Reuse the last used seed, if False the seed will be kept random. Default to False.
@@ -462,7 +462,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--enhance-prompt",
         action="store_true",
-        help="Enable llama3.2 prompt enhancement. Make sure to have ollama with llama3.2 installed.",
+        help="Enable Ollama prompt enhancement. Make sure to have ollama with Ollama installed.",
     )
     parser.add_argument(
         "--img2img",
