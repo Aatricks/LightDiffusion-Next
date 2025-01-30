@@ -2,7 +2,7 @@
 
 VENV_DIR=.venv
 
-sudo apt-get install python3.12 python3.12-venv
+sudo apt-get install python3.12 python3.12-venv python3.12-full
 
 # Check if .venv exists
 if [ ! -d "$VENV_DIR" ]; then
@@ -17,10 +17,28 @@ source $VENV_DIR/bin/activate
 echo "Upgrading pip..."
 pip install --upgrade pip
 
-# Install specific packages
-echo "Installing required packages..."
-pip install xformers torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# Install build dependencies first
+echo "Installing build dependencies..."
+pip install setuptools wheel ninja
 
+# Check for CUDA installation
+if nvidia-smi &> /dev/null; then
+    echo "CUDA detected, installing PyTorch with CUDA support..."
+    pip install xformers torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+    # Install stable-fast without CUDA
+    echo "Installing stable-fast without CUDA support..."
+    # Create a temporary script to set environment variable and run pip
+    cat > temp_install.sh << 'EOF'
+#!/bin/bash
+export WITH_CUDA=0
+pip install -v -U git+https://github.com/chengzeyi/stable-fast.git@main#egg=stable-fast
+EOF
+
+    chmod +x temp_install.sh
+    ./temp_install.sh
+    rm temp_install.sh
+fi
 # Install tkinter
 echo "Installing tkinter..."
 sudo apt-get install python3.12-tk

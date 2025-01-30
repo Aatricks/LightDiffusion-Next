@@ -264,6 +264,20 @@ def pipeline(
                 emptylatentimage_244 = emptylatentimage.generate(
                     width=w, height=h, batch_size=batch
                 )
+                if stable_fast is True:
+                    from modules.StableFast import StableFast
+
+                    try:
+                        self.title("LightDiffusion - Generating StableFast model")
+                    except:
+                        pass
+                    applystablefast = StableFast.ApplyStableFastUnet()
+                    applystablefast_158 = applystablefast.apply_stable_fast(
+                        enable_cuda_graph=False,
+                        model=loraloader_274[0],
+                    )
+                else:
+                    applystablefast_158 = loraloader_274
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
                 applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
                 ksampler_239 = ksampler_instance.sample(
