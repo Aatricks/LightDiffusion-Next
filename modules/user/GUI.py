@@ -479,8 +479,8 @@ class App(tk.Tk):
                 )
             else:
                 applystablefast_158 = loraloader_274
-            fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-            applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
             clipsetlastlayer = Clip.CLIPSetLastLayer()
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
@@ -730,9 +730,9 @@ class App(tk.Tk):
                     )
                 else:
                     applystablefast_158 = loraloader_274
-
-                fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                    fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                    applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                
                 # try :
                 #     import triton
                 #     compiler = misc_nodes.EnhancedCompileModel()
