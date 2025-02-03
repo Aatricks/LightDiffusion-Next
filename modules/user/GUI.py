@@ -30,6 +30,7 @@ from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent, upscale
 from modules.Quantize import Quantizer
 from modules.WaveSpeed import fbcache_nodes, misc_nodes
+from modules.hidiffusion import msw_msa_attention
 
 Downloader.CheckAndDownload()
 
@@ -732,13 +733,7 @@ class App(tk.Tk):
                     applystablefast_158 = loraloader_274
                     fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
                     applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
-                
-                # try :
-                #     import triton
-                #     compiler = misc_nodes.EnhancedCompileModel()
-                #     applystablefast_158 = compiler.patch(applystablefast_158, True, "diffusion_model", "torch.compile", False, False, None, None, False, "inductor")
-                # except ImportError:
-                #     print("Triton not found, skipping compilation")
+                hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
                 cliptextencode_242 = cliptextencode.encode(
                     text=prompt,
                     clip=clipsetlastlayer_257[0],
@@ -757,7 +752,9 @@ class App(tk.Tk):
                     sampler_name=self.sampler,
                     scheduler="karras",
                     denoise=1,
-                    model=applystablefast_158[0],
+                    model=hidiffoptimizer.go(
+                        model_type="auto", model=applystablefast_158[0]
+                    )[0],
                     positive=cliptextencode_242[0],
                     negative=cliptextencode_243[0],
                     latent_image=emptylatentimage_244[0],
@@ -776,7 +773,9 @@ class App(tk.Tk):
                         sampler_name="euler_ancestral",
                         scheduler="normal",
                         denoise=0.45,
-                        model=applystablefast_158[0],
+                        model=hidiffoptimizer.go(
+                            model_type="auto", model=applystablefast_158[0]
+                        )[0],
                         positive=cliptextencode_242[0],
                         negative=cliptextencode_243[0],
                         latent_image=latentupscale_254[0],

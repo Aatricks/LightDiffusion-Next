@@ -3,15 +3,13 @@ import platform
 import sys
 from enum import Enum
 from typing import Tuple, Union
+import packaging.version
 
 import psutil
 import torch
 
-
-# FIXME: This is a workaround for the torch.backends.cuda.matmul.allow_tf32 attribute error
-
-# if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):
-#     torch.backends.cuda.matmul.allow_tf32 = True
+if packaging.version.parse(torch.__version__) >= packaging.version.parse("1.12.0"):
+    torch.backends.cuda.matmul.allow_tf32 = True
 
 
 class VRAMState(Enum):

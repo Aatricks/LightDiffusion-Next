@@ -265,8 +265,9 @@ def pipeline(
                     )
                 else:
                     applystablefast_158 = loraloader_274
-                # fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                # applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                    fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                    applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                    
                 ksampler_239 = ksampler_instance.sample(
                     seed=seed,
                     steps=20,
@@ -275,10 +276,9 @@ def pipeline(
                     scheduler="karras",
                     denoise=1,
                     pipeline=True,
-                    # model=hidiffoptimizer.go(
-                    #     model_type="auto", model=applystablefast_158[0]
-                    # )[0],
-                    model=applystablefast_158[0],
+                    model=hidiffoptimizer.go(
+                        model_type="auto", model=applystablefast_158[0]
+                    )[0],
                     positive=cliptextencode_242[0],
                     negative=cliptextencode_243[0],
                     latent_image=emptylatentimage_244[0],
@@ -296,7 +296,9 @@ def pipeline(
                         sampler_name="euler_ancestral",
                         scheduler="normal",
                         denoise=0.45,
-                        model=applystablefast_158[0],
+                        model=hidiffoptimizer.go(
+                            model_type="auto", model=applystablefast_158[0]
+                        )[0],
                         positive=cliptextencode_242[0],
                         negative=cliptextencode_243[0],
                         latent_image=latentupscale_254[0],
