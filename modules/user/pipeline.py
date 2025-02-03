@@ -5,7 +5,6 @@ import sys
 
 import numpy as np
 import torch
-import torch._dynamo
 from PIL import Image
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -22,9 +21,6 @@ from modules.sample import sampling
 from modules.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
 from modules.Utilities import Enhancer, Latent, upscale
 from modules.WaveSpeed import fbcache_nodes
-
-torch._dynamo.config.suppress_errors = True
-torch.compiler.allow_in_graph
 
 last_seed = 0
 
@@ -226,16 +222,7 @@ def pipeline(
         else:
             while prompt is None:
                 pass
-            if Device.should_use_bf16():
-                dtype = torch.bfloat16
-            elif Device.should_use_fp16():
-                dtype = torch.float16
-            else:
-                dtype = torch.float32
-            with (
-                torch.inference_mode(),
-                torch.autocast(device_type="cuda", dtype=dtype),
-            ):
+            with torch.inference_mode():
                 try:
                     loraloader = LoRas.LoraLoader()
                     loraloader_274 = loraloader.load_lora(
