@@ -89,7 +89,10 @@ def get_torch_device() -> torch.device:
         if is_intel_xpu():
             return torch.device("xpu", torch.xpu.current_device())
         else:
-            return torch.device(torch.cuda.current_device())
+            try:
+                return torch.device(torch.cuda.current_device())
+            except AssertionError:
+                return torch.device("cpu")
 
 
 def get_total_memory(dev: torch.device = None, torch_total_too: bool = False) -> int:
@@ -1454,7 +1457,10 @@ def should_use_fp16(
     if torch.version.hip:
         return True
 
-    props = torch.cuda.get_device_properties("cuda")
+    try :
+        props = torch.cuda.get_device_properties("cuda")
+    except AssertionError:
+        return False
     if props.major >= 8:
         return True
 

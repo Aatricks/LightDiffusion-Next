@@ -19,10 +19,25 @@ source $VENV_DIR/bin/activate
 echo "Upgrading pip..."
 pip install --upgrade pip
 pip3 install uv
-uv pip install --index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.2.2 torchvision "xformers>=0.0.22" "triton>=2.1.0" \
-    stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl
 
+# Check GPU type
+TORCH_URL="https://download.pytorch.org/whl/cpu"
+if command -v nvidia-smi &> /dev/null; then
+    echo "NVIDIA GPU detected"
+    TORCH_URL="https://download.pytorch.org/whl/cu124"
+    uv pip install --index-url $TORCH_URL \
+        torch==2.2.2 torchvision "xformers>=0.0.22" "triton>=2.1.0" \
+        stable_fast-1.0.5+torch222cu124-cp310-cp310-manylinux2014_x86_64.whl
+elif command -v rocminfo &> /dev/null; then
+    echo "AMD GPU detected"
+    TORCH_URL="https://download.pytorch.org/whl/rocm5.7"
+    uv pip install --index-url $TORCH_URL \
+        torch==2.2.2 torchvision "triton>=2.1.0"      
+else
+    echo "No compatible GPU detected, using CPU"
+    uv pip install --index-url $TORCH_URL \
+        torch==2.2.2+cpu torchvision
+fi
 
 # Install tkinter
 echo "Installing tkinter..."
@@ -38,7 +53,7 @@ fi
 
 # Launch the script
 echo "Launching LightDiffusion..."
-python3.10 ./modules/user/webui.py
+python3.10 app.py
 
 # Deactivate the virtual environment
 deactivate
