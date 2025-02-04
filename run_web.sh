@@ -20,8 +20,9 @@ echo "Upgrading pip..."
 pip install --upgrade pip
 pip3 install uv
 uv pip install --index-url https://download.pytorch.org/whl/cu121 \
-    'torch==2.2.2' torchvision 'xformers>=0.0.22' 'triton>=2.1.0' \
-    'stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl'
+    torch==2.2.2 torchvision "xformers>=0.0.22" "triton>=2.1.0" \
+    stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl
+
 
 # Install tkinter
 echo "Installing tkinter..."
@@ -35,17 +36,9 @@ else
     echo "requirements.txt not found, skipping..."
 fi
 
-REM Check for enhance-prompt argument
-echo Checking for enhance-prompt argument...
-if [[ " $* " == *" --enhance-prompt "* ]]; then
-    echo "Installing ollama..."
-    curl -fsSL https://ollama.com/install.sh | sh
-    ollama pull deepseek-r1
-fi
-
 # Launch the script
 echo "Launching LightDiffusion..."
-python3.10 "./modules/user/pipeline.py" "$@"
+python3.10 ./modules/user/webui.py
 
 # Deactivate the virtual environment
 deactivate

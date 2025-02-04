@@ -18,10 +18,11 @@ source $VENV_DIR/bin/activate
 # Upgrade pip
 echo "Upgrading pip..."
 pip install --upgrade pip
+pip3 install uv
+uv pip install --index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.2.2 torchvision "xformers>=0.0.22" "triton>=2.1.0" \
+    stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl
 
-pip3 install --index-url https://download.pytorch.org/whl/cu121 \
-    'torch==2.2.2' torchvision 'xformers>=0.0.22' 'triton>=2.1.0' \
-    'stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl'
 
 # Install tkinter
 echo "Installing tkinter..."
@@ -30,15 +31,14 @@ sudo apt-get install python3.10-tk
 # Install additional requirements
 if [ -f requirements.txt ]; then
     echo "Installing additional requirements..."
-    pip install -r requirements.txt
+    uv pip install -r requirements.txt
 else
     echo "requirements.txt not found, skipping..."
 fi
 
 # Launch the script
 echo "Launching LightDiffusion..."
-# python3.10 ./modules/user/GUI.py
-python3.10 LightDiffusion.py
+python3.10 ./modules/user/GUI.py
 
 # Deactivate the virtual environment
 deactivate
