@@ -1,3 +1,9 @@
+---
+title: LightDiffusion-Next
+app_file: app.py
+sdk: gradio
+sdk_version: 5.14.0
+---
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
@@ -51,8 +57,8 @@ Here’s what makes LightDiffusion-Next stand out:
 - **State Preservation**:
   Save and resume your progress with saved states, ensuring seamless transitions between sessions.
 
-- **Advanced GUI and CLI**:
-  Work through a user-friendly graphical interface or leverage the streamlined pipeline for CLI-based workflows.
+- **Advanced GUI, WebUI and CLI**:
+  Work through a user-friendly graphical interface as GUI or in the browser using Gradio or leverage the streamlined pipeline for CLI-based workflows.
 
 - **Integration-Ready**:
   Collaborate and create directly in Discord with [Boubou](https://github.com/Aatrick/Boubou), or preview images dynamically with the optional **TAESD preview mode**.
