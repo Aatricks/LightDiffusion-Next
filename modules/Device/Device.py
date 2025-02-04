@@ -89,9 +89,9 @@ def get_torch_device() -> torch.device:
         if is_intel_xpu():
             return torch.device("xpu", torch.xpu.current_device())
         else:
-            try:
+            if torch.cuda.is_available():
                 return torch.device(torch.cuda.current_device())
-            except AssertionError:
+            else:
                 return torch.device("cpu")
 
 
@@ -1457,9 +1457,9 @@ def should_use_fp16(
     if torch.version.hip:
         return True
 
-    try :
+    if torch.cuda.is_available():
         props = torch.cuda.get_device_properties("cuda")
-    except AssertionError:
+    else:
         return False
     if props.major >= 8:
         return True

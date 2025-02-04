@@ -8,6 +8,7 @@ sdk_version: 5.14.0
 
 # Say hi to LightDiffusion-Next 👋
 
+[![demo platform](https://img.shields.io/badge/Play%20with%20LightDiffusion%21-LightDiffusion%20demo%20platform-lightblue)](https://huggingface.co/spaces/Aatricks/LightDiffusion-Next)&nbsp;
 
 **LightDiffusion-Next**  is the fastest AI-powered image generation GUI/CLI, combining speed, precision, and flexibility in one cohesive tool.
 </br>
@@ -18,7 +19,6 @@ sdk_version: 5.14.0
   </a>
 </br>
 </div>
-
 
 As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.
 

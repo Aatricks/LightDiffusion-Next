@@ -3,6 +3,7 @@ import gradio as gr
 import sys
 import os
 from PIL import Image
+import spaces
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from modules.user.pipeline import pipeline
@@ -36,6 +37,7 @@ def load_generated_images():
         return []
     return batch_images
 
+@spaces.GPU
 def generate_images(
     prompt: str,
     width: int = 512,
@@ -160,12 +162,22 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         outputs=gallery
     )
 
+def is_huggingface_space():
+    return "SPACE_ID" in os.environ
+
 # For local testing
 if __name__ == "__main__":
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=8000,
-        auth=None,
-        share=True,
-        debug=True
-    )
+    if is_huggingface_space():
+        demo.launch(
+            debug=False,
+            server_name="0.0.0.0",
+            server_port=7860  # Standard HF Spaces port
+        )
+    else:
+        demo.launch(
+            server_name="0.0.0.0", 
+            server_port=8000,
+            auth=None,
+            share=True,  # Only enable sharing locally
+            debug=True
+        )
