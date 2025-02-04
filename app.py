@@ -1,8 +1,10 @@
 import glob
+import cv2
 import gradio as gr
 import sys
 import os
 from PIL import Image
+import numpy as np
 import spaces
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -58,13 +60,15 @@ def generate_images(
     """Generate images using the LightDiffusion pipeline"""
     try:
         if img2img_enabled and img2img_image is not None:
-            # Save uploaded image temporarily and pass path to pipeline
-            img2img_image.save("temp_img2img.png")
-            prompt = "temp_img2img.png"
+            # Convert numpy array to PIL Image
+            if isinstance(img2img_image, np.ndarray):
+                img_pil = Image.fromarray(img2img_image)
+                img_pil.save("temp_img2img.png")
+                prompt = "temp_img2img.png"
         
         # Run pipeline and capture saved images
         with torch.inference_mode():
-            images = pipeline(
+            pipeline(
                 prompt=prompt,
                 w=width,
                 h=height, 
@@ -80,11 +84,18 @@ def generate_images(
                 prio_speed=prio_speed
             )
             
+        # Clean up temporary file if it exists
+        if os.path.exists("temp_img2img.png"):
+            os.remove("temp_img2img.png")
+            
         return load_generated_images()
 
     except Exception as e:
         import traceback
         print(traceback.format_exc())
+        # Clean up temporary file if it exists
+        if os.path.exists("temp_img2img.png"):
+            os.remove("temp_img2img.png")
         return [Image.new('RGB', (512, 512), color='black')]
 
 # Create Gradio interface
