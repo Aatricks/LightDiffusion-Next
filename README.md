@@ -1,9 +1,3 @@
----
-title: LightDiffusion-Next
-app_file: app.py
-sdk: gradio
-sdk_version: 5.14.0
----
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
