@@ -1,9 +1,3 @@
----
-title: LightDiffusion-Next
-app_file: app.py
-sdk: gradio
-sdk_version: 5.14.0
----
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
@@ -142,3 +136,10 @@ Use `pipeline.bat -h` for more options.
 ---
 
 🎨 Enjoy exploring the powerful features of LightDiffusion-Next!
+
+---
+title: LightDiffusion-Next
+app_file: app.py
+sdk: gradio
+sdk_version: 5.14.0
+---
