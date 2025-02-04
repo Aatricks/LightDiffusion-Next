@@ -29,7 +29,7 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
     """
     q, k = apply_rope(q, k, pe)
     heads = q.shape[1]
-    x = Attention.optimized_attention(q, k, v, heads, skip_reshape=True)
+    x = Attention.optimized_attention(q, k, v, heads, skip_reshape=True, flux=True)
     return x
 
 # Define the rotary positional encoding (RoPE)

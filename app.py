@@ -91,6 +91,7 @@ def generate_images(
 with gr.Blocks(title="LightDiffusion Web UI") as demo:
     gr.Markdown("# LightDiffusion Web UI")
     gr.Markdown("Generate AI images using LightDiffusion")
+    gr.Markdown("This is the demo for LightDiffusion, the fastest diffusion backend for generating images. https://github.com/LightDiffusion/LightDiffusion-Next")
     
     with gr.Row():
         with gr.Column():
