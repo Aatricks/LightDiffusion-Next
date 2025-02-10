@@ -18,17 +18,13 @@ REM Install specific packages
 echo Installing required packages...
 pip install uv
 
-REM Check GPU type
-SET TORCH_URL=https://download.pytorch.org/whl/cpu
-nvidia-smi >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    echo NVIDIA GPU detected
-    SET TORCH_URL=https://download.pytorch.org/whl/cu124
-    uv pip install xformers torch torchvision --index-url %TORCH_URL%
-) ELSE (
-    echo No compatible GPU detected, using CPU
-    uv pip install torch torchvision --index-url %TORCH_URL%
-)
+REM Check for NVIDIA GPU
+SET TORCH_URL=https://download.pytorch.org/whl/cu124
+uv pip install xformers torch torchvision --index-url %TORCH_URL%
+
+REM For CPU
+REM SET TORCH_URL=https://download.pytorch.org/whl/cpu
+REM uv pip install torch torchvision --index-url %TORCH_URL%
 
 REM Install additional requirements
 IF EXIST requirements.txt (
