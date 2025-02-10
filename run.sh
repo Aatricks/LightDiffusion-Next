@@ -24,10 +24,10 @@ pip3 install uv
 TORCH_URL="https://download.pytorch.org/whl/cpu"
 if command -v nvidia-smi &> /dev/null; then
     echo "NVIDIA GPU detected"
-    TORCH_URL="https://download.pytorch.org/whl/cu124"
+    TORCH_URL="https://download.pytorch.org/whl/cu121"
     uv pip install --index-url $TORCH_URL \
         torch==2.2.2 torchvision "xformers>=0.0.22" "triton>=2.1.0" \
-        stable_fast-1.0.5+torch222cu124-cp310-cp310-manylinux2014_x86_64.whl
+        stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl
 elif command -v rocminfo &> /dev/null; then
     echo "AMD GPU detected"
     TORCH_URL="https://download.pytorch.org/whl/rocm5.7"
@@ -38,6 +38,8 @@ else
     uv pip install --index-url $TORCH_URL \
         torch==2.2.2+cpu torchvision
 fi
+
+uv pip install numpy==1.24.3
 
 # Install tkinter
 echo "Installing tkinter..."

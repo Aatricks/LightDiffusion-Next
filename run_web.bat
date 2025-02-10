@@ -30,6 +30,8 @@ IF NOT ERRORLEVEL 1 (
     uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 )
 
+uv pip install numpy>=1.24.3
+
 REM Install additional requirements
 IF EXIST requirements.txt (
     echo Installing additional requirements...
