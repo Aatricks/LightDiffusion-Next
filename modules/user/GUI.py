@@ -843,7 +843,7 @@ class App(tk.Tk):
                         positive=cliptextencode_124[0],
                         negative=cliptextencode_243[0],
                     )
-                    self.update_from_decode(detailerforeachdebug_145[0], "LD-1strefined")
+                    self.update_from_decode(detailerforeachdebug_145[0], "LD-body")
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                     ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                         model_name="face_yolov9c.pt"
@@ -897,7 +897,7 @@ class App(tk.Tk):
                         positive=cliptextencode_124[0],
                         negative=cliptextencode_243[0],
                     )
-                    self.update_from_decode(detailerforeachdebug_145[0], "LD-2ndrefined")
+                    self.update_from_decode(detailerforeachdebug_145[0], "LD-head")
 
                 self.progress.set(0.8)
 

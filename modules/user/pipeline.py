@@ -163,7 +163,7 @@ def pipeline(
                     pipeline=True,
                 )
                 saveimage.save_images(
-                    filename_prefix="LD-i2i",
+                    filename_prefix="LD-I2I",
                     images=hdr.apply_hdr2(ultimatesdupscale_250[0]) if autohdr else ultimatesdupscale_250[0],
                 )
         elif flux_enabled:
@@ -222,7 +222,7 @@ def pipeline(
                 )
 
                 saveimage.save_images(
-                    filename_prefix="Flux", images=hdr.apply_hdr2(vaedecode_8[0]) if autohdr else vaedecode_8[0]
+                    filename_prefix="LD-Flux", images=hdr.apply_hdr2(vaedecode_8[0]) if autohdr else vaedecode_8[0]
                 )
         else:
             while prompt is None:
@@ -384,7 +384,7 @@ def pipeline(
                         pipeline=True,
                     )
                     saveimage.save_images(
-                        filename_prefix="LD-refined",
+                        filename_prefix="LD-body",
                         images=hdr.apply_hdr2(detailerforeachdebug_145[0]) if autohdr else detailerforeachdebug_145[0],
                     )
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
@@ -442,11 +442,11 @@ def pipeline(
                         pipeline=True,
                     )
                     saveimage.save_images(
-                        filename_prefix="lD-2ndrefined",
+                        filename_prefix="lD-head",
                         images=hdr.apply_hdr2(detailerforeachdebug_145[0]) if autohdr else detailerforeachdebug_145[0],
                     )
             else:
-                saveimage.save_images(filename_prefix="LD", images=hdr.apply_hdr2(vaedecode_240[0]) if autohdr else vaedecode_240[0])
+                saveimage.save_images(filename_prefix="LD-HF" if hires_fix else "LD", images=hdr.apply_hdr2(vaedecode_240[0]) if autohdr else vaedecode_240[0])
 
 
 if __name__ == "__main__":

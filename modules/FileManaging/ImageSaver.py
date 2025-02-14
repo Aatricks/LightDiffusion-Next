@@ -126,7 +126,7 @@ class SaveImage:
                 full_output_folder = os.path.join(full_output_folder, "Img2Img")
             elif filename_prefix == "LD-Flux":
                 full_output_folder = os.path.join(full_output_folder, "Flux")
-            elif filename_prefix == "LD-Adetailer":
+            elif filename_prefix == "LD-head" or filename_prefix == "LD-body":
                 full_output_folder = os.path.join(full_output_folder, "Adetailer")
             else:
                 full_output_folder = os.path.join(full_output_folder, "Classic")
