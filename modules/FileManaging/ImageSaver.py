@@ -102,17 +102,34 @@ class SaveImage:
         filename_prefix += self.prefix_append
         full_output_folder, filename, counter, subfolder, filename_prefix = (
             get_save_image_path(
-                filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0]
+                filename_prefix, self.output_dir, images[0].shape[-2], images[0].shape[-1]
             )
         )
         results = list()
         for batch_number, image in enumerate(images):
+            # Ensure correct shape by squeezing extra dimensions
             i = 255.0 * image.cpu().numpy()
+            i = np.squeeze(i)  # Remove extra dimensions
+            
+            # Ensure we have a valid 3D array (height, width, channels)
+            if i.ndim == 4:
+                i = i.reshape(-1, i.shape[-2], i.shape[-1])
+            
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             metadata = None
 
             filename_with_batch_num = filename.replace("%batch_num%", str(batch_number))
             file = f"{filename_with_batch_num}_{counter:05}_.png"
+            if filename_prefix == "LD-HF":
+                full_output_folder = os.path.join(full_output_folder, "HiresFix")
+            elif filename_prefix == "LD-I2I":
+                full_output_folder = os.path.join(full_output_folder, "Img2Img")
+            elif filename_prefix == "LD-Flux":
+                full_output_folder = os.path.join(full_output_folder, "Flux")
+            elif filename_prefix == "LD-Adetailer":
+                full_output_folder = os.path.join(full_output_folder, "Adetailer")
+            else:
+                full_output_folder = os.path.join(full_output_folder, "Classic")
             img.save(
                 os.path.join(full_output_folder, file),
                 pnginfo=metadata,

@@ -1,3 +1,4 @@
+from multiprocessing import process
 import os
 import queue
 import sys
@@ -29,8 +30,9 @@ from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.Model import LoRas
 from modules.Utilities import Enhancer, Latent, upscale
 from modules.Quantize import Quantizer
-from modules.WaveSpeed import fbcache_nodes, misc_nodes
+from modules.WaveSpeed import fbcache_nodes
 from modules.hidiffusion import msw_msa_attention
+from modules.AutoHDR import ahdr
 
 Downloader.CheckAndDownload()
 
@@ -63,7 +65,7 @@ class App(tk.Tk):
         """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
-        self.geometry("800x700")
+        self.geometry("900x750")
 
         # Configure main window grid
         self.grid_columnconfigure(1, weight=1)
@@ -449,7 +451,6 @@ class App(tk.Tk):
                 emptylatentimage,
                 ksampler_instance,
                 vaedecode,
-                saveimage,
                 latentupscale,
                 upscalemodelloader,
                 ultimatesdupscale,
@@ -528,13 +529,7 @@ class App(tk.Tk):
                 vae=checkpointloadersimple_241[2],
                 upscale_model=upscalemodelloader_244[0],
             )
-            saveimage.save_images(
-                filename_prefix="LD-i2i",
-                images=ultimatesdupscale_250[0],
-            )
-            for image in ultimatesdupscale_250[0]:
-                i = 255.0 * image.cpu().numpy()
-                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+            self.update_from_decode(ultimatesdupscale_250[0], "LD-I2I")
         self.update_image(img)
         global generated
         generated = img
@@ -610,7 +605,6 @@ class App(tk.Tk):
                 self.emptylatentimage = Latent.EmptyLatentImage()
                 self.ksampler_instance = sampling.KSampler2()
                 self.vaedecode = VariationalAE.VAEDecode()
-                self.saveimage = ImageSaver.SaveImage()
                 self.latent_upscale = upscale.LatentUpscale()
                 self.upscalemodelloader = USDU_upscaler.UpscaleModelLoader()
                 self.ultimatesdupscale = UltimateSDUpscale.UltimateSDUpscale()
@@ -620,7 +614,6 @@ class App(tk.Tk):
             self.emptylatentimage,
             self.ksampler_instance,
             self.vaedecode,
-            self.saveimage,
             self.latent_upscale,
             self.upscalemodelloader,
             self.ultimatesdupscale,
@@ -633,7 +626,6 @@ class App(tk.Tk):
 
         current_thread = threading.current_thread()
         self.generation_threads.append(current_thread)
-        images = []
         self.interrupt_flag = False
         self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
         try:
@@ -672,11 +664,11 @@ class App(tk.Tk):
                     emptylatentimage,
                     ksampler_instance,
                     vaedecode,
-                    saveimage,
                     latentupscale,
                     upscalemodelloader,
                     ultimatesdupscale,
                 ) = self._prep()
+                
                 try:
                     loraloader = LoRas.LoraLoader()
                     loraloader_274 = loraloader.load_lora(
@@ -784,23 +776,13 @@ class App(tk.Tk):
                         samples=ksampler_253[0],
                         vae=checkpointloadersimple_241[2],
                     )
-                    saveimage.save_images(
-                        filename_prefix="LD-HiresFix", images=vaedecode_240[0]
-                    )
-                    for image in vaedecode_240[0]:
-                        i = 255.0 * image.cpu().numpy()
-                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                        images.append(img)
+                    self.update_from_decode(vaedecode_240[0], "LD-HF")
                 else:
                     vaedecode_240 = vaedecode.decode(
                         samples=ksampler_239[0],
                         vae=checkpointloadersimple_241[2],
                     )
-                    saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
-                    for image in vaedecode_240[0]:
-                        i = 255.0 * image.cpu().numpy()
-                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                        images.append(img)
+                    self.update_from_decode(vaedecode_240[0], "LD")
                 if self.interrupt_flag:
                     return
 
@@ -861,10 +843,7 @@ class App(tk.Tk):
                         positive=cliptextencode_124[0],
                         negative=cliptextencode_243[0],
                     )
-                    saveimage.save_images(
-                        filename_prefix="LD-refined",
-                        images=detailerforeachdebug_145[0],
-                    )
+                    self.update_from_decode(detailerforeachdebug_145[0], "LD-1strefined")
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                     ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
                         model_name="face_yolov9c.pt"
@@ -918,22 +897,9 @@ class App(tk.Tk):
                         positive=cliptextencode_124[0],
                         negative=cliptextencode_243[0],
                     )
-                    saveimage.save_images(
-                        filename_prefix="lD-2ndrefined",
-                        images=detailerforeachdebug_145[0],
-                    )
-                    for image in detailerforeachdebug_145[0]:
-                        i = 255.0 * image.cpu().numpy()
-                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                        images.append(img)
+                    self.update_from_decode(detailerforeachdebug_145[0], "LD-2ndrefined")
 
                 self.progress.set(0.8)
-
-                if not self.interrupt_flag:
-                    self.progress.set(1.0)
-                    self.img = img
-                    self.update_image(images)
-                    self.display_most_recent_image_flag = True
 
         except Exception as e:
             print(f"Generation error: {e}")
@@ -978,7 +944,6 @@ class App(tk.Tk):
                 conditioningzeroout = Quantizer.ConditioningZeroOut()
                 ksampler = sampling.KSampler2()
                 vaedecode = VariationalAE.VAEDecode()
-                saveimage = ImageSaver.SaveImage()
                 unetloadergguf_10 = unetloadergguf.load_unet(
                     unet_name="flux1-dev-Q8_0.gguf"
                 )
@@ -1027,13 +992,7 @@ class App(tk.Tk):
                     vae=vaeloader_11[0],
                     flux=True,
                 )
-                saveimage.save_images(filename_prefix="Flux", images=vaedecode_8[0])
-                for image in vaedecode_8[0]:
-                    i = 255.0 * image.cpu().numpy()
-                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            self.img = img
-            self.update_image(img)
-            self.display_most_recent_image_flag = True
+                self.update_from_decode(vaedecode_8[0], "LD-Flux")
         finally:
             # Reset state when done
             self.is_generating = False
@@ -1057,6 +1016,83 @@ class App(tk.Tk):
             self.stable_fast_checkbox._state = tk.NORMAL
             self.lora_selection._state = tk.NORMAL
             self.cfg_slider._state = tk.NORMAL
+            
+    def _handle_decoded_image(self, decoded, prefix: str) -> None:
+        """Handle decoded image processing with HDR effects.
+
+        Args:
+            decoded: Decoded tensor image 
+            prefix: Prefix for saved files
+        """
+        try:
+            # Initialize components
+            saveimage = ImageSaver.SaveImage()
+            hdr = ahdr.HDREffects()
+            images = []
+            
+            # Apply HDR effects
+            if isinstance(decoded, tuple):
+                # Handle tuple return
+                tensor_image = decoded[0]
+            else:
+                tensor_image = decoded
+
+            # Apply HDR as batch process
+            processed = hdr.apply_hdr2(tensor_image)
+            
+            # Save images with prefix
+            saveimage.save_images(
+                filename_prefix=prefix,
+                images=processed[0] if isinstance(processed, tuple) else processed
+            )
+
+            # Convert processed tensors to PIL images
+            for img_tensor in (processed[0] if isinstance(processed, tuple) else [processed]):
+                # Convert to numpy and scale
+                img_array = 255.0 * img_tensor.cpu().numpy()
+                
+                # Handle different dimensions
+                if img_array.ndim == 4:
+                    img_array = np.squeeze(img_array)
+                    img_array = img_array.reshape(-1, img_array.shape[-2], img_array.shape[-1])
+                    
+                    
+                # Convert to PIL image
+                img = Image.fromarray(np.clip(img_array, 0, 255).astype(np.uint8))
+                images.append(img)
+
+            # Update display if not interrupted
+            if not self.interrupt_flag:
+                self.progress.set(1.0)
+                if images:
+                    self.img = images[0]
+                    self.update_image(images)
+                    self.display_most_recent_image_flag = True
+
+        except Exception as e:
+            print(f"Image processing error: {e}")
+            self.title(f"LightDiffusion - Error: {str(e)}")
+
+    def update_from_decode(self, decoded: Image.Image, prefix: str) -> None:
+        """Update the image from the decode function.
+        
+        Args:
+            decoded (Image.Image): The decoded image tensor/tuple
+            prefix (str): Prefix for saved files
+        """
+        try:
+            # Handle image processing in separate function
+            self._handle_decoded_image(decoded, prefix)
+                
+        except Exception as e:
+            print(f"Decode error: {e}")
+            self.title(f"LightDiffusion - Error: {str(e)}")
+            
+        finally:
+            # Ensure cleanup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
 
     def update_labels(self) -> None:
         """Update the labels for the sliders."""
@@ -1149,7 +1185,11 @@ class App(tk.Tk):
     def display_most_recent_image(self) -> None:
         """Display the most recent image(s) from the output directory."""
         # Get a list of all image files in the output directory
-        image_files = glob.glob("./_internal/output/*")
+        image_files = glob.glob("./_internal/output/Classic/*")
+        image_files += glob.glob("./_internal/output/Adetailer/*")
+        image_files += glob.glob("./_internal/output/Flux/*")
+        image_files += glob.glob("./_internal/output/HiresFix/*")
+        image_files += glob.glob("./_internal/output/Img2Img/*")
 
         # If there are no image files, return
         if not image_files:

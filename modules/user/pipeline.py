@@ -21,6 +21,7 @@ from modules.sample import sampling
 from modules.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
 from modules.Utilities import Enhancer, Latent, upscale
 from modules.WaveSpeed import fbcache_nodes
+from modules.AutoHDR import ahdr
 
 last_seed = 0
 
@@ -40,6 +41,7 @@ def pipeline(
     reuse_seed: bool = False,
     flux_enabled: bool = False,
     prio_speed: bool = False,
+    autohdr: bool = False,
 ) -> None:
     """#### Run the LightDiffusion pipeline.
 
@@ -55,6 +57,7 @@ def pipeline(
         - `reuse_seed` (bool, optional): Reuse the last used seed, if False the seed will be kept random. Default to False.
         - `flux_enabled` (bool, optional): Enable the flux mode. Defaults to False.
         - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
+        - `autohdr` (bool, optional): Enable the AutoHDR mode. Defaults to False.
     """
     global last_seed
     if reuse_seed:
@@ -67,6 +70,7 @@ def pipeline(
             prompt = Enhancer.enhance_prompt(prompt)
         except:
             pass
+    
     sampler_name = "dpmpp_sde" if not prio_speed else "dpmpp_2m"
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
@@ -82,6 +86,7 @@ def pipeline(
         vaedecode = VariationalAE.VAEDecode()
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
+        hdr = ahdr.HDREffects()
     for _ in range(number):
         if img2img:
             img = Image.open(prompt)
@@ -159,7 +164,7 @@ def pipeline(
                 )
                 saveimage.save_images(
                     filename_prefix="LD-i2i",
-                    images=ultimatesdupscale_250[0],
+                    images=hdr.apply_hdr2(ultimatesdupscale_250[0]) if autohdr else ultimatesdupscale_250[0],
                 )
         elif flux_enabled:
             Downloader.CheckAndDownloadFlux()
@@ -217,7 +222,7 @@ def pipeline(
                 )
 
                 saveimage.save_images(
-                    filename_prefix="Flux", images=vaedecode_8[0]
+                    filename_prefix="Flux", images=hdr.apply_hdr2(vaedecode_8[0]) if autohdr else vaedecode_8[0]
                 )
         else:
             while prompt is None:
@@ -253,11 +258,6 @@ def pipeline(
                 )
                 if stable_fast is True:
                     from modules.StableFast import StableFast
-
-                    try:
-                        self.title("LightDiffusion - Generating StableFast model")
-                    except:
-                        pass
                     applystablefast = StableFast.ApplyStableFastUnet()
                     applystablefast_158 = applystablefast.apply_stable_fast(
                         enable_cuda_graph=False,
@@ -385,7 +385,7 @@ def pipeline(
                     )
                     saveimage.save_images(
                         filename_prefix="LD-refined",
-                        images=detailerforeachdebug_145[0],
+                        images=hdr.apply_hdr2(detailerforeachdebug_145[0]) if autohdr else detailerforeachdebug_145[0],
                     )
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                     ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
@@ -443,10 +443,10 @@ def pipeline(
                     )
                     saveimage.save_images(
                         filename_prefix="lD-2ndrefined",
-                        images=detailerforeachdebug_145[0],
+                        images=hdr.apply_hdr2(detailerforeachdebug_145[0]) if autohdr else detailerforeachdebug_145[0],
                     )
             else:
-                saveimage.save_images(filename_prefix="LD", images=vaedecode_240[0])
+                saveimage.save_images(filename_prefix="LD", images=hdr.apply_hdr2(vaedecode_240[0]) if autohdr else vaedecode_240[0])
 
 
 if __name__ == "__main__":
@@ -494,6 +494,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Prioritize speed over quality.",
     )
+    parser.add_argument(
+        "--autohdr",
+        action="store_true",
+        help="Enable the AutoHDR mode.",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -510,4 +515,5 @@ if __name__ == "__main__":
         args.reuse_seed,
         args.flux,
         args.prio_speed,
+        args.autohdr,
     )
