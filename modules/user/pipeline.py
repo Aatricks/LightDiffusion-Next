@@ -23,7 +23,8 @@ from modules.Utilities import Enhancer, Latent, upscale
 from modules.WaveSpeed import fbcache_nodes
 from modules.AutoHDR import ahdr
 
-last_seed = 0
+with open(os.path.join("./_internal/", "last_seed.txt"), "r") as f:
+    last_seed = int(f.read())
 
 Downloader.CheckAndDownload()
 
@@ -62,9 +63,12 @@ def pipeline(
     global last_seed
     if reuse_seed:
         seed = last_seed
+        
     else:
         seed = random.randint(1, 2**64)
         last_seed = seed
+    with open(os.path.join("./_internal/", "last_seed.txt"), "w") as f:
+        f.write(str(seed))
     if enhance_prompt:
         try:
             prompt = Enhancer.enhance_prompt(prompt)

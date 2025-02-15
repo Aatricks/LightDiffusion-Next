@@ -50,21 +50,26 @@ def get_save_image_path(
     filename = os.path.basename(os.path.normpath(filename_prefix))
 
     full_output_folder = os.path.join(output_dir, subfolder)
-    try:
-        counter = (
-            max(
-                filter(
-                    lambda a: a[1][:-1] == filename and a[1][-1] == "_",
-                    map(map_filename, os.listdir(full_output_folder)),
-                )
-            )[0]
-            + 1
-        )
-    except ValueError:
-        counter = 1
-    except FileNotFoundError:
-        os.makedirs(full_output_folder, exist_ok=True)
-        counter = 1
+    subfolder_paths = [
+        os.path.join(full_output_folder, x) 
+        for x in ["Classic", "HiresFix", "Img2Img", "Flux", "Adetailer"]
+    ]
+    for path in subfolder_paths:
+        os.makedirs(path, exist_ok=True)
+    # Find highest counter across all subfolders
+    counter = 1
+    for path in subfolder_paths:
+        if os.path.exists(path):
+            files = os.listdir(path)
+            if files:
+                numbers = [
+                    map_filename(f)[0] 
+                    for f in files 
+                    if f.startswith(filename) and f.endswith(".png")
+                ]
+                if numbers:
+                    counter = max(max(numbers) + 1, counter)
+
     return full_output_folder, filename, counter, subfolder, filename_prefix
 
 
