@@ -58,7 +58,10 @@ class ImageUpscaleWithModel:
         #### Returns:
             - `tuple`: The upscaled image tensor.
         """
-        device = torch.device(torch.cuda.current_device())
+        if torch.cuda.is_available():
+            device = torch.device(torch.cuda.current_device())
+        else:
+            device = torch.device("cpu")
         upscale_model.to(device)
         in_img = image.movedim(-1, -3).to(device)
         Device.get_free_memory(device)

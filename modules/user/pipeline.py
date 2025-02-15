@@ -476,7 +476,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--img2img",
         action="store_true",
-        help="Enable image-to-image mode. This will use the image as the prompt.",
+        help="Enable image-to-image mode. This will use the prompt as path to the image.",
     )
     parser.add_argument(
         "--stable-fast",
