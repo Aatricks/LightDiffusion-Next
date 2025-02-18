@@ -12,7 +12,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 from modules.AutoDetailer import SAM, SEGS, ADetailer, bbox
 from modules.AutoEncoders import VariationalAE
 from modules.clip import Clip
-from modules.Device import Device
 from modules.FileManaging import Downloader, ImageSaver, Loader
 from modules.hidiffusion import msw_msa_attention
 from modules.Model import LoRas
