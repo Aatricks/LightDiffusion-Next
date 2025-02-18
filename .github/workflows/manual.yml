@@ -60,7 +60,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()  # Upload even if tests fail
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-outputs-${{ github.sha }}
           path: |
@@ -68,6 +68,7 @@ jobs:
             LD-HF-*.png 
             LD-Flux-*.png
           retention-days: 5
+          compression-level: 6
 
       - name: Report status
         if: always()
