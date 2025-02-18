@@ -39,7 +39,7 @@ else
         torch==2.2.2+cpu torchvision
 fi
 
-uv pip install numpy==1.24.3
+uv pip install "numpy<2.0.0"
 
 # Install tkinter
 echo "Installing tkinter..."

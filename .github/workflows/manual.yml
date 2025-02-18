@@ -52,11 +52,11 @@ jobs:
         run: |
           source .venv/bin/activate
           # Test basic pipeline
-          python modules/user/pipeline.py "1girl" 128 128 1 1 --hires-fix --adetailer --autohdr
+          python modules/user/pipeline.py "1girl" 64 64 1 1 --hires-fix --adetailer --autohdr
           # Test flux mode  
-          python modules/user/pipeline.py "1girl" 128 128 1 1 --flux
+          python modules/user/pipeline.py "1girl" 64 64 1 1 --flux
           # Test image to image
-          ppython modules/user/pipeline.py "./_internal/output/Classic/LD_00001_.png" 128 128 1 1 --img2img
+          ppython modules/user/pipeline.py "./_internal/output/Classic/LD_00001_.png" 64 64 1 1 --img2img
 
       - name: Upload test artifacts
         if: always()  # Upload even if tests fail
