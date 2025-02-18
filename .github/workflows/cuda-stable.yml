@@ -31,7 +31,7 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
         
-        - name: Setup CUDA
+      - name: Setup CUDA
         uses: Jimver/cuda-toolkit@v0.2.14
         with:
           cuda: '12.1.0'
