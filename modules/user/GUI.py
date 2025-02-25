@@ -959,7 +959,7 @@ class App(tk.Tk):
                 cliptextencodeflux_15 = cliptextencodeflux.encode(
                     clip_l=prompt,
                     t5xxl=prompt,
-                    guidance=2.5,
+                    guidance=3.0,
                     clip=dualcliploadergguf_19[0],
                     flux_enabled=True,
                 )
