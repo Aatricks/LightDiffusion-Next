@@ -27,6 +27,7 @@ with open(os.path.join("./_internal/", "last_seed.txt"), "r") as f:
 
 Downloader.CheckAndDownload()
 
+
 def pipeline(
     prompt: str,
     w: int,
@@ -62,7 +63,7 @@ def pipeline(
     global last_seed
     if reuse_seed:
         seed = last_seed
-        
+
     else:
         seed = random.randint(1, 2**64)
         last_seed = seed
@@ -73,8 +74,8 @@ def pipeline(
             prompt = Enhancer.enhance_prompt(prompt)
         except:
             pass
-    
-    sampler_name = "dpmpp_sde" if not prio_speed else "dpmpp_2m"
+
+    sampler_name = "dpmpp_sde_cfgpp" if not prio_speed else "dpmpp_2m_cfgpp"
     ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
     with torch.inference_mode():
         if not flux_enabled:
@@ -167,7 +168,9 @@ def pipeline(
                 )
                 saveimage.save_images(
                     filename_prefix="LD-I2I",
-                    images=hdr.apply_hdr2(ultimatesdupscale_250[0]) if autohdr else ultimatesdupscale_250[0],
+                    images=hdr.apply_hdr2(ultimatesdupscale_250[0])
+                    if autohdr
+                    else ultimatesdupscale_250[0],
                 )
         elif flux_enabled:
             Downloader.CheckAndDownloadFlux()
@@ -183,7 +186,9 @@ def pipeline(
                     unet_name="flux1-dev-Q8_0.gguf"
                 )
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
+                unetloadergguf_10 = fb_cache.patch(
+                    unetloadergguf_10, "diffusion_model", 0.120
+                )
                 vaeloader_11 = vaeloader.load_vae(vae_name="ae.safetensors")
                 dualcliploadergguf_19 = dualcliploadergguf.load_clip(
                     clip_name1="clip_l.safetensors",
@@ -225,7 +230,10 @@ def pipeline(
                 )
 
                 saveimage.save_images(
-                    filename_prefix="LD-Flux", images=hdr.apply_hdr2(vaedecode_8[0]) if autohdr else vaedecode_8[0]
+                    filename_prefix="LD-Flux",
+                    images=hdr.apply_hdr2(vaedecode_8[0])
+                    if autohdr
+                    else vaedecode_8[0],
                 )
         else:
             while prompt is None:
@@ -261,6 +269,7 @@ def pipeline(
                 )
                 if stable_fast is True:
                     from modules.StableFast import StableFast
+
                     applystablefast = StableFast.ApplyStableFastUnet()
                     applystablefast_158 = applystablefast.apply_stable_fast(
                         enable_cuda_graph=False,
@@ -269,8 +278,10 @@ def pipeline(
                 else:
                     applystablefast_158 = loraloader_274
                     fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                    applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
-                    
+                    applystablefast_158 = fb_cache.patch(
+                        applystablefast_158, "diffusion_model", 0.120
+                    )
+
                 ksampler_239 = ksampler_instance.sample(
                     seed=seed,
                     steps=20,
@@ -388,7 +399,9 @@ def pipeline(
                     )
                     saveimage.save_images(
                         filename_prefix="LD-body",
-                        images=hdr.apply_hdr2(detailerforeachdebug_145[0]) if autohdr else detailerforeachdebug_145[0],
+                        images=hdr.apply_hdr2(detailerforeachdebug_145[0])
+                        if autohdr
+                        else detailerforeachdebug_145[0],
                     )
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                     ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
@@ -446,10 +459,17 @@ def pipeline(
                     )
                     saveimage.save_images(
                         filename_prefix="lD-head",
-                        images=hdr.apply_hdr2(detailerforeachdebug_145[0]) if autohdr else detailerforeachdebug_145[0],
+                        images=hdr.apply_hdr2(detailerforeachdebug_145[0])
+                        if autohdr
+                        else detailerforeachdebug_145[0],
                     )
             else:
-                saveimage.save_images(filename_prefix="LD-HF" if hires_fix else "LD", images=hdr.apply_hdr2(vaedecode_240[0]) if autohdr else vaedecode_240[0])
+                saveimage.save_images(
+                    filename_prefix="LD-HF" if hires_fix else "LD",
+                    images=hdr.apply_hdr2(vaedecode_240[0])
+                    if autohdr
+                    else vaedecode_240[0],
+                )
 
 
 if __name__ == "__main__":
@@ -458,7 +478,11 @@ if __name__ == "__main__":
     parser.add_argument("width", type=int, help="The width of the generated image.")
     parser.add_argument("height", type=int, help="The height of the generated image.")
     parser.add_argument("number", type=int, help="The number of images to generate.")
-    parser.add_argument("batch", type=int, help="The batch size. aka the number of images to generate at once.")
+    parser.add_argument(
+        "batch",
+        type=int,
+        help="The batch size. aka the number of images to generate at once.",
+    )
     parser.add_argument(
         "--hires-fix", action="store_true", help="Enable high-resolution fix."
     )

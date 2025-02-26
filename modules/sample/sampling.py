@@ -13,11 +13,13 @@ from modules.sample import CFG
 
 class TimestepBlock1(nn.Module):
     """#### A block for timestep embedding."""
+
     pass
 
 
 class TimestepEmbedSequential1(nn.Sequential, TimestepBlock1):
     """#### A sequential block for timestep embedding."""
+
     pass
 
 
@@ -37,7 +39,9 @@ class EPS:
         sigma = sigma.view(sigma.shape[:1] + (1,) * (noise.ndim - 1))
         return noise / (sigma**2 + self.sigma_data**2) ** 0.5
 
-    def calculate_denoised(self, sigma: torch.Tensor, model_output: torch.Tensor, model_input: torch.Tensor) -> torch.Tensor:
+    def calculate_denoised(
+        self, sigma: torch.Tensor, model_output: torch.Tensor, model_input: torch.Tensor
+    ) -> torch.Tensor:
         """#### Calculate the denoised tensor.
 
         #### Args:
@@ -51,7 +55,13 @@ class EPS:
         sigma = sigma.view(sigma.shape[:1] + (1,) * (model_output.ndim - 1))
         return model_input - model_output * sigma
 
-    def noise_scaling(self, sigma: torch.Tensor, noise: torch.Tensor, latent_image: torch.Tensor, max_denoise: bool = False) -> torch.Tensor:
+    def noise_scaling(
+        self,
+        sigma: torch.Tensor,
+        noise: torch.Tensor,
+        latent_image: torch.Tensor,
+        max_denoise: bool = False,
+    ) -> torch.Tensor:
         """#### Scale the noise.
 
         #### Args:
@@ -71,7 +81,9 @@ class EPS:
         noise += latent_image
         return noise
 
-    def inverse_noise_scaling(self, sigma: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
+    def inverse_noise_scaling(
+        self, sigma: torch.Tensor, latent: torch.Tensor
+    ) -> torch.Tensor:
         """#### Inverse the noise scaling.
 
         #### Args:
@@ -97,7 +109,9 @@ class CONST:
         """
         return noise
 
-    def calculate_denoised(self, sigma: torch.Tensor, model_output: torch.Tensor, model_input: torch.Tensor) -> torch.Tensor:
+    def calculate_denoised(
+        self, sigma: torch.Tensor, model_output: torch.Tensor, model_input: torch.Tensor
+    ) -> torch.Tensor:
         """#### Calculate the denoised tensor.
 
         #### Args:
@@ -125,7 +139,9 @@ class CONST:
         """
         return sigma * noise + (1.0 - sigma) * latent_image
 
-    def inverse_noise_scaling(self, sigma: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
+    def inverse_noise_scaling(
+        self, sigma: torch.Tensor, latent: torch.Tensor
+    ) -> torch.Tensor:
         """#### Inverse the noise scaling.
 
         #### Args:
@@ -178,7 +194,7 @@ class ModelSamplingFlux(torch.nn.Module):
         """#### Get the maximum sigma value."""
         return self.sigmas[-1]
 
-    def timestep(self, sigma: torch.Tensor)-> torch.Tensor:
+    def timestep(self, sigma: torch.Tensor) -> torch.Tensor:
         """#### Convert sigma to timestep.
 
         #### Args:
@@ -341,6 +357,7 @@ class ModelSamplingDiscrete(torch.nn.Module):
 
 class InterruptProcessingException(Exception):
     """#### Exception class for interrupting processing."""
+
     pass
 
 
@@ -362,7 +379,14 @@ class KSamplerX0Inpaint:
         self.inner_model = model
         self.sigmas = sigmas
 
-    def __call__(self, x: torch.Tensor, sigma: torch.Tensor, denoise_mask: torch.Tensor, model_options: dict = {}, seed: int = None) -> torch.Tensor:
+    def __call__(
+        self,
+        x: torch.Tensor,
+        sigma: torch.Tensor,
+        denoise_mask: torch.Tensor,
+        model_options: dict = {},
+        seed: int = None,
+    ) -> torch.Tensor:
         """#### Call the KSamplerX0Inpaint class.
 
         #### Args:
@@ -400,7 +424,12 @@ class Sampler:
 class KSAMPLER(Sampler):
     """#### Class for KSAMPLER."""
 
-    def __init__(self, sampler_function: callable, extra_options: dict = {}, inpaint_options: dict = {}):
+    def __init__(
+        self,
+        sampler_function: callable,
+        extra_options: dict = {},
+        inpaint_options: dict = {},
+    ):
         """#### Initialize the KSAMPLER class.
 
         #### Args:
@@ -467,7 +496,12 @@ class KSAMPLER(Sampler):
         return samples
 
 
-def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}, inpaint_options: dict = {}) -> KSAMPLER:
+def ksampler(
+    sampler_name: str,
+    pipeline: bool = False,
+    extra_options: dict = {},
+    inpaint_options: dict = {},
+) -> KSAMPLER:
     """#### Get a KSAMPLER.
 
     #### Args:
@@ -506,7 +540,37 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
             )
 
         sampler_function = dpmpp_2m_function
+
+    elif sampler_name == "dpmpp_2m_cfgpp":
+
+        def dpmpp_2m_dy_function(
+            model: torch.nn.Module,
+            noise: torch.Tensor,
+            sigmas: torch.Tensor,
+            extra_args: dict,
+            callback: callable,
+            disable: bool,
+            pipeline: bool,
+            **extra_options,
+        ) -> torch.Tensor:
+            sigma_min = sigmas[-1]
+            if sigma_min == 0:
+                sigma_min = sigmas[-2]
+            return samplers.sample_dpmpp_2m_cfgpp(
+                model,
+                noise,
+                sigmas,
+                extra_args=extra_args,
+                callback=callback,
+                disable=disable,
+                pipeline=pipeline,
+                **extra_options,
+            )
+
+        sampler_function = dpmpp_2m_dy_function
+
     elif sampler_name == "dpmpp_sde":
+
         def dpmpp_sde_function(
             model: torch.nn.Module,
             noise: torch.Tensor,
@@ -527,8 +591,9 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
                 pipeline=pipeline,
                 **extra_options,
             )
+
         sampler_function = dpmpp_sde_function
-    
+
     elif sampler_name == "euler_ancestral":
 
         def euler_ancestral_function(
@@ -553,9 +618,36 @@ def ksampler(sampler_name: str, pipeline: bool = False, extra_options: dict = {}
 
         sampler_function = euler_ancestral_function
 
+    elif sampler_name == "dpmpp_sde_cfgpp":
+
+        def dpmpp_sde_dy_function(
+            model: torch.nn.Module,
+            noise: torch.Tensor,
+            sigmas: torch.Tensor,
+            extra_args: dict,
+            callback: callable,
+            disable: bool,
+            pipeline: bool,
+            **extra_options,
+        ) -> torch.Tensor:
+            return samplers.sample_dpmpp_sde_cfgpp(
+                model,
+                noise,
+                sigmas,
+                extra_args=extra_args,
+                callback=callback,
+                disable=disable,
+                pipeline=pipeline,
+                **extra_options,
+            )
+
+        sampler_function = dpmpp_sde_dy_function
+
     elif sampler_name == "euler":
 
-        def euler_function(model, noise, sigmas, extra_args, callback, disable, pipeline=False):
+        def euler_function(
+            model, noise, sigmas, extra_args, callback, disable, pipeline=False
+        ):
             return samplers.sample_euler(
                 model,
                 noise,
@@ -783,7 +875,7 @@ class KSampler1:
             disable_pbar=disable_pbar,
             seed=seed,
             pipeline=pipeline,
-            flux=flux
+            flux=flux,
         )
 
 
@@ -863,7 +955,7 @@ def sample1(
         disable_pbar=disable_pbar,
         seed=seed,
         pipeline=pipeline,
-        flux=flux
+        flux=flux,
     )
     samples = samples.to(Device.intermediate_device())
     return samples
@@ -944,7 +1036,7 @@ def common_ksampler(
         noise_mask=noise_mask,
         seed=seed,
         pipeline=pipeline,
-        flux=flux
+        flux=flux,
     )
     out = latent.copy()
     out["samples"] = samples
@@ -999,17 +1091,20 @@ class KSampler2:
             latent_image,
             denoise=denoise,
             pipeline=pipeline,
-            flux=flux
+            flux=flux,
         )
 
 
 class ModelType(Enum):
     """#### Enum for Model Types."""
+
     EPS = 1
     FLUX = 8
 
 
-def model_sampling(model_config: dict, model_type: ModelType, flux: bool = False) -> torch.nn.Module:
+def model_sampling(
+    model_config: dict, model_type: ModelType, flux: bool = False
+) -> torch.nn.Module:
     """#### Create a model sampling instance.
 
     #### Args:

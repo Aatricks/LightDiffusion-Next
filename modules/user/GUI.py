@@ -1,4 +1,3 @@
-from multiprocessing import process
 import os
 import queue
 import sys
@@ -293,7 +292,9 @@ class App(tk.Tk):
             variable=self.prioritize_speed_var,
             text_color="black",
         )
-        self.prioritize_speed_checkbox.grid(row=2, column=0, padx=(75, 5), pady=5, sticky="nsew")
+        self.prioritize_speed_checkbox.grid(
+            row=2, column=0, padx=(75, 5), pady=5, sticky="nsew"
+        )
 
         # Button to launch the generation
         self.generate_button = ctk.CTkButton(
@@ -425,7 +426,11 @@ class App(tk.Tk):
         self.display_most_recent_image_flag = False
         self.display_most_recent_image()
         self.is_generating = False
-        self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+        self.sampler = (
+            "dpmpp_sde_cfgpp"
+            if not self.prioritize_speed_var.get()
+            else "dpmpp_2m_cfgpp"
+        )
 
     def _img2img(self, file_path: str) -> None:
         """Perform img2img on the selected image.
@@ -443,7 +448,9 @@ class App(tk.Tk):
         img_tensor = torch.from_numpy(img_array).float().to("cpu") / 255.0
         img_tensor = img_tensor.unsqueeze(0)
         self.interrupt_flag = False
-        self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+        self.sampler = (
+            "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+        )
         with torch.inference_mode():
             (
                 checkpointloadersimple_241,
@@ -482,7 +489,9 @@ class App(tk.Tk):
             else:
                 applystablefast_158 = loraloader_274
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                applystablefast_158 = fb_cache.patch(
+                    applystablefast_158, "diffusion_model", 0.120
+                )
             clipsetlastlayer = Clip.CLIPSetLastLayer()
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
@@ -627,7 +636,9 @@ class App(tk.Tk):
         current_thread = threading.current_thread()
         self.generation_threads.append(current_thread)
         self.interrupt_flag = False
-        self.sampler = "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+        self.sampler = (
+            "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+        )
         try:
             # Disable generate button during generation
             self.generate_button.configure(state="disabled")
@@ -668,7 +679,7 @@ class App(tk.Tk):
                     upscalemodelloader,
                     ultimatesdupscale,
                 ) = self._prep()
-                
+
                 try:
                     loraloader = LoRas.LoraLoader()
                     loraloader_274 = loraloader.load_lora(
@@ -724,7 +735,9 @@ class App(tk.Tk):
                 else:
                     applystablefast_158 = loraloader_274
                     fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                    applystablefast_158 = fb_cache.patch(applystablefast_158, "diffusion_model", 0.120)
+                    applystablefast_158 = fb_cache.patch(
+                        applystablefast_158, "diffusion_model", 0.120
+                    )
                 hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
                 cliptextencode_242 = cliptextencode.encode(
                     text=prompt,
@@ -790,7 +803,7 @@ class App(tk.Tk):
                 if self.adetailer_var.get() is True:
                     samloader = SAM.SAMLoader()
                     samloader_87 = samloader.load_model(
-                    model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
+                        model_name="sam_vit_b_01ec64.pth", device_mode="AUTO"
                     )
                     bboxdetectorsegs_132 = bboxdetectorsegs.doit(
                         threshold=0.5,
@@ -967,7 +980,9 @@ class App(tk.Tk):
                     conditioning=cliptextencodeflux_15[0]
                 )
                 fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                unetloadergguf_10 = fb_cache.patch(unetloadergguf_10, "diffusion_model", 0.120)
+                unetloadergguf_10 = fb_cache.patch(
+                    unetloadergguf_10, "diffusion_model", 0.120
+                )
                 # try:
                 #     import triton
                 #     compiler = misc_nodes.EnhancedCompileModel()
@@ -1016,12 +1031,12 @@ class App(tk.Tk):
             self.stable_fast_checkbox._state = tk.NORMAL
             self.lora_selection._state = tk.NORMAL
             self.cfg_slider._state = tk.NORMAL
-            
+
     def _handle_decoded_image(self, decoded, prefix: str) -> None:
         """Handle decoded image processing with HDR effects.
 
         Args:
-            decoded: Decoded tensor image 
+            decoded: Decoded tensor image
             prefix: Prefix for saved files
         """
         try:
@@ -1029,7 +1044,7 @@ class App(tk.Tk):
             saveimage = ImageSaver.SaveImage()
             hdr = ahdr.HDREffects()
             images = []
-            
+
             # Apply HDR effects
             if isinstance(decoded, tuple):
                 # Handle tuple return
@@ -1039,24 +1054,27 @@ class App(tk.Tk):
 
             # Apply HDR as batch process
             processed = hdr.apply_hdr2(tensor_image)
-            
+
             # Save images with prefix
             saveimage.save_images(
                 filename_prefix=prefix,
-                images=processed[0] if isinstance(processed, tuple) else processed
+                images=processed[0] if isinstance(processed, tuple) else processed,
             )
 
             # Convert processed tensors to PIL images
-            for img_tensor in (processed[0] if isinstance(processed, tuple) else [processed]):
+            for img_tensor in (
+                processed[0] if isinstance(processed, tuple) else [processed]
+            ):
                 # Convert to numpy and scale
                 img_array = 255.0 * img_tensor.cpu().numpy()
-                
+
                 # Handle different dimensions
                 if img_array.ndim == 4:
                     img_array = np.squeeze(img_array)
-                    img_array = img_array.reshape(-1, img_array.shape[-2], img_array.shape[-1])
-                    
-                    
+                    img_array = img_array.reshape(
+                        -1, img_array.shape[-2], img_array.shape[-1]
+                    )
+
                 # Convert to PIL image
                 img = Image.fromarray(np.clip(img_array, 0, 255).astype(np.uint8))
                 images.append(img)
@@ -1075,7 +1093,7 @@ class App(tk.Tk):
 
     def update_from_decode(self, decoded: Image.Image, prefix: str) -> None:
         """Update the image from the decode function.
-        
+
         Args:
             decoded (Image.Image): The decoded image tensor/tuple
             prefix (str): Prefix for saved files
@@ -1083,11 +1101,11 @@ class App(tk.Tk):
         try:
             # Handle image processing in separate function
             self._handle_decoded_image(decoded, prefix)
-                
+
         except Exception as e:
             print(f"Decode error: {e}")
             self.title(f"LightDiffusion - Error: {str(e)}")
-            
+
         finally:
             # Ensure cleanup
             if torch.cuda.is_available():
