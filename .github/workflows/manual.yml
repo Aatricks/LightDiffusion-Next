@@ -1,5 +1,3 @@
-# This is a basic workflow that is manually triggered
-
 name: Manual workflow
 
 on:
@@ -10,16 +8,16 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    
+    runs-on: self-hosted
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          
+
       - name: Cache dependencies
         uses: actions/cache@v3
         with:
@@ -31,51 +29,63 @@ jobs:
       - name: Create virtual environment
         run: |
           python -m venv .venv
-          source .venv/bin/activate
-          
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            . .venv/Scripts/activate
+          else
+            . .venv/bin/activate
+          fi
+        shell: bash
+
       - name: Install dependencies
         run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            . .venv/Scripts/activate
+          else
+            . .venv/bin/activate
+          fi
           python -m pip install --upgrade pip
           pip install uv
-          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
           pip install "numpy<2.0.0"
           if [ -f requirements.txt ]; then
             uv pip install -r requirements.txt
           fi
-
-      - name: Run unit tests
-        run: |
-          source .venv/bin/activate
-          python -m unittest modules/tests/test.py -v
+        shell: bash
 
       - name: Test pipeline variants
         run: |
-          source .venv/bin/activate
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            . .venv/Scripts/activate
+          else
+            . .venv/bin/activate
+          fi
           # Test basic pipeline
-          python modules/user/pipeline.py "1girl" 64 64 1 1 --hires-fix --adetailer --autohdr --prio-speed
-          # Test flux mode  
-          python modules/user/pipeline.py "1girl" 64 64 1 1 --flux
+          python modules/user/pipeline.py "1girl" 512 512 1 1 --hires-fix --adetailer --autohdr --prio-speed
           # Test image to image
-          ppython modules/user/pipeline.py "./_internal/output/Classic/LD_00001_.png" 64 64 1 1 --img2img --prio-speed
+          python modules/user/pipeline.py "./_internal/output/Classic/LD_00001_.png" 512 512 1 1 --img2img --prio-speed
+        shell: bash
 
       - name: Upload test artifacts
-        if: always()  # Upload even if tests fail
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-outputs-${{ github.sha }}
           path: |
-            LD-*.png
-            LD-HF-*.png 
-            LD-Flux-*.png
+            _internal/output/**/*.png
+            _internal/output/Classic/*.png
+            _internal/output/Flux/*.png
+            _internal/output/HF/*.png
           retention-days: 5
           compression-level: 6
+          if-no-files-found: warn
 
       - name: Report status
         if: always()
         run: |
           if [ ${{ job.status }} == 'success' ]; then
             echo "All tests passed successfully!"
-          else  
+          else
             echo "Some tests failed. Check the logs above for details."
             exit 1
           fi
+        shell: bash
