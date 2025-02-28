@@ -458,7 +458,7 @@ def pipeline(
                         pipeline=True,
                     )
                     saveimage.save_images(
-                        filename_prefix="lD-head",
+                        filename_prefix="LD-head",
                         images=hdr.apply_hdr2(detailerforeachdebug_145[0])
                         if autohdr
                         else detailerforeachdebug_145[0],

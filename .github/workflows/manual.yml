@@ -62,7 +62,7 @@ jobs:
           # Test basic pipeline
           python modules/user/pipeline.py "1girl" 512 512 1 1 --hires-fix --adetailer --autohdr --prio-speed
           # Test image to image
-          python modules/user/pipeline.py "./_internal/output/Classic/LD_00001_.png" 512 512 1 1 --img2img --prio-speed
+          python modules/user/pipeline.py "./_internal/output/HiresFix/LD-HF_00001_.png" 512 512 1 1 --img2img --prio-speed
         shell: bash
 
       - name: Upload test artifacts
