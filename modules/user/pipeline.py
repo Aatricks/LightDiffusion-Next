@@ -43,6 +43,7 @@ def pipeline(
     flux_enabled: bool = False,
     prio_speed: bool = False,
     autohdr: bool = False,
+    realistic_model: bool = False,
 ) -> None:
     """#### Run the LightDiffusion pipeline.
 
@@ -59,6 +60,7 @@ def pipeline(
         - `flux_enabled` (bool, optional): Enable the flux mode. Defaults to False.
         - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
         - `autohdr` (bool, optional): Enable the AutoHDR mode. Defaults to False.
+        - `realistic_model` (bool, optional): Use the realistic model. Defaults to False.
     """
     global last_seed
     if reuse_seed:
@@ -76,7 +78,11 @@ def pipeline(
             pass
 
     sampler_name = "dpmpp_sde_cfgpp" if not prio_speed else "dpmpp_2m_cfgpp"
-    ckpt = "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
+    ckpt = (
+        "./_internal/checkpoints/Meina V10 - baked VAE.safetensors"
+        if not realistic_model
+        else "./_internal/checkpoints/DreamShaper_8_pruned.safetensors"
+    )
     with torch.inference_mode():
         if not flux_enabled:
             checkpointloadersimple = Loader.CheckpointLoaderSimple()
@@ -526,6 +532,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable the AutoHDR mode.",
     )
+    parser.add_argument(
+        "--realistic-model",
+        action="store_true",
+        help="Use the realistic model.",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -543,4 +554,5 @@ if __name__ == "__main__":
         args.flux,
         args.prio_speed,
         args.autohdr,
+        args.realistic_model,
     )

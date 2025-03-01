@@ -57,6 +57,7 @@ def generate_images(
     reuse_seed: bool = False,
     flux_enabled: bool = False,
     prio_speed: bool = False,
+    realistic_model: bool = False,
     progress=gr.Progress(),
 ):
     """Generate images using the LightDiffusion pipeline"""
@@ -84,6 +85,8 @@ def generate_images(
                 reuse_seed=reuse_seed,
                 flux_enabled=flux_enabled,
                 prio_speed=prio_speed,
+                autohdr=True,
+                realistic_model=realistic_model,
             )
 
         # Clean up temporary file if it exists
@@ -141,6 +144,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                 reuse_seed = gr.Checkbox(label="Reuse Seed")
                 flux_enabled = gr.Checkbox(label="Flux Mode")
                 prio_speed = gr.Checkbox(label="Prioritize Speed")
+                realistic_model = gr.Checkbox(label="Realistic Model")
 
             with gr.Row():
                 img2img_enabled = gr.Checkbox(label="Image to Image Mode")
@@ -184,6 +188,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             reuse_seed,
             flux_enabled,
             prio_speed,
+            realistic_model,
         ],
         outputs=gallery,
     )
