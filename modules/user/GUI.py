@@ -612,7 +612,7 @@ class App(tk.Tk):
                 )
                 self.cliptextencode = Clip.CLIPTextEncode()
                 self.emptylatentimage = Latent.EmptyLatentImage()
-                self.ksampler_instance = sampling.KSampler2()
+                self.ksampler_instance = sampling.KSampler()
                 self.vaedecode = VariationalAE.VAEDecode()
                 self.latent_upscale = upscale.LatentUpscale()
                 self.upscalemodelloader = USDU_upscaler.UpscaleModelLoader()
@@ -955,7 +955,7 @@ class App(tk.Tk):
                 unetloadergguf = Quantizer.UnetLoaderGGUF()
                 cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
                 conditioningzeroout = Quantizer.ConditioningZeroOut()
-                ksampler = sampling.KSampler2()
+                ksampler = sampling.KSampler()
                 vaedecode = VariationalAE.VAEDecode()
                 unetloadergguf_10 = unetloadergguf.load_unet(
                     unet_name="flux1-dev-Q8_0.gguf"

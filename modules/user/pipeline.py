@@ -92,7 +92,7 @@ def pipeline(
             hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
         cliptextencode = Clip.CLIPTextEncode()
         emptylatentimage = Latent.EmptyLatentImage()
-        ksampler_instance = sampling.KSampler2()
+        ksampler_instance = sampling.KSampler()
         vaedecode = VariationalAE.VAEDecode()
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
@@ -187,7 +187,7 @@ def pipeline(
                 unetloadergguf = Quantizer.UnetLoaderGGUF()
                 cliptextencodeflux = Quantizer.CLIPTextEncodeFlux()
                 conditioningzeroout = Quantizer.ConditioningZeroOut()
-                ksampler = sampling.KSampler2()
+                ksampler = sampling.KSampler()
                 unetloadergguf_10 = unetloadergguf.load_unet(
                     unet_name="flux1-dev-Q8_0.gguf"
                 )

@@ -46,6 +46,7 @@ def pre_run_control(model: torch.nn.Module, conds: list) -> None:
 
         def percent_to_timestep_function(a):
             return s.percent_to_sigma(a)
+
         if "control" in x:
             x["control"].pre_run(model, percent_to_timestep_function)
 
@@ -158,6 +159,7 @@ def normal_scheduler(
     sigs += [0.0]
     return torch.FloatTensor(sigs)
 
+
 def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.FloatTensor:
     """#### Create a simple scheduler.
 
@@ -176,20 +178,51 @@ def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.Float
     sigs += [0.0]
     return torch.FloatTensor(sigs)
 
+
 # Implemented based on: https://arxiv.org/abs/2407.12173
 def beta_scheduler(model_sampling, steps, alpha=0.6, beta=0.6):
-    total_timesteps = (len(model_sampling.sigmas) - 1)
-    ts = 1 - np.linspace(0, 1, steps, endpoint=False)
-    ts = np.rint(scipy.stats.beta.ppf(ts, alpha, beta) * total_timesteps)
+    """Creates a beta scheduler for noise levels based on the beta distribution.
 
-    sigs = []
-    last_t = -1
-    for t in ts:
-        if t != last_t:
-            sigs += [float(model_sampling.sigmas[int(t)])]
-        last_t = t
-    sigs += [0.0]
+    This optimized implementation efficiently computes sigmas using the beta
+    distribution and caches calculations where possible.
+
+    Args:
+        model_sampling: Model sampling module
+        steps: Number of steps
+        alpha: Alpha parameter for beta distribution
+        beta: Beta parameter for beta distribution
+
+    Returns:
+        torch.FloatTensor: Tensor of sigma values for each step
+    """
+    # Calculate total timesteps once
+    total_timesteps = len(model_sampling.sigmas) - 1
+
+    # Create a cache dictionary for reused values
+    model_sigmas = model_sampling.sigmas
+
+    # Generate evenly spaced values in [0,1) interval
+    ts_normalized = np.linspace(0, 1, steps, endpoint=False)
+
+    # Apply beta inverse CDF to get sampled time points - vectorized operation
+    ts_beta = scipy.stats.beta.ppf(1 - ts_normalized, alpha, beta)
+
+    # Scale to timestep indices and round to integers
+    ts_indices = np.rint(ts_beta * total_timesteps).astype(np.int32)
+
+    # Use numpy's unique function with return_index to efficiently find unique values
+    # while preserving order
+    unique_ts, indices = np.unique(ts_indices, return_index=True)
+    ordered_unique_ts = unique_ts[np.argsort(indices)]
+
+    # Map indices to sigma values efficiently
+    sigs = [float(model_sigmas[idx]) for idx in ordered_unique_ts]
+
+    # Add final sigma value of 0.0
+    sigs.append(0.0)
+
     return torch.FloatTensor(sigs)
+
 
 def calculate_sigmas(
     model_sampling: torch.nn.Module, scheduler_name: str, steps: int

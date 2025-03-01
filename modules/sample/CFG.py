@@ -30,10 +30,15 @@ def cfg_function(
     #### Returns:
         - `torch.Tensor`: The CFG result.
     """
+    # Check for custom sampler CFG function first
     if "sampler_cfg_function" in model_options:
+        # Precompute differences to avoid redundant operations
+        cond_diff = x - cond_pred
+        uncond_diff = x - uncond_pred
+
         args = {
-            "cond": x - cond_pred,
-            "uncond": x - uncond_pred,
+            "cond": cond_diff,
+            "uncond": uncond_diff,
             "cond_scale": cond_scale,
             "timestep": timestep,
             "input": x,
@@ -45,9 +50,18 @@ def cfg_function(
         }
         cfg_result = x - model_options["sampler_cfg_function"](args)
     else:
-        cfg_result = uncond_pred + (cond_pred - uncond_pred) * cond_scale
+        # Standard CFG calculation - optimized to avoid intermediate tensor allocation
+        # When cond_scale = 1.0, we can just return cond_pred without computation
+        if math.isclose(cond_scale, 1.0):
+            cfg_result = cond_pred
+        else:
+            # Fused operation: uncond_pred + (cond_pred - uncond_pred) * cond_scale
+            # Equivalent to: uncond_pred * (1 - cond_scale) + cond_pred * cond_scale
+            cfg_result = torch.lerp(uncond_pred, cond_pred, cond_scale)
 
-    for fn in model_options.get("sampler_post_cfg_function", []):
+    # Apply post-CFG functions if any
+    post_cfg_functions = model_options.get("sampler_post_cfg_function", [])
+    if post_cfg_functions:
         args = {
             "denoised": cfg_result,
             "cond": cond,
@@ -59,7 +73,12 @@ def cfg_function(
             "model_options": model_options,
             "input": x,
         }
-        cfg_result = fn(args)
+
+        # Apply each post-CFG function in sequence
+        for fn in post_cfg_functions:
+            cfg_result = fn(args)
+            # Update the denoised result for the next function
+            args["denoised"] = cfg_result
 
     return cfg_result
 
@@ -128,6 +147,7 @@ def sampling_function(
 
 class CFGGuider:
     """#### Class for guiding the sampling process with CFG."""
+
     def __init__(self, model_patcher, flux=False):
         """#### Initialize the CFGGuider.
 

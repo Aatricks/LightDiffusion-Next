@@ -734,49 +734,49 @@ def sampler_object(name: str, pipeline: bool = False) -> KSAMPLER:
     return sampler
 
 
-class KSampler1:
-    """#### Class for KSampler1."""
+class KSampler:
+    """A unified sampler class that replaces both KSampler1 and KSampler2."""
 
     def __init__(
         self,
-        model: torch.nn.Module,
-        steps: int,
-        device,
+        model: torch.nn.Module = None,
+        steps: int = None,
         sampler: str = None,
         scheduler: str = None,
-        denoise: float = None,
+        denoise: float = 1.0,
         model_options: dict = {},
         pipeline: bool = False,
     ):
-        """#### Initialize the KSampler1 class.
+        """Initialize the KSampler class.
 
-        #### Args:
-            - `model` (torch.nn.Module): The model.
-            - `steps` (int): The number of steps.
-            - `device` (torch.device): The device.
-            - `sampler` (str, optional): The sampler name. Defaults to None.
-            - `scheduler` (str, optional): The scheduler name. Defaults to None.
-            - `denoise` (float, optional): The denoise factor. Defaults to None.
-            - `model_options` (dict, optional): The model options. Defaults to {}.
-            - `pipeline` (bool, optional): Whether to use the pipeline. Defaults to False.
+        Args:
+            model (torch.nn.Module, optional): The model to use for sampling. Required for direct sampling.
+            steps (int, optional): The number of steps. Required for direct sampling.
+            sampler (str, optional): The sampler name. Defaults to None.
+            scheduler (str, optional): The scheduler name. Defaults to None.
+            denoise (float, optional): The denoise factor. Defaults to 1.0.
+            model_options (dict, optional): The model options. Defaults to {}.
+            pipeline (bool, optional): Whether to use the pipeline. Defaults to False.
         """
         self.model = model
-        self.device = device
+        self.device = model.load_device if model is not None else None
         self.scheduler = scheduler
-        self.sampler = sampler
-        self.set_steps(steps, denoise)
+        self.sampler_name = sampler
         self.denoise = denoise
         self.model_options = model_options
         self.pipeline = pipeline
 
+        if model is not None and steps is not None:
+            self.set_steps(steps, denoise)
+
     def calculate_sigmas(self, steps: int) -> torch.Tensor:
-        """#### Calculate the sigmas for the given steps.
+        """Calculate the sigmas for the given steps.
 
-        #### Args:
-            - `steps` (int): The number of steps.
+        Args:
+            steps (int): The number of steps.
 
-        #### Returns:
-            - `torch.Tensor`: The calculated sigmas.
+        Returns:
+            torch.Tensor: The calculated sigmas.
         """
         sigmas = ksampler_util.calculate_sigmas(
             self.model.get_model_object("model_sampling"), self.scheduler, steps
@@ -784,11 +784,11 @@ class KSampler1:
         return sigmas
 
     def set_steps(self, steps: int, denoise: float = None):
-        """#### Set the steps and calculate the sigmas.
+        """Set the steps and calculate the sigmas.
 
-        #### Args:
-            - `steps` (int): The number of steps.
-            - `denoise` (float, optional): The denoise factor. Defaults to None.
+        Args:
+            steps (int): The number of steps.
+            denoise (float, optional): The denoise factor. Defaults to None.
         """
         self.steps = steps
         if denoise is None or denoise > 0.9999:
@@ -801,7 +801,29 @@ class KSampler1:
                 sigmas = self.calculate_sigmas(new_steps).to(self.device)
                 self.sigmas = sigmas[-(steps + 1) :]
 
-    def sample(
+    def _process_sigmas(self, sigmas, start_step, last_step, force_full_denoise):
+        """Process sigmas based on start_step and last_step.
+
+        Args:
+            sigmas (torch.Tensor): The sigmas tensor.
+            start_step (int, optional): The start step. Defaults to None.
+            last_step (int, optional): The last step. Defaults to None.
+            force_full_denoise (bool): Whether to force full denoise.
+
+        Returns:
+            torch.Tensor: The processed sigmas.
+        """
+        if last_step is not None and last_step < (len(sigmas) - 1):
+            sigmas = sigmas[: last_step + 1]
+            if force_full_denoise:
+                sigmas[-1] = 0
+
+        if start_step is not None and start_step < (len(sigmas) - 1):
+            sigmas = sigmas[start_step:]
+
+        return sigmas
+
+    def direct_sample(
         self,
         noise: torch.Tensor,
         positive: torch.Tensor,
@@ -816,48 +838,45 @@ class KSampler1:
         callback: callable = None,
         disable_pbar: bool = False,
         seed: int = None,
-        pipeline: bool = False,
         flux: bool = False,
     ) -> torch.Tensor:
-        """#### Sample using the KSampler1.
+        """Sample directly with the initialized model and parameters.
 
-        #### Args:
-            - `noise` (torch.Tensor): The noise tensor.
-            - `positive` (torch.Tensor): The positive tensor.
-            - `negative` (torch.Tensor): The negative tensor.
-            - `cfg` (float): The CFG value.
-            - `latent_image` (torch.Tensor, optional): The latent image tensor. Defaults to None.
-            - `start_step` (int, optional): The start step. Defaults to None.
-            - `last_step` (int, optional): The last step. Defaults to None.
-            - `force_full_denoise` (bool, optional): Whether to force full denoise. Defaults to False.
-            - `denoise_mask` (torch.Tensor, optional): The denoise mask tensor. Defaults to None.
-            - `sigmas` (torch.Tensor, optional): The sigmas tensor. Defaults to None.
-            - `callback` (callable, optional): The callback function. Defaults to None.
-            - `disable_pbar` (bool, optional): Whether to disable the progress bar. Defaults to False.
-            - `seed` (int, optional): The seed value. Defaults to None.
-            - `pipeline` (bool, optional): Whether to use the pipeline. Defaults to False.
+        Args:
+            noise (torch.Tensor): The noise tensor.
+            positive (torch.Tensor): The positive tensor.
+            negative (torch.Tensor): The negative tensor.
+            cfg (float): The CFG value.
+            latent_image (torch.Tensor, optional): The latent image tensor. Defaults to None.
+            start_step (int, optional): The start step. Defaults to None.
+            last_step (int, optional): The last step. Defaults to None.
+            force_full_denoise (bool, optional): Whether to force full denoise. Defaults to False.
+            denoise_mask (torch.Tensor, optional): The denoise mask tensor. Defaults to None.
+            sigmas (torch.Tensor, optional): The sigmas tensor. Defaults to None.
+            callback (callable, optional): The callback function. Defaults to None.
+            disable_pbar (bool, optional): Whether to disable the progress bar. Defaults to False.
+            seed (int, optional): The seed value. Defaults to None.
+            flux (bool, optional): Whether to use flux mode. Defaults to False.
 
-        #### Returns:
-            - `torch.Tensor`: The sampled tensor.
+        Returns:
+            torch.Tensor: The sampled tensor.
         """
+        if self.model is None:
+            raise ValueError("Model must be provided for direct sampling")
+
         if sigmas is None:
             sigmas = self.sigmas
 
-        if last_step is not None and last_step < (len(sigmas) - 1):
-            sigmas = sigmas[: last_step + 1]
-            if force_full_denoise:
-                sigmas[-1] = 0
+        sigmas = self._process_sigmas(sigmas, start_step, last_step, force_full_denoise)
 
-        if start_step is not None:
-            if start_step < (len(sigmas) - 1):
-                sigmas = sigmas[start_step:]
+        # Early return if needed
+        if start_step is not None and start_step >= (len(sigmas) - 1):
+            if latent_image is not None:
+                return latent_image
             else:
-                if latent_image is not None:
-                    return latent_image
-                else:
-                    return torch.zeros_like(noise)
+                return torch.zeros_like(noise)
 
-        sampler = sampler_object(self.sampler, pipeline=pipeline)
+        sampler_obj = sampler_object(self.sampler_name, pipeline=self.pipeline)
 
         return sample(
             self.model,
@@ -866,7 +885,7 @@ class KSampler1:
             negative,
             cfg,
             self.device,
-            sampler,
+            sampler_obj,
             sigmas,
             self.model_options,
             latent_image=latent_image,
@@ -874,11 +893,117 @@ class KSampler1:
             callback=callback,
             disable_pbar=disable_pbar,
             seed=seed,
-            pipeline=pipeline,
+            pipeline=self.pipeline,
             flux=flux,
         )
 
+    def sample(
+        self,
+        model: torch.nn.Module = None,
+        seed: int = None,
+        steps: int = None,
+        cfg: float = None,
+        sampler_name: str = None,
+        scheduler: str = None,
+        positive: torch.Tensor = None,
+        negative: torch.Tensor = None,
+        latent_image: torch.Tensor = None,
+        denoise: float = None,
+        start_step: int = None,
+        last_step: int = None,
+        force_full_denoise: bool = False,
+        noise_mask: torch.Tensor = None,
+        callback: callable = None,
+        disable_pbar: bool = False,
+        disable_noise: bool = False,
+        pipeline: bool = False,
+        flux: bool = False,
+    ) -> tuple:
+        """Unified sampling interface that works both as direct sampling and through the common_ksampler.
 
+        This method can be used in two ways:
+        1. If model is provided, it will create a temporary sampler and use that
+        2. If model is None, it will use the pre-initialized model and parameters
+
+        Args:
+            model (torch.nn.Module, optional): The model to use for sampling. If None, uses pre-initialized model.
+            seed (int, optional): The seed value.
+            steps (int, optional): The number of steps. If None, uses pre-initialized steps.
+            cfg (float, optional): The CFG value.
+            sampler_name (str, optional): The sampler name. If None, uses pre-initialized sampler.
+            scheduler (str, optional): The scheduler name. If None, uses pre-initialized scheduler.
+            positive (torch.Tensor, optional): The positive tensor.
+            negative (torch.Tensor, optional): The negative tensor.
+            latent_image (torch.Tensor, optional): The latent image tensor.
+            denoise (float, optional): The denoise factor. If None, uses pre-initialized denoise.
+            start_step (int, optional): The start step. Defaults to None.
+            last_step (int, optional): The last step. Defaults to None.
+            force_full_denoise (bool, optional): Whether to force full denoise. Defaults to False.
+            noise_mask (torch.Tensor, optional): The noise mask tensor. Defaults to None.
+            callback (callable, optional): The callback function. Defaults to None.
+            disable_pbar (bool, optional): Whether to disable the progress bar. Defaults to False.
+            disable_noise (bool, optional): Whether to disable noise. Defaults to False.
+            pipeline (bool, optional): Whether to use the pipeline. Defaults to False.
+            flux (bool, optional): Whether to use flux mode. Defaults to False.
+
+        Returns:
+            tuple: The output tuple containing either (latent_dict,) or the sampled tensor.
+        """
+        # Case 1: Use pre-initialized model for direct sampling
+        if model is None:
+            if latent_image is None:
+                raise ValueError(
+                    "latent_image must be provided when using pre-initialized model"
+                )
+
+            return (
+                self.direct_sample(
+                    None,  # noise will be generated in common_ksampler
+                    positive,
+                    negative,
+                    cfg,
+                    latent_image,
+                    start_step,
+                    last_step,
+                    force_full_denoise,
+                    noise_mask,
+                    None,  # sigmas will use pre-calculated ones
+                    callback,
+                    disable_pbar,
+                    seed,
+                    flux,
+                ),
+            )
+
+        # Case 2: Use common_ksampler approach with provided model
+        else:
+            # For backwards compatibility with KSampler2 usage pattern
+            if isinstance(latent_image, dict):
+                latent = latent_image
+            else:
+                latent = {"samples": latent_image}
+
+            return common_ksampler(
+                model,
+                seed,
+                steps,
+                cfg,
+                sampler_name or self.sampler_name,
+                scheduler or self.scheduler,
+                positive,
+                negative,
+                latent,
+                denoise or self.denoise,
+                disable_noise,
+                start_step,
+                last_step,
+                force_full_denoise,
+                pipeline or self.pipeline,
+                flux,
+            )
+
+
+# Refactor sample1 to use KSampler directly
 def sample1(
     model: torch.nn.Module,
     noise: torch.Tensor,
@@ -902,37 +1027,37 @@ def sample1(
     pipeline: bool = False,
     flux: bool = False,
 ) -> torch.Tensor:
-    """#### Sample using the given parameters.
+    """Sample using the given parameters with the unified KSampler.
 
-    #### Args:
-        - `model` (torch.nn.Module): The model.
-        - `noise` (torch.Tensor): The noise tensor.
-        - `steps` (int): The number of steps.
-        - `cfg` (float): The CFG value.
-        - `sampler_name` (str): The sampler name.
-        - `scheduler` (str): The scheduler name.
-        - `positive` (torch.Tensor): The positive tensor.
-        - `negative` (torch.Tensor): The negative tensor.
-        - `latent_image` (torch.Tensor): The latent image tensor.
-        - `denoise` (float, optional): The denoise factor. Defaults to 1.0.
-        - `disable_noise` (bool, optional): Whether to disable noise. Defaults to False.
-        - `start_step` (int, optional): The start step. Defaults to None.
-        - `last_step` (int, optional): The last step. Defaults to None.
-        - `force_full_denoise` (bool, optional): Whether to force full denoise. Defaults to False.
-        - `noise_mask` (torch.Tensor, optional): The noise mask tensor. Defaults to None.
-        - `sigmas` (torch.Tensor, optional): The sigmas tensor. Defaults to None.
-        - `callback` (callable, optional): The callback function. Defaults to None.
-        - `disable_pbar` (bool, optional): Whether to disable the progress bar. Defaults to False.
-        - `seed` (int, optional): The seed value. Defaults to None.
-        - `pipeline` (bool, optional): Whether to use the pipeline. Defaults to False.
+    Args:
+        model (torch.nn.Module): The model.
+        noise (torch.Tensor): The noise tensor.
+        steps (int): The number of steps.
+        cfg (float): The CFG value.
+        sampler_name (str): The sampler name.
+        scheduler (str): The scheduler name.
+        positive (torch.Tensor): The positive tensor.
+        negative (torch.Tensor): The negative tensor.
+        latent_image (torch.Tensor): The latent image tensor.
+        denoise (float, optional): The denoise factor. Defaults to 1.0.
+        disable_noise (bool, optional): Whether to disable noise. Defaults to False.
+        start_step (int, optional): The start step. Defaults to None.
+        last_step (int, optional): The last step. Defaults to None.
+        force_full_denoise (bool, optional): Whether to force full denoise. Defaults to False.
+        noise_mask (torch.Tensor, optional): The noise mask tensor. Defaults to None.
+        sigmas (torch.Tensor, optional): The sigmas tensor. Defaults to None.
+        callback (callable, optional): The callback function. Defaults to None.
+        disable_pbar (bool, optional): Whether to disable the progress bar. Defaults to False.
+        seed (int, optional): The seed value. Defaults to None.
+        pipeline (bool, optional): Whether to use the pipeline. Defaults to False.
+        flux (bool, optional): Whether to use flux mode. Defaults to False.
 
-    #### Returns:
-        - `torch.Tensor`: The sampled tensor.
+    Returns:
+        torch.Tensor: The sampled tensor.
     """
-    sampler = KSampler1(
-        model,
+    sampler = KSampler(
+        model=model,
         steps=steps,
-        device=model.load_device,
         sampler=sampler_name,
         scheduler=scheduler,
         denoise=denoise,
@@ -940,7 +1065,7 @@ def sample1(
         pipeline=pipeline,
     )
 
-    samples = sampler.sample(
+    samples = sampler.direct_sample(
         noise,
         positive,
         negative,
@@ -954,145 +1079,10 @@ def sample1(
         callback=callback,
         disable_pbar=disable_pbar,
         seed=seed,
-        pipeline=pipeline,
         flux=flux,
     )
     samples = samples.to(Device.intermediate_device())
     return samples
-
-
-def common_ksampler(
-    model: torch.nn.Module,
-    seed: int,
-    steps: int,
-    cfg: float,
-    sampler_name: str,
-    scheduler: str,
-    positive: torch.Tensor,
-    negative: torch.Tensor,
-    latent: dict,
-    denoise: float = 1.0,
-    disable_noise: bool = False,
-    start_step: int = None,
-    last_step: int = None,
-    force_full_denoise: bool = False,
-    pipeline: bool = False,
-    flux: bool = False,
-) -> tuple:
-    """#### Common ksampler function.
-
-    #### Args:
-        - `model` (torch.nn.Module): The model.
-        - `seed` (int): The seed value.
-        - `steps` (int): The number of steps.
-        - `cfg` (float): The CFG value.
-        - `sampler_name` (str): The sampler name.
-        - `scheduler` (str): The scheduler name.
-        - `positive` (torch.Tensor): The positive tensor.
-        - `negative` (torch.Tensor): The negative tensor.
-        - `latent` (dict): The latent dictionary.
-        - `denoise` (float, optional): The denoise factor. Defaults to 1.0.
-        - `disable_noise` (bool, optional): Whether to disable noise. Defaults to False.
-        - `start_step` (int, optional): The start step. Defaults to None.
-        - `last_step` (int, optional): The last step. Defaults to None.
-        - `force_full_denoise` (bool, optional): Whether to force full denoise. Defaults to False.
-        - `pipeline` (bool, optional): Whether to use the pipeline. Defaults to False.
-
-    #### Returns:
-        - `tuple`: The output tuple containing the latent dictionary and samples.
-    """
-    latent_image = latent["samples"]
-    latent_image = Latent.fix_empty_latent_channels(model, latent_image)
-
-    if disable_noise:
-        noise = torch.zeros(
-            latent_image.size(),
-            dtype=latent_image.dtype,
-            layout=latent_image.layout,
-            device="cpu",
-        )
-    else:
-        batch_inds = latent["batch_index"] if "batch_index" in latent else None
-        noise = ksampler_util.prepare_noise(latent_image, seed, batch_inds)
-
-    noise_mask = None
-    if "noise_mask" in latent:
-        noise_mask = latent["noise_mask"]
-    samples = sample1(
-        model,
-        noise,
-        steps,
-        cfg,
-        sampler_name,
-        scheduler,
-        positive,
-        negative,
-        latent_image,
-        denoise=denoise,
-        disable_noise=disable_noise,
-        start_step=start_step,
-        last_step=last_step,
-        force_full_denoise=force_full_denoise,
-        noise_mask=noise_mask,
-        seed=seed,
-        pipeline=pipeline,
-        flux=flux,
-    )
-    out = latent.copy()
-    out["samples"] = samples
-    return (out,)
-
-
-class KSampler2:
-    """#### Class for KSampler2."""
-
-    def sample(
-        self,
-        model: torch.nn.Module,
-        seed: int,
-        steps: int,
-        cfg: float,
-        sampler_name: str,
-        scheduler: str,
-        positive: torch.Tensor,
-        negative: torch.Tensor,
-        latent_image: torch.Tensor,
-        denoise: float = 1.0,
-        pipeline: bool = False,
-        flux: bool = False,
-    ) -> tuple:
-        """#### Sample using the KSampler2.
-
-        #### Args:
-            - `model` (torch.nn.Module): The model.
-            - `seed` (int): The seed value.
-            - `steps` (int): The number of steps.
-            - `cfg` (float): The CFG value.
-            - `sampler_name` (str): The sampler name.
-            - `scheduler` (str): The scheduler name.
-            - `positive` (torch.Tensor): The positive tensor.
-            - `negative` (torch.Tensor): The negative tensor.
-            - `latent_image` (torch.Tensor): The latent image tensor.
-            - `denoise` (float, optional): The denoise factor. Defaults to 1.0.
-            - `pipeline` (bool, optional): Whether to use the pipeline. Defaults to False.
-
-        #### Returns:
-            - `tuple`: The output tuple containing the latent dictionary and samples.
-        """
-        return common_ksampler(
-            model,
-            seed,
-            steps,
-            cfg,
-            sampler_name,
-            scheduler,
-            positive,
-            negative,
-            latent_image,
-            denoise=denoise,
-            pipeline=pipeline,
-            flux=flux,
-        )
 
 
 class ModelType(Enum):
@@ -1187,3 +1177,86 @@ def sample_custom(
     )
     samples = samples.to(Device.intermediate_device())
     return samples
+
+
+def common_ksampler(
+    model: torch.nn.Module,
+    seed: int,
+    steps: int,
+    cfg: float,
+    sampler_name: str,
+    scheduler: str,
+    positive: torch.Tensor,
+    negative: torch.Tensor,
+    latent: dict,
+    denoise: float = 1.0,
+    disable_noise: bool = False,
+    start_step: int = None,
+    last_step: int = None,
+    force_full_denoise: bool = False,
+    pipeline: bool = False,
+    flux: bool = False,
+) -> tuple:
+    """Common ksampler function.
+
+    Args:
+        model (torch.nn.Module): The model.
+        seed (int): The seed value.
+        steps (int): The number of steps.
+        cfg (float): The CFG value.
+        sampler_name (str): The sampler name.
+        scheduler (str): The scheduler name.
+        positive (torch.Tensor): The positive tensor.
+        negative (torch.Tensor): The negative tensor.
+        latent (dict): The latent dictionary.
+        denoise (float, optional): The denoise factor. Defaults to 1.0.
+        disable_noise (bool, optional): Whether to disable noise. Defaults to False.
+        start_step (int, optional): The start step. Defaults to None.
+        last_step (int, optional): The last step. Defaults to None.
+        force_full_denoise (bool, optional): Whether to force full denoise. Defaults to False.
+        pipeline (bool, optional): Whether to use the pipeline. Defaults to False.
+        flux (bool, optional): Whether to use flux mode. Defaults to False.
+
+    Returns:
+        tuple: The output tuple containing the latent dictionary and samples.
+    """
+    latent_image = latent["samples"]
+    latent_image = Latent.fix_empty_latent_channels(model, latent_image)
+
+    if disable_noise:
+        noise = torch.zeros(
+            latent_image.size(),
+            dtype=latent_image.dtype,
+            layout=latent_image.layout,
+            device="cpu",
+        )
+    else:
+        batch_inds = latent["batch_index"] if "batch_index" in latent else None
+        noise = ksampler_util.prepare_noise(latent_image, seed, batch_inds)
+
+    noise_mask = None
+    if "noise_mask" in latent:
+        noise_mask = latent["noise_mask"]
+    samples = sample1(
+        model,
+        noise,
+        steps,
+        cfg,
+        sampler_name,
+        scheduler,
+        positive,
+        negative,
+        latent_image,
+        denoise=denoise,
+        disable_noise=disable_noise,
+        start_step=start_step,
+        last_step=last_step,
+        force_full_denoise=force_full_denoise,
+        noise_mask=noise_mask,
+        seed=seed,
+        pipeline=pipeline,
+        flux=flux,
+    )
+    out = latent.copy()
+    out["samples"] = samples
+    return (out,)
