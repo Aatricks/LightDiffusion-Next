@@ -1,3 +1,9 @@
+---
+title: LightDiffusion-Next
+app_file: app.py
+sdk: gradio
+sdk_version: 5.20.0
+---
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
@@ -81,7 +87,7 @@ Here’s what makes LightDiffusion-Next stand out:
 | **Tool**                           | **Speed (it/s)** |
 |------------------------------------|------------------|
 | **LightDiffusion with Stable-Fast** | 2.8              |
-| **LightDiffusion**                 | 1.8              |
+| **LightDiffusion**                 | 1.9              |
 | **ComfyUI**                        | 1.4              |
 | **SDForge**                        | 1.3              |
 | **SDWebUI**                        | 0.9              |
