@@ -97,9 +97,13 @@ def apply_empty_x_to_equal_area(
             uncond[temp[1]] = n
 
 
-def get_area_and_mult(
-    conds: dict, x_in: torch.Tensor, timestep_in: int
-) -> collections.namedtuple:
+# Define the namedtuple class once outside the function for reuse
+CondObj = collections.namedtuple(
+    "cond_obj", ["input_x", "mult", "conditioning", "area", "control", "patches"]
+)
+
+
+def get_area_and_mult(conds: dict, x_in: torch.Tensor, timestep_in: int) -> CondObj:
     """#### Get the area and multiplier.
 
     #### Args:
@@ -110,26 +114,39 @@ def get_area_and_mult(
     #### Returns:
         - `collections.namedtuple`: The area and multiplier.
     """
-    area = (x_in.shape[2], x_in.shape[3], 0, 0)
-    strength = 1.0
+    # Cache shape information to avoid repeated access
+    x_shape = x_in.shape
 
-    input_x = x_in[:, :, area[2] : area[0] + area[2], area[3] : area[1] + area[3]]
-    mask = torch.ones_like(input_x)
-    mult = mask * strength
+    # Define area dimensions in one operation
+    area = (x_shape[2], x_shape[3], 0, 0)
 
+    # Extract input region efficiently
+    # Since area[2] and area[3] are 0, this is essentially taking the full tensor
+    # But we maintain the slice operation for consistency
+    input_x = x_in[:, :, : area[0], : area[1]]
+
+    # Create multiplier tensor directly without intermediate mask creation
+    # This avoids an unnecessary tensor allocation and multiplication
+    mult = torch.ones_like(input_x)  # strength is 1.0, so just create ones directly
+
+    # Prepare conditioning dictionary with cached device and batch_size
     conditioning = {}
     model_conds = conds["model_conds"]
+    batch_size = x_shape[0]
+    device = x_in.device
+
+    # Process conditions with cached parameters
     for c in model_conds:
         conditioning[c] = model_conds[c].process_cond(
-            batch_size=x_in.shape[0], device=x_in.device, area=area
+            batch_size=batch_size, device=device, area=area
         )
 
+    # Get control directly without redundant variable assignment
     control = conds.get("control", None)
     patches = None
-    cond_obj = collections.namedtuple(
-        "cond_obj", ["input_x", "mult", "conditioning", "area", "control", "patches"]
-    )
-    return cond_obj(input_x, mult, conditioning, area, control, patches)
+
+    # Use the pre-defined namedtuple class instead of creating it every call
+    return CondObj(input_x, mult, conditioning, area, control, patches)
 
 
 def normal_scheduler(

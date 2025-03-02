@@ -42,13 +42,13 @@ class CONDRegular:
         return self._copy_with(
             util.repeat_to_batch_size(self.cond, batch_size).to(device)
         )
-        
+
     def can_concat(self, other: "CONDRegular") -> bool:
         """#### Check if conditions can be concatenated.
-        
+
         #### Args:
             - `other` (CONDRegular): The other condition.
-            
+
         #### Returns:
             - `bool`: True if conditions can be concatenated, False otherwise.
         """
@@ -58,10 +58,10 @@ class CONDRegular:
 
     def concat(self, others: list) -> torch.Tensor:
         """#### Concatenate conditions.
-        
+
         #### Args:
             - `others` (list): The list of other conditions.
-            
+
         #### Returns:
             - `torch.Tensor`: The concatenated conditions.
         """
@@ -76,11 +76,11 @@ class CONDCrossAttn(CONDRegular):
 
     def can_concat(self, other: "CONDRegular") -> bool:
         """#### Check if conditions can be concatenated.
-        
+
         #### Args:
             - `other` (CONDRegular): The other condition.
-            
-        #### Returns:   
+
+        #### Returns:
             - `bool`: True if conditions can be concatenated, False otherwise.
         """
         s1 = self.cond.shape
@@ -96,31 +96,34 @@ class CONDCrossAttn(CONDRegular):
             ):  # arbitrary limit on the padding because it's probably going to impact performance negatively if it's too much
                 return False
         return True
-    
+
     def concat(self, others: list) -> torch.Tensor:
-        """#### Concatenate cross-attention conditions.
-
-        #### Args:
-            - `others` (list): The list of other conditions.
-
-        #### Returns:
-            - `torch.Tensor`: The concatenated conditions.
-        """
+        """Optimized version of cross-attention condition concatenation."""
         conds = [self.cond]
-        crossattn_max_len = self.cond.shape[1]
-        for x in others:
-            c = x.cond
-            crossattn_max_len = util.lcm(crossattn_max_len, c.shape[1])
-            conds.append(c)
+        shapes = [self.cond.shape[1]]
 
-        out = []
-        for c in conds:
-            if c.shape[1] < crossattn_max_len:
-                c = c.repeat(
-                    1, crossattn_max_len // c.shape[1], 1
-                )  # padding with repeat doesn't change result, but avoids an error on tensor shape
-            out.append(c)
-        return torch.cat(out)
+        # Collect all conditions and their shapes
+        for x in others:
+            conds.append(x.cond)
+            shapes.append(x.cond.shape[1])
+
+        # Calculate LCM more efficiently
+        crossattn_max_len = util.lcm_of_list(shapes)
+
+        # Process and concat in one step where possible
+        if all(c.shape[1] == shapes[0] for c in conds):
+            # All same length, simple concatenation
+            return torch.cat(conds)
+        else:
+            # Process conditions that need repeating
+            out = []
+            for c in conds:
+                if c.shape[1] < crossattn_max_len:
+                    repeat_factor = crossattn_max_len // c.shape[1]
+                    # Use repeat instead of individual operations
+                    c = c.repeat(1, repeat_factor, 1)
+                out.append(c)
+            return torch.cat(out)
 
 
 def convert_cond(cond: list) -> list:
@@ -277,8 +280,10 @@ def calc_cond_batch(
                 out_c += output[o] * mult[o]
                 out_cts += mult[o]
 
+    # Vectorize the division at the end
     for i in range(len(out_conds)):
-        out_conds[i] /= out_counts[i]
+        # Inplace division is already efficient
+        out_conds[i].div_(out_counts[i])  # Using .div_ instead of /= for clarity
 
     return out_conds
 
@@ -328,47 +333,74 @@ def encode_model_conds(
         conds[t] = x
     return conds
 
-def resolve_areas_and_cond_masks_multidim(conditions: list, dims: tuple, device: torch.device) -> None:
-    """#### Resolve areas and condition masks for multidimensional conditions.
-    
-    #### Args:
-        - `conditions` (list): The list of conditions.
-        - `dims` (tuple): The dimensions.
-        - `device` (torch.device): The device.
-    """
-    # We need to decide on an area outside the sampling loop in order to properly generate opposite areas of equal sizes.
-    # While we're doing this, we can also resolve the mask device and scaling for performance reasons
+
+def resolve_areas_and_cond_masks_multidim(conditions, dims, device):
+    """Optimized version that processes areas and masks more efficiently"""
     for i in range(len(conditions)):
         c = conditions[i]
+        # Process area
         if "area" in c:
             area = c["area"]
             if area[0] == "percentage":
-                modified = c.copy()
+                # Vectorized calculation of area dimensions
                 a = area[1:]
                 a_len = len(a) // 2
-                area = ()
-                for d in range(len(dims)):
-                    area += (max(1, round(a[d] * dims[d])),)
-                for d in range(len(dims)):
-                    area += (round(a[d + a_len] * dims[d]),)
 
-                modified["area"] = area
-                c = modified
-                conditions[i] = c
+                # Calculate all dimensions at once using tensor operations
+                dims_tensor = torch.tensor(dims, device="cpu")
+                first_part = torch.tensor(a[:a_len], device="cpu") * dims_tensor
+                second_part = torch.tensor(a[a_len:], device="cpu") * dims_tensor
 
+                # Convert to rounded integers and tuple
+                first_part = torch.max(
+                    torch.ones_like(first_part), torch.round(first_part)
+                )
+                second_part = torch.round(second_part)
+
+                # Create the new area tuple
+                new_area = tuple(first_part.int().tolist()) + tuple(
+                    second_part.int().tolist()
+                )
+
+                # Create a modified copy with the new area
+                modified = c.copy()
+                modified["area"] = new_area
+                conditions[i] = modified
+
+        # Process mask
         if "mask" in c:
-            mask = c["mask"]
-            mask = mask.to(device=device)
             modified = c.copy()
+            mask = c["mask"].to(device=device)
+
+            # Combine dimension checks and unsqueeze operation
             if len(mask.shape) == len(dims):
                 mask = mask.unsqueeze(0)
+
+            # Only interpolate if needed
             if mask.shape[1:] != dims:
-                mask = torch.nn.functional.interpolate(
-                    mask.unsqueeze(1), size=dims, mode="bilinear", align_corners=False
-                ).squeeze(1)
+                # Optimize interpolation by ensuring mask is in the right format for the operation
+                if len(mask.shape) == 3 and mask.shape[0] == 1:
+                    # Already in the right format for interpolation
+                    mask = torch.nn.functional.interpolate(
+                        mask.unsqueeze(1),
+                        size=dims,
+                        mode="bilinear",
+                        align_corners=False,
+                    ).squeeze(1)
+                else:
+                    # Ensure mask is properly formatted for interpolation
+                    mask = torch.nn.functional.interpolate(
+                        mask
+                        if len(mask.shape) > 3 and mask.shape[1] == 1
+                        else mask.unsqueeze(1),
+                        size=dims,
+                        mode="bilinear",
+                        align_corners=False,
+                    ).squeeze(1)
 
             modified["mask"] = mask
             conditions[i] = modified
+
 
 def process_conds(
     model: object,

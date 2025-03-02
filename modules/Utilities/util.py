@@ -4,7 +4,6 @@ import itertools
 import logging
 import math
 import os
-import pickle
 import safetensors.torch
 import torch
 
@@ -118,6 +117,18 @@ def state_dict_prefix_replace(
             w = state_dict.pop(x[0])
             out[x[1]] = w
     return out
+
+
+def lcm_of_list(numbers):
+    """Calculate LCM of a list of numbers more efficiently."""
+    if not numbers:
+        return 1
+
+    result = numbers[0]
+    for num in numbers[1:]:
+        result = torch.lcm(torch.tensor(result), torch.tensor(num)).item()
+
+    return result
 
 
 def repeat_to_batch_size(
@@ -437,11 +448,11 @@ def tiled_scale_multidim(
 
     def get_upscale(dim: int, val: int) -> int:
         """#### Get the upscale value.
-        
+
         #### Args:
             - `dim` (int): The dimension.
             - `val` (int): The value.
-            
+
         #### Returns:
             - `int`: The upscaled value.
         """
@@ -453,11 +464,11 @@ def tiled_scale_multidim(
 
     def get_downscale(dim: int, val: int) -> int:
         """#### Get the downscale value.
-        
+
         #### Args:
             - `dim` (int): The dimension.
             - `val` (int): The value.
-            
+
         #### Returns:
             - `int`: The downscaled value.
         """
@@ -469,11 +480,11 @@ def tiled_scale_multidim(
 
     def get_upscale_pos(dim: int, val: int) -> int:
         """#### Get the upscaled position.
-        
+
         #### Args:
             - `dim` (int): The dimension.
             - `val` (int): The value.
-            
+
         #### Returns:
             - `int`: The upscaled position.
         """
@@ -485,11 +496,11 @@ def tiled_scale_multidim(
 
     def get_downscale_pos(dim: int, val: int) -> int:
         """#### Get the downscaled position.
-        
+
         #### Args:
             - `dim` (int): The dimension.
             - `val` (int): The value.
-            
+
         #### Returns:
             - `int`: The downscaled position.
         """
@@ -508,10 +519,10 @@ def tiled_scale_multidim(
 
     def mult_list_upscale(a: list) -> list:
         """#### Multiply a list by the upscale amount.
-        
+
         #### Args:
             - `a` (list): The list.
-        
+
         #### Returns:
             - `list`: The multiplied list.
         """
@@ -601,7 +612,7 @@ def tiled_scale(
     pbar: any = None,
 ):
     """#### Scale an image using a tiled approach.
-    
+
     #### Args:
         - `samples` (torch.Tensor): The input samples.
         - `function` (function): The scaling function.
@@ -612,7 +623,7 @@ def tiled_scale(
         - `out_channels` (int, optional): The number of output channels. Defaults to 3.
         - `output_device` (str, optional): The output device. Defaults to "cpu".
         - `pbar` (any, optional): The progress bar. Defaults to None.
-    
+
     #### Returns:
         - The scaled image.
     """

@@ -108,21 +108,29 @@ def sampling_function(
     #### Returns:
         - `torch.Tensor`: The sampled tensor.
     """
-    if (
-        math.isclose(cond_scale, 1.0)
-        and model_options.get("disable_cfg1_optimization", False) is False
-    ):
-        uncond_ = None
-    else:
-        uncond_ = uncond
+    # Optimize conditional logic for uncond
+    uncond_ = (
+        None
+        if (
+            math.isclose(cond_scale, 1.0)
+            and not model_options.get("disable_cfg1_optimization", False)
+        )
+        else uncond
+    )
 
+    # Create conditions list once
     conds = [condo, uncond_]
-    out = cond.calc_cond_batch(model, conds, x, timestep, model_options)
 
-    for fn in model_options.get("sampler_pre_cfg_function", []):
+    # Get model predictions for both conditions
+    cond_outputs = cond.calc_cond_batch(model, conds, x, timestep, model_options)
+
+    # Apply pre-CFG functions if any
+    pre_cfg_functions = model_options.get("sampler_pre_cfg_function", [])
+    if pre_cfg_functions:
+        # Create args dictionary once
         args = {
             "conds": conds,
-            "conds_out": out,
+            "conds_out": cond_outputs,
             "cond_scale": cond_scale,
             "timestep": timestep,
             "input": x,
@@ -130,12 +138,20 @@ def sampling_function(
             "model": model,
             "model_options": model_options,
         }
-        out = fn(args)
 
+        # Apply each pre-CFG function
+        for fn in pre_cfg_functions:
+            cond_outputs = fn(args)
+            args["conds_out"] = cond_outputs
+
+    # Extract conditional and unconditional outputs explicitly for clarity
+    cond_pred, uncond_pred = cond_outputs[0], cond_outputs[1]
+
+    # Apply the CFG function
     return cfg_function(
         model,
-        out[0],
-        out[1],
+        cond_pred,
+        uncond_pred,
         cond_scale,
         x,
         timestep,
