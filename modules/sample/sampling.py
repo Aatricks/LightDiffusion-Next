@@ -518,7 +518,7 @@ def ksampler(
         sampler_function = samplers.sample_dpmpp_2m_cfgpp
 
     elif sampler_name == "euler_ancestral":
-        sampler_function = samplers.sample_euler_ancestral
+        sampler_function = samplers.sample_euler_ancestral_dy_cfg_pp
 
     elif sampler_name == "dpmpp_sde_cfgpp":
         sampler_function = samplers.sample_dpmpp_sde_cfgpp

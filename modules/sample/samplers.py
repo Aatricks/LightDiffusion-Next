@@ -142,6 +142,427 @@ def sample_euler(
     return x
 
 
+class Rescaler:
+    def __init__(self, model, x, mode, **extra_args):
+        self.model = model
+        self.x = x
+        self.mode = mode
+        self.extra_args = extra_args
+
+        self.latent_image, self.noise = model.latent_image, model.noise
+        self.denoise_mask = self.extra_args.get("denoise_mask", None)
+
+    def __enter__(self):
+        if self.latent_image is not None:
+            self.model.latent_image = torch.nn.functional.interpolate(
+                input=self.latent_image, size=self.x.shape[2:4], mode=self.mode
+            )
+        if self.noise is not None:
+            self.model.noise = torch.nn.functional.interpolate(
+                input=self.latent_image, size=self.x.shape[2:4], mode=self.mode
+            )
+        if self.denoise_mask is not None:
+            self.extra_args["denoise_mask"] = torch.nn.functional.interpolate(
+                input=self.denoise_mask, size=self.x.shape[2:4], mode=self.mode
+            )
+
+        return self
+
+    def __exit__(self, type, value, traceback):
+        del self.model.latent_image, self.model.noise
+        self.model.latent_image, self.model.noise = self.latent_image, self.noise
+
+
+@torch.no_grad()
+def dy_sampling_step_cfg_pp(
+    x,
+    model,
+    sigma_next,
+    i,
+    sigma,
+    sigma_hat,
+    callback,
+    current_cfg=7.5,
+    cfg_x0_scale=1.0,
+    **extra_args,
+):
+    """Dynamic sampling step with proper CFG++ handling"""
+    # Track both conditional and unconditional denoised outputs
+    uncond_denoised = None
+    old_uncond_denoised = None
+
+    def post_cfg_function(args):
+        nonlocal uncond_denoised
+        uncond_denoised = args["uncond_denoised"]
+        return args["denoised"]
+
+    model_options = extra_args.get("model_options", {}).copy()
+    extra_args["model_options"] = set_model_options_post_cfg_function(
+        model_options, post_cfg_function, disable_cfg1_optimization=True
+    )
+
+    # Process image in lower resolution
+    original_shape = x.shape
+    batch_size, channels, m, n = (
+        original_shape[0],
+        original_shape[1],
+        original_shape[2] // 2,
+        original_shape[3] // 2,
+    )
+    extra_row = x.shape[2] % 2 == 1
+    extra_col = x.shape[3] % 2 == 1
+
+    if extra_row:
+        extra_row_content = x[:, :, -1:, :]
+        x = x[:, :, :-1, :]
+    if extra_col:
+        extra_col_content = x[:, :, :, -1:]
+        x = x[:, :, :, :-1]
+
+    a_list = (
+        x.unfold(2, 2, 2)
+        .unfold(3, 2, 2)
+        .contiguous()
+        .view(batch_size, channels, m * n, 2, 2)
+    )
+    c = a_list[:, :, :, 1, 1].view(batch_size, channels, m, n)
+
+    with Rescaler(model, c, "nearest-exact", **extra_args) as rescaler:
+        denoised = model(c, sigma_hat * c.new_ones([c.shape[0]]), **rescaler.extra_args)
+
+    if callback is not None:
+        callback(
+            {
+                "x": c,
+                "i": i,
+                "sigma": sigma,
+                "sigma_hat": sigma_hat,
+                "denoised": denoised,
+            }
+        )
+
+    # Apply proper CFG++ calculation
+    if old_uncond_denoised is None:
+        # First step - regular CFG
+        cfg_denoised = uncond_denoised + (denoised - uncond_denoised) * current_cfg
+    else:
+        # CFG++ with momentum
+        momentum = denoised
+        uncond_momentum = uncond_denoised
+        x0_coeff = cfg_x0_scale * current_cfg
+
+        # Combined CFG++ update
+        cfg_denoised = uncond_momentum + (momentum - uncond_momentum) * x0_coeff
+
+    # Apply proper noise prediction and update
+    d = util.to_d(c, sigma_hat, cfg_denoised)
+    c = c + d * (sigma_next - sigma_hat)
+
+    # Store updated pixels back in the original tensor
+    d_list = c.view(batch_size, channels, m * n, 1, 1)
+    a_list[:, :, :, 1, 1] = d_list[:, :, :, 0, 0]
+    x = (
+        a_list.view(batch_size, channels, m, n, 2, 2)
+        .permute(0, 1, 2, 4, 3, 5)
+        .reshape(batch_size, channels, 2 * m, 2 * n)
+    )
+
+    if extra_row or extra_col:
+        x_expanded = torch.zeros(original_shape, dtype=x.dtype, device=x.device)
+        x_expanded[:, :, : 2 * m, : 2 * n] = x
+        if extra_row:
+            x_expanded[:, :, -1:, : 2 * n + 1] = extra_row_content
+        if extra_col:
+            x_expanded[:, :, : 2 * m, -1:] = extra_col_content
+        if extra_row and extra_col:
+            x_expanded[:, :, -1:, -1:] = extra_col_content[:, :, -1:, :]
+        x = x_expanded
+
+    return x
+
+
+@torch.no_grad()
+def sample_euler_dy_cfg_pp(
+    model,
+    x,
+    sigmas,
+    extra_args=None,
+    callback=None,
+    disable=None,
+    s_churn=0.0,
+    s_tmin=0.0,
+    s_tmax=float("inf"),
+    s_noise=1.0,
+    s_gamma_start=0.0,
+    s_gamma_end=0.0,
+    s_extra_steps=True,
+    pipeline=False,
+    # CFG++ parameters
+    cfg_scale=7.5,
+    cfg_x0_scale=1.0,
+    cfg_s_scale=1.0,
+    cfg_min=1.0,
+    **kwargs,
+):
+    extra_args = {} if extra_args is None else extra_args
+    s_in = x.new_ones([x.shape[0]])
+    gamma_start = (
+        round(s_gamma_start)
+        if s_gamma_start > 1.0
+        else (len(sigmas) - 1) * s_gamma_start
+    )
+    gamma_end = (
+        round(s_gamma_end) if s_gamma_end > 1.0 else (len(sigmas) - 1) * s_gamma_end
+    )
+    n_steps = len(sigmas) - 1
+
+    # CFG++ scheduling
+    def get_cfg_scale(step):
+        # Linear scheduling from cfg_scale to cfg_min
+        progress = step / n_steps
+        return cfg_scale + (cfg_min - cfg_scale) * progress
+
+    old_uncond_denoised = None
+
+    def post_cfg_function(args):
+        nonlocal old_uncond_denoised
+        old_uncond_denoised = args["uncond_denoised"]
+        return args["denoised"]
+
+    model_options = extra_args.get("model_options", {}).copy()
+    extra_args["model_options"] = set_model_options_post_cfg_function(
+        model_options, post_cfg_function, disable_cfg1_optimization=True
+    )
+
+    global disable_gui
+    disable_gui = pipeline
+
+    if not disable_gui:
+        from modules.AutoEncoders import taesd
+        from modules.user import app_instance
+
+    for i in trange(len(sigmas) - 1, disable=disable):
+        if (
+            not pipeline
+            and hasattr(app_instance.app, "interrupt_flag")
+            and app_instance.app.interrupt_flag
+        ):
+            return x
+
+        if not pipeline:
+            app_instance.app.progress.set(i / (len(sigmas) - 1))
+
+        # Get current CFG scale
+        current_cfg = get_cfg_scale(i)
+
+        gamma = (
+            max(s_churn / (len(sigmas) - 1), 2**0.5 - 1)
+            if gamma_start <= i < gamma_end and s_tmin <= sigmas[i] <= s_tmax
+            else 0.0
+        )
+        sigma_hat = sigmas[i] * (gamma + 1)
+
+        if gamma > 0:
+            eps = torch.randn_like(x) * s_noise
+            x = x + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
+
+        denoised = model(x, sigma_hat * s_in, **extra_args)
+        uncond_denoised = extra_args.get("model_options", {}).get(
+            "sampler_post_cfg_function", []
+        )[-1]({"denoised": denoised, "uncond_denoised": None})
+
+        if callback is not None:
+            callback(
+                {
+                    "x": x,
+                    "i": i,
+                    "sigma": sigmas[i],
+                    "sigma_hat": sigma_hat,
+                    "denoised": denoised,
+                    "cfg_scale": current_cfg,
+                }
+            )
+
+        # CFG++ calculation
+        if old_uncond_denoised is None:
+            # First step - regular CFG
+            cfg_denoised = uncond_denoised + (denoised - uncond_denoised) * current_cfg
+        else:
+            # CFG++ with momentum
+            x0_coeff = cfg_x0_scale * current_cfg
+
+            # Simple momentum for Euler
+            momentum = denoised
+            uncond_momentum = uncond_denoised
+
+            # Combined CFG++ update
+            cfg_denoised = uncond_momentum + (momentum - uncond_momentum) * x0_coeff
+
+        # Euler method with CFG++ denoised result
+        d = util.to_d(x, sigma_hat, cfg_denoised)
+        x = x + d * (sigmas[i + 1] - sigma_hat)
+
+        # Store for momentum calculation
+        old_uncond_denoised = uncond_denoised
+
+        # Extra dynamic steps - pass the current CFG scale and predictions
+        if sigmas[i + 1] > 0 and s_extra_steps:
+            if i // 2 == 1:
+                x = dy_sampling_step_cfg_pp(
+                    x,
+                    model,
+                    sigmas[i + 1],
+                    i,
+                    sigmas[i],
+                    sigma_hat,
+                    callback,
+                    current_cfg=current_cfg,  # Pass current CFG scale
+                    cfg_x0_scale=cfg_x0_scale,  # Pass CFG++ x0 coefficient
+                    **extra_args,
+                )
+
+        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+            threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+
+    return x
+
+
+@torch.no_grad()
+def sample_euler_ancestral_dy_cfg_pp(
+    model,
+    x,
+    sigmas,
+    extra_args=None,
+    callback=None,
+    disable=None,
+    eta=1.0,
+    s_noise=1.0,
+    noise_sampler=None,
+    s_gamma_start=0.0,
+    s_gamma_end=0.0,
+    pipeline=False,
+    # CFG++ parameters
+    cfg_scale=7.5,
+    cfg_x0_scale=1.0,
+    cfg_s_scale=1.0,
+    cfg_min=1.0,
+    **kwargs,
+):
+    extra_args = {} if extra_args is None else extra_args
+    noise_sampler = (
+        sampling_util.default_noise_sampler(x)
+        if noise_sampler is None
+        else noise_sampler
+    )
+    gamma_start = (
+        round(s_gamma_start)
+        if s_gamma_start > 1.0
+        else (len(sigmas) - 1) * s_gamma_start
+    )
+    gamma_end = (
+        round(s_gamma_end) if s_gamma_end > 1.0 else (len(sigmas) - 1) * s_gamma_end
+    )
+    n_steps = len(sigmas) - 1
+
+    # CFG++ scheduling
+    def get_cfg_scale(step):
+        # Linear scheduling from cfg_scale to cfg_min
+        progress = step / n_steps
+        return cfg_scale + (cfg_min - cfg_scale) * progress
+
+    old_uncond_denoised = None
+
+    def post_cfg_function(args):
+        nonlocal old_uncond_denoised
+        old_uncond_denoised = args["uncond_denoised"]
+        return args["denoised"]
+
+    model_options = extra_args.get("model_options", {}).copy()
+    extra_args["model_options"] = set_model_options_post_cfg_function(
+        model_options, post_cfg_function, disable_cfg1_optimization=True
+    )
+
+    global disable_gui
+    disable_gui = pipeline
+
+    if not disable_gui:
+        from modules.AutoEncoders import taesd
+        from modules.user import app_instance
+
+    s_in = x.new_ones([x.shape[0]])
+    for i in trange(len(sigmas) - 1, disable=disable):
+        if (
+            not pipeline
+            and hasattr(app_instance.app, "interrupt_flag")
+            and app_instance.app.interrupt_flag
+        ):
+            return x
+
+        if not pipeline:
+            app_instance.app.progress.set(i / (len(sigmas) - 1))
+
+        # Get current CFG scale
+        current_cfg = get_cfg_scale(i)
+
+        gamma = 2**0.5 - 1 if gamma_start <= i < gamma_end else 0.0
+        sigma_hat = sigmas[i] * (gamma + 1)
+
+        if gamma > 0:
+            eps = torch.randn_like(x) * s_noise
+            x = x + eps * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
+
+        denoised = model(x, sigma_hat * s_in, **extra_args)
+        uncond_denoised = extra_args.get("model_options", {}).get(
+            "sampler_post_cfg_function", []
+        )[-1]({"denoised": denoised, "uncond_denoised": None})
+
+        sigma_down, sigma_up = sampling_util.get_ancestral_step(
+            sigmas[i], sigmas[i + 1], eta=eta
+        )
+
+        if callback is not None:
+            callback(
+                {
+                    "x": x,
+                    "i": i,
+                    "sigma": sigmas[i],
+                    "sigma_hat": sigma_hat,
+                    "denoised": denoised,
+                    "cfg_scale": current_cfg,
+                }
+            )
+
+        # CFG++ calculation
+        if old_uncond_denoised is None or sigmas[i + 1] == 0:
+            # First step or last step - regular CFG
+            cfg_denoised = uncond_denoised + (denoised - uncond_denoised) * current_cfg
+        else:
+            # CFG++ with momentum
+            x0_coeff = cfg_x0_scale * current_cfg
+
+            # Simple momentum for Euler Ancestral
+            momentum = denoised
+            uncond_momentum = uncond_denoised
+
+            # Combined CFG++ update
+            cfg_denoised = uncond_momentum + (momentum - uncond_momentum) * x0_coeff
+
+        # Euler ancestral method with CFG++ denoised result
+        d = util.to_d(x, sigma_hat, cfg_denoised)
+        x = x + d * (sigma_down - sigma_hat)
+
+        if sigmas[i + 1] > 0:
+            x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
+
+        # Store for momentum calculation
+        old_uncond_denoised = uncond_denoised
+
+        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+            threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+
+    return x
+
+
 def set_model_options_post_cfg_function(
     model_options, post_cfg_function, disable_cfg1_optimization=False
 ):
