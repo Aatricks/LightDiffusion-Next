@@ -524,7 +524,7 @@ def ksampler(
         sampler_function = samplers.sample_dpmpp_sde_cfgpp
 
     elif sampler_name == "euler":
-        sampler_function = samplers.sample_euler
+        sampler_function = samplers.sample_euler_dy_cfg_pp
 
     else:
         # Default fallback
