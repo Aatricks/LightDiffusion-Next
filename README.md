@@ -72,6 +72,9 @@ Here’s what makes LightDiffusion-Next stand out:
 - **Low-End Device Support**:
     Run LightDiffusion-Next on low-end devices with as little as 2GB of VRAM or even no GPU, ensuring accessibility for all users.
 
+- **CFG++**:
+    Uses samplers modified to use CFG++ for better quality results compared to traditional methods.
+
 ---
 
 ## ⚡ Performance Benchmarks
