@@ -304,7 +304,9 @@ class UNetModel1(nn.Module):
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
         if num_head_channels == -1:
-            assert num_heads != -1, "Either num_heads or num_head_channels has to be set"
+            assert num_heads != -1, (
+                "Either num_heads or num_head_channels has to be set"
+            )
 
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -684,36 +686,29 @@ class UNetModel1(nn.Module):
         transformer_options: Dict[str, Any] = {},
         **kwargs: Any,
     ) -> torch.Tensor:
-        """#### Forward pass of the UNet model.
-
-        #### Args:
-            - `x` (torch.Tensor): The input tensor.
-            - `timesteps` (Optional[torch.Tensor], optional): The timesteps tensor. Defaults to None.
-            - `context` (Optional[torch.Tensor], optional): The context tensor. Defaults to None.
-            - `y` (Optional[torch.Tensor], optional): The class labels tensor. Defaults to None.
-            - `control` (Optional[torch.Tensor], optional): The control tensor. Defaults to None.
-            - `transformer_options` (Dict[str, Any], optional): Options for the transformer. Defaults to {}.
-            - `**kwargs` (Any): Additional keyword arguments.
-
-        #### Returns:
-            - `torch.Tensor`: The output tensor.
-        """
+        """#### Forward pass of the UNet model with optimized calculations."""
+        # Setup transformer options (avoid unused variable)
         transformer_options["original_shape"] = list(x.shape)
         transformer_options["transformer_index"] = 0
-        transformer_patches = transformer_options.get("patches", {})
 
+        # Extract kwargs efficiently
         num_video_frames = kwargs.get("num_video_frames", self.default_num_video_frames)
         image_only_indicator = kwargs.get("image_only_indicator", None)
         time_context = kwargs.get("time_context", None)
 
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-        hs = []
-        t_emb = sampling_util.timestep_embedding(
-            timesteps, self.model_channels
-        ).to(x.dtype)
+        # Validation
+        assert (y is not None) == (self.num_classes is not None), (
+            "must specify y if and only if the model is class-conditional"
+        )
+
+        # Time embedding - optimize by computing with target dtype directly
+        t_emb = sampling_util.timestep_embedding(timesteps, self.model_channels).to(
+            x.dtype
+        )
         emb = self.time_embed(t_emb)
+
+        # Input blocks processing
+        hs = []
         h = x
         for id, module in enumerate(self.input_blocks):
             transformer_options["block"] = ("input", id)
@@ -730,6 +725,7 @@ class UNetModel1(nn.Module):
             h = apply_control1(h, control, "input")
             hs.append(h)
 
+        # Middle block processing
         transformer_options["block"] = ("middle", 0)
         if self.middle_block is not None:
             h = ResBlock.forward_timestep_embed1(
@@ -744,17 +740,19 @@ class UNetModel1(nn.Module):
             )
         h = apply_control1(h, control, "middle")
 
+        # Output blocks processing - optimize memory usage
         for id, module in enumerate(self.output_blocks):
             transformer_options["block"] = ("output", id)
             hsp = hs.pop()
             hsp = apply_control1(hsp, control, "output")
 
+            # Concatenate tensors
             h = torch.cat([h, hsp], dim=1)
-            del hsp
-            if len(hs) > 0:
-                output_shape = hs[-1].shape
-            else:
-                output_shape = None
+            del hsp  # Free memory immediately
+
+            # Only calculate output shape when needed
+            output_shape = hs[-1].shape if hs else None
+
             h = ResBlock.forward_timestep_embed1(
                 module,
                 h,
@@ -766,11 +764,15 @@ class UNetModel1(nn.Module):
                 num_video_frames=num_video_frames,
                 image_only_indicator=image_only_indicator,
             )
+
+        # Ensure output has correct dtype
         h = h.type(x.dtype)
         return self.out(h)
 
 
-def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> Dict[str, Any]:
+def detect_unet_config(
+    state_dict: Dict[str, torch.Tensor], key_prefix: str
+) -> Dict[str, Any]:
     """#### Detect the UNet configuration from a state dictionary.
 
     #### Args:
@@ -1017,7 +1019,9 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
                     // model_channels
                 )
 
-                out = transformer.calculate_transformer_depth(prefix, state_dict_keys, state_dict)
+                out = transformer.calculate_transformer_depth(
+                    prefix, state_dict_keys, state_dict
+                )
                 if out is not None:
                     transformer_depth.append(out[0])
                     if context_dim is None:
@@ -1076,7 +1080,9 @@ def detect_unet_config(state_dict: Dict[str, torch.Tensor], key_prefix: str) -> 
     return unet_config
 
 
-def model_config_from_unet_config(unet_config: Dict[str, Any], state_dict: Optional[Dict[str, torch.Tensor]] = None) -> Any:
+def model_config_from_unet_config(
+    unet_config: Dict[str, Any], state_dict: Optional[Dict[str, torch.Tensor]] = None
+) -> Any:
     """#### Get the model configuration from a UNet configuration.
 
     #### Args:
@@ -1096,7 +1102,11 @@ def model_config_from_unet_config(unet_config: Dict[str, Any], state_dict: Optio
     return None
 
 
-def model_config_from_unet(state_dict: Dict[str, torch.Tensor], unet_key_prefix: str, use_base_if_no_match: bool = False) -> Any:
+def model_config_from_unet(
+    state_dict: Dict[str, torch.Tensor],
+    unet_key_prefix: str,
+    use_base_if_no_match: bool = False,
+) -> Any:
     """#### Get the model configuration from a UNet state dictionary.
 
     #### Args:
@@ -1117,7 +1127,11 @@ def model_config_from_unet(state_dict: Dict[str, torch.Tensor], unet_key_prefix:
 def unet_dtype1(
     device: Optional[torch.device] = None,
     model_params: int = 0,
-    supported_dtypes: List[torch.dtype] = [torch.float16, torch.bfloat16, torch.float32],
+    supported_dtypes: List[torch.dtype] = [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ],
 ) -> torch.dtype:
     """#### Get the dtype for the UNet model.
 

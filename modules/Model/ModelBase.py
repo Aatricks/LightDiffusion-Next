@@ -56,7 +56,9 @@ class BaseModel(torch.nn.Module):
                     **unet_config, device=device, operations=operations
                 )
         self.model_type = model_type
-        self.model_sampling = sampling.model_sampling(model_config, model_type, flux=flux)
+        self.model_sampling = sampling.model_sampling(
+            model_config, model_type, flux=flux
+        )
 
         self.adm_channels = unet_config.get("adm_in_channels", None)
         if self.adm_channels is None:
@@ -93,26 +95,32 @@ class BaseModel(torch.nn.Module):
         """
         sigma = t
         xc = self.model_sampling.calculate_input(sigma, x)
+
+        # Optimize concatenation operation by avoiding unnecessary list creation
         if c_concat is not None:
-            xc = torch.cat([xc] + [c_concat], dim=1)
+            xc = torch.cat((xc, c_concat), dim=1)
 
-        context = c_crossattn
-        dtype = self.get_dtype()
+        # Determine dtype once to avoid repeated calls to get_dtype()
+        dtype = (
+            self.manual_cast_dtype
+            if self.manual_cast_dtype is not None
+            else self.get_dtype()
+        )
 
-        if self.manual_cast_dtype is not None:
-            dtype = self.manual_cast_dtype
-
+        # Batch operations to reduce overhead
         xc = xc.to(dtype)
         t = self.model_sampling.timestep(t).float()
-        context = context.to(dtype)
-        extra_conds = {}
-        for o in kwargs:
-            extra = kwargs[o]
-            if hasattr(extra, "dtype"):
-                if extra.dtype != torch.int and extra.dtype != torch.long:
-                    extra = extra.to(dtype)
-            extra_conds[o] = extra
+        context = c_crossattn.to(dtype) if c_crossattn is not None else None
 
+        # Process extra conditions more efficiently
+        extra_conds = {}
+        for name, value in kwargs.items():
+            if hasattr(value, "dtype") and value.dtype not in (torch.int, torch.long):
+                extra_conds[name] = value.to(dtype)
+            else:
+                extra_conds[name] = value
+
+        # Run diffusion model and calculate denoised output
         model_output = self.diffusion_model(
             xc,
             t,
@@ -121,6 +129,7 @@ class BaseModel(torch.nn.Module):
             transformer_options=transformer_options,
             **extra_conds,
         ).float()
+
         return self.model_sampling.calculate_denoised(sigma, model_output, x)
 
     def get_dtype(self) -> torch.dtype:

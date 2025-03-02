@@ -283,10 +283,10 @@ def pipeline(
                     )
                 else:
                     applystablefast_158 = loraloader_274
-                    fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
-                    applystablefast_158 = fb_cache.patch(
-                        applystablefast_158, "diffusion_model", 0.120
-                    )
+                    # fb_cache = fbcache_nodes.ApplyFBCacheOnModel()
+                    # applystablefast_158 = fb_cache.patch(
+                    #     applystablefast_158, "diffusion_model", 0.120
+                    # )
 
                 ksampler_239 = ksampler_instance.sample(
                     seed=seed,
