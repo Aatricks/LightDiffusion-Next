@@ -218,7 +218,7 @@ def pipeline(
                     seed=random.randint(1, 2**64),
                     steps=20,
                     cfg=1,
-                    sampler_name="euler",
+                    sampler_name="euler_cfgpp",
                     scheduler="beta",
                     denoise=1,
                     model=unetloadergguf_10[0],
@@ -313,7 +313,7 @@ def pipeline(
                         seed=random.randint(1, 2**64),
                         steps=10,
                         cfg=8,
-                        sampler_name="euler_ancestral",
+                        sampler_name="euler_ancestral_cfgpp",
                         scheduler="normal",
                         denoise=0.45,
                         model=hidiffoptimizer.go(
