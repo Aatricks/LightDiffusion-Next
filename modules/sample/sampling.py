@@ -76,6 +76,7 @@ class EPS:
         if max_denoise:
             noise = noise * torch.sqrt(1.0 + sigma**2.0)
         else:
+            sigma = sigma.view(sigma.shape[:1] + (1,) * (noise.ndim - 1))
             noise = noise * sigma
 
         noise += latent_image
@@ -513,153 +514,22 @@ def ksampler(
     #### Returns:
         - `KSAMPLER`: The KSAMPLER object.
     """
-    if sampler_name == "dpmpp_2m":
-
-        def dpmpp_2m_function(
-            model: torch.nn.Module,
-            noise: torch.Tensor,
-            sigmas: torch.Tensor,
-            extra_args: dict,
-            callback: callable,
-            disable: bool,
-            pipeline: bool,
-            **extra_options,
-        ) -> torch.Tensor:
-            sigma_min = sigmas[-1]
-            if sigma_min == 0:
-                sigma_min = sigmas[-2]
-            return samplers.sample_dpmpp_2m(
-                model,
-                noise,
-                sigmas,
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = dpmpp_2m_function
-
-    elif sampler_name == "dpmpp_2m_cfgpp":
-
-        def dpmpp_2m_dy_function(
-            model: torch.nn.Module,
-            noise: torch.Tensor,
-            sigmas: torch.Tensor,
-            extra_args: dict,
-            callback: callable,
-            disable: bool,
-            pipeline: bool,
-            **extra_options,
-        ) -> torch.Tensor:
-            sigma_min = sigmas[-1]
-            if sigma_min == 0:
-                sigma_min = sigmas[-2]
-            return samplers.sample_dpmpp_2m_cfgpp(
-                model,
-                noise,
-                sigmas,
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = dpmpp_2m_dy_function
-
-    elif sampler_name == "dpmpp_sde":
-
-        def dpmpp_sde_function(
-            model: torch.nn.Module,
-            noise: torch.Tensor,
-            sigmas: torch.Tensor,
-            extra_args: dict,
-            callback: callable,
-            disable: bool,
-            pipeline: bool,
-            **extra_options,
-        ) -> torch.Tensor:
-            return samplers.sample_dpmpp_sde(
-                model,
-                noise,
-                sigmas,
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = dpmpp_sde_function
+    if sampler_name == "dpmpp_2m_cfgpp":
+        sampler_function = samplers.sample_dpmpp_2m_cfgpp
 
     elif sampler_name == "euler_ancestral":
-
-        def euler_ancestral_function(
-            model: torch.nn.Module,
-            noise: torch.Tensor,
-            sigmas: torch.Tensor,
-            extra_args: dict,
-            callback: callable,
-            disable: bool,
-            pipeline: bool,
-        ) -> torch.Tensor:
-            return samplers.sample_euler_ancestral(
-                model,
-                noise,
-                sigmas,
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = euler_ancestral_function
+        sampler_function = samplers.sample_euler_ancestral
 
     elif sampler_name == "dpmpp_sde_cfgpp":
-
-        def dpmpp_sde_dy_function(
-            model: torch.nn.Module,
-            noise: torch.Tensor,
-            sigmas: torch.Tensor,
-            extra_args: dict,
-            callback: callable,
-            disable: bool,
-            pipeline: bool,
-            **extra_options,
-        ) -> torch.Tensor:
-            return samplers.sample_dpmpp_sde_cfgpp(
-                model,
-                noise,
-                sigmas,
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = dpmpp_sde_dy_function
+        sampler_function = samplers.sample_dpmpp_sde_cfgpp
 
     elif sampler_name == "euler":
+        sampler_function = samplers.sample_euler
 
-        def euler_function(
-            model, noise, sigmas, extra_args, callback, disable, pipeline=False
-        ):
-            return samplers.sample_euler(
-                model,
-                noise,
-                sigmas,
-                extra_args=extra_args,
-                callback=callback,
-                disable=disable,
-                pipeline=pipeline,
-                **extra_options,
-            )
-
-        sampler_function = euler_function
+    else:
+        # Default fallback
+        sampler_function = samplers.sample_euler
+        print(f"Warning: Unknown sampler '{sampler_name}', falling back to euler")
 
     return KSAMPLER(sampler_function, extra_options, inpaint_options)
 

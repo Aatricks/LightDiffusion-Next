@@ -449,7 +449,9 @@ class App(tk.Tk):
         img_tensor = img_tensor.unsqueeze(0)
         self.interrupt_flag = False
         self.sampler = (
-            "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+            "dpmpp_sde_cfgpp"
+            if not self.prioritize_speed_var.get()
+            else "dpmpp_2m_cfgpp"
         )
         with torch.inference_mode():
             (
@@ -637,7 +639,9 @@ class App(tk.Tk):
         self.generation_threads.append(current_thread)
         self.interrupt_flag = False
         self.sampler = (
-            "dpmpp_sde" if not self.prioritize_speed_var.get() else "dpmpp_2m"
+            "dpmpp_sde_cfgpp"
+            if not self.prioritize_speed_var.get()
+            else "dpmpp_2m_cfgpp"
         )
         try:
             # Disable generate button during generation
