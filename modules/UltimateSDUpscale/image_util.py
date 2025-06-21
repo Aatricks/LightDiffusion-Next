@@ -140,9 +140,41 @@ def tensor_to_pil(img_tensor: torch.Tensor, batch_index: int = 0) -> Image.Image
     #### Returns:
         - `Image.Image`: The converted PIL image.
     """
-    img_tensor = img_tensor[batch_index].unsqueeze(0)
-    i = 255.0 * img_tensor.cpu().numpy()
-    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8).squeeze())
+    # Get the tensor for the specified batch index
+    tensor = img_tensor[batch_index]
+
+    # Handle different tensor dimensions
+    # The upscaler outputs in [H, W, C] format after movedim(-3, -1)
+    if tensor.dim() == 3:  # [H, W, C] - already in correct format
+        pass
+    elif tensor.dim() == 2:  # [H, W] - grayscale
+        pass
+    else:
+        raise ValueError(f"Unexpected tensor dimensions: {tensor.shape}")
+
+    # Clamp values to valid range [0, 1] and convert to numpy
+    tensor = torch.clamp(tensor, 0.0, 1.0)
+    numpy_array = (tensor.cpu().numpy() * 255.0).astype(np.uint8)
+
+    # Handle different channel configurations
+    if numpy_array.ndim == 3:
+        if numpy_array.shape[2] == 3:
+            img = Image.fromarray(numpy_array, 'RGB')
+        elif numpy_array.shape[2] == 1:
+            img = Image.fromarray(numpy_array.squeeze(axis=2), 'L')
+        elif numpy_array.shape[2] == 4:
+            img = Image.fromarray(numpy_array, 'RGBA')
+        else:
+            # Fallback: take first 3 channels if more than 3, or convert single channel to grayscale
+            if numpy_array.shape[2] >= 3:
+                img = Image.fromarray(numpy_array[:, :, :3], 'RGB')
+            else:
+                img = Image.fromarray(numpy_array.squeeze(axis=2), 'L')
+    elif numpy_array.ndim == 2:
+        img = Image.fromarray(numpy_array, 'L')
+    else:
+        raise ValueError(f"Cannot convert array with shape {numpy_array.shape} to PIL image")
+
     return img
 
 
@@ -155,9 +187,20 @@ def pil_to_tensor(image: Image.Image) -> torch.Tensor:
     #### Returns:
         - `torch.Tensor`: The converted tensor.
     """
-    image = np.array(image).astype(np.float32) / 255.0
-    image = torch.from_numpy(image).unsqueeze(0)
-    return image
+    # Convert RGBA to RGB if necessary (upscaler models expect 3 channels)
+    if image.mode == 'RGBA':
+        # Create a white background for transparency
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        background.paste(image, mask=image.split()[-1])  # Use alpha channel as mask
+        image = background
+    elif image.mode != 'RGB':
+        image = image.convert('RGB')
+      # Convert to numpy array and normalize
+    image_array = np.array(image).astype(np.float32) / 255.0
+
+    # Convert to tensor and add batch dimension: [H, W, C] -> [1, H, W, C]
+    tensor = torch.from_numpy(image_array).unsqueeze(0)
+    return tensor
 
 
 def get_crop_region(mask: Image.Image, pad: int = 0) -> tuple:
@@ -260,6 +303,6 @@ def crop_cond(cond: list, region: tuple, init_size: tuple, canvas_size: tuple, t
     cropped = []
     for emb, x in cond:
         cond_dict = x.copy()
-        n = [emb, cond_dict]
-        cropped.append(n)
+        cond_entry = [emb, cond_dict]
+        cropped.append(cond_entry)
     return cropped

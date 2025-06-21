@@ -24,7 +24,7 @@ FOR /F "delims=" %%i IN ('nvidia-smi 2^>^&1') DO (
 )
 IF NOT ERRORLEVEL 1 (
     echo NVIDIA GPU detected, installing GPU dependencies...
-    uv pip install xformers torch torchvision --index-url https://download.pytorch.org/whl/cu126
+    uv pip install xformers torch torchvision --index-url https://download.pytorch.org/whl/cu128
 ) ELSE (
     echo No NVIDIA GPU detected, installing CPU dependencies...
     uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
