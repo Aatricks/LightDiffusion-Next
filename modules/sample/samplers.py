@@ -803,9 +803,9 @@ def sample_dpmpp_2m_cfgpp(
     # Multi-scale parameters
     enable_multiscale=True,
     multiscale_factor=0.5,
-    multiscale_fullres_start=3,
+    multiscale_fullres_start=5,
     multiscale_fullres_end=8,
-    multiscale_intermittent_fullres=False,
+    multiscale_intermittent_fullres=True,
 ):
     """DPM-Solver++(2M) sampler with CFG++ optimizations"""
     # Pre-calculate common values and setup

@@ -307,18 +307,6 @@ class App(tk.Tk):
         )
         self.multiscale_checkbox.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
 
-        # checkbox to enable intermittent full-res
-        self.multiscale_intermittent_var = tk.BooleanVar(value=True)
-        self.multiscale_intermittent_checkbox = ctk.CTkCheckBox(
-            self.checkbox_frame,
-            text="Intermittent Full-Res",
-            variable=self.multiscale_intermittent_var,
-            text_color="black",
-        )
-        self.multiscale_intermittent_checkbox.grid(
-            row=3, column=0, padx=(75, 5), pady=5, sticky="nsew"
-        )
-
         # Button to launch the generation
         self.generate_button = ctk.CTkButton(
             self.sidebar,
@@ -794,7 +782,7 @@ class App(tk.Tk):
                     multiscale_factor=0.5,
                     multiscale_fullres_start=5,
                     multiscale_fullres_end=8,
-                    multiscale_intermittent_fullres=self.multiscale_intermittent_var.get(),
+                    multiscale_intermittent_fullres=self.multiscale_var.get(),
                 )
                 self.progress.set(0.4)
                 if self.hires_fix_var.get() is True:
@@ -816,6 +804,11 @@ class App(tk.Tk):
                         positive=cliptextencode_242[0],
                         negative=cliptextencode_243[0],
                         latent_image=latentupscale_254[0],
+                        enable_multiscale=self.multiscale_var.get(),
+                        multiscale_factor=0.5,
+                        multiscale_fullres_start=5,
+                        multiscale_fullres_end=8,
+                        multiscale_intermittent_fullres=self.multiscale_var.get(),
                     )
                     vaedecode_240 = vaedecode.decode(
                         samples=ksampler_253[0],
