@@ -64,7 +64,7 @@ class App(tk.Tk):
         """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
-        self.geometry("900x750")
+        self.geometry("900x800")
 
         # Configure main window grid
         self.grid_columnconfigure(1, weight=1)
@@ -305,9 +305,7 @@ class App(tk.Tk):
             variable=self.multiscale_var,
             text_color="black",
         )
-        self.multiscale_checkbox.grid(
-            row=2, column=1, padx=5, pady=5, sticky="nsew"
-        )
+        self.multiscale_checkbox.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
 
         # checkbox to enable intermittent full-res
         self.multiscale_intermittent_var = tk.BooleanVar(value=True)

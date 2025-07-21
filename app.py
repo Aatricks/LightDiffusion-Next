@@ -151,8 +151,12 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                 realistic_model = gr.Checkbox(label="Realistic Model")
 
             with gr.Row():
-                multiscale_enabled = gr.Checkbox(label="Multi-Scale Diffusion", value=True)
-                multiscale_intermittent = gr.Checkbox(label="Intermittent Full-Res", value=False)
+                multiscale_enabled = gr.Checkbox(
+                    label="Multi-Scale Diffusion", value=True
+                )
+                multiscale_intermittent = gr.Checkbox(
+                    label="Intermittent Full-Res", value=False
+                )
                 img2img_enabled = gr.Checkbox(label="Image to Image Mode")
                 img2img_image = gr.Image(label="Input Image for img2img", visible=False)
 

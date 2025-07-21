@@ -40,60 +40,74 @@ def sample_euler_ancestral(
     # Multi-scale setup with validation
     original_shape = x.shape
     batch_size, channels, orig_h, orig_w = original_shape
-    
+
     # Validate multi-scale parameters
     if enable_multiscale:
         if not (0.1 <= multiscale_factor <= 1.0):
-            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            print(
+                f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale"
+            )
             enable_multiscale = False
         if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
             print("Warning: Invalid fullres step counts, disabling multi-scale")
             enable_multiscale = False
-    
+
     # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
-    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
-    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
-    
+    scale_h = (
+        int(max(8, ((orig_h * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_h
+    )
+    scale_w = (
+        int(max(8, ((orig_w * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_w
+    )
+
     # Disable multi-scale for small images or short step counts
     n_steps = len(sigmas) - 1
     multiscale_active = (
-        enable_multiscale 
-        and orig_h > 64 and orig_w > 64 
+        enable_multiscale
+        and orig_h > 64
+        and orig_w > 64
         and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
         and (scale_h != orig_h or scale_w != orig_w)
     )
-    
+
     if enable_multiscale and not multiscale_active:
-        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+        print(
+            f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})"
+        )
     elif multiscale_active:
-        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
-    
+        print(
+            f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})"
+        )
+
     def downscale_tensor(tensor):
         """Downscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+            tensor, size=(scale_h, scale_w), mode="bilinear", align_corners=False
         )
-    
+
     def upscale_tensor(tensor):
         """Upscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+            tensor, size=(orig_h, orig_w), mode="bilinear", align_corners=False
         )
-    
+
     def should_use_fullres(step):
         """Determine if this step should use full resolution"""
         if not multiscale_active:
             return True
-        
+
         # Always use full resolution for start and end steps
-        if (step < multiscale_fullres_start or 
-            step >= n_steps - multiscale_fullres_end):
+        if step < multiscale_fullres_start or step >= n_steps - multiscale_fullres_end:
             return True
-        
+
         # Intermittent full-res: every 2nd step in low-res region if enabled
         if multiscale_intermittent_fullres:
             # Check if we're in the low-res region
@@ -104,7 +118,7 @@ def sample_euler_ancestral(
                 relative_step = step - low_res_region_start
                 # Use full-res every 2nd step (0, 2, 4, ...)
                 return relative_step % 2 == 0
-        
+
         return False
 
     # Pre-allocate tensors and init noise sampler
@@ -139,7 +153,7 @@ def sample_euler_ancestral(
 
         # Model inference at appropriate resolution
         denoised = model(x_process, sigmas[i] * s_in_process, **(extra_args or {}))
-        
+
         # Scale predictions back to original resolution if needed
         if not use_fullres:
             denoised = upscale_tensor(denoised)
@@ -194,60 +208,74 @@ def sample_euler(
     # Multi-scale setup with validation
     original_shape = x.shape
     batch_size, channels, orig_h, orig_w = original_shape
-    
+
     # Validate multi-scale parameters
     if enable_multiscale:
         if not (0.1 <= multiscale_factor <= 1.0):
-            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            print(
+                f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale"
+            )
             enable_multiscale = False
         if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
             print("Warning: Invalid fullres step counts, disabling multi-scale")
             enable_multiscale = False
-    
+
     # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
-    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
-    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
-    
+    scale_h = (
+        int(max(8, ((orig_h * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_h
+    )
+    scale_w = (
+        int(max(8, ((orig_w * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_w
+    )
+
     # Disable multi-scale for small images or short step counts
     n_steps = len(sigmas) - 1
     multiscale_active = (
-        enable_multiscale 
-        and orig_h > 64 and orig_w > 64 
+        enable_multiscale
+        and orig_h > 64
+        and orig_w > 64
         and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
         and (scale_h != orig_h or scale_w != orig_w)
     )
-    
+
     if enable_multiscale and not multiscale_active:
-        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+        print(
+            f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})"
+        )
     elif multiscale_active:
-        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
-    
+        print(
+            f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})"
+        )
+
     def downscale_tensor(tensor):
         """Downscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+            tensor, size=(scale_h, scale_w), mode="bilinear", align_corners=False
         )
-    
+
     def upscale_tensor(tensor):
         """Upscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+            tensor, size=(orig_h, orig_w), mode="bilinear", align_corners=False
         )
-    
+
     def should_use_fullres(step):
         """Determine if this step should use full resolution"""
         if not multiscale_active:
             return True
-        
+
         # Always use full resolution for start and end steps
-        if (step < multiscale_fullres_start or 
-            step >= n_steps - multiscale_fullres_end):
+        if step < multiscale_fullres_start or step >= n_steps - multiscale_fullres_end:
             return True
-        
+
         # Intermittent full-res: every 2nd step in low-res region if enabled
         if multiscale_intermittent_fullres:
             # Check if we're in the low-res region
@@ -258,7 +286,7 @@ def sample_euler(
                 relative_step = step - low_res_region_start
                 # Use full-res every 2nd step (0, 2, 4, ...)
                 return relative_step % 2 == 0
-        
+
         return False
 
     # Pre-allocate tensors and cache parameters
@@ -302,7 +330,7 @@ def sample_euler(
 
         # Model inference at appropriate resolution
         denoised = model(x_process, sigma_hat * s_in_process, **(extra_args or {}))
-        
+
         # Scale predictions back to original resolution if needed
         if not use_fullres:
             denoised = upscale_tensor(denoised)
@@ -792,64 +820,78 @@ def sample_dpmpp_2m_cfgpp(
     # Multi-scale setup with validation
     original_shape = x.shape
     batch_size, channels, orig_h, orig_w = original_shape
-    
+
     # Validate multi-scale parameters
     if enable_multiscale:
         if not (0.1 <= multiscale_factor <= 1.0):
-            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            print(
+                f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale"
+            )
             enable_multiscale = False
         if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
             print("Warning: Invalid fullres step counts, disabling multi-scale")
             enable_multiscale = False
-    
+
     # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
-    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
-    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
-    
+    scale_h = (
+        int(max(8, ((orig_h * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_h
+    )
+    scale_w = (
+        int(max(8, ((orig_w * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_w
+    )
+
     # Pre-allocate tensors and transform sigmas
     s_in = torch.ones((x.shape[0],), device=device)
     t_steps = -torch.log(sigmas)  # Fused calculation
     n_steps = len(sigmas) - 1
-    
+
     # Disable multi-scale for small images or short step counts
     multiscale_active = (
-        enable_multiscale 
-        and orig_h > 64 and orig_w > 64 
+        enable_multiscale
+        and orig_h > 64
+        and orig_w > 64
         and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
         and (scale_h != orig_h or scale_w != orig_w)
     )
-    
+
     if enable_multiscale and not multiscale_active:
-        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+        print(
+            f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})"
+        )
     elif multiscale_active:
-        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
-    
+        print(
+            f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})"
+        )
+
     def downscale_tensor(tensor):
         """Downscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+            tensor, size=(scale_h, scale_w), mode="bilinear", align_corners=False
         )
-    
+
     def upscale_tensor(tensor):
         """Upscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+            tensor, size=(orig_h, orig_w), mode="bilinear", align_corners=False
         )
-    
+
     def should_use_fullres(step):
         """Determine if this step should use full resolution"""
         if not multiscale_active:
             return True
-        
+
         # Always use full resolution for start and end steps
-        if (step < multiscale_fullres_start or 
-            step >= n_steps - multiscale_fullres_end):
+        if step < multiscale_fullres_start or step >= n_steps - multiscale_fullres_end:
             return True
-        
+
         # Intermittent full-res: every 2nd step in low-res region if enabled
         if multiscale_intermittent_fullres:
             # Check if we're in the low-res region
@@ -860,7 +902,7 @@ def sample_dpmpp_2m_cfgpp(
                 relative_step = step - low_res_region_start
                 # Use full-res every 2nd step (0, 2, 4, ...)
                 return relative_step % 2 == 0
-        
+
         return False
 
     # Pre-calculate all needed values in one go
@@ -1016,36 +1058,51 @@ def sample_dpmpp_sde_cfgpp(
     # Validate multi-scale parameters
     if enable_multiscale:
         if not (0.1 <= multiscale_factor <= 1.0):
-            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            print(
+                f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale"
+            )
             enable_multiscale = False
         if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
             print("Warning: Invalid fullres step counts, disabling multi-scale")
             enable_multiscale = False
 
     # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
-    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
-    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
+    scale_h = (
+        int(max(8, ((orig_h * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_h
+    )
+    scale_w = (
+        int(max(8, ((orig_w * multiscale_factor) // 8) * 8))
+        if enable_multiscale
+        else orig_w
+    )
 
     # Disable multi-scale for small images or short step counts
     n_steps = len(sigmas) - 1
     multiscale_active = (
         enable_multiscale
-        and orig_h > 64 and orig_w > 64
+        and orig_h > 64
+        and orig_w > 64
         and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
         and (scale_h != orig_h or scale_w != orig_w)
     )
 
     if enable_multiscale and not multiscale_active:
-        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+        print(
+            f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})"
+        )
     elif multiscale_active:
-        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
+        print(
+            f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})"
+        )
 
     def downscale_tensor(tensor):
         """Downscale tensor using bilinear interpolation"""
         if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+            tensor, size=(scale_h, scale_w), mode="bilinear", align_corners=False
         )
 
     def upscale_tensor(tensor):
@@ -1053,19 +1110,18 @@ def sample_dpmpp_sde_cfgpp(
         if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
             return tensor
         return torch.nn.functional.interpolate(
-            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+            tensor, size=(orig_h, orig_w), mode="bilinear", align_corners=False
         )
 
     def should_use_fullres(step):
         """Determine if this step should use full resolution"""
         if not multiscale_active:
             return True
-        
+
         # Always use full resolution for start and end steps
-        if (step < multiscale_fullres_start or 
-            step >= n_steps - multiscale_fullres_end):
+        if step < multiscale_fullres_start or step >= n_steps - multiscale_fullres_end:
             return True
-        
+
         # Intermittent full-res: every 2nd step in low-res region if enabled
         if multiscale_intermittent_fullres:
             # Check if we're in the low-res region
@@ -1076,8 +1132,9 @@ def sample_dpmpp_sde_cfgpp(
                 relative_step = step - low_res_region_start
                 # Use full-res every 2nd step (0, 2, 4, ...)
                 return relative_step % 2 == 0
-        
-        return False    # Pre-allocate tensors and values
+
+        return False  # Pre-allocate tensors and values
+
     s_in = torch.ones((x.shape[0],), device=device)
     extra_args = {} if extra_args is None else extra_args
 

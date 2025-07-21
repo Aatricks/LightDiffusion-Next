@@ -944,12 +944,12 @@ def sample1(
     """
     # Create extra options for multi-scale diffusion (for supported samplers)
     multiscale_supported_samplers = [
-        "dpmpp_sde_cfgpp", 
-        "sample_euler_ancestral", 
-        "sample_euler", 
-        "sample_dpmpp_2m_cfgpp"
+        "dpmpp_sde_cfgpp",
+        "sample_euler_ancestral",
+        "sample_euler",
+        "sample_dpmpp_2m_cfgpp",
     ]
-    
+
     extra_options = {}
     if sampler_name in multiscale_supported_samplers:
         extra_options = {
@@ -963,7 +963,9 @@ def sample1(
     # Use custom sampler with extra options for supported samplers
     if sampler_name in multiscale_supported_samplers and extra_options:
         # Create a custom sampler with multi-scale options
-        sampler_obj = ksampler(sampler_name, pipeline=pipeline, extra_options=extra_options)
+        sampler_obj = ksampler(
+            sampler_name, pipeline=pipeline, extra_options=extra_options
+        )
         sigmas = ksampler_util.calculate_sigmas(
             model.get_model_object("model_sampling"), scheduler, steps
         )
@@ -978,7 +980,7 @@ def sample1(
                     model.get_model_object("model_sampling"), scheduler, new_steps
                 )
                 sigmas = sigmas_full[-(steps + 1) :]
-        
+
         # Process sigmas for start/end steps
         if last_step is not None and last_step < (len(sigmas) - 1):
             sigmas = sigmas[: last_step + 1]
@@ -986,9 +988,9 @@ def sample1(
                 sigmas[-1] = 0
         if start_step is not None and start_step < (len(sigmas) - 1):
             sigmas = sigmas[start_step:]
-        
+
         sigmas = sigmas.to(model.load_device)
-        
+
         # Use the custom sample function directly
         samples = sample(
             model,
