@@ -788,6 +788,12 @@ class KSampler:
         disable_noise: bool = False,
         pipeline: bool = False,
         flux: bool = False,
+        # Multi-scale diffusion parameters
+        enable_multiscale: bool = True,
+        multiscale_factor: float = 0.5,
+        multiscale_fullres_start: int = 3,
+        multiscale_fullres_end: int = 8,
+        multiscale_intermittent_fullres: bool = False,
     ) -> tuple:
         """Unified sampling interface that works both as direct sampling and through the common_ksampler.
 
@@ -870,6 +876,11 @@ class KSampler:
                 force_full_denoise,
                 pipeline or self.pipeline,
                 flux,
+                enable_multiscale,
+                multiscale_factor,
+                multiscale_fullres_start,
+                multiscale_fullres_end,
+                multiscale_intermittent_fullres,
             )
 
 
@@ -896,6 +907,12 @@ def sample1(
     seed: int = None,
     pipeline: bool = False,
     flux: bool = False,
+    # Multi-scale diffusion parameters
+    enable_multiscale: bool = True,
+    multiscale_factor: float = 0.5,
+    multiscale_fullres_start: int = 3,
+    multiscale_fullres_end: int = 8,
+    multiscale_intermittent_fullres: bool = False,
 ) -> torch.Tensor:
     """Sample using the given parameters with the unified KSampler.
 
@@ -925,32 +942,100 @@ def sample1(
     Returns:
         torch.Tensor: The sampled tensor.
     """
-    sampler = KSampler(
-        model=model,
-        steps=steps,
-        sampler=sampler_name,
-        scheduler=scheduler,
-        denoise=denoise,
-        model_options=model.model_options,
-        pipeline=pipeline,
-    )
+    # Create extra options for multi-scale diffusion (for supported samplers)
+    multiscale_supported_samplers = [
+        "dpmpp_sde_cfgpp", 
+        "sample_euler_ancestral", 
+        "sample_euler", 
+        "sample_dpmpp_2m_cfgpp"
+    ]
+    
+    extra_options = {}
+    if sampler_name in multiscale_supported_samplers:
+        extra_options = {
+            "enable_multiscale": enable_multiscale,
+            "multiscale_factor": multiscale_factor,
+            "multiscale_fullres_start": multiscale_fullres_start,
+            "multiscale_fullres_end": multiscale_fullres_end,
+            "multiscale_intermittent_fullres": multiscale_intermittent_fullres,
+        }
 
-    samples = sampler.direct_sample(
-        noise,
-        positive,
-        negative,
-        cfg=cfg,
-        latent_image=latent_image,
-        start_step=start_step,
-        last_step=last_step,
-        force_full_denoise=force_full_denoise,
-        denoise_mask=noise_mask,
-        sigmas=sigmas,
-        callback=callback,
-        disable_pbar=disable_pbar,
-        seed=seed,
-        flux=flux,
-    )
+    # Use custom sampler with extra options for supported samplers
+    if sampler_name in multiscale_supported_samplers and extra_options:
+        # Create a custom sampler with multi-scale options
+        sampler_obj = ksampler(sampler_name, pipeline=pipeline, extra_options=extra_options)
+        sigmas = ksampler_util.calculate_sigmas(
+            model.get_model_object("model_sampling"), scheduler, steps
+        )
+        if denoise is None or denoise > 0.9999:
+            pass  # Use full sigmas
+        else:
+            if denoise <= 0.0:
+                sigmas = torch.FloatTensor([])
+            else:
+                new_steps = int(steps / denoise)
+                sigmas_full = ksampler_util.calculate_sigmas(
+                    model.get_model_object("model_sampling"), scheduler, new_steps
+                )
+                sigmas = sigmas_full[-(steps + 1) :]
+        
+        # Process sigmas for start/end steps
+        if last_step is not None and last_step < (len(sigmas) - 1):
+            sigmas = sigmas[: last_step + 1]
+            if force_full_denoise:
+                sigmas[-1] = 0
+        if start_step is not None and start_step < (len(sigmas) - 1):
+            sigmas = sigmas[start_step:]
+        
+        sigmas = sigmas.to(model.load_device)
+        
+        # Use the custom sample function directly
+        samples = sample(
+            model,
+            noise,
+            positive,
+            negative,
+            cfg,
+            model.load_device,
+            sampler_obj,
+            sigmas,
+            model.model_options,
+            latent_image=latent_image,
+            denoise_mask=noise_mask,
+            callback=callback,
+            disable_pbar=disable_pbar,
+            seed=seed,
+            pipeline=pipeline,
+            flux=flux,
+        )
+    else:
+        # Use the standard KSampler for other samplers
+        sampler = KSampler(
+            model=model,
+            steps=steps,
+            sampler=sampler_name,
+            scheduler=scheduler,
+            denoise=denoise,
+            model_options=model.model_options,
+            pipeline=pipeline,
+        )
+
+        samples = sampler.direct_sample(
+            noise,
+            positive,
+            negative,
+            cfg=cfg,
+            latent_image=latent_image,
+            start_step=start_step,
+            last_step=last_step,
+            force_full_denoise=force_full_denoise,
+            denoise_mask=noise_mask,
+            sigmas=sigmas,
+            callback=callback,
+            disable_pbar=disable_pbar,
+            seed=seed,
+            flux=flux,
+        )
     samples = samples.to(Device.intermediate_device())
     return samples
 
@@ -1066,6 +1151,12 @@ def common_ksampler(
     force_full_denoise: bool = False,
     pipeline: bool = False,
     flux: bool = False,
+    # Multi-scale diffusion parameters
+    enable_multiscale: bool = True,
+    multiscale_factor: float = 0.5,
+    multiscale_fullres_start: int = 3,
+    multiscale_fullres_end: int = 8,
+    multiscale_intermittent_fullres: bool = False,
 ) -> tuple:
     """Common ksampler function.
 
@@ -1126,6 +1217,11 @@ def common_ksampler(
         seed=seed,
         pipeline=pipeline,
         flux=flux,
+        enable_multiscale=enable_multiscale,
+        multiscale_factor=multiscale_factor,
+        multiscale_fullres_start=multiscale_fullres_start,
+        multiscale_fullres_end=multiscale_fullres_end,
+        multiscale_intermittent_fullres=multiscale_intermittent_fullres,
     )
     out = latent.copy()
     out["samples"] = samples

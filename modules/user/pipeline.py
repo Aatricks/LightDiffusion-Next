@@ -44,6 +44,12 @@ def pipeline(
     prio_speed: bool = False,
     autohdr: bool = False,
     realistic_model: bool = False,
+    # Multi-scale diffusion parameters
+    enable_multiscale: bool = True,
+    multiscale_factor: float = 0.5,
+    multiscale_fullres_start: int = 3,
+    multiscale_fullres_end: int = 8,
+    multiscale_intermittent_fullres: bool = False,
 ) -> None:
     """#### Run the LightDiffusion pipeline.
 
@@ -61,6 +67,10 @@ def pipeline(
         - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
         - `autohdr` (bool, optional): Enable the AutoHDR mode. Defaults to False.
         - `realistic_model` (bool, optional): Use the realistic model. Defaults to False.
+        - `enable_multiscale` (bool, optional): Enable multi-scale diffusion for performance optimization. Defaults to True.
+        - `multiscale_factor` (float, optional): Scale factor for intermediate steps (0.1-1.0). Defaults to 0.5.
+        - `multiscale_fullres_start` (int, optional): Number of first steps at full resolution. Defaults to 3.
+        - `multiscale_fullres_end` (int, optional): Number of last steps at full resolution. Defaults to 8.
     """
     global last_seed
     if reuse_seed:
@@ -288,6 +298,7 @@ def pipeline(
                     #     applystablefast_158, "diffusion_model", 0.120
                     # )
 
+                # Create sampler with multi-scale options
                 ksampler_239 = ksampler_instance.sample(
                     seed=seed,
                     steps=20,
@@ -302,6 +313,11 @@ def pipeline(
                     positive=cliptextencode_242[0],
                     negative=cliptextencode_243[0],
                     latent_image=emptylatentimage_244[0],
+                    enable_multiscale=enable_multiscale,
+                    multiscale_factor=multiscale_factor,
+                    multiscale_fullres_start=multiscale_fullres_start,
+                    multiscale_fullres_end=multiscale_fullres_end,
+                    multiscale_intermittent_fullres=multiscale_intermittent_fullres,
                 )
                 if hires_fix:
                     latentupscale_254 = latent_upscale.upscale(
@@ -537,6 +553,30 @@ if __name__ == "__main__":
         action="store_true",
         help="Use the realistic model.",
     )
+    parser.add_argument(
+        "--enable-multiscale",
+        action="store_true",
+        default=True,
+        help="Enable multi-scale diffusion for performance optimization.",
+    )
+    parser.add_argument(
+        "--multiscale-factor",
+        type=float,
+        default=0.5,
+        help="Scale factor for intermediate steps (0.1-1.0).",
+    )
+    parser.add_argument(
+        "--multiscale-fullres-start",
+        type=int,
+        default=3,
+        help="Number of first steps at full resolution.",
+    )
+    parser.add_argument(
+        "--multiscale-fullres-end",
+        type=int,
+        default=8,
+        help="Number of last steps at full resolution.",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -555,4 +595,8 @@ if __name__ == "__main__":
         args.prio_speed,
         args.autohdr,
         args.realistic_model,
+        args.enable_multiscale,
+        args.multiscale_factor,
+        args.multiscale_fullres_start,
+        args.multiscale_fullres_end,
     )

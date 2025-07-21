@@ -58,6 +58,8 @@ def generate_images(
     flux_enabled: bool = False,
     prio_speed: bool = False,
     realistic_model: bool = False,
+    multiscale_enabled: bool = True,
+    multiscale_intermittent: bool = False,
     progress=gr.Progress(),
 ):
     """Generate images using the LightDiffusion pipeline"""
@@ -87,6 +89,8 @@ def generate_images(
                 prio_speed=prio_speed,
                 autohdr=True,
                 realistic_model=realistic_model,
+                enable_multiscale=multiscale_enabled,
+                multiscale_intermittent_fullres=multiscale_intermittent,
             )
 
         # Clean up temporary file if it exists
@@ -147,6 +151,8 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                 realistic_model = gr.Checkbox(label="Realistic Model")
 
             with gr.Row():
+                multiscale_enabled = gr.Checkbox(label="Multi-Scale Diffusion", value=True)
+                multiscale_intermittent = gr.Checkbox(label="Intermittent Full-Res", value=False)
                 img2img_enabled = gr.Checkbox(label="Image to Image Mode")
                 img2img_image = gr.Image(label="Input Image for img2img", visible=False)
 
@@ -189,6 +195,8 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             flux_enabled,
             prio_speed,
             realistic_model,
+            multiscale_enabled,
+            multiscale_intermittent,
         ],
         outputs=gallery,
     )

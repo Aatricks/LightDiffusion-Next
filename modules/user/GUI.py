@@ -238,6 +238,7 @@ class App(tk.Tk):
         self.checkbox_frame.grid_rowconfigure(0, weight=1)
         self.checkbox_frame.grid_rowconfigure(1, weight=1)
         self.checkbox_frame.grid_rowconfigure(2, weight=1)
+        self.checkbox_frame.grid_rowconfigure(3, weight=1)
 
         # checkbox for hiresfix
         self.hires_fix_var = tk.BooleanVar()
@@ -294,6 +295,30 @@ class App(tk.Tk):
         )
         self.prioritize_speed_checkbox.grid(
             row=2, column=0, padx=(75, 5), pady=5, sticky="nsew"
+        )
+
+        # checkbox to enable multi-scale diffusion
+        self.multiscale_var = tk.BooleanVar(value=True)
+        self.multiscale_checkbox = ctk.CTkCheckBox(
+            self.checkbox_frame,
+            text="Multi-Scale",
+            variable=self.multiscale_var,
+            text_color="black",
+        )
+        self.multiscale_checkbox.grid(
+            row=2, column=1, padx=5, pady=5, sticky="nsew"
+        )
+
+        # checkbox to enable intermittent full-res
+        self.multiscale_intermittent_var = tk.BooleanVar(value=True)
+        self.multiscale_intermittent_checkbox = ctk.CTkCheckBox(
+            self.checkbox_frame,
+            text="Intermittent Full-Res",
+            variable=self.multiscale_intermittent_var,
+            text_color="black",
+        )
+        self.multiscale_intermittent_checkbox.grid(
+            row=3, column=0, padx=(75, 5), pady=5, sticky="nsew"
         )
 
         # Button to launch the generation
@@ -767,6 +792,11 @@ class App(tk.Tk):
                     positive=cliptextencode_242[0],
                     negative=cliptextencode_243[0],
                     latent_image=emptylatentimage_244[0],
+                    enable_multiscale=self.multiscale_var.get(),
+                    multiscale_factor=0.5,
+                    multiscale_fullres_start=5,
+                    multiscale_fullres_end=8,
+                    multiscale_intermittent_fullres=self.multiscale_intermittent_var.get(),
                 )
                 self.progress.set(0.4)
                 if self.hires_fix_var.get() is True:

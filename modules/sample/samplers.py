@@ -21,6 +21,12 @@ def sample_euler_ancestral(
     s_noise=1.0,
     noise_sampler=None,
     pipeline=False,
+    # Multi-scale parameters
+    enable_multiscale=True,
+    multiscale_factor=0.5,
+    multiscale_fullres_start=3,
+    multiscale_fullres_end=8,
+    multiscale_intermittent_fullres=False,
 ):
     # Pre-calculate common values
     device = x.device
@@ -30,6 +36,76 @@ def sample_euler_ancestral(
     if not disable_gui:
         from modules.AutoEncoders import taesd
         from modules.user import app_instance
+
+    # Multi-scale setup with validation
+    original_shape = x.shape
+    batch_size, channels, orig_h, orig_w = original_shape
+    
+    # Validate multi-scale parameters
+    if enable_multiscale:
+        if not (0.1 <= multiscale_factor <= 1.0):
+            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            enable_multiscale = False
+        if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
+            print("Warning: Invalid fullres step counts, disabling multi-scale")
+            enable_multiscale = False
+    
+    # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
+    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
+    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
+    
+    # Disable multi-scale for small images or short step counts
+    n_steps = len(sigmas) - 1
+    multiscale_active = (
+        enable_multiscale 
+        and orig_h > 64 and orig_w > 64 
+        and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
+        and (scale_h != orig_h or scale_w != orig_w)
+    )
+    
+    if enable_multiscale and not multiscale_active:
+        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+    elif multiscale_active:
+        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
+    
+    def downscale_tensor(tensor):
+        """Downscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+        )
+    
+    def upscale_tensor(tensor):
+        """Upscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+        )
+    
+    def should_use_fullres(step):
+        """Determine if this step should use full resolution"""
+        if not multiscale_active:
+            return True
+        
+        # Always use full resolution for start and end steps
+        if (step < multiscale_fullres_start or 
+            step >= n_steps - multiscale_fullres_end):
+            return True
+        
+        # Intermittent full-res: every 2nd step in low-res region if enabled
+        if multiscale_intermittent_fullres:
+            # Check if we're in the low-res region
+            low_res_region_start = multiscale_fullres_start
+            low_res_region_end = n_steps - multiscale_fullres_end
+            if low_res_region_start <= step < low_res_region_end:
+                # Calculate position within low-res region
+                relative_step = step - low_res_region_start
+                # Use full-res every 2nd step (0, 2, 4, ...)
+                return relative_step % 2 == 0
+        
+        return False
 
     # Pre-allocate tensors and init noise sampler
     s_in = torch.ones((x.shape[0],), device=device)
@@ -50,8 +126,24 @@ def sample_euler_ancestral(
         if not pipeline:
             app_instance.app.progress.set(i / (len(sigmas) - 1))
 
-        # Combined model inference and step calculation
-        denoised = model(x, sigmas[i] * s_in, **(extra_args or {}))
+        # Determine resolution for this step
+        use_fullres = should_use_fullres(i)
+
+        # Scale input for processing
+        if use_fullres:
+            x_process = x
+            s_in_process = s_in
+        else:
+            x_process = downscale_tensor(x)
+            s_in_process = torch.ones((x_process.shape[0],), device=device)
+
+        # Model inference at appropriate resolution
+        denoised = model(x_process, sigmas[i] * s_in_process, **(extra_args or {}))
+        
+        # Scale predictions back to original resolution if needed
+        if not use_fullres:
+            denoised = upscale_tensor(denoised)
+
         sigma_down, sigma_up = sampling_util.get_ancestral_step(
             sigmas[i], sigmas[i + 1], eta=eta
         )
@@ -83,6 +175,12 @@ def sample_euler(
     s_tmax=float("inf"),
     s_noise=1.0,
     pipeline=False,
+    # Multi-scale parameters
+    enable_multiscale=True,
+    multiscale_factor=0.5,
+    multiscale_fullres_start=3,
+    multiscale_fullres_end=8,
+    multiscale_intermittent_fullres=False,
 ):
     # Pre-calculate common values
     device = x.device
@@ -92,6 +190,76 @@ def sample_euler(
     if not disable_gui:
         from modules.AutoEncoders import taesd
         from modules.user import app_instance
+
+    # Multi-scale setup with validation
+    original_shape = x.shape
+    batch_size, channels, orig_h, orig_w = original_shape
+    
+    # Validate multi-scale parameters
+    if enable_multiscale:
+        if not (0.1 <= multiscale_factor <= 1.0):
+            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            enable_multiscale = False
+        if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
+            print("Warning: Invalid fullres step counts, disabling multi-scale")
+            enable_multiscale = False
+    
+    # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
+    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
+    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
+    
+    # Disable multi-scale for small images or short step counts
+    n_steps = len(sigmas) - 1
+    multiscale_active = (
+        enable_multiscale 
+        and orig_h > 64 and orig_w > 64 
+        and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
+        and (scale_h != orig_h or scale_w != orig_w)
+    )
+    
+    if enable_multiscale and not multiscale_active:
+        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+    elif multiscale_active:
+        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
+    
+    def downscale_tensor(tensor):
+        """Downscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+        )
+    
+    def upscale_tensor(tensor):
+        """Upscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+        )
+    
+    def should_use_fullres(step):
+        """Determine if this step should use full resolution"""
+        if not multiscale_active:
+            return True
+        
+        # Always use full resolution for start and end steps
+        if (step < multiscale_fullres_start or 
+            step >= n_steps - multiscale_fullres_end):
+            return True
+        
+        # Intermittent full-res: every 2nd step in low-res region if enabled
+        if multiscale_intermittent_fullres:
+            # Check if we're in the low-res region
+            low_res_region_start = multiscale_fullres_start
+            low_res_region_end = n_steps - multiscale_fullres_end
+            if low_res_region_start <= step < low_res_region_end:
+                # Calculate position within low-res region
+                relative_step = step - low_res_region_start
+                # Use full-res every 2nd step (0, 2, 4, ...)
+                return relative_step % 2 == 0
+        
+        return False
 
     # Pre-allocate tensors and cache parameters
     s_in = torch.ones((x.shape[0],), device=device)
@@ -108,6 +276,9 @@ def sample_euler(
         if not pipeline:
             app_instance.app.progress.set(i / (len(sigmas) - 1))
 
+        # Determine resolution for this step
+        use_fullres = should_use_fullres(i)
+
         # Combined sigma calculation and update
         sigma_hat = (
             sigmas[i] * (1 + (gamma_max if s_tmin <= sigmas[i] <= s_tmax else 0))
@@ -121,8 +292,21 @@ def sample_euler(
                 + torch.randn_like(x) * s_noise * (sigma_hat**2 - sigmas[i] ** 2) ** 0.5
             )
 
-        # Fused model inference and update step
-        denoised = model(x, sigma_hat * s_in, **(extra_args or {}))
+        # Scale input for processing
+        if use_fullres:
+            x_process = x
+            s_in_process = s_in
+        else:
+            x_process = downscale_tensor(x)
+            s_in_process = torch.ones((x_process.shape[0],), device=device)
+
+        # Model inference at appropriate resolution
+        denoised = model(x_process, sigma_hat * s_in_process, **(extra_args or {}))
+        
+        # Scale predictions back to original resolution if needed
+        if not use_fullres:
+            denoised = upscale_tensor(denoised)
+
         x = x + util.to_d(x, sigma_hat, denoised) * (sigmas[i + 1] - sigma_hat)
 
         if callback is not None:
@@ -588,6 +772,12 @@ def sample_dpmpp_2m_cfgpp(
     cfg_x0_scale=1.0,
     cfg_s_scale=1.0,
     cfg_min=1.0,
+    # Multi-scale parameters
+    enable_multiscale=True,
+    multiscale_factor=0.5,
+    multiscale_fullres_start=3,
+    multiscale_fullres_end=8,
+    multiscale_intermittent_fullres=False,
 ):
     """DPM-Solver++(2M) sampler with CFG++ optimizations"""
     # Pre-calculate common values and setup
@@ -599,10 +789,79 @@ def sample_dpmpp_2m_cfgpp(
         from modules.AutoEncoders import taesd
         from modules.user import app_instance
 
+    # Multi-scale setup with validation
+    original_shape = x.shape
+    batch_size, channels, orig_h, orig_w = original_shape
+    
+    # Validate multi-scale parameters
+    if enable_multiscale:
+        if not (0.1 <= multiscale_factor <= 1.0):
+            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            enable_multiscale = False
+        if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
+            print("Warning: Invalid fullres step counts, disabling multi-scale")
+            enable_multiscale = False
+    
+    # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
+    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
+    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
+    
     # Pre-allocate tensors and transform sigmas
     s_in = torch.ones((x.shape[0],), device=device)
     t_steps = -torch.log(sigmas)  # Fused calculation
     n_steps = len(sigmas) - 1
+    
+    # Disable multi-scale for small images or short step counts
+    multiscale_active = (
+        enable_multiscale 
+        and orig_h > 64 and orig_w > 64 
+        and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
+        and (scale_h != orig_h or scale_w != orig_w)
+    )
+    
+    if enable_multiscale and not multiscale_active:
+        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+    elif multiscale_active:
+        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
+    
+    def downscale_tensor(tensor):
+        """Downscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+        )
+    
+    def upscale_tensor(tensor):
+        """Upscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+        )
+    
+    def should_use_fullres(step):
+        """Determine if this step should use full resolution"""
+        if not multiscale_active:
+            return True
+        
+        # Always use full resolution for start and end steps
+        if (step < multiscale_fullres_start or 
+            step >= n_steps - multiscale_fullres_end):
+            return True
+        
+        # Intermittent full-res: every 2nd step in low-res region if enabled
+        if multiscale_intermittent_fullres:
+            # Check if we're in the low-res region
+            low_res_region_start = multiscale_fullres_start
+            low_res_region_end = n_steps - multiscale_fullres_end
+            if low_res_region_start <= step < low_res_region_end:
+                # Calculate position within low-res region
+                relative_step = step - low_res_region_start
+                # Use full-res every 2nd step (0, 2, 4, ...)
+                return relative_step % 2 == 0
+        
+        return False
 
     # Pre-calculate all needed values in one go
     sigma_steps = torch.exp(-t_steps)  # Fused calculation
@@ -639,14 +898,30 @@ def sample_dpmpp_2m_cfgpp(
         if not pipeline:
             app_instance.app.progress.set(i / n_steps)
 
+        # Determine resolution for this step
+        use_fullres = should_use_fullres(i)
+
+        # Scale input for processing
+        if use_fullres:
+            x_process = x
+            s_in_process = s_in
+        else:
+            x_process = downscale_tensor(x)
+            s_in_process = torch.ones((x_process.shape[0],), device=device)
+
         # Use pre-calculated CFG scale
         current_cfg = cfg_values[i]
 
-        # Fused model inference and update calculations
-        denoised = model(x, sigmas[i] * s_in, **extra_args)
+        # Model inference at appropriate resolution
+        denoised = model(x_process, sigmas[i] * s_in_process, **extra_args)
         uncond_denoised = extra_args.get("model_options", {}).get(
             "sampler_post_cfg_function", []
         )[-1]({"denoised": denoised, "uncond_denoised": None})
+
+        # Scale predictions back to original resolution if needed
+        if not use_fullres:
+            denoised = upscale_tensor(denoised)
+            uncond_denoised = upscale_tensor(uncond_denoised)
 
         if callback is not None:
             callback(
@@ -713,8 +988,14 @@ def sample_dpmpp_sde_cfgpp(
     cfg_x0_scale=1.0,
     cfg_s_scale=1.0,
     cfg_min=1.0,
+    # Multi-scale parameters
+    enable_multiscale=True,
+    multiscale_factor=0.5,
+    multiscale_fullres_start=5,
+    multiscale_fullres_end=8,
+    multiscale_intermittent_fullres=False,
 ):
-    """DPM-Solver++ (SDE) with CFG++ optimizations"""
+    """DPM-Solver++ (SDE) with CFG++ optimizations and multi-scale diffusion"""
     # Pre-calculate common values
     device = x.device
     global disable_gui
@@ -728,9 +1009,76 @@ def sample_dpmpp_sde_cfgpp(
     if len(sigmas) <= 1:
         return x
 
-    # Pre-allocate tensors and values
-    s_in = torch.ones((x.shape[0],), device=device)
+    # Multi-scale setup with validation
+    original_shape = x.shape
+    batch_size, channels, orig_h, orig_w = original_shape
+
+    # Validate multi-scale parameters
+    if enable_multiscale:
+        if not (0.1 <= multiscale_factor <= 1.0):
+            print(f"Warning: multiscale_factor {multiscale_factor} out of range [0.1, 1.0], disabling multi-scale")
+            enable_multiscale = False
+        if multiscale_fullres_start < 0 or multiscale_fullres_end < 0:
+            print("Warning: Invalid fullres step counts, disabling multi-scale")
+            enable_multiscale = False
+
+    # Calculate scaled dimensions (must be multiples of 8 for VAE compatibility)
+    scale_h = int(max(8, ((orig_h * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_h
+    scale_w = int(max(8, ((orig_w * multiscale_factor) // 8) * 8)) if enable_multiscale else orig_w
+
+    # Disable multi-scale for small images or short step counts
     n_steps = len(sigmas) - 1
+    multiscale_active = (
+        enable_multiscale
+        and orig_h > 64 and orig_w > 64
+        and n_steps > (multiscale_fullres_start + multiscale_fullres_end)
+        and (scale_h != orig_h or scale_w != orig_w)
+    )
+
+    if enable_multiscale and not multiscale_active:
+        print(f"Multi-scale disabled: image too small ({orig_h}x{orig_w}) or insufficient steps ({n_steps})")
+    elif multiscale_active:
+        print(f"Multi-scale active: {orig_h}x{orig_w} -> {scale_h}x{scale_w} (factor: {multiscale_factor})")
+
+    def downscale_tensor(tensor):
+        """Downscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (scale_h, scale_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(scale_h, scale_w), mode='bilinear', align_corners=False
+        )
+
+    def upscale_tensor(tensor):
+        """Upscale tensor using bilinear interpolation"""
+        if not multiscale_active or tensor.shape[-2:] == (orig_h, orig_w):
+            return tensor
+        return torch.nn.functional.interpolate(
+            tensor, size=(orig_h, orig_w), mode='bilinear', align_corners=False
+        )
+
+    def should_use_fullres(step):
+        """Determine if this step should use full resolution"""
+        if not multiscale_active:
+            return True
+        
+        # Always use full resolution for start and end steps
+        if (step < multiscale_fullres_start or 
+            step >= n_steps - multiscale_fullres_end):
+            return True
+        
+        # Intermittent full-res: every 2nd step in low-res region if enabled
+        if multiscale_intermittent_fullres:
+            # Check if we're in the low-res region
+            low_res_region_start = multiscale_fullres_start
+            low_res_region_end = n_steps - multiscale_fullres_end
+            if low_res_region_start <= step < low_res_region_end:
+                # Calculate position within low-res region
+                relative_step = step - low_res_region_start
+                # Use full-res every 2nd step (0, 2, 4, ...)
+                return relative_step % 2 == 0
+        
+        return False    # Pre-allocate tensors and values
+    s_in = torch.ones((x.shape[0],), device=device)
     extra_args = {} if extra_args is None else extra_args
 
     # CFG++ scheduling
@@ -751,7 +1099,7 @@ def sample_dpmpp_sde_cfgpp(
             x, sigmas[sigmas > 0].min(), sigmas.max(), seed=seed, cpu=True
         )
 
-    # Track previous predictions
+    # Track previous predictions for momentum (stored at original resolution)
     old_denoised = None
     old_uncond_denoised = None
 
@@ -776,14 +1124,30 @@ def sample_dpmpp_sde_cfgpp(
         if not pipeline:
             app_instance.app.progress.set(i / n_steps)
 
+        # Determine resolution for this step
+        use_fullres = should_use_fullres(i)
+
+        # Scale input for processing
+        if use_fullres:
+            x_process = x
+            s_in_process = s_in
+        else:
+            x_process = downscale_tensor(x)
+            s_in_process = torch.ones((x_process.shape[0],), device=device)
+
         # Get current CFG scale
         current_cfg = get_cfg_scale(i)
 
-        # Model inference
-        denoised = model(x, sigmas[i] * s_in, **extra_args)
+        # Model inference at appropriate resolution
+        denoised = model(x_process, sigmas[i] * s_in_process, **extra_args)
         uncond_denoised = extra_args.get("model_options", {}).get(
             "sampler_post_cfg_function", []
         )[-1]({"denoised": denoised, "uncond_denoised": None})
+
+        # Scale predictions back to original resolution if needed
+        if not use_fullres:
+            denoised = upscale_tensor(denoised)
+            uncond_denoised = upscale_tensor(uncond_denoised)
 
         if callback is not None:
             callback(
@@ -815,10 +1179,10 @@ def sample_dpmpp_sde_cfgpp(
                     uncond_denoised + (denoised - uncond_denoised) * current_cfg
                 )
             else:
-                # CFG++ with momentum
+                # CFG++ with momentum (using properly scaled momentum terms)
                 x0_coeff = cfg_x0_scale * current_cfg
 
-                # Calculate momentum terms
+                # Calculate momentum terms at original resolution
                 h_ratio = (t - s_) / (2 * (t - t_next))
                 momentum = (1 + h_ratio) * denoised - h_ratio * old_denoised
                 uncond_momentum = (
@@ -828,17 +1192,34 @@ def sample_dpmpp_sde_cfgpp(
                 # Combine with CFG++ scaling
                 cfg_denoised = uncond_momentum + (momentum - uncond_momentum) * x0_coeff
 
+            # Calculate x_2 for step 2
+            noise_step1 = noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
             x_2 = (
                 (sigma_fn(s_) / sigma_fn(t)) * x
                 - (t - s_).expm1() * cfg_denoised
-                + noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
+                + noise_step1
             )
 
+            # Step 2 inference - determine resolution
+            use_fullres_step2 = should_use_fullres(i) if multiscale_active else True
+
+            if use_fullres_step2:
+                x_2_process = x_2
+                s_in_process_2 = s_in
+            else:
+                x_2_process = downscale_tensor(x_2)
+                s_in_process_2 = torch.ones((x_2_process.shape[0],), device=device)
+
             # Step 2 inference
-            denoised_2 = model(x_2, sigma_fn(s) * s_in, **extra_args)
+            denoised_2 = model(x_2_process, sigma_fn(s) * s_in_process_2, **extra_args)
             uncond_denoised_2 = extra_args.get("model_options", {}).get(
                 "sampler_post_cfg_function", []
             )[-1]({"denoised": denoised_2, "uncond_denoised": None})
+
+            # Scale step 2 predictions back if needed
+            if not use_fullres_step2:
+                denoised_2 = upscale_tensor(denoised_2)
+                uncond_denoised_2 = upscale_tensor(uncond_denoised_2)
 
             # Step 2 CFG++ combination
             if old_uncond_denoised is None:
@@ -861,11 +1242,12 @@ def sample_dpmpp_sde_cfgpp(
             t_next_ = t_fn(sd)
 
             # Combined update with both predictions
+            noise_final = noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
             x = (
                 (sigma_fn(t_next_) / sigma_fn(t)) * x
                 - (t - t_next_).expm1()
                 * ((1 - 1 / (2 * r)) * cfg_denoised + (1 / (2 * r)) * cfg_denoised_2)
-                + noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
+                + noise_final
             )
 
         old_denoised = denoised
