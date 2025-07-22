@@ -8,13 +8,13 @@ import spaces
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from modules.user.pipeline import pipeline
+from src.user.pipeline import pipeline
 import torch
 
 
 def load_generated_images():
     """Load generated images with given prefix from disk"""
-    image_files = glob.glob("./_internal/output/**/*.png")
+    image_files = glob.glob("./output/**/*.png")
 
     # If there are no image files, return
     if not image_files:
@@ -69,7 +69,7 @@ def generate_images(
     """Generate images using the LightDiffusion pipeline"""
     try:
         # Set model persistence preference
-        from modules.Device.ModelCache import set_keep_models_loaded
+        from src.Device.ModelCache import set_keep_models_loaded
 
         set_keep_models_loaded(keep_models_loaded)
 
@@ -124,7 +124,7 @@ def generate_images(
 def get_vram_info():
     """Get VRAM usage information"""
     try:
-        from modules.Device.ModelCache import get_memory_info
+        from src.Device.ModelCache import get_memory_info
 
         info = get_memory_info()
         return f"""
@@ -142,7 +142,7 @@ def get_vram_info():
 def clear_model_cache_ui():
     """Clear model cache from UI"""
     try:
-        from modules.Device.ModelCache import clear_model_cache
+        from src.Device.ModelCache import clear_model_cache
 
         clear_model_cache()
         return "✅ Model cache cleared successfully!"
@@ -156,7 +156,7 @@ def apply_multiscale_preset(preset_name):
         return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
 
     try:
-        from modules.sample.multiscale_presets import get_preset_parameters
+        from src.sample.multiscale_presets import get_preset_parameters
 
         params = get_preset_parameters(preset_name)
 

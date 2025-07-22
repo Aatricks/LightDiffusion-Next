@@ -1,5 +1,0 @@
-prompt: masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), dynamic angle, light particles, high contrast, (best illumination), ((cinematic light)), colorful, hyper detail, dramatic light, intricate details, depth of field, 1girl, cowboy shot, white hair, long hair, 
-neg: (worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4)
-w: 768
-h: 1024
-cfg: 8

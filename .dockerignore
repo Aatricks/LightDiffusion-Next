@@ -78,7 +78,7 @@ temp/
 *.tmp
 
 # Generated images (these will be created at runtime)
-_internal/output/
+output/
 
 # Large dependencies that will be installed via pip
 stable_fast-*.whl

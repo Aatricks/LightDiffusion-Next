@@ -50,27 +50,27 @@ RUN python3 -m uv pip install --system -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p ./_internal/output/classic \
-    ./_internal/output/Flux \
-    ./_internal/output/HiresFix \
-    ./_internal/output/Img2Img \
-    ./_internal/output/Adetailer \
-    ./_internal/checkpoints \
-    ./_internal/clip \
-    ./_internal/embeddings \
-    ./_internal/ESRGAN \
-    ./_internal/loras \
-    ./_internal/sd1_tokenizer \
-    ./_internal/unet \
-    ./_internal/vae \
-    ./_internal/vae_approx \
-    ./_internal/yolos
+RUN mkdir -p ./output/classic \
+    ./output/Flux \
+    ./output/HiresFix \
+    ./output/Img2Img \
+    ./output/Adetailer \
+    ./include/checkpoints \
+    ./include/clip \
+    ./include/embeddings \
+    ./include/ESRGAN \
+    ./include/loras \
+    ./include/sd1_tokenizer \
+    ./include/unet \
+    ./include/vae \
+    ./include/vae_approx \
+    ./include/yolos
 
 # Create last_seed.txt if it doesn't exist
-RUN echo "42" > ./_internal/last_seed.txt
+RUN echo "42" > ./include/last_seed.txt
 
 # Create prompt.txt if it doesn't exist
-RUN echo "A beautiful landscape" > ./_internal/prompt.txt
+RUN echo "A beautiful landscape" > ./include/prompt.txt
 
 # Expose the port that Gradio will run on
 EXPOSE 7860
@@ -81,7 +81,7 @@ ENV GRADIO_SERVER_PORT=7860
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:7860/ || exit 1
+    CMD curl -f http://localhost:7860/ || exit 1
 
 # Run the Gradio app
 CMD ["python3", "app.py"]

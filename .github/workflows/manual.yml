@@ -62,7 +62,7 @@ jobs:
           # Test basic pipeline
           python modules/user/pipeline.py "1girl" 512 512 1 1 --hires-fix --adetailer --autohdr --prio-speed
           # Test image to image
-          python modules/user/pipeline.py "./_internal/output/Adetailer/LD-head_00001_.png" 512 512 1 1 --img2img --prio-speed
+          python src/user/pipeline.py "./output/Adetailer/LD-head_00001_.png" 512 512 1 1 --img2img --prio-speed
         shell: bash
 
       - name: Upload test artifacts
@@ -71,10 +71,10 @@ jobs:
         with:
           name: test-outputs-${{ github.sha }}
           path: |
-            _internal/output/**/*.png
-            _internal/output/Classic/*.png
-            _internal/output/Flux/*.png
-            _internal/output/HF/*.png
+            output/**/*.png
+            output/Classic/*.png
+            output/Flux/*.png
+            output/HF/*.png
           retention-days: 5
           compression-level: 6
           if-no-files-found: warn

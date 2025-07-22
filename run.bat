@@ -42,7 +42,7 @@ IF EXIST requirements.txt (
 
 REM Launch the script
 echo Launching LightDiffusion...
-python .\modules\user\GUI.py
+python .\src\user\GUI.py
 
 REM Deactivate the virtual environment
 deactivate

@@ -32,7 +32,7 @@ elif command -v rocminfo &> /dev/null; then
     echo "AMD GPU detected"
     TORCH_URL="https://download.pytorch.org/whl/rocm5.7"
     uv pip install --index-url $TORCH_URL \
-        torch==2.2.2 torchvision "triton>=2.1.0"      
+        torch==2.2.2 torchvision "triton>=2.1.0"
 else
     echo "No compatible GPU detected, using CPU"
     uv pip install --index-url $TORCH_URL \
@@ -55,7 +55,7 @@ fi
 
 # Launch the script
 echo "Launching LightDiffusion..."
-python3.10 ./modules/user/GUI.py
+python3.10 ./src/user/GUI.py
 
 # Deactivate the virtual environment
 deactivate

@@ -51,7 +51,7 @@ IF %ERRORLEVEL% EQU 0 (
 
 REM Launch the script
 echo Launching LightDiffusion...
-python .\modules\user\pipeline.py %*
+python .\src\user\pipeline.py %*
 
 REM Deactivate the virtual environment
 deactivate

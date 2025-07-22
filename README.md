@@ -118,17 +118,17 @@ docker-compose up --build
 
 # Or build and run manually
 docker build -t lightdiffusion-next .
-docker run --gpus all -p 7860:7860 -v ./output:/app/_internal/output lightdiffusion-next
+docker run --gpus all -p 7860:7860 -v ./output:/app/output lightdiffusion-next
 ```
 
 **Access the Gradio Web Interface:**
 Open your browser and navigate to `http://localhost:7860`
 
 **Volume Mounts:**
-- `./output:/app/_internal/output` - Persist generated images
-- `./checkpoints:/app/_internal/checkpoints` - Store model files
-- `./loras:/app/_internal/loras` - Store LoRA files
-- `./embeddings:/app/_internal/embeddings` - Store embeddings
+- `./output:/app/output` - Persist generated images
+- `./checkpoints:/app/include/checkpoints` - Store model files
+- `./loras:/app/include/loras` - Store LoRA files
+- `./embeddings:/app/include/embeddings` - Store embeddings
 
 ### Command-Line Pipeline
 
