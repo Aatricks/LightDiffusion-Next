@@ -45,6 +45,7 @@ def pipeline(
     autohdr: bool = False,
     realistic_model: bool = False,
     # Multi-scale diffusion parameters
+    multiscale_preset: str = None,
     enable_multiscale: bool = True,
     multiscale_factor: float = 0.5,
     multiscale_fullres_start: int = 3,
@@ -67,12 +68,29 @@ def pipeline(
         - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
         - `autohdr` (bool, optional): Enable the AutoHDR mode. Defaults to False.
         - `realistic_model` (bool, optional): Use the realistic model. Defaults to False.
+        - `multiscale_preset` (str, optional): Predefined multiscale preset ('quality', 'performance', 'balanced', 'disabled'). Overrides individual multiscale parameters. Defaults to None.
         - `enable_multiscale` (bool, optional): Enable multi-scale diffusion for performance optimization. Defaults to True.
         - `multiscale_factor` (float, optional): Scale factor for intermediate steps (0.1-1.0). Defaults to 0.5.
         - `multiscale_fullres_start` (int, optional): Number of first steps at full resolution. Defaults to 3.
         - `multiscale_fullres_end` (int, optional): Number of last steps at full resolution. Defaults to 8.
+        - `multiscale_intermittent_fullres` (bool, optional): Enable intermittent full-res rendering in low-res region. Defaults to False.
     """
     global last_seed
+
+    # Apply multiscale preset if specified (overrides individual parameters)
+    if multiscale_preset is not None:
+        from modules.sample.multiscale_presets import get_preset_parameters
+
+        preset_params = get_preset_parameters(multiscale_preset)
+        enable_multiscale = preset_params["enable_multiscale"]
+        multiscale_factor = preset_params["multiscale_factor"]
+        multiscale_fullres_start = preset_params["multiscale_fullres_start"]
+        multiscale_fullres_end = preset_params["multiscale_fullres_end"]
+        multiscale_intermittent_fullres = preset_params[
+            "multiscale_intermittent_fullres"
+        ]
+        print(f"Applied multiscale preset: {multiscale_preset}")
+
     if reuse_seed:
         seed = last_seed
 
@@ -554,6 +572,12 @@ if __name__ == "__main__":
         help="Use the realistic model.",
     )
     parser.add_argument(
+        "--multiscale-preset",
+        type=str,
+        choices=["quality", "performance", "balanced", "disabled"],
+        help="Predefined multiscale preset ('quality', 'performance', 'balanced', 'disabled'). Overrides individual multiscale parameters.",
+    )
+    parser.add_argument(
         "--enable-multiscale",
         action="store_true",
         default=True,
@@ -577,6 +601,11 @@ if __name__ == "__main__":
         default=8,
         help="Number of last steps at full resolution.",
     )
+    parser.add_argument(
+        "--multiscale-intermittent-fullres",
+        action="store_true",
+        help="Enable intermittent full-res rendering in low-res region.",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -595,8 +624,10 @@ if __name__ == "__main__":
         args.prio_speed,
         args.autohdr,
         args.realistic_model,
+        args.multiscale_preset,
         args.enable_multiscale,
         args.multiscale_factor,
         args.multiscale_fullres_start,
         args.multiscale_fullres_end,
+        args.multiscale_intermittent_fullres,
     )

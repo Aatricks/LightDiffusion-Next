@@ -32,6 +32,7 @@ from modules.Quantize import Quantizer
 from modules.WaveSpeed import fbcache_nodes
 from modules.hidiffusion import msw_msa_attention
 from modules.AutoHDR import ahdr
+from modules.sample.multiscale_presets import MULTISCALE_PRESETS, get_preset_parameters
 
 Downloader.CheckAndDownload()
 
@@ -64,7 +65,10 @@ class App(tk.Tk):
         """Initialize the App class."""
         super().__init__()
         self.title("LightDiffusion")
-        self.geometry("900x800")
+        self.geometry("900x850")
+
+        # Initialize last seed
+        self.last_seed = self._get_last_seed()
 
         # Configure main window grid
         self.grid_columnconfigure(1, weight=1)
@@ -239,6 +243,8 @@ class App(tk.Tk):
         self.checkbox_frame.grid_rowconfigure(1, weight=1)
         self.checkbox_frame.grid_rowconfigure(2, weight=1)
         self.checkbox_frame.grid_rowconfigure(3, weight=1)
+        self.checkbox_frame.grid_rowconfigure(4, weight=1)
+        self.checkbox_frame.grid_rowconfigure(5, weight=1)
 
         # checkbox for hiresfix
         self.hires_fix_var = tk.BooleanVar()
@@ -306,6 +312,33 @@ class App(tk.Tk):
             text_color="black",
         )
         self.multiscale_checkbox.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
+
+        # checkbox to enable reuse last seed
+        self.reuse_seed_var = tk.BooleanVar()
+        self.reuse_seed_checkbox = ctk.CTkCheckBox(
+            self.checkbox_frame,
+            text="Reuse Last Seed",
+            variable=self.reuse_seed_var,
+            text_color="black",
+        )
+        self.reuse_seed_checkbox.grid(
+            row=3, column=0, padx=(75, 5), pady=5, sticky="nsew"
+        )
+
+        # Multiscale preset dropdown
+        preset_names = [preset.name for preset in MULTISCALE_PRESETS.values()]
+        self.multiscale_preset_var = tk.StringVar(value="Quality")
+        self.multiscale_preset_dropdown = ctk.CTkOptionMenu(
+            self.checkbox_frame,
+            values=preset_names,
+            variable=self.multiscale_preset_var,
+            fg_color="#F5EFFF",
+            text_color="black",
+            command=self.on_preset_selected,
+        )
+        self.multiscale_preset_dropdown.grid(
+            row=4, column=0, columnspan=2, padx=5, pady=2, sticky="ew"
+        )
 
         # Button to launch the generation
         self.generate_button = ctk.CTkButton(
@@ -443,6 +476,32 @@ class App(tk.Tk):
             else "dpmpp_2m_cfgpp"
         )
 
+    def _get_last_seed(self) -> int:
+        """Get the last used seed from file."""
+        try:
+            with open(os.path.join("./_internal/", "last_seed.txt"), "r") as f:
+                return int(f.read().strip())
+        except (FileNotFoundError, ValueError):
+            return random.randint(1, 2**64)
+
+    def _save_last_seed(self, seed: int) -> None:
+        """Save the seed to file."""
+        try:
+            with open(os.path.join("./_internal/", "last_seed.txt"), "w") as f:
+                f.write(str(seed))
+            self.last_seed = seed
+        except Exception as e:
+            print(f"Error saving seed: {e}")
+
+    def _get_seed(self) -> int:
+        """Get seed based on reuse_seed checkbox."""
+        if self.reuse_seed_var.get():
+            return self.last_seed
+        else:
+            new_seed = random.randint(1, 2**64)
+            self._save_last_seed(new_seed)
+            return new_seed
+
     def _img2img(self, file_path: str) -> None:
         """Perform img2img on the selected image.
 
@@ -527,7 +586,7 @@ class App(tk.Tk):
                 pass
             ultimatesdupscale_250 = ultimatesdupscale.upscale(
                 upscale_by=2,
-                seed=random.randint(1, 2**64),
+                seed=self._get_seed(),
                 steps=8,
                 cfg=6,
                 sampler_name=self.sampler,
@@ -586,6 +645,47 @@ class App(tk.Tk):
             print("Adetailer is ON")
         else:
             print("Adetailer is OFF")
+
+    def on_preset_selected(self, preset_name: str) -> None:
+        """Handle multiscale preset selection."""
+        # Find preset by name (case-insensitive)
+        preset = None
+        preset_key = None
+        for key, p in MULTISCALE_PRESETS.items():
+            if p.name.lower() == preset_name.lower():
+                preset = p
+                preset_key = key
+                break
+
+        if preset:
+            print(f"Selected multiscale preset: {preset_name}")
+            print(f"  Factor: {preset.multiscale_factor}")
+            print(f"  Start steps: {preset.multiscale_fullres_start}")
+            print(f"  End steps: {preset.multiscale_fullres_end}")
+            print(f"  Intermittent full-res: {preset.multiscale_intermittent_fullres}")
+
+            # Enable multiscale if not disabled preset
+            if preset_name != "Disabled":
+                self.multiscale_var.set(True)
+            else:
+                self.multiscale_var.set(False)
+
+    def get_multiscale_params(self) -> dict:
+        """Get current multiscale parameters from selected preset."""
+        preset_name = self.multiscale_preset_var.get()
+
+        # Find preset by name (case-insensitive)
+        for key, preset in MULTISCALE_PRESETS.items():
+            if preset.name.lower() == preset_name.lower():
+                params = get_preset_parameters(key)
+                # Override enable_multiscale based on checkbox
+                params["enable_multiscale"] = self.multiscale_var.get()
+                return params
+
+        # Fallback to quality preset if not found
+        params = get_preset_parameters("quality")
+        params["enable_multiscale"] = self.multiscale_var.get()
+        return params
 
     def print_previewer(self) -> None:
         """Print the status of the previewer checkbox."""
@@ -765,8 +865,12 @@ class App(tk.Tk):
                 emptylatentimage_244 = emptylatentimage.generate(
                     width=w, height=h, batch_size=int(self.batch_slider.get())
                 )
+
+                # Get multiscale parameters from selected preset
+                multiscale_params = self.get_multiscale_params()
+
                 ksampler_239 = ksampler_instance.sample(
-                    seed=random.randint(1, 2**64),
+                    seed=self._get_seed(),
                     steps=20,
                     cfg=cfg,
                     sampler_name=self.sampler,
@@ -778,11 +882,7 @@ class App(tk.Tk):
                     positive=cliptextencode_242[0],
                     negative=cliptextencode_243[0],
                     latent_image=emptylatentimage_244[0],
-                    enable_multiscale=self.multiscale_var.get(),
-                    multiscale_factor=0.5,
-                    multiscale_fullres_start=5,
-                    multiscale_fullres_end=8,
-                    multiscale_intermittent_fullres=self.multiscale_var.get(),
+                    **multiscale_params,
                 )
                 self.progress.set(0.4)
                 if self.hires_fix_var.get() is True:
@@ -792,7 +892,7 @@ class App(tk.Tk):
                         samples=ksampler_239[0],
                     )
                     ksampler_253 = ksampler_instance.sample(
-                        seed=random.randint(1, 2**64),
+                        seed=self._get_seed(),
                         steps=10,
                         cfg=8,
                         sampler_name="euler_ancestral_cfgpp",
@@ -804,11 +904,7 @@ class App(tk.Tk):
                         positive=cliptextencode_242[0],
                         negative=cliptextencode_243[0],
                         latent_image=latentupscale_254[0],
-                        enable_multiscale=self.multiscale_var.get(),
-                        multiscale_factor=0.5,
-                        multiscale_fullres_start=5,
-                        multiscale_fullres_end=8,
-                        multiscale_intermittent_fullres=self.multiscale_var.get(),
+                        **multiscale_params,
                     )
                     vaedecode_240 = vaedecode.decode(
                         samples=ksampler_253[0],
@@ -860,7 +956,7 @@ class App(tk.Tk):
                         guide_size=512,
                         guide_size_for=False,
                         max_size=768,
-                        seed=random.randint(1, 2**64),
+                        seed=self._get_seed(),
                         steps=20,
                         cfg=6.5,
                         sampler_name=self.sampler,
@@ -914,7 +1010,7 @@ class App(tk.Tk):
                         guide_size=512,
                         guide_size_for=False,
                         max_size=768,
-                        seed=random.randint(1, 2**64),
+                        seed=self._get_seed(),
                         steps=20,
                         cfg=6.5,
                         sampler_name=self.sampler,
@@ -1015,7 +1111,7 @@ class App(tk.Tk):
                 # except ImportError:
                 #     print("Triton not found, skipping compilation")
                 ksampler_3 = ksampler.sample(
-                    seed=random.randint(1, 2**64),
+                    seed=self._get_seed(),
                     steps=20,
                     cfg=1,
                     sampler_name="euler_cfgpp",

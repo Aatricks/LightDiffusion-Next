@@ -60,10 +60,19 @@ def generate_images(
     realistic_model: bool = False,
     multiscale_enabled: bool = True,
     multiscale_intermittent: bool = False,
+    multiscale_factor: float = 0.5,
+    multiscale_fullres_start: int = 3,
+    multiscale_fullres_end: int = 8,
+    keep_models_loaded: bool = True,
     progress=gr.Progress(),
 ):
     """Generate images using the LightDiffusion pipeline"""
     try:
+        # Set model persistence preference
+        from modules.Device.ModelCache import set_keep_models_loaded
+
+        set_keep_models_loaded(keep_models_loaded)
+
         if img2img_enabled and img2img_image is not None:
             # Convert numpy array to PIL Image
             if isinstance(img2img_image, np.ndarray):
@@ -91,6 +100,9 @@ def generate_images(
                 realistic_model=realistic_model,
                 enable_multiscale=multiscale_enabled,
                 multiscale_intermittent_fullres=multiscale_intermittent,
+                multiscale_factor=multiscale_factor,
+                multiscale_fullres_start=multiscale_fullres_start,
+                multiscale_fullres_end=multiscale_fullres_end,
             )
 
         # Clean up temporary file if it exists
@@ -107,6 +119,57 @@ def generate_images(
         if os.path.exists("temp_img2img.png"):
             os.remove("temp_img2img.png")
         return [Image.new("RGB", (512, 512), color="black")]
+
+
+def get_vram_info():
+    """Get VRAM usage information"""
+    try:
+        from modules.Device.ModelCache import get_memory_info
+
+        info = get_memory_info()
+        return f"""
+**VRAM Usage:**
+- Total: {info["total_vram"]:.1f} GB
+- Used: {info["used_vram"]:.1f} GB
+- Free: {info["free_vram"]:.1f} GB
+- Keep Models Loaded: {info["keep_loaded"]}
+- Has Cached Checkpoint: {info["has_cached_checkpoint"]}
+"""
+    except Exception as e:
+        return f"Error getting VRAM info: {e}"
+
+
+def clear_model_cache_ui():
+    """Clear model cache from UI"""
+    try:
+        from modules.Device.ModelCache import clear_model_cache
+
+        clear_model_cache()
+        return "✅ Model cache cleared successfully!"
+    except Exception as e:
+        return f"❌ Error clearing cache: {e}"
+
+
+def apply_multiscale_preset(preset_name):
+    """Apply multiscale preset values to the UI components"""
+    if preset_name == "None":
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+
+    try:
+        from modules.sample.multiscale_presets import get_preset_parameters
+
+        params = get_preset_parameters(preset_name)
+
+        return (
+            gr.update(value=params["enable_multiscale"]),
+            gr.update(value=params["multiscale_factor"]),
+            gr.update(value=params["multiscale_fullres_start"]),
+            gr.update(value=params["multiscale_fullres_end"]),
+            gr.update(value=params["multiscale_intermittent_fullres"]),
+        )
+    except Exception as e:
+        print(f"Error applying preset {preset_name}: {e}")
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
 
 
 # Create Gradio interface
@@ -154,11 +217,43 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                 multiscale_enabled = gr.Checkbox(
                     label="Multi-Scale Diffusion", value=True
                 )
-                multiscale_intermittent = gr.Checkbox(
-                    label="Intermittent Full-Res", value=False
-                )
                 img2img_enabled = gr.Checkbox(label="Image to Image Mode")
-                img2img_image = gr.Image(label="Input Image for img2img", visible=False)
+                keep_models_loaded = gr.Checkbox(
+                    label="Keep Models in VRAM",
+                    value=True,
+                    info="Keep models loaded for instant reuse (faster but uses more VRAM)",
+                )
+
+            img2img_image = gr.Image(label="Input Image for img2img", visible=False)
+
+            # Multi-scale preset selection
+            with gr.Row():
+                multiscale_preset = gr.Dropdown(
+                    label="Multi-Scale Preset",
+                    choices=["None", "quality", "performance", "balanced", "disabled"],
+                    value="None",
+                    info="Select a preset to automatically configure multi-scale settings",
+                )
+                multiscale_intermittent = gr.Checkbox(
+                    label="Intermittent Full-Res",
+                    value=False,
+                    info="Enable intermittent full-resolution rendering in low-res region",
+                )
+
+            with gr.Row():
+                multiscale_factor = gr.Slider(
+                    minimum=0.1,
+                    maximum=1.0,
+                    value=0.5,
+                    step=0.1,
+                    label="Multi-Scale Factor",
+                )
+                multiscale_fullres_start = gr.Slider(
+                    minimum=0, maximum=10, value=3, step=1, label="Full-Res Start Steps"
+                )
+                multiscale_fullres_end = gr.Slider(
+                    minimum=0, maximum=20, value=8, step=1, label="Full-Res End Steps"
+                )
 
             # Make input image visible only when img2img is enabled
             img2img_enabled.change(
@@ -167,7 +262,28 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                 outputs=[img2img_image],
             )
 
+            # Handle preset changes
+            multiscale_preset.change(
+                fn=apply_multiscale_preset,
+                inputs=[multiscale_preset],
+                outputs=[
+                    multiscale_enabled,
+                    multiscale_factor,
+                    multiscale_fullres_start,
+                    multiscale_fullres_end,
+                    multiscale_intermittent,
+                ],
+            )
+
             generate_btn = gr.Button("Generate")
+
+            # Model Cache Management
+            with gr.Accordion("Model Cache Management", open=False):
+                with gr.Row():
+                    vram_info_btn = gr.Button("🔍 Check VRAM Usage")
+                    clear_cache_btn = gr.Button("🗑️ Clear Model Cache")
+                vram_info_display = gr.Markdown("")
+                cache_status_display = gr.Markdown("")
 
         # Output gallery
         gallery = gr.Gallery(
@@ -201,17 +317,28 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             realistic_model,
             multiscale_enabled,
             multiscale_intermittent,
+            multiscale_factor,
+            multiscale_fullres_start,
+            multiscale_fullres_end,
+            keep_models_loaded,
         ],
         outputs=gallery,
+    )
+
+    # Connect VRAM info and cache management buttons
+    vram_info_btn.click(
+        fn=get_vram_info,
+        outputs=vram_info_display,
+    )
+
+    clear_cache_btn.click(
+        fn=clear_model_cache_ui,
+        outputs=cache_status_display,
     )
 
 
 def is_huggingface_space():
     return "SPACE_ID" in os.environ
-
-
-def is_docker_environment():
-    return "GRADIO_SERVER_PORT" in os.environ and "GRADIO_SERVER_NAME" in os.environ
 
 
 # For local testing
@@ -221,15 +348,6 @@ if __name__ == "__main__":
             debug=False,
             server_name="0.0.0.0",
             server_port=7860,  # Standard HF Spaces port
-        )
-    elif is_docker_environment():
-        # Docker environment - use environment variables
-        server_name = os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0")
-        server_port = int(os.environ.get("GRADIO_SERVER_PORT", 7860))
-        demo.launch(
-            debug=False,
-            server_name=server_name,
-            server_port=server_port,
         )
     else:
         demo.launch(

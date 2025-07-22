@@ -347,7 +347,10 @@ class CFGGuider:
             pipeline=pipeline,
         )
 
-        cond_util.cleanup_models(self.conds, self.loaded_models)
+        # Use model cache to prevent cleanup if models should stay loaded
+        from modules.Device.ModelCache import get_model_cache
+        get_model_cache().prevent_model_cleanup(self.conds, self.loaded_models)
+
         del self.inner_model
         del self.conds
         del self.loaded_models

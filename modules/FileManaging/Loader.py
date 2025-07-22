@@ -128,6 +128,19 @@ class CheckpointLoaderSimple:
             - `tuple`: The model patcher, CLIP, and VAE.
         """
         ckpt_path = f"{ckpt_name}"
+
+        # Check if model is already cached
+        from modules.Device.ModelCache import get_model_cache
+
+        cache = get_model_cache()
+        cached_result = cache.get_cached_checkpoint(ckpt_path)
+
+        if cached_result is not None:
+            model_patcher, clip, vae = cached_result
+            print("using cached", ckpt_path)
+            return (model_patcher, clip, vae)
+
+        # Load normally if not cached
         out = load_checkpoint_guess_config(
             ckpt_path,
             output_vae=output_vae,
@@ -135,4 +148,9 @@ class CheckpointLoaderSimple:
             embedding_directory="./_internal/embeddings/",
         )
         print("loading", ckpt_path)
+
+        # Cache the loaded checkpoint
+        if len(out) >= 3:
+            cache.cache_checkpoint(ckpt_path, out[0], out[1], out[2])
+
         return out[:3]
