@@ -341,6 +341,10 @@ def is_huggingface_space():
     return "SPACE_ID" in os.environ
 
 
+def is_docker_environment():
+    return "GRADIO_SERVER_PORT" in os.environ and "GRADIO_SERVER_NAME" in os.environ
+
+
 # For local testing
 if __name__ == "__main__":
     if is_huggingface_space():
@@ -348,6 +352,15 @@ if __name__ == "__main__":
             debug=False,
             server_name="0.0.0.0",
             server_port=7860,  # Standard HF Spaces port
+        )
+    elif is_docker_environment():
+        # Docker environment - use environment variables
+        server_name = os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0")
+        server_port = int(os.environ.get("GRADIO_SERVER_PORT", 7860))
+        demo.launch(
+            debug=False,
+            server_name=server_name,
+            server_port=server_port,
         )
     else:
         demo.launch(
