@@ -103,6 +103,33 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 2. Run `run.bat` in a terminal.
 3. Start creating!
 
+### 🐳 Docker Setup
+
+Run LightDiffusion-Next in a containerized environment with GPU acceleration:
+
+**Prerequisites:**
+- Docker with NVIDIA Container Toolkit installed
+- NVIDIA GPU with CUDA support
+
+**Quick Start with Docker:**
+```bash
+# Build and run with docker-compose (recommended)
+docker-compose up --build
+
+# Or build and run manually
+docker build -t lightdiffusion-next .
+docker run --gpus all -p 7860:7860 -v ./output:/app/_internal/output lightdiffusion-next
+```
+
+**Access the Gradio Web Interface:**
+Open your browser and navigate to `http://localhost:7860`
+
+**Volume Mounts:**
+- `./output:/app/_internal/output` - Persist generated images
+- `./checkpoints:/app/_internal/checkpoints` - Store model files
+- `./loras:/app/_internal/loras` - Store LoRA files
+- `./embeddings:/app/_internal/embeddings` - Store embeddings
+
 ### Command-Line Pipeline
 
 For a GUI-free experience, use the pipeline:
