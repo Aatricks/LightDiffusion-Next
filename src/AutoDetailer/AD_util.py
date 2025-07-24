@@ -212,17 +212,31 @@ def crop_ndarray4(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     return cropped
 
 
-def crop_image(image: Image.Image, crop_region: List) -> Image.Image:
-    """#### Crop the image.
+def crop_image(image: torch.Tensor, crop_region: List) -> torch.Tensor:
+    """#### Crop the tensor image.
 
     #### Args:
-        - `image` (Image.Image): The image to crop.
+        - `image` (torch.Tensor): The tensor image to crop.
         - `crop_region` (List[int]): The crop region.
 
     #### Returns:
-        - `Image.Image`: The cropped image.
+        - `torch.Tensor`: The cropped tensor image.
     """
-    return crop_ndarray4(image, crop_region)
+    # Convert to numpy if it's a torch tensor
+    if torch.is_tensor(image):
+        if len(image.shape) == 4:  # [batch, height, width, channels]
+            cropped = crop_ndarray4(image.cpu().numpy(), crop_region)
+            return torch.from_numpy(cropped)
+        elif len(image.shape) == 3:  # [height, width, channels]
+            # Add batch dimension for compatibility
+            image_np = image.unsqueeze(0).cpu().numpy()
+            cropped = crop_ndarray4(image_np, crop_region)
+            return torch.from_numpy(cropped).squeeze(0)
+        else:
+            raise ValueError(f"Unsupported image tensor shape: {image.shape}")
+    else:
+        cropped = crop_ndarray4(image, crop_region)
+        return torch.from_numpy(cropped) if isinstance(cropped, np.ndarray) else cropped
 
 
 def segs_scale_match(segs: List[np.ndarray], target_shape: List) -> List:

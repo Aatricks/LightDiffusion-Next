@@ -2,7 +2,8 @@ import threading
 import torch
 from tqdm.auto import trange
 from src.Utilities import util
-
+from src.AutoEncoders import taesd
+from src.user import app_instance
 
 from src.sample import sampling_util
 
@@ -32,10 +33,6 @@ def sample_euler_ancestral(
     device = x.device
     global disable_gui
     disable_gui = pipeline
-
-    if not disable_gui:
-        from src.AutoEncoders import taesd
-        from src.user import app_instance
 
     # Multi-scale setup with validation
     original_shape = x.shape
@@ -160,7 +157,7 @@ def sample_euler_ancestral(
         if callback is not None:
             callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
 
-        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+        if app_instance.app.previewer_var.get() and i % 5 == 0:
             threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
 
     return x
@@ -190,10 +187,6 @@ def sample_euler(
     device = x.device
     global disable_gui
     disable_gui = pipeline
-
-    if not disable_gui:
-        from src.AutoEncoders import taesd
-        from src.user import app_instance
 
     # Multi-scale setup with validation
     original_shape = x.shape
@@ -328,7 +321,7 @@ def sample_euler(
                 }
             )
 
-        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+        if app_instance.app.previewer_var.get() and i % 5 == 0:
             threading.Thread(target=taesd.taesd_preview, args=(x, True)).start()
 
     return x
@@ -529,10 +522,6 @@ def sample_euler_dy_cfg_pp(
     global disable_gui
     disable_gui = pipeline
 
-    if not disable_gui:
-        from src.AutoEncoders import taesd
-        from src.user import app_instance
-
     for i in trange(len(sigmas) - 1, disable=disable):
         if (
             not pipeline
@@ -613,7 +602,7 @@ def sample_euler_dy_cfg_pp(
                     **extra_args,
                 )
 
-        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+        if app_instance.app.previewer_var.get() and i % 5 == 0:
             threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
 
     return x
@@ -676,10 +665,6 @@ def sample_euler_ancestral_dy_cfg_pp(
 
     global disable_gui
     disable_gui = pipeline
-
-    if not disable_gui:
-        from src.AutoEncoders import taesd
-        from src.user import app_instance
 
     s_in = x.new_ones([x.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
@@ -749,7 +734,7 @@ def sample_euler_ancestral_dy_cfg_pp(
         # Store for momentum calculation
         old_uncond_denoised = uncond_denoised
 
-        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+        if app_instance.app.previewer_var.get() and i % 5 == 0:
             threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
 
     return x
@@ -792,10 +777,6 @@ def sample_dpmpp_2m_cfgpp(
     device = x.device
     global disable_gui
     disable_gui = pipeline
-
-    if not disable_gui:
-        from src.AutoEncoders import taesd
-        from src.user import app_instance
 
     # Multi-scale setup with validation
     original_shape = x.shape
@@ -975,7 +956,7 @@ def sample_dpmpp_2m_cfgpp(
         old_uncond_denoised = uncond_denoised
 
         # Preview updates
-        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+        if app_instance.app.previewer_var.get() and i % 5 == 0:
             threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
 
     return x
@@ -1012,10 +993,6 @@ def sample_dpmpp_sde_cfgpp(
     device = x.device
     global disable_gui
     disable_gui = pipeline
-
-    if not disable_gui:
-        from src.AutoEncoders import taesd
-        from src.user import app_instance
 
     # Early return check
     if len(sigmas) <= 1:
@@ -1271,7 +1248,7 @@ def sample_dpmpp_sde_cfgpp(
         old_uncond_denoised = uncond_denoised
 
         # Preview updates
-        if not pipeline and app_instance.app.previewer_var.get() and i % 5 == 0:
+        if app_instance.app.previewer_var.get() and i % 5 == 0:
             threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
 
     return x

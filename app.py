@@ -6,17 +6,54 @@ from PIL import Image
 import numpy as np
 import spaces
 import datetime
-import shutil
 import json
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.user.pipeline import pipeline
-import torch
+from src.user import app_instance
 
 
 # Settings persistence
 SETTINGS_FILE = "webui_settings.json"
+
+# Global variables for generation state
+generation_in_progress = False
+
+
+def get_preview_images():
+    """Get current preview images for display during generation"""
+    if app_instance.app.previewer_var.get():
+        return app_instance.app.get_latest_previews()
+    return []
+
+
+def update_main_gallery_with_preview():
+    """Update the main gallery with preview images during generation"""
+    global generation_in_progress
+    if generation_in_progress and app_instance.app.previewer_var.get():
+        previews = app_instance.app.get_latest_previews()
+        if previews:
+            return previews
+    return gr.update()
+
+
+def check_preview_updates():
+    """Check for new preview images and return them"""
+    global generation_in_progress
+
+    if generation_in_progress and app_instance.app.previewer_var.get():
+        previews = app_instance.app.get_latest_previews()
+        if previews:
+            status = f"🎨 Generating... (Preview: {len(previews)} images)"
+            return previews, status
+        else:
+            status = "🎨 Generating..."
+            return [], status
+    else:
+        status = "✅ Ready to generate"
+        return [], status
+
 
 def get_default_settings():
     """Get default settings for the webui"""
@@ -42,14 +79,16 @@ def get_default_settings():
         "multiscale_fullres_start": 3,
         "multiscale_fullres_end": 8,
         "keep_models_loaded": True,
-        "multiscale_preset": "quality"
+        "multiscale_preset": "quality",
+        "enable_preview": True,  # New setting for real-time preview
     }
+
 
 def load_settings():
     """Load settings from disk"""
     try:
         if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 saved_settings = json.load(f)
                 # Merge with defaults to handle new settings
                 default_settings = get_default_settings()
@@ -59,13 +98,24 @@ def load_settings():
         print(f"Error loading settings: {e}")
     return get_default_settings()
 
+
 def save_settings(settings):
     """Save settings to disk"""
     try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving settings: {e}")
+
+
+def update_generation_status():
+    """Update generation status"""
+    global generation_in_progress
+    if generation_in_progress:
+        return "🎨 Generating..."
+    else:
+        return "✅ Ready to generate"
+
 
 def update_settings(**kwargs):
     """Update and save specific settings"""
@@ -120,11 +170,13 @@ def load_all_generated_images():
             img = Image.open(file_path)
             # Store the image with metadata
             img.info = {
-                'path': file_path,
-                'filename': os.path.basename(file_path),
-                'folder': os.path.basename(os.path.dirname(file_path)),
-                'modified': datetime.datetime.fromtimestamp(os.path.getmtime(file_path)).strftime("%Y-%m-%d %H:%M:%S"),
-                'size': f"{img.size[0]}x{img.size[1]}"
+                "path": file_path,
+                "filename": os.path.basename(file_path),
+                "folder": os.path.basename(os.path.dirname(file_path)),
+                "modified": datetime.datetime.fromtimestamp(
+                    os.path.getmtime(file_path)
+                ).strftime("%Y-%m-%d %H:%M:%S"),
+                "size": f"{img.size[0]}x{img.size[1]}",
             }
             images.append(img)
         except Exception as e:
@@ -146,11 +198,11 @@ def get_image_info(evt: gr.SelectData):
             img = images[evt.index]
             info = img.info
             return f"""**Image Information:**
-- **Filename:** {info.get('filename', 'Unknown')}
-- **Folder:** {info.get('folder', 'Unknown')}
-- **Size:** {info.get('size', 'Unknown')}
-- **Modified:** {info.get('modified', 'Unknown')}
-- **Path:** {info.get('path', 'Unknown')}"""
+- **Filename:** {info.get("filename", "Unknown")}
+- **Folder:** {info.get("folder", "Unknown")}
+- **Size:** {info.get("size", "Unknown")}
+- **Modified:** {info.get("modified", "Unknown")}
+- **Path:** {info.get("path", "Unknown")}"""
         else:
             return "Image index out of range."
     except Exception as e:
@@ -160,28 +212,37 @@ def get_image_info(evt: gr.SelectData):
 def delete_selected_image(evt: gr.SelectData):
     """Delete a selected image from the history"""
     if evt.index is None:
-        return "No image selected.", *load_all_generated_images()
+        updated_images, info = load_all_generated_images()
+        return "No image selected.", updated_images, info
 
     try:
         images, _ = load_all_generated_images()
         if evt.index < len(images):
             img = images[evt.index]
-            file_path = img.info.get('path')
+            file_path = img.info.get("path")
             if file_path and os.path.exists(file_path):
                 os.remove(file_path)
                 # Reload images after deletion
                 updated_images, info = load_all_generated_images()
-                return f"✅ Successfully deleted {os.path.basename(file_path)}", updated_images, info
+                return (
+                    f"✅ Successfully deleted {os.path.basename(file_path)}",
+                    updated_images,
+                    info,
+                )
             else:
-                return "❌ File not found or invalid path.", images, _
+                updated_images, info = load_all_generated_images()
+                return "❌ File not found or invalid path.", updated_images, info
         else:
-            return "❌ Image index out of range.", images, _
+            updated_images, info = load_all_generated_images()
+            return "❌ Image index out of range.", updated_images, info
     except Exception as e:
-        return f"❌ Error deleting image: {e}", *load_all_generated_images()
+        updated_images, info = load_all_generated_images()
+        return f"❌ Error deleting image: {e}", updated_images, info
 
 
 # Global variable to store the last selected image index
 selected_image_index = None
+
 
 def store_selected_image(evt: gr.SelectData):
     """Store the selected image index and return image info"""
@@ -194,13 +255,14 @@ def delete_stored_image():
     """Delete the stored selected image"""
     global selected_image_index
     if selected_image_index is None:
-        return "No image selected.", *load_all_generated_images()
+        updated_images, info = load_all_generated_images()
+        return "No image selected.", updated_images, info
 
     try:
         images, _ = load_all_generated_images()
         if selected_image_index < len(images):
             img = images[selected_image_index]
-            file_path = img.info.get('path')
+            file_path = img.info.get("path")
             if file_path and os.path.exists(file_path):
                 filename = os.path.basename(file_path)
                 os.remove(file_path)
@@ -209,11 +271,14 @@ def delete_stored_image():
                 updated_images, info = load_all_generated_images()
                 return f"✅ Successfully deleted {filename}", updated_images, info
             else:
-                return "❌ File not found or invalid path.", *load_all_generated_images()
+                updated_images, info = load_all_generated_images()
+                return "❌ File not found or invalid path.", updated_images, info
         else:
-            return "❌ Image index out of range.", *load_all_generated_images()
+            updated_images, info = load_all_generated_images()
+            return "❌ Image index out of range.", updated_images, info
     except Exception as e:
-        return f"❌ Error deleting image: {e}", *load_all_generated_images()
+        updated_images, info = load_all_generated_images()
+        return f"❌ Error deleting image: {e}", updated_images, info
 
 
 def clear_all_images():
@@ -229,9 +294,14 @@ def clear_all_images():
             except Exception as e:
                 print(f"Error deleting {file_path}: {e}")
 
-        return f"✅ Successfully deleted {deleted_count} images.", [], "No images found in output folders."
+        return (
+            f"✅ Successfully deleted {deleted_count} images.",
+            [],
+            "No images found in output folders.",
+        )
     except Exception as e:
-        return f"❌ Error clearing images: {e}", *load_all_generated_images()
+        updated_images, info = load_all_generated_images()
+        return f"❌ Error clearing images: {e}", updated_images, info
 
 
 def refresh_image_history():
@@ -240,8 +310,8 @@ def refresh_image_history():
 
 
 @spaces.GPU
-def generate_images(
-    prompt: str,
+def generate_images_with_preview(
+    prompt: str = "",
     negative_prompt: str = "",
     width: int = 512,
     height: int = 512,
@@ -263,10 +333,21 @@ def generate_images(
     multiscale_fullres_start: int = 3,
     multiscale_fullres_end: int = 8,
     keep_models_loaded: bool = True,
+    enable_preview: bool = True,
     progress=gr.Progress(),
 ):
-    """Generate images using the LightDiffusion pipeline"""
+    """Generate images with real-time preview updates in the main gallery"""
+    global generation_in_progress
+
     try:
+        generation_in_progress = True
+
+        # Clear previous preview images
+        app_instance.app.cleanup_all_previews()
+
+        # Set preview enabled state in app_instance
+        app_instance.app.previewer_var.set(enable_preview)
+
         # Auto-save settings
         update_settings(
             prompt=prompt,
@@ -290,6 +371,7 @@ def generate_images(
             multiscale_fullres_start=multiscale_fullres_start,
             multiscale_fullres_end=multiscale_fullres_end,
             keep_models_loaded=keep_models_loaded,
+            enable_preview=enable_preview,
         )
 
         # Set model persistence preference
@@ -304,9 +386,15 @@ def generate_images(
                 img_pil.save("temp_img2img.png")
                 prompt = "temp_img2img.png"
 
-        # Run pipeline and capture saved images
-        with torch.inference_mode():
-            pipeline(
+        # Start generation in background and monitor for previews
+        import threading
+        import time
+
+        final_images = []
+
+        def run_generation():
+            nonlocal final_images
+            final_images = pipeline(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
                 w=width,
@@ -330,20 +418,50 @@ def generate_images(
                 multiscale_fullres_end=multiscale_fullres_end,
             )
 
+        # Start generation in background thread
+        gen_thread = threading.Thread(target=run_generation)
+        gen_thread.start()
+
+        # Monitor for preview updates while generation runs
+        last_preview_time = 0
+        while gen_thread.is_alive():
+            current_previews = app_instance.app.get_latest_previews()
+            if (
+                current_previews
+                and app_instance.app.last_preview_time > last_preview_time
+            ):
+                last_preview_time = app_instance.app.last_preview_time
+                yield current_previews  # Yield preview images to update gallery
+            time.sleep(0.5)  # Check every 0.5 seconds
+
+        # Wait for generation to complete
+        gen_thread.join()
+
         # Clean up temporary file if it exists
         if os.path.exists("temp_img2img.png"):
             os.remove("temp_img2img.png")
 
-        return load_generated_images()
+        # Clear preview images and return final results
+        app_instance.app.cleanup_all_previews()
+
+        generation_in_progress = False
+
+        # Return final images
+        yield load_generated_images()
 
     except Exception:
         import traceback
 
         print(traceback.format_exc())
+        generation_in_progress = False
+
+        # Clear preview images on error
+        app_instance.app.cleanup_all_previews()
+
         # Clean up temporary file if it exists
         if os.path.exists("temp_img2img.png"):
             os.remove("temp_img2img.png")
-        return [Image.new("RGB", (512, 512), color="black")]
+        yield [Image.new("RGB", (512, 512), color="black")]
 
 
 def get_vram_info():
@@ -401,7 +519,7 @@ def apply_multiscale_preset(preset_name):
 with gr.Blocks(title="LightDiffusion Web UI") as demo:
     # Load saved settings
     saved_settings = load_settings()
-    
+
     gr.Markdown("# LightDiffusion Web UI")
     gr.Markdown("Generate AI images using LightDiffusion")
     gr.Markdown(
@@ -415,69 +533,122 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                 with gr.Column():
                     # Input components
                     prompt = gr.Textbox(
-                        label="Prompt", 
+                        label="Prompt",
                         placeholder="Enter your prompt here...",
-                        value=saved_settings["prompt"]
+                        value=saved_settings["prompt"],
                     )
-                    
+
                     # Negative prompt in accordion (hidden by default)
                     with gr.Accordion("Negative Prompt", open=False):
                         negative_prompt = gr.Textbox(
                             label="Negative Prompt",
                             placeholder="Enter what you don't want to see in the image...",
                             value=saved_settings["negative_prompt"],
-                            info="Describe what you want to avoid in the generated image"
+                            info="Describe what you want to avoid in the generated image",
                         )
 
                     with gr.Row():
                         width = gr.Slider(
-                            minimum=64, maximum=2048, value=saved_settings["width"], step=64, label="Width"
+                            minimum=64,
+                            maximum=2048,
+                            value=saved_settings["width"],
+                            step=64,
+                            label="Width",
                         )
                         height = gr.Slider(
-                            minimum=64, maximum=2048, value=saved_settings["height"], step=64, label="Height"
+                            minimum=64,
+                            maximum=2048,
+                            value=saved_settings["height"],
+                            step=64,
+                            label="Height",
                         )
 
                     with gr.Row():
                         num_images = gr.Slider(
-                            minimum=1, maximum=10, value=saved_settings["num_images"], step=1, label="Number of Images"
+                            minimum=1,
+                            maximum=10,
+                            value=saved_settings["num_images"],
+                            step=1,
+                            label="Number of Images",
                         )
                         batch_size = gr.Slider(
-                            minimum=1, maximum=4, value=saved_settings["batch_size"], step=1, label="Batch Size"
+                            minimum=1,
+                            maximum=4,
+                            value=saved_settings["batch_size"],
+                            step=1,
+                            label="Batch Size",
                         )
 
                     with gr.Row():
-                        hires_fix = gr.Checkbox(label="HiRes Fix", value=saved_settings["hires_fix"])
-                        adetailer = gr.Checkbox(label="Auto Face/Body Enhancement", value=saved_settings["adetailer"])
-                        enhance_prompt = gr.Checkbox(label="Enhance Prompt", value=saved_settings["enhance_prompt"])
-                        stable_fast = gr.Checkbox(label="Stable Fast Mode", value=saved_settings["stable_fast"])
+                        hires_fix = gr.Checkbox(
+                            label="HiRes Fix", value=saved_settings["hires_fix"]
+                        )
+                        adetailer = gr.Checkbox(
+                            label="Auto Face/Body Enhancement",
+                            value=saved_settings["adetailer"],
+                        )
+                        enhance_prompt = gr.Checkbox(
+                            label="Enhance Prompt",
+                            value=saved_settings["enhance_prompt"],
+                        )
+                        stable_fast = gr.Checkbox(
+                            label="Stable Fast Mode",
+                            value=saved_settings["stable_fast"],
+                        )
 
                     with gr.Row():
-                        reuse_seed = gr.Checkbox(label="Reuse Seed", value=saved_settings["reuse_seed"])
-                        flux_enabled = gr.Checkbox(label="Flux Mode", value=saved_settings["flux_enabled"])
-                        prio_speed = gr.Checkbox(label="Prioritize Speed", value=saved_settings["prio_speed"])
-                        realistic_model = gr.Checkbox(label="Realistic Model", value=saved_settings["realistic_model"])
+                        reuse_seed = gr.Checkbox(
+                            label="Reuse Seed", value=saved_settings["reuse_seed"]
+                        )
+                        flux_enabled = gr.Checkbox(
+                            label="Flux Mode", value=saved_settings["flux_enabled"]
+                        )
+                        prio_speed = gr.Checkbox(
+                            label="Prioritize Speed", value=saved_settings["prio_speed"]
+                        )
+                        realistic_model = gr.Checkbox(
+                            label="Realistic Model",
+                            value=saved_settings["realistic_model"],
+                        )
 
                     with gr.Row():
-                        img2img_enabled = gr.Checkbox(label="Image to Image Mode", value=saved_settings["img2img_enabled"])
+                        img2img_enabled = gr.Checkbox(
+                            label="Image to Image Mode",
+                            value=saved_settings["img2img_enabled"],
+                        )
                         keep_models_loaded = gr.Checkbox(
                             label="Keep Models in VRAM",
                             value=saved_settings["keep_models_loaded"],
                             info="Keep models loaded for instant reuse (faster but uses more VRAM)",
                         )
+                        enable_preview = gr.Checkbox(
+                            label="Real-time Preview",
+                            value=saved_settings["enable_preview"],
+                            info="Show TAESD preview images during generation",
+                        )
 
-                    img2img_image = gr.Image(label="Input Image for img2img", visible=False)
+                    img2img_image = gr.Image(
+                        label="Input Image for img2img", visible=False
+                    )
 
                     # Multi-scale diffusion settings
                     with gr.Accordion("Multi-Scale Diffusion Settings", open=False):
                         multiscale_enabled = gr.Checkbox(
-                            label="Enable Multi-Scale Diffusion", value=saved_settings["multiscale_enabled"]
+                            label="Enable Multi-Scale Diffusion",
+                            value=saved_settings["multiscale_enabled"],
                         )
 
                         # Multi-scale preset selection
                         with gr.Row():
                             multiscale_preset = gr.Dropdown(
                                 label="Multi-Scale Preset",
-                                choices=["None", "quality", "performance", "balanced", "disabled"],
+                                choices=[
+                                    "None",
+                                    "quality",
+                                    "performance",
+                                    "balanced",
+                                    "disabled",
+                                ],
                                 value=saved_settings["multiscale_preset"],
                                 info="Select a preset to automatically configure multi-scale settings",
                             )
@@ -496,10 +667,18 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                                 label="Multi-Scale Factor",
                             )
                             multiscale_fullres_start = gr.Slider(
-                                minimum=0, maximum=10, value=saved_settings["multiscale_fullres_start"], step=1, label="Full-Res Start Steps"
+                                minimum=0,
+                                maximum=10,
+                                value=saved_settings["multiscale_fullres_start"],
+                                step=1,
+                                label="Full-Res Start Steps",
                             )
                             multiscale_fullres_end = gr.Slider(
-                                minimum=0, maximum=20, value=saved_settings["multiscale_fullres_end"], step=1, label="Full-Res End Steps"
+                                minimum=0,
+                                maximum=20,
+                                value=saved_settings["multiscale_fullres_end"],
+                                step=1,
+                                label="Full-Res End Steps",
                             )
 
                     # Make input image visible only when img2img is enabled
@@ -532,16 +711,23 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                         vram_info_display = gr.Markdown("")
                         cache_status_display = gr.Markdown("")
 
-                # Output gallery
-                gallery = gr.Gallery(
-                    label="Generated Images",
-                    show_label=True,
-                    elem_id="gallery",
-                    columns=[2],
-                    rows=[2],
-                    object_fit="contain",
-                    height="auto",
-                )
+                # Output gallery with preview support
+                with gr.Row():
+                    with gr.Column():
+                        gallery = gr.Gallery(
+                            label="Generated Images",
+                            show_label=True,
+                            elem_id="gallery",
+                            columns=[2],
+                            rows=[2],
+                            object_fit="contain",
+                            height="auto",
+                        )
+
+                        # Status display for generation progress
+                        generation_status = gr.Markdown(
+                            "Ready to generate", elem_id="status"
+                        )
 
         # Image History Tab
         with gr.TabItem("📸 Image History"):
@@ -555,7 +741,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                         rows=[3],
                         object_fit="contain",
                         height="600px",
-                        allow_preview=True
+                        allow_preview=True,
                     )
 
                 with gr.Column(scale=1):
@@ -566,16 +752,53 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                     image_info_display = gr.Markdown("Select an image to view details.")
 
                     gr.Markdown("### Actions")
-                    delete_btn = gr.Button("🗑️ Delete Selected Image", variant="secondary")
+                    delete_btn = gr.Button(
+                        "🗑️ Delete Selected Image", variant="secondary"
+                    )
                     clear_all_btn = gr.Button("⚠️ Clear All Images", variant="stop")
 
                     action_status = gr.Markdown("")
 
             history_info = gr.Markdown("")
 
+    # Connect preview refresh button
+    def update_preview_interface():
+        """Update preview interface based on generation status and enable_preview setting"""
+        global generation_in_progress
+        previews, status = check_preview_updates()
+
+        if generation_in_progress and app_instance.app.previewer_var.get():
+            return (
+                status,  # generation_status
+                previews,  # preview_gallery
+                gr.update(visible=True),  # preview_gallery visible
+                gr.update(visible=True),  # preview_refresh_btn visible
+            )
+        else:
+            return (
+                status,  # generation_status
+                [],  # preview_gallery
+                gr.update(visible=False),  # preview_gallery visible
+                gr.update(visible=False),  # preview_refresh_btn visible
+            )
+
+    # Create a timer for automatic preview updates
+    timer = gr.Timer(value=1.0)  # 1 second interval
+
+    def auto_refresh_preview():
+        """Auto-refresh preview only during generation"""
+        if generation_in_progress:
+            status, _, _, _ = update_preview_interface()
+            return status
+        else:
+            # Return current state without changes when not generating
+            return "✅ Ready to generate"
+
+    timer.tick(fn=auto_refresh_preview, outputs=[generation_status])
+
     # Connect generate button to pipeline
     generate_btn.click(
-        fn=generate_images,
+        fn=generate_images_with_preview,
         inputs=[
             prompt,
             negative_prompt,
@@ -599,17 +822,37 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             multiscale_fullres_start,
             multiscale_fullres_end,
             keep_models_loaded,
+            enable_preview,
         ],
         outputs=gallery,
     )
 
     # Auto-save settings when UI values change
-    def save_ui_settings(prompt_val, negative_prompt_val, width_val, height_val, num_images_val, batch_size_val,
-                         hires_fix_val, adetailer_val, enhance_prompt_val, img2img_enabled_val, stable_fast_val,
-                         reuse_seed_val, flux_enabled_val, prio_speed_val, realistic_model_val,
-                         multiscale_enabled_val, multiscale_intermittent_val, multiscale_factor_val,
-                         multiscale_fullres_start_val, multiscale_fullres_end_val, keep_models_loaded_val,
-                         multiscale_preset_val):
+    def save_ui_settings(
+        prompt_val,
+        negative_prompt_val,
+        width_val,
+        height_val,
+        num_images_val,
+        batch_size_val,
+        hires_fix_val,
+        adetailer_val,
+        enhance_prompt_val,
+        img2img_enabled_val,
+        stable_fast_val,
+        reuse_seed_val,
+        flux_enabled_val,
+        prio_speed_val,
+        realistic_model_val,
+        multiscale_enabled_val,
+        multiscale_intermittent_val,
+        multiscale_factor_val,
+        multiscale_fullres_start_val,
+        multiscale_fullres_end_val,
+        keep_models_loaded_val,
+        multiscale_preset_val,
+        enable_preview_val,
+    ):
         update_settings(
             prompt=prompt_val,
             negative_prompt=negative_prompt_val,
@@ -633,24 +876,38 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             multiscale_fullres_end=multiscale_fullres_end_val,
             keep_models_loaded=keep_models_loaded_val,
             multiscale_preset=multiscale_preset_val,
+            enable_preview=enable_preview_val,
         )
 
     # Connect all UI components to auto-save
     ui_components = [
-        prompt, negative_prompt, width, height, num_images, batch_size,
-        hires_fix, adetailer, enhance_prompt, img2img_enabled, stable_fast,
-        reuse_seed, flux_enabled, prio_speed, realistic_model,
-        multiscale_enabled, multiscale_intermittent, multiscale_factor,
-        multiscale_fullres_start, multiscale_fullres_end, keep_models_loaded,
-        multiscale_preset
+        prompt,
+        negative_prompt,
+        width,
+        height,
+        num_images,
+        batch_size,
+        hires_fix,
+        adetailer,
+        enhance_prompt,
+        img2img_enabled,
+        stable_fast,
+        reuse_seed,
+        flux_enabled,
+        prio_speed,
+        realistic_model,
+        multiscale_enabled,
+        multiscale_intermittent,
+        multiscale_factor,
+        multiscale_fullres_start,
+        multiscale_fullres_end,
+        keep_models_loaded,
+        multiscale_preset,
+        enable_preview,
     ]
 
     for component in ui_components:
-        component.change(
-            fn=save_ui_settings,
-            inputs=ui_components,
-            outputs=None
-        )
+        component.change(fn=save_ui_settings, inputs=ui_components, outputs=None)
 
     # Connect VRAM info and cache management buttons
     vram_info_btn.click(
@@ -665,33 +922,22 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
 
     # Connect image history tab components
     # Load images when the interface loads
-    demo.load(
-        fn=load_all_generated_images,
-        outputs=[history_gallery, history_info]
-    )
+    demo.load(fn=load_all_generated_images, outputs=[history_gallery, history_info])
 
     # Refresh button
-    refresh_btn.click(
-        fn=refresh_image_history,
-        outputs=[history_gallery, history_info]
-    )
+    refresh_btn.click(fn=refresh_image_history, outputs=[history_gallery, history_info])
 
     # Image selection for info display and storing selection
-    history_gallery.select(
-        fn=store_selected_image,
-        outputs=image_info_display
-    )
+    history_gallery.select(fn=store_selected_image, outputs=image_info_display)
 
     # Delete selected image
     delete_btn.click(
-        fn=delete_stored_image,
-        outputs=[action_status, history_gallery, history_info]
+        fn=delete_stored_image, outputs=[action_status, history_gallery, history_info]
     )
 
     # Clear all images
     clear_all_btn.click(
-        fn=clear_all_images,
-        outputs=[action_status, history_gallery, history_info]
+        fn=clear_all_images, outputs=[action_status, history_gallery, history_info]
     )
 
 
@@ -705,6 +951,9 @@ def is_docker_environment():
 
 # For local testing
 if __name__ == "__main__":
+    # Ensure preview directory exists
+    os.makedirs("./output/preview", exist_ok=True)
+
     if is_huggingface_space():
         demo.launch(
             debug=False,

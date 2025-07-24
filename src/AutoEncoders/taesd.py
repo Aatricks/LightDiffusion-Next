@@ -6,7 +6,6 @@ Tiny AutoEncoder for Stable Diffusion
 # TODO: Check if multiprocessing is possible for this module
 from PIL import Image
 import numpy as np
-from sympy import im
 import torch
 from src.Utilities import util
 import torch.nn as nn
@@ -248,42 +247,46 @@ class TAESD(nn.Module):
         """
         device = next(self.taesd_encoder.parameters()).device
         x = x.to(device)
+        x_sample = (x + 1) / 2
+        latent = self.taesd_encoder(x_sample)
+        latent = latent / self.vae_scale + self.vae_shift
+        return latent
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
 def taesd_preview(x: torch.Tensor, flux: bool = False):
     """#### Preview the batched latent tensors as images.
-    
+
     #### Args:
-        - `x` (torch.Tensor): Input latent tensor with shape [B,C,H,W] 
+        - `x` (torch.Tensor): Input latent tensor with shape [B,C,H,W]
         - `flux` (bool, optional): Whether using flux model (for channel ordering). Defaults to False.
     """
     if app_instance.app.previewer_var.get() is True:
         taesd_instance = TAESD()
-        
+
         # Handle channel dimension
         if x.shape[1] != 4:
             desired_channels = 4
             current_channels = x.shape[1]
-            
+
             if current_channels > desired_channels:
                 x = x[:, :desired_channels, :, :]
             else:
-                padding = torch.zeros(x.shape[0], desired_channels - current_channels, 
+                padding = torch.zeros(x.shape[0], desired_channels - current_channels,
                                    x.shape[2], x.shape[3], device=x.device)
                 x = torch.cat([x, padding], dim=1)
 
         # Process entire batch at once
         decoded_batch = taesd_instance.decode(x)
-        
+
         images = []
-        
-        # Convert each image in batch 
+
+        # Convert each image in batch
         for decoded in decoded_batch:
             # Handle channel dimension
             if decoded.shape[0] == 1:
                 decoded = decoded.repeat(3, 1, 1)
-                
+
             # Apply different normalization for flux vs standard mode
             if flux:
                 # For flux: Assume BGR ordering and different normalization
@@ -294,16 +297,16 @@ def taesd_preview(x: torch.Tensor, flux: bool = False):
             else:
                 # Standard normalization
                 decoded = (decoded + 1.0) / 2.0
-            
+
             # Convert to numpy and uint8
             image_np = (decoded.cpu().detach().numpy() * 255.0)
             image_np = np.transpose(image_np, (1, 2, 0))
             image_np = np.clip(image_np, 0, 255).astype(np.uint8)
-            
+
             # Create PIL Image
             img = Image.fromarray(image_np, mode='RGB')
             images.append(img)
-            
+
         # Update display with all images
         app_instance.app.update_image(images)
     else:

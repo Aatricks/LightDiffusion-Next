@@ -213,7 +213,16 @@ def make_sam_mask(
     sam_obj.prepare_device()
 
     try:
-        image = np.clip(255.0 * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
+        # Handle different tensor shapes for SAM processing
+        if len(image.shape) == 4:  # [batch, height, width, channels]
+            # Take the first image from the batch and remove batch dimension
+            image_np = image[0].cpu().numpy()
+        elif len(image.shape) == 3:  # [height, width, channels]
+            image_np = image.cpu().numpy()
+        else:
+            raise ValueError(f"Unsupported tensor shape for SAM: {image.shape}")
+        
+        image = np.clip(255.0 * image_np, 0, 255).astype(np.uint8)
 
         total_masks = []
         # seg_shape = segs[0]

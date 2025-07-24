@@ -25,8 +25,18 @@ def tensor2pil(image: torch.Tensor) -> Image.Image:
         - `Image.Image`: The converted PIL image.
     """
     _tensor_check_image(image)
+    
+    # Handle different tensor shapes
+    if len(image.shape) == 4:  # [batch, height, width, channels]
+        # Take the first image from the batch
+        image_data = image[0].cpu().numpy()
+    elif len(image.shape) == 3:  # [height, width, channels]
+        image_data = image.cpu().numpy()
+    else:
+        raise ValueError(f"Unsupported tensor shape: {image.shape}")
+    
     return Image.fromarray(
-        np.clip(255.0 * image.cpu().numpy().squeeze(0), 0, 255).astype(np.uint8)
+        np.clip(255.0 * image_data, 0, 255).astype(np.uint8)
     )
 
 
@@ -72,7 +82,10 @@ class TensorBatchBuilder:
         #### Args:
             - `new_tensor` (torch.Tensor): The new tensor to concatenate.
         """
-        self.tensor = new_tensor
+        if self.tensor is None:
+            self.tensor = new_tensor
+        else:
+            self.tensor = torch.cat([self.tensor, new_tensor], dim=0)
 
 
 LANCZOS = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS

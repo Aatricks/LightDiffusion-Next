@@ -58,6 +58,33 @@ class DifferentialDiffusion:
         return (denoise_mask >= threshold).to(denoise_mask.dtype)
 
 
+def crop_condition_mask(mask: torch.Tensor, image: torch.Tensor, crop_region: list) -> torch.Tensor:
+    """#### Crop a conditioning mask to match a specific region.
+
+    #### Args:
+        - `mask` (torch.Tensor): The input mask tensor.
+        - `image` (torch.Tensor): The input image tensor.
+        - `crop_region` (list): The crop region coordinates [x1, y1, x2, y2].
+
+    #### Returns:
+        - `torch.Tensor`: The cropped mask tensor.
+    """
+    # Extract crop coordinates
+    x1, y1, x2, y2 = crop_region
+    
+    # Get mask dimensions
+    if len(mask.shape) == 4:  # [batch, height, width, channels]
+        cropped_mask = mask[:, y1:y2, x1:x2, :]
+    elif len(mask.shape) == 3:  # [height, width, channels]
+        cropped_mask = mask[y1:y2, x1:x2, :]
+    elif len(mask.shape) == 2:  # [height, width]
+        cropped_mask = mask[y1:y2, x1:x2]
+    else:
+        raise ValueError(f"Unsupported mask shape: {mask.shape}")
+    
+    return cropped_mask
+
+
 def to_latent_image(pixels: torch.Tensor, vae: VariationalAE.VAE) -> torch.Tensor:
     """#### Convert pixels to a latent image using a VAE.
 
@@ -922,48 +949,118 @@ class DetailerForEachTest(DetailerForEach):
         #### Returns:
             - `Tuple[torch.Tensor, list, list, list, list]`: The enhanced image tensor, cropped list, cropped enhanced list, cropped enhanced alpha list, and cnet PIL list.
         """
-        (
-            enhanced_img,
-            cropped,
-            cropped_enhanced,
-            cropped_enhanced_alpha,
-            cnet_pil_list,
-            new_segs,
-        ) = DetailerForEach.do_detail(
-            image,
-            segs,
-            model,
-            clip,
-            vae,
-            guide_size,
-            guide_size_for,
-            max_size,
-            seed,
-            steps,
-            cfg,
-            sampler_name,
-            scheduler,
-            positive,
-            negative,
-            denoise,
-            feather,
-            noise_mask,
-            force_inpaint,
-            wildcard,
-            detailer_hook,
-            cycle=cycle,
-            inpaint_model=inpaint_model,
-            noise_mask_feather=noise_mask_feather,
-            scheduler_func_opt=scheduler_func_opt,
-            pipeline=pipeline,
-        )
+        # Handle batched images by processing each image separately
+        if len(image.shape) == 4 and image.shape[0] > 1:
+            batch_size = image.shape[0]
+            print(f"ADetailer: Processing {batch_size} images in batch separately")
+            
+            enhanced_images = []
+            all_cropped = []
+            all_cropped_enhanced = []
+            all_cropped_enhanced_alpha = []
+            all_cnet_pil_list = []
+            
+            for i in range(batch_size):
+                single_image = image[i:i+1]  # Keep batch dimension
+                
+                (
+                    enhanced_img,
+                    cropped,
+                    cropped_enhanced,
+                    cropped_enhanced_alpha,
+                    cnet_pil_list,
+                    new_segs,
+                ) = DetailerForEach.do_detail(
+                    single_image,
+                    segs,
+                    model,
+                    clip,
+                    vae,
+                    guide_size,
+                    guide_size_for,
+                    max_size,
+                    seed + i,  # Different seed for each image
+                    steps,
+                    cfg,
+                    sampler_name,
+                    scheduler,
+                    positive,
+                    negative,
+                    denoise,
+                    feather,
+                    noise_mask,
+                    force_inpaint,
+                    wildcard,
+                    detailer_hook,
+                    cycle=cycle,
+                    inpaint_model=inpaint_model,
+                    noise_mask_feather=noise_mask_feather,
+                    scheduler_func_opt=scheduler_func_opt,
+                    pipeline=pipeline,
+                )
+                
+                enhanced_images.append(enhanced_img)
+                all_cropped.extend(cropped)
+                all_cropped_enhanced.extend(cropped_enhanced)
+                all_cropped_enhanced_alpha.extend(cropped_enhanced_alpha)
+                all_cnet_pil_list.extend(cnet_pil_list)
+            
+            # Concatenate all enhanced images back into a batch
+            final_enhanced_img = torch.cat(enhanced_images, dim=0)
+            
+            cnet_pil_list = all_cnet_pil_list if all_cnet_pil_list else [empty_pil_tensor()]
+            
+            return (
+                final_enhanced_img,
+                all_cropped,
+                all_cropped_enhanced,
+                all_cropped_enhanced_alpha,
+                cnet_pil_list,
+            )
+        else:
+            # Single image processing (original behavior)
+            (
+                enhanced_img,
+                cropped,
+                cropped_enhanced,
+                cropped_enhanced_alpha,
+                cnet_pil_list,
+                new_segs,
+            ) = DetailerForEach.do_detail(
+                image,
+                segs,
+                model,
+                clip,
+                vae,
+                guide_size,
+                guide_size_for,
+                max_size,
+                seed,
+                steps,
+                cfg,
+                sampler_name,
+                scheduler,
+                positive,
+                negative,
+                denoise,
+                feather,
+                noise_mask,
+                force_inpaint,
+                wildcard,
+                detailer_hook,
+                cycle=cycle,
+                inpaint_model=inpaint_model,
+                noise_mask_feather=noise_mask_feather,
+                scheduler_func_opt=scheduler_func_opt,
+                pipeline=pipeline,
+            )
 
-        cnet_pil_list = [empty_pil_tensor()]
+            cnet_pil_list = [empty_pil_tensor()]
 
-        return (
-            enhanced_img,
-            cropped,
-            cropped_enhanced,
-            cropped_enhanced_alpha,
-            cnet_pil_list,
-        )
+            return (
+                enhanced_img,
+                cropped,
+                cropped_enhanced,
+                cropped_enhanced_alpha,
+                cnet_pil_list,
+            )

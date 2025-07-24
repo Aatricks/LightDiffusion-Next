@@ -96,7 +96,7 @@ def pipeline(
     # Handle negative prompt - use default if none provided
     if negative_prompt is None or negative_prompt.strip() == "":
         negative_prompt = "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4), (embedding:lr), (embedding:ng_deepnegative_v1_75t)"
-    
+
     if reuse_seed:
         seed = last_seed
 

@@ -40,8 +40,19 @@ class UltraBBoxDetector:
             - `Tuple[Tuple[int, int], List[SEGS.SEG]]`: The shape of the image and a list of detected segments.
         """
         drop_size = max(drop_size, 1)
+        
+        # Handle batched images by processing each image separately
+        if len(image.shape) == 4 and image.shape[0] > 1:
+            # For batched images, process each image and return results for the first image
+            print(f"ADetailer: Processing batch of {image.shape[0]} images separately")
+            
+            # Process the first image in the batch for detection
+            single_image = image[0:1]  # Keep batch dimension but take only first image
+        else:
+            single_image = image
+            
         detected_results = AD_util.inference_bbox(
-            self.bbox_model, tensor_util.tensor2pil(image), threshold
+            self.bbox_model, tensor_util.tensor2pil(single_image), threshold
         )
         segmasks = AD_util.create_segmasks(detected_results)
 
@@ -49,8 +60,12 @@ class UltraBBoxDetector:
             segmasks = AD_util.dilate_masks(segmasks, dilation)
 
         items = []
-        h = image.shape[1]
-        w = image.shape[2]
+        if len(single_image.shape) == 4:
+            h = single_image.shape[1]
+            w = single_image.shape[2]
+        else:
+            h = single_image.shape[0]
+            w = single_image.shape[1]
 
         for x, label in zip(segmasks, detected_results[0]):
             item_bbox = x[0]
@@ -63,7 +78,7 @@ class UltraBBoxDetector:
             ):  # minimum dimension must be (2,2) to avoid squeeze issue
                 crop_region = AD_util.make_crop_region(w, h, item_bbox, crop_factor)
 
-                cropped_image = AD_util.crop_image(image, crop_region)
+                cropped_image = AD_util.crop_image(single_image, crop_region)
                 cropped_mask = AD_util.crop_ndarray2(item_mask, crop_region)
                 confidence = x[2]
 
@@ -79,7 +94,7 @@ class UltraBBoxDetector:
 
                 items.append(item)
 
-        shape = image.shape[1], image.shape[2]
+        shape = (h, w)
         segs = shape, items
 
         return segs
