@@ -4,7 +4,7 @@
 
 [![demo platform](https://img.shields.io/badge/Play%20with%20LightDiffusion%21-LightDiffusion%20demo%20platform-lightblue)](https://huggingface.co/spaces/Aatricks/LightDiffusion-Next)&nbsp;
 
-**LightDiffusion-Next**  is the fastest AI-powered image generation GUI/CLI, combining speed, precision, and flexibility in one cohesive tool.
+**LightDiffusion-Next**  is the fastest AI-powered image generation WebUI, combining speed, precision, and flexibility in one cohesive tool.
 </br>
 </br>
   <a href="https://github.com/LightDiffusion/LightDiffusion-Next">
@@ -50,9 +50,6 @@ Here’s what makes LightDiffusion-Next stand out:
 
 - **State Preservation**:
   Save and resume your progress with saved states, ensuring seamless transitions between sessions.
-
-- **Advanced GUI, WebUI and CLI**:
-  Work through a user-friendly graphical interface as GUI or in the browser using Gradio or leverage the streamlined pipeline for CLI-based workflows.
 
 - **Integration-Ready**:
   Collaborate and create directly in Discord with [Boubou](https://github.com/Aatrick/Boubou), or preview images dynamically with the optional **TAESD preview mode**.
@@ -130,15 +127,6 @@ Open your browser and navigate to `http://localhost:7860`
 - `./loras:/app/include/loras` - Store LoRA files
 - `./embeddings:/app/include/embeddings` - Store embeddings
 
-### Command-Line Pipeline
-
-For a GUI-free experience, use the pipeline:
-```bash
-pipeline.bat <prompt> <width> <height> <num_images> <batch_size>
-```
-Use `pipeline.bat -h` for more options.
-
----
 
 ### Advanced Setup
 

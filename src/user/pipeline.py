@@ -42,8 +42,9 @@ def pipeline(
     reuse_seed: bool = False,
     flux_enabled: bool = False,
     prio_speed: bool = False,
-    autohdr: bool = False,
+    autohdr: bool = True,
     realistic_model: bool = False,
+    negative_prompt: str = None,
     # Multi-scale diffusion parameters
     multiscale_preset: str = None,
     enable_multiscale: bool = True,
@@ -68,6 +69,7 @@ def pipeline(
         - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
         - `autohdr` (bool, optional): Enable the AutoHDR mode. Defaults to False.
         - `realistic_model` (bool, optional): Use the realistic model. Defaults to False.
+        - `negative_prompt` (str, optional): The negative prompt to avoid certain elements. If None, uses default negative prompt. Defaults to None.
         - `multiscale_preset` (str, optional): Predefined multiscale preset ('quality', 'performance', 'balanced', 'disabled'). Overrides individual multiscale parameters. Defaults to None.
         - `enable_multiscale` (bool, optional): Enable multi-scale diffusion for performance optimization. Defaults to True.
         - `multiscale_factor` (float, optional): Scale factor for intermediate steps (0.1-1.0). Defaults to 0.5.
@@ -91,6 +93,10 @@ def pipeline(
         ]
         print(f"Applied multiscale preset: {multiscale_preset}")
 
+    # Handle negative prompt - use default if none provided
+    if negative_prompt is None or negative_prompt.strip() == "":
+        negative_prompt = "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4), (embedding:lr), (embedding:ng_deepnegative_v1_75t)"
+    
     if reuse_seed:
         seed = last_seed
 
@@ -166,7 +172,7 @@ def pipeline(
                     clip=clipsetlastlayer_257[0],
                 )
                 cliptextencode_243 = cliptextencode.encode(
-                    text="(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4), (embedding:lr), (embedding:ng_deepnegative_v1_75t)",
+                    text=negative_prompt,
                     clip=clipsetlastlayer_257[0],
                 )
                 upscalemodelloader = USDU_upscaler.UpscaleModelLoader()
@@ -295,7 +301,7 @@ def pipeline(
                     clip=clipsetlastlayer_257[0],
                 )
                 cliptextencode_243 = cliptextencode.encode(
-                    text="(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4), (embedding:lr), (embedding:ng_deepnegative_v1_75t)",
+                    text=negative_prompt,
                     clip=clipsetlastlayer_257[0],
                 )
                 emptylatentimage_244 = emptylatentimage.generate(
