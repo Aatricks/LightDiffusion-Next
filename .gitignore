@@ -5,6 +5,8 @@
 *.safetensors
 *.gguf
 *.png
+/.vscode
+/.gradio
 /.idea
 /htmlcov
 .coverage
