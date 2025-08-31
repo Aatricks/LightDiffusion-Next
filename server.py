@@ -13,6 +13,61 @@ from pydantic import BaseModel
 import sys
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
+# Logging setup
+import logging
+from logging.handlers import RotatingFileHandler
+import uuid
+import traceback
+
+# Create a module-level logger with rotating file handler and request-id support
+class _RequestIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:  # pragma: no cover - simple utility
+        if not hasattr(record, "rid"):
+            record.rid = "-"
+        return True
+
+
+def _setup_logger() -> logging.Logger:
+    os.makedirs("./logs", exist_ok=True)
+    logger = logging.getLogger("lightdiffusion.server")
+    if logger.handlers:
+        return logger
+
+    level_name = os.getenv("LD_SERVER_LOGLEVEL", "DEBUG").upper()
+    try:
+        level = getattr(logging, level_name, logging.DEBUG)
+    except Exception:  # pragma: no cover
+        level = logging.DEBUG
+    logger.setLevel(level)
+
+    formatter = logging.Formatter(
+        fmt="%(asctime)s | %(levelname)s | %(name)s | rid=%(rid)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    file_handler = RotatingFileHandler(
+        filename=os.path.join("./logs", "server.log"),
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.addFilter(_RequestIdFilter())
+    logger.addHandler(file_handler)
+
+    # Also log to stderr for interactive runs; avoid duplicate handlers if uvicorn config already propagates
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.addFilter(_RequestIdFilter())
+    logger.addHandler(stream_handler)
+
+    logger.propagate = False
+    return logger
+
+
+logger = _setup_logger()
+logger.debug("server module loaded; cwd=%s", os.getcwd())
+
 try:
     from src.user.pipeline import pipeline
     # Import app_instance to control preview behavior during generation
@@ -21,8 +76,10 @@ except Exception as e:
     # Defer import error to runtime response for clarity
     pipeline = None  # type: ignore
     _pipeline_import_error = e
+    logger.exception("Failed to import pipeline: %s", e)
 else:
     _pipeline_import_error = None
+    logger.info("Pipeline and app_instance imported successfully")
 
 
 class GenerateRequest(BaseModel):
@@ -66,18 +123,23 @@ def health() -> Dict[str, str]:
 def _encode_png_to_base64(path: str) -> str:
     # Retry a few times in case the file is still being finalized on disk
     last_err: Optional[Exception] = None
-    for _ in range(20):  # up to ~2s total
+    for attempt in range(20):  # up to ~2s total
         try:
             with open(path, "rb") as f:
-                return base64.b64encode(f.read()).decode("utf-8")
+                data = f.read()
+                if attempt > 0:
+                    logger.debug("Read image after %d retries: %s", attempt, path)
+                return base64.b64encode(data).decode("utf-8")
         except Exception as e:
             last_err = e
             time.sleep(0.1)
     # One last attempt or raise detailed error
     try:
         with open(path, "rb") as f:
+            logger.debug("Final attempt succeeded reading: %s", path)
             return base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
+        logger.error("Failed to read generated image %s: %s", path, e if e else last_err)
         raise HTTPException(status_code=500, detail=f"Failed to read generated image: {e if e else last_err}")
 
 
@@ -86,6 +148,7 @@ def _list_existing_images() -> List[str]:
     files: List[str] = []
     for ext in exts:
         files.extend(glob.glob(os.path.join("./output", "**", ext), recursive=True))
+    logger.debug("Found %d existing images", len(files))
     return files
 
 
@@ -95,14 +158,20 @@ def _find_images_since(start_ts: float) -> List[str]:
     files = _list_existing_images()
     recent = [p for p in files if os.path.getmtime(p) >= (start_ts - grace)]
     recent.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    logger.debug("%d images modified since %.3f", len(recent), start_ts)
     return recent
 
 
 @app.post("/api/generate")
 def generate(req: GenerateRequest) -> Dict[str, Any]:
+    rid = uuid.uuid4().hex[:8]
+    log = logging.LoggerAdapter(logger, {"rid": rid})
+    log.info("/api/generate called")
+
     # Validate pipeline import
     global pipeline, _pipeline_import_error
     if pipeline is None:
+        log.error("Pipeline import error: %s", _pipeline_import_error)
         raise HTTPException(status_code=500, detail=f"Pipeline import error: {_pipeline_import_error}")
 
     # Optionally honor requested seed by writing include/last_seed.txt and enabling reuse
@@ -118,6 +187,39 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
     if req.img2img_enabled and req.img2img_image:
         effective_prompt = req.img2img_image
 
+    # Log request summary (avoid dumping huge strings)
+    def _truncate(s: Optional[str], n: int = 200) -> str:
+        if not s:
+            return ""
+        return s if len(s) <= n else s[:n] + "…"
+
+    log.debug(
+        "Request: w=%s h=%s num_images=%s batch=%s hires_fix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s flux=%s prio_speed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
+        req.width,
+        req.height,
+        req.num_images,
+        req.batch_size,
+        req.hires_fix,
+        req.adetailer,
+        req.enhance_prompt,
+        req.img2img_enabled,
+        req.stable_fast,
+        reuse_seed,
+        req.flux_enabled,
+        req.prio_speed,
+        req.realistic_model,
+        req.multiscale_enabled,
+        req.multiscale_intermittent,
+        req.multiscale_factor,
+        req.multiscale_fullres_start,
+        req.multiscale_fullres_end,
+        req.keep_models_loaded,
+        req.enable_preview,
+        _truncate(req.prompt, 200),
+        _truncate(req.negative_prompt or "", 200),
+        bool(req.img2img_image),
+    )
+
     # Mark the start time (use to detect images modified by this call even if filenames are reused)
     start_time = time.time()
 
@@ -130,10 +232,13 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
         try:
             prev_preview_state = _app_instance.app.previewer_var.get()
             _app_instance.app.previewer_var.set(bool(req.enable_preview))
+            log.debug("Preview state toggled: %s -> %s", prev_preview_state, bool(req.enable_preview))
         except Exception:
             prev_preview_state = None  # If app_instance is unavailable, proceed without toggling
+            log.debug("Preview state control unavailable; proceeding without toggling")
 
         try:
+            log.info("Starting pipeline generation")
             pipeline(
                 prompt=effective_prompt,
                 w=req.width,
@@ -158,14 +263,17 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
                 multiscale_fullres_end=req.multiscale_fullres_end,
                 multiscale_intermittent_fullres=req.multiscale_intermittent,
             )
+            log.info("Pipeline generation finished successfully")
         finally:
             # Restore previous preview state if we changed it
             try:
                 if prev_preview_state is not None:
                     _app_instance.app.previewer_var.set(prev_preview_state)
+                    log.debug("Preview state restored to: %s", prev_preview_state)
             except Exception:
                 pass
     except Exception as e:
+        log.exception("Pipeline error: %s", e)
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}")
 
     # Find images produced by this call; consider files modified since start_time
@@ -182,6 +290,7 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
         # As a last resort, return the latest image(s) even if mtimes couldn't be compared
         latest = _list_existing_images()
         if not latest:
+            log.error("No images generated; output folders empty")
             raise HTTPException(status_code=500, detail="No images generated")
         latest.sort(key=lambda p: os.path.getmtime(p), reverse=True)
         images = latest
@@ -191,10 +300,13 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
         # Sort again by mtime desc and take the first N
         images.sort(key=lambda p: os.path.getmtime(p), reverse=True)
         selected = images[: req.num_images]
+        log.info("Returning %d images: %s", len(selected), selected)
         b64_list = [_encode_png_to_base64(p) for p in selected]
         return {"images": b64_list}
     else:
-        b64 = _encode_png_to_base64(images[0])
+        chosen = images[0]
+        log.info("Returning single image: %s", chosen)
+        b64 = _encode_png_to_base64(chosen)
         return {"image": b64}
 
 
