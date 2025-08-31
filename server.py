@@ -15,6 +15,8 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 try:
     from src.user.pipeline import pipeline
+    # Import app_instance to control preview behavior during generation
+    from src.user import app_instance as _app_instance
 except Exception as e:
     # Defer import error to runtime response for clarity
     pipeline = None  # type: ignore
@@ -62,21 +64,38 @@ def health() -> Dict[str, str]:
 
 
 def _encode_png_to_base64(path: str) -> str:
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")
+    # Retry a few times in case the file is still being finalized on disk
+    last_err: Optional[Exception] = None
+    for _ in range(20):  # up to ~2s total
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            last_err = e
+            time.sleep(0.1)
+    # One last attempt or raise detailed error
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read generated image: {e if e else last_err}")
 
 
 def _list_existing_images() -> List[str]:
-    return glob.glob(os.path.join("./output", "**", "*.png"), recursive=True)
+    exts = ["*.png", "*.jpg", "*.jpeg", "*.webp"]
+    files: List[str] = []
+    for ext in exts:
+        files.extend(glob.glob(os.path.join("./output", "**", ext), recursive=True))
+    return files
 
 
-def _find_new_images(before: List[str]) -> List[str]:
-    after = set(_list_existing_images())
-    prev = set(before)
-    new_files = list(after - prev)
-    # Sort by mtime desc
-    new_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-    return new_files
+def _find_images_since(start_ts: float) -> List[str]:
+    """Return images whose mtime is at or after start_ts (with small grace)."""
+    grace = 0.25
+    files = _list_existing_images()
+    recent = [p for p in files if os.path.getmtime(p) >= (start_ts - grace)]
+    recent.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return recent
 
 
 @app.post("/api/generate")
@@ -99,51 +118,73 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
     if req.img2img_enabled and req.img2img_image:
         effective_prompt = req.img2img_image
 
-    # Capture state before generation
-    before_files = _list_existing_images()
+    # Mark the start time (use to detect images modified by this call even if filenames are reused)
     start_time = time.time()
 
     # Run generation
+    prev_preview_state = None
     try:
-        pipeline(
-            prompt=effective_prompt,
-            w=req.width,
-            h=req.height,
-            number=req.num_images,
-            batch=req.batch_size,
-            hires_fix=req.hires_fix,
-            adetailer=req.adetailer,
-            enhance_prompt=req.enhance_prompt,
-            img2img=req.img2img_enabled,
-            stable_fast=req.stable_fast,
-            reuse_seed=reuse_seed,
-            flux_enabled=req.flux_enabled,
-            prio_speed=req.prio_speed,
-            autohdr=True,
-            realistic_model=req.realistic_model,
-            negative_prompt=req.negative_prompt or None,
-            multiscale_preset=None,
-            enable_multiscale=req.multiscale_enabled,
-            multiscale_factor=req.multiscale_factor,
-            multiscale_fullres_start=req.multiscale_fullres_start,
-            multiscale_fullres_end=req.multiscale_fullres_end,
-            multiscale_intermittent_fullres=req.multiscale_intermittent,
-        )
+        # Ensure preview computation is enabled only if explicitly requested
+        # Many samplers check app_instance.app.previewer_var.get() before doing TAESD preview work.
+        # Default of PreviewerVar is True; we force it based on request for this call.
+        try:
+            prev_preview_state = _app_instance.app.previewer_var.get()
+            _app_instance.app.previewer_var.set(bool(req.enable_preview))
+        except Exception:
+            prev_preview_state = None  # If app_instance is unavailable, proceed without toggling
+
+        try:
+            pipeline(
+                prompt=effective_prompt,
+                w=req.width,
+                h=req.height,
+                number=req.num_images,
+                batch=req.batch_size,
+                hires_fix=req.hires_fix,
+                adetailer=req.adetailer,
+                enhance_prompt=req.enhance_prompt,
+                img2img=req.img2img_enabled,
+                stable_fast=req.stable_fast,
+                reuse_seed=reuse_seed,
+                flux_enabled=req.flux_enabled,
+                prio_speed=req.prio_speed,
+                autohdr=True,
+                realistic_model=req.realistic_model,
+                negative_prompt=req.negative_prompt or None,
+                multiscale_preset=None,
+                enable_multiscale=req.multiscale_enabled,
+                multiscale_factor=req.multiscale_factor,
+                multiscale_fullres_start=req.multiscale_fullres_start,
+                multiscale_fullres_end=req.multiscale_fullres_end,
+                multiscale_intermittent_fullres=req.multiscale_intermittent,
+            )
+        finally:
+            # Restore previous preview state if we changed it
+            try:
+                if prev_preview_state is not None:
+                    _app_instance.app.previewer_var.set(prev_preview_state)
+            except Exception:
+                pass
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}")
 
-    # Find new images produced by this call; wait briefly if filesystem lags
-    timeout_s = 10.0
+    # Find images produced by this call; consider files modified since start_time
+    timeout_s = 60.0
     poll_interval = 0.25
     images: List[str] = []
     while time.time() - start_time < timeout_s:
-        images = _find_new_images(before_files)
+        images = _find_images_since(start_time)
         if images:
             break
         time.sleep(poll_interval)
 
     if not images:
-        raise HTTPException(status_code=500, detail="No images generated")
+        # As a last resort, return the latest image(s) even if mtimes couldn't be compared
+        latest = _list_existing_images()
+        if not latest:
+            raise HTTPException(status_code=500, detail="No images generated")
+        latest.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        images = latest
 
     # If multiple requested and found, return list; else return single image
     if req.num_images > 1 and len(images) > 1:
