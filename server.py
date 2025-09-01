@@ -182,10 +182,9 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
             f.write(str(int(req.seed)))
         reuse_seed = True
 
-    # Prepare prompt: if img2img is enabled and an image path is given, the pipeline expects the path in `prompt`
+    # Keep text prompt intact; pass img path separately for img2img
     effective_prompt = req.prompt
-    if req.img2img_enabled and req.img2img_image:
-        effective_prompt = req.img2img_image
+    image_path_for_i2i = req.img2img_image if req.img2img_enabled else None
 
     # Log request summary (avoid dumping huge strings)
     def _truncate(s: Optional[str], n: int = 200) -> str:
@@ -262,6 +261,7 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
                 multiscale_fullres_start=req.multiscale_fullres_start,
                 multiscale_fullres_end=req.multiscale_fullres_end,
                 multiscale_intermittent_fullres=req.multiscale_intermittent,
+                img2img_image=image_path_for_i2i,
             )
             log.info("Pipeline generation finished successfully")
         finally:
@@ -277,7 +277,7 @@ def generate(req: GenerateRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}")
 
     # Find images produced by this call; consider files modified since start_time
-    timeout_s = 60.0
+    timeout_s = 120.0
     poll_interval = 0.25
     images: List[str] = []
     while time.time() - start_time < timeout_s:

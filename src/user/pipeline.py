@@ -52,6 +52,8 @@ def pipeline(
     multiscale_fullres_start: int = 3,
     multiscale_fullres_end: int = 8,
     multiscale_intermittent_fullres: bool = False,
+    # Path to the input image when running in img2img/upscale mode
+    img2img_image: str | None = None,
 ) -> None:
     """#### Run the LightDiffusion pipeline.
 
@@ -62,7 +64,8 @@ def pipeline(
         - `hires_fix` (bool, optional): Enable high-resolution fix. Defaults to False.
         - `adetailer` (bool, optional): Enable automatic face and body enhancing. Defaults to False.
         - `enhance_prompt` (bool, optional): Enable Ollama prompt enhancement. Defaults to False.
-        - `img2img` (bool, optional): Use LightDiffusion in Image to Image mode, the prompt input becomes the path to the input image. Defaults to False.
+    - `img2img` (bool, optional): Use LightDiffusion in Image to Image mode. If `img2img_image` is provided, that path is used as the source image; otherwise the legacy behavior uses `prompt` as the path. Defaults to False.
+    - `img2img_image` (str, optional): Filesystem path to the source image for img2img/upscaling when `img2img=True`.
         - `stable_fast` (bool, optional): Enable Stable-Fast speedup offering a 70% speed improvement in return of a compilation time. Defaults to False.
         - `reuse_seed` (bool, optional): Reuse the last used seed, if False the seed will be kept random. Default to False.
         - `flux_enabled` (bool, optional): Enable the flux mode. Defaults to False.
@@ -133,7 +136,9 @@ def pipeline(
         hdr = ahdr.HDREffects()
     for _ in range(number):
         if img2img:
-            img = Image.open(prompt)
+            # Use explicit image path if provided, else fall back to legacy behavior where prompt is a path
+            source_path = img2img_image or prompt
+            img = Image.open(source_path)
             img_array = np.array(img)
             img_tensor = torch.from_numpy(img_array).float().to("cpu") / 255.0
             img_tensor = img_tensor.unsqueeze(0)
@@ -167,8 +172,9 @@ def pipeline(
                     stop_at_clip_layer=-2, clip=loraloader_274[1]
                 )
 
+                # Keep textual conditioning from the actual text prompt (not the file path)
                 cliptextencode_242 = cliptextencode.encode(
-                    text=prompt,
+                    text=prompt if img2img_image is None else prompt,
                     clip=clipsetlastlayer_257[0],
                 )
                 cliptextencode_243 = cliptextencode.encode(
