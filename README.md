@@ -14,7 +14,11 @@
 </br>
 </div>
 
+⭐ If this project helps you, please give it a star! It helps others discover it too.
+---
+
 As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.
+
 
 ## Motivation:
 
