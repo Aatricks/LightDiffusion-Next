@@ -76,6 +76,9 @@ Here’s what makes LightDiffusion-Next stand out:
 - **CFG++**:
     Uses samplers modified to use CFG++ for better quality results compared to traditional methods.
 
+- **Newelle Extension**:
+    LightDiffusion-Next is also available as a backend to the [Newelle LightDiffusion extension](https://github.com/Aatricks/Newelle-Light-Diffusion) permitting to generate images inline during conversations with llms.
+
 ---
 
 ## ⚡ Performance Benchmarks
