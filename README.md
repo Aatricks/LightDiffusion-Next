@@ -105,7 +105,11 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 
 1. Download a release or clone this repository.
 2. Run `run.bat` in a terminal.
-3. Start creating!
+3. The Streamlit UI will launch automatically at `http://localhost:8501`
+
+**Alternative UIs:**
+- **Streamlit UI** (default): Modern, clean interface with better organization
+- **Gradio UI**: Run `python app.py` to use the original Gradio interface, mainly for huggingface spaces GPU compatibility.
 
 ### 🐳 Docker Setup
 
@@ -117,16 +121,20 @@ Run LightDiffusion-Next in a containerized environment with GPU acceleration:
 
 **Quick Start with Docker:**
 ```bash
-# Build and run with docker-compose (recommended)
+# Build and run with docker-compose (recommended - uses Streamlit by default)
 docker-compose up --build
 
-# Or build and run manually
+# Or build and run manually with Streamlit
 docker build -t lightdiffusion-next .
-docker run --gpus all -p 7860:7860 -v ./output:/app/output lightdiffusion-next
+docker run --gpus all -p 8501:8501 -e UI_FRAMEWORK=streamlit -v ./output:/app/output lightdiffusion-next
+
+# To use Gradio instead:
+docker run --gpus all -p 7860:7860 -e UI_FRAMEWORK=gradio -v ./output:/app/output lightdiffusion-next
 ```
 
-**Access the Gradio Web Interface:**
-Open your browser and navigate to `http://localhost:7860`
+**Access the Web Interface:**
+- **Streamlit UI** (default): `http://localhost:8501`
+- **Gradio UI**: `http://localhost:7860` (set `UI_FRAMEWORK=gradio` in docker-compose.yml)
 
 **Volume Mounts:**
 - `./output:/app/output` - Persist generated images

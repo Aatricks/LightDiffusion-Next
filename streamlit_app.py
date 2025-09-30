@@ -22,9 +22,190 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for minimalistic styling
-st.markdown("""
+# Custom CSS for minimalistic styling with theme support
+def get_theme_css(is_dark_mode):
+    """Generate CSS based on current theme"""
+    if is_dark_mode:
+        return """
 <style>
+    /* Dark Mode Styling */
+    .stApp {
+        background-color: #1a1a1a;
+        color: #e0e0e0;
+    }
+    
+    /* Minimal header */
+    .main-header {
+        font-size: 2rem;
+        font-weight: 600;
+        color: #8b9dff;
+        margin-bottom: 0.5rem;
+    }
+    .subtitle {
+        color: #b0b0b0;
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Simplified buttons */
+    .stButton>button {
+        width: 100%;
+        background: #5568d3;
+        color: #ffffff;
+        border: none;
+        padding: 0.6rem 1.2rem;
+        font-weight: 500;
+        border-radius: 6px;
+        transition: background 0.2s;
+    }
+    .stButton>button:hover {
+        background: #667eea;
+    }
+    
+    /* Small icon buttons (help, theme) */
+    .stButton>button[kind="secondary"] {
+        background: #2d2d2d !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #404040 !important;
+    }
+    .stButton>button[kind="secondary"]:hover {
+        background: #3d3d3d !important;
+    }
+    
+    /* Theme toggle button */
+    .theme-toggle-btn {
+        background: #2d2d2d !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #404040 !important;
+    }
+    .theme-toggle-btn:hover {
+        background: #3d3d3d !important;
+    }
+    
+    /* Clean tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        border-bottom: 1px solid #404040;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: #b0b0b0;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #8b9dff;
+    }
+    
+    /* Minimal expanders */
+    .stExpander {
+        border: none;
+        border-top: 1px solid #404040;
+        background-color: #1a1a1a;
+    }
+    .stExpander > summary {
+        color: #e0e0e0;
+    }
+    
+    /* Clean images */
+    div[data-testid="stImage"] {
+        border-radius: 4px;
+    }
+    
+    /* Input fields */
+    .stTextArea textarea, .stTextInput input {
+        background-color: #2d2d2d;
+        color: #e0e0e0;
+        border-color: #404040;
+    }
+    
+    /* Labels and text */
+    label, .stMarkdown, .stText {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Slider labels and values */
+    .stSlider > div > div > div,
+    .stSlider label,
+    .stSlider [data-baseweb="slider"] {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Number input labels */
+    .stNumberInput label {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Checkbox labels */
+    .stCheckbox label {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Selectbox labels */
+    .stSelectbox label {
+        color: #e0e0e0 !important;
+    }
+    
+    /* File uploader labels */
+    .stFileUploader label {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Text area labels */
+    .stTextArea label {
+        color: #e0e0e0 !important;
+    }
+    
+    /* General form labels */
+    [data-testid="stWidgetLabel"] {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Markdown headers in dark mode */
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, 
+    .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        color: #8b9dff;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #b0b0b0 !important;
+    }
+    
+    /* Caption text */
+    .stCaption {
+        color: #b0b0b0 !important;
+    }
+    
+    /* Info boxes */
+    .stAlert {
+        color: #e0e0e0;
+    }
+    
+    /* Hide default Streamlit elements for cleaner look */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Reduce padding */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 1rem;
+    }
+</style>
+"""
+    else:
+        return """
+<style>
+    /* Light Mode Styling */
+    .stApp {
+        background-color: #ffffff;
+        color: #1a1a1a;
+    }
+    
     /* Minimal header */
     .main-header {
         font-size: 2rem;
@@ -53,6 +234,26 @@ st.markdown("""
         background: #5568d3;
     }
     
+    /* Small icon buttons (help, theme) */
+    .stButton>button[kind="secondary"] {
+        background: #f5f5f5 !important;
+        color: #1a1a1a !important;
+        border: 1px solid #e1e4e8 !important;
+    }
+    .stButton>button[kind="secondary"]:hover {
+        background: #e8e8e8 !important;
+    }
+    
+    /* Theme toggle button */
+    .theme-toggle-btn {
+        background: #f5f5f5 !important;
+        color: #1a1a1a !important;
+        border: 1px solid #e1e4e8 !important;
+    }
+    .theme-toggle-btn:hover {
+        background: #e8e8e8 !important;
+    }
+    
     /* Clean tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0.5rem;
@@ -62,17 +263,98 @@ st.markdown("""
         padding: 0.5rem 1rem;
         font-weight: 500;
         font-size: 0.9rem;
+        color: #666666;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #667eea;
     }
     
     /* Minimal expanders */
     .stExpander {
         border: none;
         border-top: 1px solid #e1e4e8;
+        background-color: #ffffff;
+    }
+    .stExpander > summary {
+        color: #1a1a1a;
     }
     
     /* Clean images */
     div[data-testid="stImage"] {
         border-radius: 4px;
+    }
+    
+    /* Input fields */
+    .stTextArea textarea, .stTextInput input {
+        background-color: #ffffff;
+        color: #1a1a1a;
+        border-color: #e1e4e8;
+    }
+    
+    /* Labels and text */
+    label, .stMarkdown, .stText {
+        color: #1a1a1a !important;
+    }
+    
+    /* Slider labels and values */
+    .stSlider > div > div > div,
+    .stSlider label,
+    .stSlider [data-baseweb="slider"] {
+        color: #1a1a1a !important;
+    }
+    
+    /* Number input labels */
+    .stNumberInput label {
+        color: #1a1a1a !important;
+    }
+    
+    /* Checkbox labels */
+    .stCheckbox label {
+        color: #1a1a1a !important;
+    }
+    
+    /* Selectbox labels */
+    .stSelectbox label {
+        color: #1a1a1a !important;
+    }
+    
+    /* File uploader labels */
+    .stFileUploader label {
+        color: #1a1a1a !important;
+    }
+    
+    /* Text area labels */
+    .stTextArea label {
+        color: #1a1a1a !important;
+    }
+    
+    /* General form labels */
+    [data-testid="stWidgetLabel"] {
+        color: #1a1a1a !important;
+    }
+    
+    /* Markdown headers in light mode */
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, 
+    .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
+        color: #1a1a1a !important;
+    }
+    
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        color: #667eea;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #666666 !important;
+    }
+    
+    /* Caption text */
+    .stCaption {
+        color: #666666 !important;
+    }
+    
+    /* Info boxes */
+    .stAlert {
+        color: #1a1a1a;
     }
     
     /* Hide default Streamlit elements for cleaner look */
@@ -86,7 +368,7 @@ st.markdown("""
         padding-bottom: 1rem;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
 
 # Settings file
 SETTINGS_FILE = "webui_settings.json"
@@ -118,6 +400,7 @@ def get_default_settings():
         "keep_models_loaded": True,
         "multiscale_preset": "quality",
         "enable_preview": True,
+        "dark_mode": False,
     }
 
 
@@ -158,9 +441,16 @@ def load_generated_images():
     for file in image_files:
         if abs(os.path.getmtime(file) - latest_time) < 1.0:
             try:
+                # Open image and convert to RGB to ensure compatibility
                 img = Image.open(file)
-                batch_images.append(img)
-            except Exception:
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                # Create a copy to avoid file lock issues
+                img_copy = img.copy()
+                img.close()
+                batch_images.append(img_copy)
+            except Exception as e:
+                print(f"Error loading image {file}: {e}")
                 continue
     
     return batch_images
@@ -178,18 +468,26 @@ def load_all_generated_images():
     images = []
     for file_path in image_files:
         try:
+            # Open image and create a copy to avoid file lock issues
             img = Image.open(file_path)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img_copy = img.copy()
+            img_size = img.size
+            img.close()
+            
             images.append({
-                "image": img,
+                "image": img_copy,
                 "path": file_path,
                 "filename": os.path.basename(file_path),
                 "folder": os.path.basename(os.path.dirname(file_path)),
                 "modified": datetime.datetime.fromtimestamp(
                     os.path.getmtime(file_path)
                 ).strftime("%Y-%m-%d %H:%M:%S"),
-                "size": f"{img.size[0]}x{img.size[1]}",
+                "size": f"{img_size[0]}x{img_size[1]}",
             })
-        except Exception:
+        except Exception as e:
+            print(f"Error loading image {file_path}: {e}")
             continue
     
     return images
@@ -231,6 +529,10 @@ def apply_multiscale_preset(preset_name):
 def generate_images(settings, progress_placeholder, status_placeholder, gallery_placeholder):
     """Generate images with the given settings and live preview support"""
     try:
+        # Reset interrupt flag at start
+        st.session_state.interrupt_generation = False
+        st.session_state.is_generating = True
+        
         # Set preview enabled state
         app_instance.app.previewer_var.set(settings["enable_preview"])
         app_instance.app.cleanup_all_previews()
@@ -292,9 +594,21 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
         # Monitor for preview updates if enabled
         if settings["enable_preview"]:
             last_preview_time = 0
-            preview_container = gallery_placeholder.container()
+            preview_container = gallery_placeholder.empty()
             
             while not generation_complete.is_set():
+                # Check for interrupt
+                if st.session_state.interrupt_generation:
+                    status_placeholder.warning("⚠️ Generation interrupted!")
+                    # Attempt to stop generation gracefully
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.synchronize()
+                    except Exception:
+                        pass
+                    break
+                
                 current_previews = app_instance.app.get_latest_previews()
                 if current_previews and app_instance.app.last_preview_time > last_preview_time:
                     last_preview_time = app_instance.app.last_preview_time
@@ -302,24 +616,34 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
                     for preview_path in current_previews:
                         try:
                             preview_images.append(Image.open(preview_path))
-                        except:
+                        except Exception:
                             pass
                     if preview_images:
-                        with preview_container:
+                        with preview_container.container():
                             st.caption("🔄 Preview (TAESD)")
-                            st.image(preview_images)
+                            # Use columns to prevent caching issues
+                            cols = st.columns(len(preview_images))
+                            for idx, (col, img) in enumerate(zip(cols, preview_images)):
+                                with col:
+                                    st.image(img, width='stretch')
                         status_placeholder.info(f"🎨 Generating... ({len(preview_images)} preview(s))")
                 time.sleep(0.5)
         
         # Wait for generation to complete
-        gen_thread.join()
+        gen_thread.join(timeout=0.1 if st.session_state.interrupt_generation else None)
         
         # Cleanup
         app_instance.app.cleanup_all_previews()
         if os.path.exists("temp_img2img.png"):
             os.remove("temp_img2img.png")
         
+        # Check if interrupted
+        if st.session_state.interrupt_generation:
+            st.session_state.is_generating = False
+            return []
+        
         status_placeholder.success("✅ Generation complete!")
+        st.session_state.is_generating = False
         return load_generated_images()
         
     except Exception as e:
@@ -329,6 +653,7 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
         app_instance.app.cleanup_all_previews()
         if os.path.exists("temp_img2img.png"):
             os.remove("temp_img2img.png")
+        st.session_state.is_generating = False
         return []
 
 
@@ -337,14 +662,31 @@ if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 if "show_help" not in st.session_state:
     st.session_state.show_help = False
+# Load dark_mode from saved settings first
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = st.session_state.settings.get("dark_mode", False)
+if "is_generating" not in st.session_state:
+    st.session_state.is_generating = False
+if "interrupt_generation" not in st.session_state:
+    st.session_state.interrupt_generation = False
 
-# Header with help button
-col_title, col_help = st.columns([6, 1])
+# Apply theme CSS based on loaded dark_mode setting
+st.markdown(get_theme_css(st.session_state.dark_mode), unsafe_allow_html=True)
+
+# Header with theme toggle and help button
+col_title, col_theme, col_help = st.columns([5, 1, 1])
 with col_title:
     st.markdown('<h1 class="main-header">LightDiffusion</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Fast AI image generation</p>', unsafe_allow_html=True)
+with col_theme:
+    theme_icon = "🌙" if not st.session_state.dark_mode else "☀️"
+    if st.button(theme_icon, help="Toggle theme", key="theme_toggle", type="secondary"):
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        st.session_state.settings["dark_mode"] = st.session_state.dark_mode
+        save_settings(st.session_state.settings)
+        st.rerun()
 with col_help:
-    if st.button("?", help="Show help"):
+    if st.button("?", help="Show help", type="secondary"):
         st.session_state.show_help = not st.session_state.show_help
 
 # Help dialog
@@ -528,8 +870,12 @@ with tab1:
                 multiscale_fullres_end = st.session_state.settings["multiscale_fullres_end"]
                 multiscale_intermittent = st.session_state.settings["multiscale_intermittent"]
         
-        # Generate button
-        generate_btn = st.button("Generate", type="primary", use_container_width=True)
+        # Generate and Stop buttons
+        gen_col1, gen_col2 = st.columns([4, 1])
+        with gen_col1:
+            generate_btn = st.button("Generate", type="primary", width='stretch')
+        with gen_col2:
+            stop_btn = st.button("⏹️", help="Stop generation", disabled=not st.session_state.is_generating)
     
     with col_right:
         # Quick stats
@@ -550,12 +896,30 @@ with tab1:
         # Show existing images if any
         existing_images = load_generated_images()
         if existing_images:
-            gallery_placeholder.image(existing_images)
+            # Display in columns to prevent media file storage issues
+            num_cols = min(len(existing_images), 4)
+            img_cols = gallery_placeholder.columns(num_cols)
+            for idx, img in enumerate(existing_images):
+                with img_cols[idx % num_cols]:
+                    st.image(img, width='stretch')
         else:
             gallery_placeholder.info("No images yet. Generate some to see them here!")
         
+        # Handle stop button
+        if stop_btn:
+            st.session_state.interrupt_generation = True
+            status_placeholder.warning("⚠️ Stopping generation...")
+            time.sleep(0.5)
+            st.rerun()
+        
         # Handle generation
         if generate_btn:
+            # If already generating, interrupt current generation
+            if st.session_state.is_generating:
+                st.session_state.interrupt_generation = True
+                status_placeholder.warning("⚠️ Interrupting current generation...")
+                time.sleep(0.5)
+            
             if not prompt.strip():
                 status_placeholder.warning("⚠️ Please enter a prompt!")
             else:
@@ -575,7 +939,7 @@ with tab1:
                     "adetailer": adetailer,
                     "enhance_prompt": enhance_prompt,
                     "img2img_enabled": img2img_enabled,
-                    "img2img_image": img2img_image,
+                    # Don't save img2img_image (numpy array) to settings file
                     "stable_fast": stable_fast,
                     "reuse_seed": reuse_seed,
                     "flux_enabled": flux_enabled,
@@ -591,12 +955,16 @@ with tab1:
                     "enable_preview": enable_preview,
                 }
                 
+                # Add img2img_image to generation settings but not persisted settings
+                generation_settings = current_settings.copy()
+                generation_settings["img2img_image"] = img2img_image
+                
                 st.session_state.settings.update(current_settings)
                 save_settings(st.session_state.settings)
                 
                 # Generate
                 with st.spinner("Generating images..."):
-                    generated_images = generate_images(current_settings, progress_placeholder, status_placeholder, gallery_placeholder)
+                    generated_images = generate_images(generation_settings, progress_placeholder, status_placeholder, gallery_placeholder)
                     
                     # Calculate generation time
                     gen_time = time.time() - start_time
@@ -622,10 +990,10 @@ with tab1:
 with tab2:
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("Refresh", use_container_width=True):
+        if st.button("Refresh", width='stretch'):
             st.rerun()
     with col2:
-        if st.button("Clear All", use_container_width=True, type="secondary"):
+        if st.button("Clear All", width='stretch', type="secondary"):
             if st.session_state.get("confirm_delete_all"):
                 try:
                     image_files = glob.glob("./output/**/*.png", recursive=True)

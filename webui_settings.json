@@ -1,6 +1,6 @@
 {
-  "prompt": "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), dynamic angle, light particles, high contrast, (best illumination), ((cinematic light)), colorful, hyper detail, dramatic light, intricate details, depth of field, 1car, super car,",
-  "negative_prompt": "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4)",
+  "prompt": "an all black lamborghini speeding through a city at night",
+  "negative_prompt": "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)",
   "width": 1024,
   "height": 512,
   "num_images": 1,
@@ -22,8 +22,8 @@
   "keep_models_loaded": true,
   "multiscale_preset": "quality",
   "enable_preview": true,
-  "img2img_image": null,
-  "last_gen_time": 13.096588134765625,
+  "dark_mode": true,
+  "last_gen_time": 10.10703420639038,
   "last_width": 1024,
   "last_height": 512,
   "last_num_images": 1

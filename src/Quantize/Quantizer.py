@@ -630,7 +630,12 @@ def gguf_sd_loader(path: str, handle_prefix: str = "model.diffusion_model."):
     for sd_key, tensor in tensors:
         tensor_name = tensor.name
         tensor_type_str = str(tensor.tensor_type)
-        torch_tensor = torch.from_numpy(tensor.data)  # mmap
+        # Ensure the NumPy array is writable before converting to tensor
+        if not tensor.data.flags.writeable:
+            tensor_data = tensor.data.copy()
+        else:
+            tensor_data = tensor.data
+        torch_tensor = torch.from_numpy(tensor_data)  # mmap
 
         shape = gguf_sd_loader_get_orig_shape(reader, tensor_name)
         if shape is None:

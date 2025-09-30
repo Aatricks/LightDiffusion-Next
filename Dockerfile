@@ -72,16 +72,22 @@ RUN echo "42" > ./include/last_seed.txt
 # Create prompt.txt if it doesn't exist
 RUN echo "A beautiful landscape" > ./include/prompt.txt
 
-# Expose the port that Gradio will run on
+# Expose the ports for both Gradio and Streamlit
 EXPOSE 7860
+EXPOSE 8501
 
-# Set environment variable to indicate this is running in a container
+# Set environment variables
 ENV GRADIO_SERVER_NAME=0.0.0.0
 ENV GRADIO_SERVER_PORT=7860
+ENV UI_FRAMEWORK=${UI_FRAMEWORK:-streamlit}
 
-# Health check
+# Health check (supports both UIs)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:7860/ || exit 1
+    CMD curl -f http://localhost:${UI_FRAMEWORK:+8501}${UI_FRAMEWORK:-7860}/ || exit 1
 
-# Run the Gradio app
-CMD ["python3", "app.py"]
+# Run the app based on UI_FRAMEWORK environment variable
+CMD if [ "$UI_FRAMEWORK" = "gradio" ]; then \
+        python3 app.py; \
+    else \
+        streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=8501; \
+    fi

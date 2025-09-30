@@ -4,7 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "7860:7860"
+      - "8501:8501"  # Streamlit (default)
+      - "7860:7860"  # Gradio (alternative)
     volumes:
       # Mount output directory to persist generated images
       - ./output:/app/output
@@ -18,6 +19,7 @@ services:
     environment:
       - GRADIO_SERVER_NAME=0.0.0.0
       - GRADIO_SERVER_PORT=7860
+      - UI_FRAMEWORK=streamlit  # Change to 'gradio' to use Gradio UI
       - CUDA_VISIBLE_DEVICES=0
     deploy:
       resources:
