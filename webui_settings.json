@@ -1,8 +1,8 @@
 {
-  "prompt": "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), dynamic angle, light particles, high contrast, (best illumination), ((cinematic light)), colorful, hyper detail, dramatic light, intricate details, depth of field, 1girl, cowboy shot, white hair, long hair, ",
+  "prompt": "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), dynamic angle, light particles, high contrast, (best illumination), ((cinematic light)), colorful, hyper detail, dramatic light, intricate details, depth of field, 1car, super car,",
   "negative_prompt": "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4)",
-  "width": 768,
-  "height": 1024,
+  "width": 1024,
+  "height": 512,
   "num_images": 1,
   "batch_size": 1,
   "hires_fix": false,
@@ -13,12 +13,18 @@
   "reuse_seed": false,
   "flux_enabled": false,
   "prio_speed": false,
-  "realistic_model": false,
+  "realistic_model": true,
   "multiscale_enabled": true,
   "multiscale_intermittent": true,
   "multiscale_factor": 0.5,
   "multiscale_fullres_start": 10,
   "multiscale_fullres_end": 8,
   "keep_models_loaded": true,
-  "multiscale_preset": "quality"
+  "multiscale_preset": "quality",
+  "enable_preview": true,
+  "img2img_image": null,
+  "last_gen_time": 13.096588134765625,
+  "last_width": 1024,
+  "last_height": 512,
+  "last_num_images": 1
 }
