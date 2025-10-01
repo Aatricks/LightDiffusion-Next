@@ -155,6 +155,28 @@ docker run --gpus all -p 7860:7860 -e UI_FRAMEWORK=gradio -v ./output:/app/outpu
 - **⚡Stable-Fast Optimization**:
   Follow [this guide](https://github.com/chengzeyi/stable-fast?tab=readme-ov-file#installation) to enable Stable-Fast mode for optimal performance.
 
+- **🚀 SageAttention & SpargeAttn Acceleration**:
+  Boost inference speed by up to 60% with advanced attention backends:
+  
+  **SageAttention (15% speedup, Windows compatible):**
+  ```bash
+  cd SageAttention
+  pip install -e . --no-build-isolation
+  ```
+  
+  **SpargeAttn (40-60% total speedup, requires WSL2/Linux):**
+  ```bash
+  # On WSL2 or Linux only (Windows linker has path length limitations)
+  cd SpargeAttn
+  export TORCH_CUDA_ARCH_LIST="9.0"  # Or your GPU architecture (8.0, 8.6, 8.9, 9.0)
+  pip install -e . --no-build-isolation
+  ```
+  
+  **Priority System:** SpargeAttn > SageAttention > PyTorch SDPA
+  - Both are automatically detected and used when available
+  - Graceful fallback for unsupported head dimensions
+  - See `SAGEATTENTION_IMPLEMENTATION.md` and `SPARGEATTN_IMPLEMENTATION.md` for details
+
 - **🦙 Prompt Enhancer**:
   Refine your prompts with Ollama:
   ```bash
