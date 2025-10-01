@@ -31,7 +31,13 @@ def Normalize(
     )
 
 
-if Device.xformers_enabled():
+if Device.spargeattn_enabled():
+    logging.info("Using SpargeAttn (Sparse + SageAttention) cross attention")
+    optimized_attention = AttentionMethods.attention_sparge
+elif Device.sageattention_enabled():
+    logging.info("Using SageAttention cross attention")
+    optimized_attention = AttentionMethods.attention_sage
+elif Device.xformers_enabled():
     logging.info("Using xformers cross attention")
     optimized_attention = AttentionMethods.attention_xformers
 else:
@@ -149,7 +155,13 @@ class AttnBlock(nn.Module):
             in_channels, in_channels, kernel_size=1, stride=1, padding=0
         )
 
-        if Device.xformers_enabled_vae():
+        if Device.spargeattn_enabled_vae():
+            logging.info("Using SpargeAttn (Sparse + SageAttention) in VAE")
+            self.optimized_attention = AttentionMethods.sparge_attention
+        elif Device.sageattention_enabled_vae():
+            logging.info("Using SageAttention in VAE")
+            self.optimized_attention = AttentionMethods.sage_attention
+        elif Device.xformers_enabled_vae():
             logging.info("Using xformers attention in VAE")
             self.optimized_attention = AttentionMethods.xformers_attention
         else:

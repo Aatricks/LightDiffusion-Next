@@ -171,6 +171,34 @@ try:
 except:
     XFORMERS_IS_AVAILABLE = False
 
+SAGEATTENTION_VERSION = ""
+SAGEATTENTION_ENABLED_VAE = True
+try:
+    import sageattention
+    SAGEATTENTION_IS_AVAILABLE = True
+    try:
+        SAGEATTENTION_VERSION = sageattention.__version__
+        logging.info("SageAttention version: {}".format(SAGEATTENTION_VERSION))
+    except:
+        logging.info("SageAttention is available")
+        pass
+except:
+    SAGEATTENTION_IS_AVAILABLE = False
+
+SPARGEATTN_VERSION = ""
+SPARGEATTN_ENABLED_VAE = True
+try:
+    import spas_sage_attn
+    SPARGEATTN_IS_AVAILABLE = True
+    try:
+        SPARGEATTN_VERSION = spas_sage_attn.__version__
+        logging.info("SpargeAttn version: {}".format(SPARGEATTN_VERSION))
+    except:
+        logging.info("SpargeAttn is available")
+        pass
+except:
+    SPARGEATTN_IS_AVAILABLE = False
+
 
 def is_nvidia() -> bool:
     """#### Checks if user has an Nvidia GPU
@@ -1243,6 +1271,66 @@ def pick_weight_dtype(dtype: torch.dtype, fallback_dtype: torch.dtype, device: t
         dtype = fallback_dtype
 
     return dtype
+
+def sageattention_enabled() -> bool:
+    """#### Check if SageAttention is enabled
+    
+    #### Returns:
+        - `bool`: Whether SageAttention is enabled
+    """
+    global directml_enabled
+    global cpu_state
+    if cpu_state != CPUState.GPU:
+        return False
+    if is_intel_xpu():
+        return False
+    if directml_enabled:
+        return False
+    return SAGEATTENTION_IS_AVAILABLE
+
+
+def sageattention_enabled_vae() -> bool:
+    """#### Check if SageAttention is enabled for VAE
+    
+    #### Returns:
+        - `bool`: Whether SageAttention is enabled for VAE
+    """
+    enabled = sageattention_enabled()
+    if not enabled:
+        return False
+
+    return SAGEATTENTION_ENABLED_VAE
+
+
+def spargeattn_enabled() -> bool:
+    """#### Check if SpargeAttn is enabled
+    
+    #### Returns:
+        - `bool`: Whether SpargeAttn is enabled
+    """
+    global directml_enabled
+    global cpu_state
+    if cpu_state != CPUState.GPU:
+        return False
+    if is_intel_xpu():
+        return False
+    if directml_enabled:
+        return False
+    return SPARGEATTN_IS_AVAILABLE
+
+
+def spargeattn_enabled_vae() -> bool:
+    """#### Check if SpargeAttn is enabled for VAE
+    
+    #### Returns:
+        - `bool`: Whether SpargeAttn is enabled for VAE
+    """
+    enabled = spargeattn_enabled()
+    if not enabled:
+        return False
+
+    return SPARGEATTN_ENABLED_VAE
+
 
 def xformers_enabled() -> bool:
     """#### Check if xformers is enabled
