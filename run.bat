@@ -44,6 +44,7 @@ REM Launch the script
 echo Launching LightDiffusion with Streamlit UI...
 echo.
 echo To use Gradio UI instead, run: python app.py
+echo For verbose mode, run: streamlit run streamlit_app.py -- --verbose
 echo.
 streamlit run streamlit_app.py
 

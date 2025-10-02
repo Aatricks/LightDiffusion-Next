@@ -157,6 +157,9 @@ docker run --gpus all -p 7860:7860 -e UI_FRAMEWORK=gradio -v ./output:/app/outpu
 
 - **🚀 SageAttention & SpargeAttn Acceleration**:
   Boost inference speed by up to 60% with advanced attention backends:
+
+  **Prerequisites:**
+  - [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive) installed with version compatible with your PyTorch installation
   
   **SageAttention (15% speedup, Windows compatible):**
   ```bash
@@ -175,7 +178,6 @@ docker run --gpus all -p 7860:7860 -e UI_FRAMEWORK=gradio -v ./output:/app/outpu
   **Priority System:** SpargeAttn > SageAttention > PyTorch SDPA
   - Both are automatically detected and used when available
   - Graceful fallback for unsupported head dimensions
-  - See `SAGEATTENTION_IMPLEMENTATION.md` and `SPARGEATTN_IMPLEMENTATION.md` for details
 
 - **🦙 Prompt Enhancer**:
   Refine your prompts with Ollama:
