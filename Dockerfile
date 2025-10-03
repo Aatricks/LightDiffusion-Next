@@ -1,15 +1,19 @@
-# Use Python 3.10 base image
-FROM python:3.10-slim-bullseye
+# Use NVIDIA CUDA base image with development tools for building extensions
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 
-# Install system dependencies
+# Install Python 3.10 and system dependencies
 RUN apt-get update && apt-get install -y \
-    python3-dev \
-    python3-venv \
+    python3.10 \
+    python3.10-dev \
+    python3.10-venv \
     python3-pip \
     python3-tk \
     git \
@@ -23,7 +27,11 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     software-properties-common \
+    ninja-build \
     && rm -rf /var/lib/apt/lists/*
+
+# Set python3.10 as default python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
 
 # Set working directory
@@ -38,7 +46,7 @@ RUN python3 -m pip install uv
 
 # Install PyTorch with CUDA support
 RUN python3 -m uv pip install --system --index-url https://download.pytorch.org/whl/cu128 \
-    torch torchvision  "triton>=2.1.0"
+    torch torchvision "triton>=2.1.0"
 
 # Install numpy with version constraint
 RUN python3 -m uv pip install --system "numpy<2.0.0"
@@ -46,8 +54,42 @@ RUN python3 -m uv pip install --system "numpy<2.0.0"
 # Install Python dependencies
 RUN python3 -m uv pip install --system -r requirements.txt
 
-# Copy the entire project
+# Copy the entire project (including SageAttention and SpargeAttn directories)
 COPY . .
+
+# Set target GPU architectures for building CUDA extensions
+# Common architectures: 8.0 (A100), 8.6 (RTX 30xx), 8.9 (RTX 40xx), 9.0 (H100), 12.0 (RTX 50xx/Blackwell)
+# You can customize this via build arg: --build-arg TORCH_CUDA_ARCH_LIST="12.0"
+ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+
+# Patch SageAttention setup.py to support TORCH_CUDA_ARCH_LIST environment variable
+RUN cd SageAttention && \
+    python3 ../docker/patch_sageattention.py && \
+    cd ..
+
+# Build and install SageAttention from source
+# Limit parallel jobs to prevent out-of-memory errors during compilation
+ENV MAX_JOBS=2
+RUN cd SageAttention && \
+    python3 setup.py build_ext --parallel 2 && \
+    python3 -m pip install -e . --no-build-isolation && \
+    cd .. && \
+    rm -rf SageAttention/build SageAttention/*.egg-info
+
+# Build and install SpargeAttention from source
+# Note: SpargeAttn only supports compute capabilities: 8.0, 8.6, 8.7, 8.9, 9.0
+# Skip if building for unsupported architectures (e.g., 12.0 for RTX 50 series)
+RUN cd SpargeAttn && \
+    if echo "${TORCH_CUDA_ARCH_LIST}" | grep -qE '(8\.0|8\.6|8\.7|8\.9|9\.0)'; then \
+        echo "Building SpargeAttn for supported architectures: ${TORCH_CUDA_ARCH_LIST}"; \
+        python3 setup.py build_ext --parallel 2 && \
+        python3 -m pip install -e . --no-build-isolation && \
+        rm -rf build *.egg-info; \
+    else \
+        echo "Skipping SpargeAttn - architecture ${TORCH_CUDA_ARCH_LIST} not supported (requires 8.0-9.0)"; \
+    fi && \
+    cd ..
 
 # Create necessary directories
 RUN mkdir -p ./output/classic \

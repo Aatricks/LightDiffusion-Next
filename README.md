@@ -117,7 +117,10 @@ Run LightDiffusion-Next in a containerized environment with GPU acceleration:
 
 **Prerequisites:**
 - Docker with NVIDIA Container Toolkit installed
-- NVIDIA GPU with CUDA support
+- NVIDIA GPU with CUDA support (Compute Capability 8.0+)
+- CUDA 12.0+ compatible GPU for SageAttention/SpargeAttn support
+- **Docker Desktop**: 12-16GB memory limit (Settings → Resources)
+- **System**: 16GB+ RAM recommended for building
 
 **Quick Start with Docker:**
 ```bash
@@ -131,6 +134,22 @@ docker run --gpus all -p 8501:8501 -e UI_FRAMEWORK=streamlit -v ./output:/app/ou
 # To use Gradio instead:
 docker run --gpus all -p 7860:7860 -e UI_FRAMEWORK=gradio -v ./output:/app/output lightdiffusion-next
 ```
+
+**Custom GPU Architecture (Optional):**
+```bash
+# For faster builds, specify your GPU architecture (e.g., RTX 5060 = 12.0)
+docker-compose build --build-arg TORCH_CUDA_ARCH_LIST="12.0"
+
+# Default builds for: 8.0 (A100), 8.6 (RTX 30xx), 8.9 (RTX 40xx), 9.0 (H100), 12.0 (RTX 50xx)
+```
+
+**Built-in Optimizations:**
+The Docker image automatically builds and includes:
+- ✨ **SageAttention** - 15% speedup with INT8 quantization (all supported GPUs)
+- 🚀 **SpargeAttn** - 40-60% speedup with sparse attention (compute 8.0-9.0 only)
+- Both are compiled during image build for optimal GPU performance
+
+**Note**: RTX 50 series (compute 12.0) currently only supports SageAttention.
 
 **Access the Web Interface:**
 - **Streamlit UI** (default): `http://localhost:8501`
