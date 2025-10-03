@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -21,6 +20,19 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Exception: Keep SageAttention and SpargeAttn build directories for Docker
+!SageAttention/
+!SpargeAttn/
+!docker/
+
+# But exclude their build artifacts
+SageAttention/build/
+SageAttention/*.egg-info/
+SageAttention/**/__pycache__/
+SpargeAttn/build/
+SpargeAttn/*.egg-info/
+SpargeAttn/**/__pycache__/
 
 # Virtual environments
 .env
@@ -51,13 +63,12 @@ Thumbs.db
 .git/
 .gitignore
 
-# Docker
-Dockerfile*
+# Docker files (not needed in the image, but Dockerfile itself is needed for the build context)
 .dockerignore
-docker-compose*.yml
 
-# Documentation
+# Documentation (not needed in runtime, but docker/ scripts are needed for build)
 *.md
+!docker/
 docs/
 
 # Large model files (these should be downloaded at runtime)

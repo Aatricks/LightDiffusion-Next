@@ -11,8 +11,12 @@ from PIL import Image
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from src.user.pipeline import pipeline
-from src.user import app_instance
+# Check for verbose mode
+VERBOSE_MODE = "--verbose" in sys.argv or "-v" in sys.argv
+
+# Defer imports to avoid blocking during setup
+pipeline = None
+app_instance = None
 
 # Page configuration
 st.set_page_config(
@@ -528,6 +532,13 @@ def apply_multiscale_preset(preset_name):
 
 def generate_images(settings, progress_placeholder, status_placeholder, gallery_placeholder):
     """Generate images with the given settings and live preview support"""
+    global app_instance, pipeline
+    
+    # Safety check
+    if app_instance is None or pipeline is None:
+        status_placeholder.error("❌ LightDiffusion is not initialized yet!")
+        return []
+    
     try:
         # Reset interrupt flag at start
         st.session_state.interrupt_generation = False
@@ -669,15 +680,186 @@ if "is_generating" not in st.session_state:
     st.session_state.is_generating = False
 if "interrupt_generation" not in st.session_state:
     st.session_state.interrupt_generation = False
+if "lightdiffusion_ready" not in st.session_state:
+    st.session_state.lightdiffusion_ready = False
+if "setup_progress" not in st.session_state:
+    st.session_state.setup_progress = 0.0
+if "setup_message" not in st.session_state:
+    st.session_state.setup_message = "Initializing..."
+if "setup_thread" not in st.session_state:
+    st.session_state.setup_thread = None
+if "setup_status" not in st.session_state:
+    # Thread-safe dictionary for communication
+    st.session_state.setup_status = {
+        "progress": 0.0,
+        "message": "Initializing...",
+        "ready": False,
+        "error": None,
+        "logs": [],
+        "pipeline": None,
+        "app_instance": None
+    }
+if "verbose_mode" not in st.session_state:
+    st.session_state.verbose_mode = VERBOSE_MODE
+
+
+def initialize_lightdiffusion(status_dict, verbose=False):
+    """Initialize LightDiffusion in the background"""
+    global pipeline, app_instance
+    
+    def log(message):
+        """Add a log entry with timestamp"""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        status_dict["logs"].append(log_entry)
+        # Print to console in verbose mode
+        if verbose:
+            print(log_entry)
+    
+    try:
+        log("🔧 Initialization started")
+        
+        # Update progress via thread-safe dict
+        status_dict["message"] = "Loading core modules..."
+        status_dict["progress"] = 0.05
+        log("📦 Loading core modules...")
+        
+        # Import basic dependencies first
+        status_dict["message"] = "Importing pipeline..."
+        status_dict["progress"] = 0.15
+        log("🔌 Importing pipeline module...")
+        
+        # Import the modules
+        from src.user.pipeline import pipeline as pipeline_func
+        from src.user import app_instance as app_inst
+        
+        # Store in status dict for main thread to access
+        status_dict["pipeline"] = pipeline_func
+        status_dict["app_instance"] = app_inst
+        
+        # Also update globals (though status_dict is the source of truth)
+        pipeline = pipeline_func
+        app_instance = app_inst
+        log("✓ Pipeline imported successfully")
+        
+        status_dict["message"] = "Verifying models..."
+        status_dict["progress"] = 0.30
+        log("🔍 Verifying model files...")
+        
+        # This is where the heavy lifting happens
+        from src.FileManaging import Downloader
+        
+        status_dict["message"] = "Checking model files..."
+        status_dict["progress"] = 0.50
+        log("📥 Running model downloader...")
+        
+        Downloader.CheckAndDownload()
+        log("✓ All models verified and ready")
+        
+        status_dict["message"] = "Finalizing setup..."
+        status_dict["progress"] = 0.90
+        log("⚙️ Finalizing configuration...")
+        
+        status_dict["message"] = "✓ Ready to generate!"
+        status_dict["progress"] = 1.0
+        status_dict["ready"] = True
+        log("🎉 LightDiffusion is ready!")
+        
+    except Exception as e:
+        status_dict["message"] = f"❌ Setup failed: {str(e)}"
+        status_dict["progress"] = 0.0
+        status_dict["error"] = str(e)
+        log(f"❌ Error: {str(e)}")
+        print(f"LightDiffusion initialization error: {e}")
+
+
+# Start initialization if not already started
+if not st.session_state.lightdiffusion_ready and st.session_state.setup_thread is None:
+    st.session_state.setup_thread = threading.Thread(
+        target=initialize_lightdiffusion, 
+        args=(st.session_state.setup_status, st.session_state.verbose_mode),
+        daemon=True
+    )
+    st.session_state.setup_thread.start()
+
+# Check if thread is still running but lost (e.g., after page refresh)
+if not st.session_state.lightdiffusion_ready and st.session_state.setup_thread is not None:
+    # Check if the thread is still alive
+    if not st.session_state.setup_thread.is_alive() and not st.session_state.setup_status["ready"]:
+        # Thread died without completing - restart it
+        st.session_state.setup_thread = threading.Thread(
+            target=initialize_lightdiffusion, 
+            args=(st.session_state.setup_status, st.session_state.verbose_mode),
+            daemon=True
+        )
+        st.session_state.setup_thread.start()
+
+# Update local state from thread-safe dict
+if not st.session_state.lightdiffusion_ready:
+    st.session_state.setup_progress = st.session_state.setup_status["progress"]
+    st.session_state.setup_message = st.session_state.setup_status["message"]
+    if st.session_state.setup_status["ready"]:
+        # Update globals from loaded modules
+        pipeline = st.session_state.setup_status["pipeline"]
+        app_instance = st.session_state.setup_status["app_instance"]
+        st.session_state.lightdiffusion_ready = True
+else:
+    # Ensure globals are set on subsequent runs
+    if pipeline is None and st.session_state.setup_status["pipeline"] is not None:
+        pipeline = st.session_state.setup_status["pipeline"]
+        app_instance = st.session_state.setup_status["app_instance"]
 
 # Apply theme CSS based on loaded dark_mode setting
 st.markdown(get_theme_css(st.session_state.dark_mode), unsafe_allow_html=True)
 
+# Show setup progress if not ready
+if not st.session_state.lightdiffusion_ready:
+    setup_placeholder = st.empty()
+    with setup_placeholder.container():
+        st.markdown("### 🚀 Starting LightDiffusion")
+        st.info("⚙️ Setting up the AI models and dependencies...")
+        
+        # Progress bar with percentage
+        progress_value = st.session_state.setup_progress
+        st.progress(progress_value)
+        
+        # Status message with progress percentage
+        progress_pct = int(progress_value * 100)
+        st.markdown(f"**{progress_pct}%** - {st.session_state.setup_message}")
+        
+        # Helpful tip while waiting
+        if progress_value < 0.5:
+            st.caption("💡 First-time setup may take a few minutes to download models...")
+        elif progress_value < 1.0:
+            st.caption("⏳ Almost ready...")
+        
+        # Show logs in collapsible section
+        if st.session_state.setup_status["logs"]:
+            # Expand logs by default in verbose mode
+            with st.expander("📋 View Setup Logs", expanded=st.session_state.verbose_mode):
+                logs_text = "\n".join(st.session_state.setup_status["logs"])
+                st.code(logs_text, language=None)
+        
+        # Auto-refresh while setting up
+        if st.session_state.setup_progress < 1.0:
+            time.sleep(0.3)
+            st.rerun()
+        else:
+            # Clear the setup placeholder once complete
+            time.sleep(0.5)
+            setup_placeholder.empty()
+
 # Header with theme toggle and help button
-col_title, col_theme, col_help = st.columns([5, 1, 1])
+col_title, col_status, col_theme, col_help = st.columns([4, 1.5, 0.75, 0.75])
 with col_title:
     st.markdown('<h1 class="main-header">LightDiffusion</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Fast AI image generation</p>', unsafe_allow_html=True)
+with col_status:
+    if st.session_state.lightdiffusion_ready:
+        st.markdown('<div style="margin-top: 15px;"><span style="color: #4ade80;">● Ready</span></div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div style="margin-top: 15px;"><span style="color: #fbbf24;">● Setting up...</span></div>', unsafe_allow_html=True)
 with col_theme:
     theme_icon = "🌙" if not st.session_state.dark_mode else "☀️"
     if st.button(theme_icon, help="Toggle theme", key="theme_toggle", type="secondary"):
@@ -873,7 +1055,12 @@ with tab1:
         # Generate and Stop buttons
         gen_col1, gen_col2 = st.columns([4, 1])
         with gen_col1:
-            generate_btn = st.button("Generate", type="primary", width='stretch')
+            generate_btn = st.button(
+                "Generate" if st.session_state.lightdiffusion_ready else "Setting up...",
+                type="primary",
+                width='stretch',
+                disabled=not st.session_state.lightdiffusion_ready
+            )
         with gen_col2:
             stop_btn = st.button("⏹️", help="Stop generation", disabled=not st.session_state.is_generating)
     
@@ -914,13 +1101,16 @@ with tab1:
         
         # Handle generation
         if generate_btn:
+            # Safety check
+            if not st.session_state.lightdiffusion_ready or pipeline is None:
+                status_placeholder.error("❌ LightDiffusion is not ready yet. Please wait for setup to complete.")
             # If already generating, interrupt current generation
-            if st.session_state.is_generating:
+            elif st.session_state.is_generating:
                 st.session_state.interrupt_generation = True
                 status_placeholder.warning("⚠️ Interrupting current generation...")
                 time.sleep(0.5)
             
-            if not prompt.strip():
+            elif not prompt.strip():
                 status_placeholder.warning("⚠️ Please enter a prompt!")
             else:
                 # Track generation time

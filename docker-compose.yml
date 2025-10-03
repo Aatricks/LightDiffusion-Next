@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Specify target GPU architectures for CUDA extension builds
+        # 8.0: A100, 8.6: RTX 30xx, 8.9: RTX 40xx, 9.0: H100, 12.0: RTX 50xx (Blackwell)
+        # Customize based on your GPU: TORCH_CUDA_ARCH_LIST: "12.0" for RTX 50xx only
+        TORCH_CUDA_ARCH_LIST: "8.0;8.6;8.9;9.0;12.0"
     ports:
       - "8501:8501"  # Streamlit (default)
       - "7860:7860"  # Gradio (alternative)
@@ -21,6 +26,7 @@ services:
       - GRADIO_SERVER_PORT=7860
       - UI_FRAMEWORK=streamlit  # Change to 'gradio' to use Gradio UI
       - CUDA_VISIBLE_DEVICES=0
+      - CUDA_HOME=/usr/local/cuda
     deploy:
       resources:
         reservations:
