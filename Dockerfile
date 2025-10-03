@@ -64,32 +64,67 @@ ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
 ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
 
 # Patch SageAttention setup.py to support TORCH_CUDA_ARCH_LIST environment variable
-RUN cd SageAttention && \
-    python3 ../docker/patch_sageattention.py && \
-    cd ..
+# Only attempt to patch if the SageAttention directory exists in the build context
+RUN if [ -d "SageAttention" ]; then \
+        echo "Found SageAttention - applying patch" && \
+        cd SageAttention && \
+        python3 ../docker/patch_sageattention.py && \
+        cd ..; \
+    else \
+        echo "SageAttention directory not found - cloning and applying patch" && \
+        git clone --depth 1 https://github.com/thu-ml/SageAttention /tmp/SageAttention && \
+        cd /tmp/SageAttention && \
+        python3 /app/docker/patch_sageattention.py && \
+        cd /app; \
+    fi
 
-# Build and install SageAttention from source
+# Build and install SageAttention from source (only if present)
 # Limit parallel jobs to prevent out-of-memory errors during compilation
 ENV MAX_JOBS=2
-RUN cd SageAttention && \
-    python3 setup.py build_ext --parallel 2 && \
-    python3 -m pip install -e . --no-build-isolation && \
-    cd .. && \
-    rm -rf SageAttention/build SageAttention/*.egg-info
+RUN if [ -d "SageAttention" ]; then \
+        echo "Building SageAttention (local copy)" && \
+        cd SageAttention && \
+        python3 setup.py build_ext --parallel 2 && \
+        python3 -m pip install -e . --no-build-isolation && \
+        cd .. && \
+        rm -rf SageAttention/build SageAttention/*.egg-info; \
+    else \
+        echo "Building SageAttention (cloned)" && \
+        cd /tmp/SageAttention && \
+        python3 setup.py build_ext --parallel 2 && \
+        python3 -m pip install -e . --no-build-isolation && \
+        rm -rf /tmp/SageAttention/build /tmp/SageAttention/*.egg-info && \
+        rm -rf /tmp/SageAttention; \
+    fi
 
 # Build and install SpargeAttention from source
 # Note: SpargeAttn only supports compute capabilities: 8.0, 8.6, 8.7, 8.9, 9.0
 # Skip if building for unsupported architectures (e.g., 12.0 for RTX 50 series)
-RUN cd SpargeAttn && \
-    if echo "${TORCH_CUDA_ARCH_LIST}" | grep -qE '(8\.0|8\.6|8\.7|8\.9|9\.0)'; then \
-        echo "Building SpargeAttn for supported architectures: ${TORCH_CUDA_ARCH_LIST}"; \
-        python3 setup.py build_ext --parallel 2 && \
-        python3 -m pip install -e . --no-build-isolation && \
-        rm -rf build *.egg-info; \
+RUN if [ -d "SpargeAttn" ]; then \
+        cd SpargeAttn && \
+        if echo "${TORCH_CUDA_ARCH_LIST}" | grep -qE '(8\.0|8\.6|8\.7|8\.9|9\.0)'; then \
+            echo "Building SpargeAttn for supported architectures: ${TORCH_CUDA_ARCH_LIST}"; \
+            python3 setup.py build_ext --parallel 2 && \
+            python3 -m pip install -e . --no-build-isolation && \
+            rm -rf build *.egg-info; \
+        else \
+            echo "Skipping SpargeAttn - architecture ${TORCH_CUDA_ARCH_LIST} not supported (requires 8.0-9.0)"; \
+        fi && \
+        cd ..; \
     else \
-        echo "Skipping SpargeAttn - architecture ${TORCH_CUDA_ARCH_LIST} not supported (requires 8.0-9.0)"; \
-    fi && \
-    cd ..
+        echo "SpargeAttn directory not found - cloning and attempting build if supported" && \
+        git clone --depth 1 https://github.com/thu-ml/SpargeAttn /tmp/SpargeAttn && \
+        cd /tmp/SpargeAttn && \
+        if echo "${TORCH_CUDA_ARCH_LIST}" | grep -qE '(8\.0|8\.6|8\.7|8\.9|9\.0)'; then \
+            echo "Building cloned SpargeAttn for supported architectures: ${TORCH_CUDA_ARCH_LIST}"; \
+            python3 setup.py build_ext --parallel 2 && \
+            python3 -m pip install -e . --no-build-isolation && \
+            rm -rf build *.egg-info; \
+        else \
+            echo "Skipping cloned SpargeAttn - architecture ${TORCH_CUDA_ARCH_LIST} not supported (requires 8.0-9.0)"; \
+        fi && \
+        cd /app && rm -rf /tmp/SpargeAttn; \
+    fi
 
 # Create necessary directories
 RUN mkdir -p ./output/classic \
