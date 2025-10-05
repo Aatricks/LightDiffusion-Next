@@ -543,6 +543,7 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
         # Reset interrupt flag at start
         st.session_state.interrupt_generation = False
         st.session_state.is_generating = True
+        st.session_state.enhanced_prompt_preview = None
         
         # Set preview enabled state
         app_instance.app.previewer_var.set(settings["enable_preview"])
@@ -563,15 +564,15 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
         
         status_placeholder.info("🎨 Generating images...")
         
-        # Variable to store final images
-        final_images = []
+        # Capture metadata returned from pipeline (enhanced prompts, etc.)
+        pipeline_result = None
         generation_complete = threading.Event()
         
         # Run generation in background thread
         def run_generation():
-            nonlocal final_images
+            nonlocal pipeline_result
             try:
-                final_images = pipeline(
+                pipeline_result = pipeline(
                     prompt=settings["prompt"],
                     negative_prompt=settings["negative_prompt"],
                     w=settings["width"],
@@ -651,7 +652,13 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
         # Check if interrupted
         if st.session_state.interrupt_generation:
             st.session_state.is_generating = False
+            st.session_state.enhanced_prompt_preview = None
             return []
+
+        if isinstance(pipeline_result, dict) and settings.get("enhance_prompt"):
+            st.session_state.enhanced_prompt_preview = pipeline_result
+        else:
+            st.session_state.enhanced_prompt_preview = None
         
         status_placeholder.success("✅ Generation complete!")
         st.session_state.is_generating = False
@@ -665,6 +672,7 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
         if os.path.exists("temp_img2img.png"):
             os.remove("temp_img2img.png")
         st.session_state.is_generating = False
+        st.session_state.enhanced_prompt_preview = None
         return []
 
 
@@ -701,6 +709,8 @@ if "setup_status" not in st.session_state:
     }
 if "verbose_mode" not in st.session_state:
     st.session_state.verbose_mode = VERBOSE_MODE
+if "enhanced_prompt_preview" not in st.session_state:
+    st.session_state.enhanced_prompt_preview = None
 
 
 def initialize_lightdiffusion(status_dict, verbose=False):
@@ -1063,6 +1073,9 @@ with tab1:
             )
         with gen_col2:
             stop_btn = st.button("⏹️", help="Stop generation", disabled=not st.session_state.is_generating)
+
+        if generate_btn:
+            st.session_state.enhanced_prompt_preview = None
     
     with col_right:
         # Quick stats
@@ -1077,8 +1090,24 @@ with tab1:
         
         # Placeholders for status and results
         status_placeholder = st.empty()
+        enhanced_prompt_placeholder = st.empty()
         progress_placeholder = st.empty()
         gallery_placeholder = st.empty()
+
+        preview_data = st.session_state.get("enhanced_prompt_preview")
+        if preview_data and preview_data.get("used_prompt"):
+            with enhanced_prompt_placeholder.container():
+                st.markdown("**Enhanced Prompt Preview**")
+                if preview_data.get("enhancement_applied"):
+                    st.caption("Prompt enhancer refined your text; this version was used for generation.")
+                else:
+                    st.caption("Prompt enhancer made no changes; generation used the same prompt.")
+                st.code(preview_data.get("used_prompt", ""), language=None)
+                if preview_data.get("enhancement_applied") and preview_data.get("original_prompt"):
+                    st.caption("Original prompt")
+                    st.code(preview_data.get("original_prompt", ""), language=None)
+        else:
+            enhanced_prompt_placeholder.empty()
         
         # Show existing images if any
         existing_images = load_generated_images()

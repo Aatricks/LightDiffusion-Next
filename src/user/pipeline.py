@@ -82,6 +82,9 @@ def pipeline(
     """
     global last_seed
 
+    original_prompt = prompt
+    enhancement_applied = False
+
     # Apply multiscale preset if specified (overrides individual parameters)
     if multiscale_preset is not None:
         from src.sample.multiscale_presets import get_preset_parameters
@@ -110,9 +113,12 @@ def pipeline(
         f.write(str(seed))
     if enhance_prompt:
         try:
-            prompt = Enhancer.enhance_prompt(prompt)
-        except:
+            enhanced_prompt = Enhancer.enhance_prompt(prompt)
+            if enhanced_prompt:
+                prompt = enhanced_prompt
+        except Exception:
             pass
+        enhancement_applied = prompt != original_prompt
 
     sampler_name = "dpmpp_sde_cfgpp" if not prio_speed else "dpmpp_2m_cfgpp"
     ckpt = (
@@ -153,7 +159,7 @@ def pipeline(
                         model=checkpointloadersimple_241[0],
                         clip=checkpointloadersimple_241[1],
                     )
-                except:
+                except Exception:
                     loraloader_274 = checkpointloadersimple_241
 
                 if stable_fast is True:
@@ -295,7 +301,7 @@ def pipeline(
                         clip=checkpointloadersimple_241[1],
                     )
                     print("loading add_detail.safetensors")
-                except:
+                except Exception:
                     loraloader_274 = checkpointloadersimple_241
                 clipsetlastlayer = Clip.CLIPSetLastLayer()
                 clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
@@ -418,7 +424,11 @@ def pipeline(
                         image=vaedecode_240[0],
                     )
                     if samdetectorcombined_139 is None:
-                        return
+                        return {
+                            "original_prompt": original_prompt,
+                            "used_prompt": prompt,
+                            "enhancement_applied": enhancement_applied,
+                        }
                     impactsegsandmask_152 = impactsegsandmask.doit(
                         segs=bboxdetectorsegs_132,
                         mask=samdetectorcombined_139[0],
@@ -522,6 +532,12 @@ def pipeline(
                     if autohdr
                     else vaedecode_240[0],
                 )
+
+    return {
+        "original_prompt": original_prompt,
+        "used_prompt": prompt,
+        "enhancement_applied": enhancement_applied,
+    }
 
 
 if __name__ == "__main__":
