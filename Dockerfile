@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
 
 # Install Python 3.10 and system dependencies
 RUN apt-get update && apt-get install -y \
@@ -41,27 +42,78 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Upgrade pip and install uv for faster package installation
-RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install uv
+RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip install --upgrade pip
+RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip install uv
 
 # Install PyTorch with CUDA support
-RUN python3 -m uv pip install --system --index-url https://download.pytorch.org/whl/cu128 \
+RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system --index-url https://download.pytorch.org/whl/cu128 \
     torch torchvision "triton>=2.1.0"
 
 # Install numpy with version constraint
-RUN python3 -m uv pip install --system "numpy<2.0.0"
+RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system "numpy<2.0.0"
 
 # Install Python dependencies
-RUN python3 -m uv pip install --system -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system -r requirements.txt
+
+# Install cuDNN/cuBLAS Python packages so stable-fast can locate headers/libs
+RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system \
+    nvidia-cudnn-cu12==9.1.0.70 \
+    nvidia-cublas-cu12==12.5.3.2
+
+# Ensure the newly added CUDA component libraries are on the search path
+ENV CUDNN_ROOT=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn
+ENV LD_LIBRARY_PATH=${CUDNN_ROOT}/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:${LD_LIBRARY_PATH}
+
+# Allow overriding CUDA architectures later in the build without busting earlier layers
+ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+
+# Toggle stable-fast installation (set to 0 to skip during docker build)
+ARG INSTALL_STABLE_FAST=0
+ENV INSTALL_STABLE_FAST=${INSTALL_STABLE_FAST}
+
+# Toggle Ollama installation (set to 1 to install and pre-pull qwen3:0.6b)
+ARG INSTALL_OLLAMA=0
+ENV INSTALL_OLLAMA=${INSTALL_OLLAMA}
+
+# Build and install stable-fast with matching CUDA architectures
+RUN --mount=type=cache,target=/root/.cache/pip /bin/sh -c ' \
+    if [ "${INSTALL_STABLE_FAST}" = "1" ]; then \
+        echo "Installing stable-fast for CUDA architectures: ${TORCH_CUDA_ARCH_LIST}"; \
+        export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"; \
+        export FORCE_CUDA=1; \
+        python3 -m pip install --no-build-isolation \
+            git+https://github.com/chengzeyi/stable-fast.git@main#egg=stable-fast; \
+    else \
+        echo "Skipping stable-fast installation (INSTALL_STABLE_FAST=${INSTALL_STABLE_FAST})"; \
+    fi'
+
+# Optionally install Ollama with the qwen3:0.6b model for prompt enhancement
+RUN /bin/sh -c ' \
+    if [ "${INSTALL_OLLAMA}" = "1" ]; then \
+        echo "Installing Ollama and pulling qwen3:0.6b"; \
+        curl -fsSL https://ollama.com/install.sh | sh; \
+        ollama serve >/tmp/ollama.log 2>&1 & \
+        OLLAMA_PID=$!; \
+        attempts=0; \
+        until curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; do \
+            attempts=$((attempts + 1)); \
+            if [ ${attempts} -gt 20 ]; then \
+                echo "Ollama failed to start"; \
+                kill ${OLLAMA_PID} >/dev/null 2>&1 || true; \
+                exit 1; \
+            fi; \
+            sleep 1; \
+        done; \
+        ollama pull qwen3:0.6b; \
+        kill ${OLLAMA_PID} >/dev/null 2>&1 || true; \
+        wait ${OLLAMA_PID} 2>/dev/null || true; \
+    else \
+        echo "Skipping Ollama installation (INSTALL_OLLAMA=${INSTALL_OLLAMA})"; \
+    fi'
 
 # Copy the entire project (including SageAttention and SpargeAttn directories)
 COPY . .
-
-# Set target GPU architectures for building CUDA extensions
-# Common architectures: 8.0 (A100), 8.6 (RTX 30xx), 8.9 (RTX 40xx), 9.0 (H100), 12.0 (RTX 50xx/Blackwell)
-# You can customize this via build arg: --build-arg TORCH_CUDA_ARCH_LIST="12.0"
-ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
-ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
 
 # Patch SageAttention setup.py to support TORCH_CUDA_ARCH_LIST environment variable
 # Only attempt to patch if the SageAttention directory exists in the build context
@@ -163,7 +215,17 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${UI_FRAMEWORK:+8501}${UI_FRAMEWORK:-7860}/ || exit 1
 
 # Run the app based on UI_FRAMEWORK environment variable
-CMD if [ "$UI_FRAMEWORK" = "gradio" ]; then \
+CMD if [ "${INSTALL_OLLAMA}" = "1" ]; then \
+        echo "Starting Ollama server"; \
+        ollama serve >/tmp/ollama_runtime.log 2>&1 & \
+        for attempt in $(seq 1 20); do \
+            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; then \
+                break; \
+            fi; \
+            sleep 1; \
+        done; \
+    fi; \
+    if [ "$UI_FRAMEWORK" = "gradio" ]; then \
         python3 app.py; \
     else \
         streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=8501; \

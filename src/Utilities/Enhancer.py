@@ -1,75 +1,83 @@
-import ollama
 import os
+from typing import Optional
 
 from src.Utilities import util
 
+try:
+    import ollama  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    ollama = None  # type: ignore
 
-def enhance_prompt(p: str) -> str:
-    """#### Enhance a text-to-image prompt using Ollama.
+DEFAULT_PREFIX = (
+    "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, "
+    "masterpiece, best quality, ultra-detailed, best shadow), high contrast, "
+    "(best illumination), ((cinematic light)), hyper detail, dramatic light, "
+    "depth of field"
+)
 
-    #### Args:
-        - `p` (str, optional): The prompt. Defaults to `None`.
 
-    #### Returns:
-        - `str`: The enhanced prompt
-    """
+def _resolve_prompt(source_prompt: Optional[str]) -> str:
+    try:
+        saved_prompt = util.load_parameters_from_file()[0]
+    except Exception:
+        saved_prompt = ""
+    return source_prompt if source_prompt else saved_prompt
 
-    # Load the prompt from the file
-    prompt = util.load_parameters_from_file()[0]
-    if p is None:
-        pass
-    else:
-        prompt = p
-    print(prompt)
-    response = ollama.chat(
-        model="deepseek-r1",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""Your goal is to generate a text-to-image prompt based on a user's input, detailing their desired final outcome for an image. The user will provide specific details about the characteristics, features, or elements they want the image to include. The prompt should guide the generation of an image that aligns with the user's desired outcome.
 
-                        Generate a text-to-image prompt by arranging the following blocks in a single string, separated by commas:
+def _extract_content(raw: str) -> str:
+    if "</think>" in raw:
+        raw = raw.split("</think>")[-1]
+    return raw.strip().strip('"')
 
-                        Image Type: [Specify desired image type]
 
-                        Aesthetic or Mood: [Describe desired aesthetic or mood]
+def enhance_prompt(p: Optional[str]) -> str:
+    """Enhance a prompt using an Ollama model when available."""
 
-                        Lighting Conditions: [Specify desired lighting conditions]
+    prompt = _resolve_prompt(p)
 
-                        Composition or Framing: [Provide details about desired composition or framing]
+    if not prompt or ollama is None:
+        if ollama is None:
+            print("Prompt enhancer skipped: Ollama client not available.")
+        return prompt
 
-                        Background: [Specify desired background elements or setting]
+    model = os.environ.get("PROMPT_ENHANCER_MODEL", "qwen3:0.6b").strip() or "qwen3:0.6b"
+    prefix = os.environ.get("PROMPT_ENHANCER_PREFIX", DEFAULT_PREFIX).strip()
 
-                        Colors: [Mention any specific colors or color palette]
+    try:
+        response = ollama.chat(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "You are a prompt composer for text-to-image diffusion models. "
+                        "Rewrite the user prompt into a single comma-separated line "
+                        "ordered by visual priority. Use short descriptive phrases "
+                        "covering image type, mood, lighting, composition, background, "
+                        "palette, key objects, artistic style, and subject appearance. "
+                        "Wrap especially important clauses in parentheses. Avoid extra "
+                        "commentary or labels. User prompt: "
+                        f"{prompt}"
+                    ),
+                }
+            ],
+        )
+    except Exception as exc:  # pragma: no cover - network dependent
+        print(f"Prompt enhancer failed ({exc}); returning original prompt.")
+        return prompt
 
-                        Objects or Elements: [List specific objects or features]
+    content = response.get("message", {}).get("content", "").strip()
+    if not content:
+        print("Prompt enhancer returned empty response; using original prompt.")
+        return prompt
 
-                        Style or Artistic Influence: [Mention desired artistic style or influence]
+    enhanced = _extract_content(content)
+    if not enhanced:
+        return prompt
 
-                        Subject's Appearance: [Describe appearance of main subject]
+    if prefix:
+        if not prefix.endswith(","):
+            prefix = prefix + ","
+        return f"{prefix} {enhanced}".strip()
 
-                        Ensure the blocks are arranged in order of visual importance, from the most significant to the least significant, to effectively guide image generation, a block can be surrounded by parentheses to gain additionnal significance.
-
-                        This is an example of a user's input: "a beautiful blonde lady in lingerie sitting in seiza in a seducing way with a focus on her assets"
-
-                        And this is an example of a desired output: "portrait| serene and mysterious| soft, diffused lighting| close-up shot, emphasizing facial features| simple and blurred background| earthy tones with a hint of warm highlights| renaissance painting| a beautiful lady with freckles and dark makeup"
-
-                        Here is the user's input: {prompt}
-
-                        Write the prompt in the same style as the example above, in a single line , with absolutely no additional information, words or symbols other than the enhanced prompt.
-
-                        Output:""",
-            },
-        ],
-    )
-    content = response["message"]["content"]
-    print("here's the enhanced prompt :", content)
-
-    if "<think>" in content and "</think>" in content:
-        # Get everything after </think>
-        enhanced = content.split("</think>")[-1].strip()
-    else:
-        enhanced = content.strip()
-    print("here's the enhanced prompt:", enhanced)
-    os.system("ollama stop deepseek-r1")
-    return "masterpiece, best quality, (extremely detailed CG unity 8k wallpaper, masterpiece, best quality, ultra-detailed, best shadow), high contrast, (best illumination), ((cinematic light)), hyper detail, dramatic light, depth of field," + enhanced
+    return enhanced

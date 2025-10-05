@@ -65,7 +65,7 @@ Here’s what makes LightDiffusion-Next stand out:
   Enhance your images with advanced upscaling options like UltimateSDUpscaling, ensuring high-quality results every time.
 
 - **Prompt Refinement**:
-    Use the Ollama-powered automatic prompt enhancer to refine your prompts and generate more accurate and detailed outputs.
+  Use the optional Ollama-powered prompt enhancer (defaults to `qwen3:0.6b`) to refine your prompts and generate more accurate and detailed outputs.
 
 - **LoRa and Textual Inversion Embeddings**:
     Leverage LoRa and textual inversion embeddings for highly customized and nuanced results, adding a new dimension to your creative process.
@@ -144,10 +144,21 @@ docker-compose build --build-arg TORCH_CUDA_ARCH_LIST="12.0"
 ```
 
 **Built-in Optimizations:**
-The Docker image automatically builds and includes:
+The Docker image can build the following acceleration paths:
 - ✨ **SageAttention** - 15% speedup with INT8 quantization (all supported GPUs)
 - 🚀 **SpargeAttn** - 40-60% speedup with sparse attention (compute 8.0-9.0 only)
-- Both are compiled during image build for optimal GPU performance
+- ⚡ **Stable-Fast** - Optional UNet compilation for up to 70% faster SD1.5 inference
+
+Control them through build arguments (defaults shown below):
+
+```bash
+docker-compose build \
+  --build-arg TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0" \
+  --build-arg INSTALL_STABLE_FAST=1 \
+  --build-arg INSTALL_OLLAMA=0
+```
+
+Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `INSTALL_OLLAMA=1` to bake in the prompt enhancer runtime.
 
 **Note**: RTX 50 series (compute 12.0) currently only supports SageAttention.
 
@@ -173,6 +184,7 @@ The Docker image automatically builds and includes:
 
 - **⚡Stable-Fast Optimization**:
   Follow [this guide](https://github.com/chengzeyi/stable-fast?tab=readme-ov-file#installation) to enable Stable-Fast mode for optimal performance.
+  In Docker environments, set `INSTALL_STABLE_FAST=1` to compile it during the image build or `INSTALL_STABLE_FAST=0` (default) to skip.
 
 - **🚀 SageAttention & SpargeAttn Acceleration**:
   Boost inference speed by up to 60% with advanced attention backends:
@@ -199,15 +211,26 @@ The Docker image automatically builds and includes:
   - Graceful fallback for unsupported head dimensions
 
 - **🦙 Prompt Enhancer**:
-  Refine your prompts with Ollama:
+  Turn on the Ollama-backed enhancer to automatically restructure prompts. By default the app targets `qwen3:0.6b`:
   ```bash
+  # Local install
   pip install ollama
-  ollama run deepseek-r1
+  curl -fsSL https://ollama.com/install.sh | sh
+
+  # Start the Ollama daemon (keep this terminal open)
+  ollama serve
+
+  # New terminal: pull the default prompt enhancer model
+  ollama pull qwen3:0.6b
+  export PROMPT_ENHANCER_MODEL=qwen3:0.6b
   ```
-  See the [Ollama guide](https://github.com/ollama/ollama?tab=readme-ov-file) for details.
+  In Docker builds, set `--build-arg INSTALL_OLLAMA=1` (or update `docker-compose.yml`) to install Ollama and pre-pull the model automatically. You can override the runtime model/prefix with the `PROMPT_ENHANCER_MODEL` and `PROMPT_ENHANCER_PREFIX` environment variables. See the [Ollama guide](https://github.com/ollama/ollama?tab=readme-ov-file) for details.
 
 - **🤖 Discord Integration**:
   Set up the Discord bot by following the [Boubou installation guide](https://github.com/Aatrick/Boubou).
+
+### Third-Party Licenses
+- This project distributes builds that depend on third-party open source components. For attribution details and the full license text, refer to `THIRD_PARTY_LICENSES.md`.
 
 ---
 

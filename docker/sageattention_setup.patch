@@ -12,7 +12,11 @@
 +    arch_list = env_arch_list.replace(" ", ";").split(";")
 +    for arch in arch_list:
 +        arch = arch.strip()
-+        if arch and not arch.endswith("+PTX"):
++        if not arch:
++            continue
++        if arch.endswith("+PTX"):
++            arch = arch[:-4].strip()
++        if arch:
 +            compute_capabilities.add(arch)
 +
  # Iterate over all GPUs on the current machine. Also you can modify this part to specify the architecture if you want to build for specific GPU architectures.

@@ -4,7 +4,6 @@ Patch for SageAttention setup.py to support TORCH_CUDA_ARCH_LIST environment var
 This allows building without GPUs present during build time.
 """
 
-import os
 import sys
 
 setup_py_path = "setup.py"
@@ -29,7 +28,11 @@ if env_arch_list:
     arch_list = env_arch_list.replace(" ", ";").split(";")
     for arch in arch_list:
         arch = arch.strip()
-        if arch and not arch.endswith("+PTX"):
+        if not arch:
+            continue
+        if arch.endswith("+PTX"):
+            arch = arch[:-4].strip()
+        if arch:
             compute_capabilities.add(arch)
 '''
 
