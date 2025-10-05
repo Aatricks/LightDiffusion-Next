@@ -48,6 +48,7 @@ try:
 except:
     pass
 
+
 try:
     if torch.backends.mps.is_available():
         cpu_state = CPUState.MPS
@@ -1286,6 +1287,14 @@ def sageattention_enabled() -> bool:
         return False
     if directml_enabled:
         return False
+    if torch.cuda.is_available():
+        try:
+            major, _ = torch.cuda.get_device_capability()
+            if major >= 12:
+                logging.info("Disabling SageAttention on compute capability %s", (major, _))
+                return False
+        except Exception:
+            pass
     return SAGEATTENTION_IS_AVAILABLE
 
 
@@ -1316,6 +1325,14 @@ def spargeattn_enabled() -> bool:
         return False
     if directml_enabled:
         return False
+    if torch.cuda.is_available():
+        try:
+            major, _ = torch.cuda.get_device_capability()
+            if major >= 12:
+                logging.info("Disabling SpargeAttn on compute capability %s", (major, _))
+                return False
+        except Exception:
+            pass
     return SPARGEATTN_IS_AVAILABLE
 
 

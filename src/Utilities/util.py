@@ -126,7 +126,9 @@ def lcm_of_list(numbers):
 
     result = numbers[0]
     for num in numbers[1:]:
-        result = torch.lcm(torch.tensor(result), torch.tensor(num)).item()
+        if result == 0 or num == 0:
+            return 0
+        result = abs(result * num) // math.gcd(result, num)
 
     return result
 

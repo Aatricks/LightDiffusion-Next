@@ -40,6 +40,10 @@ def attention_sage(
     #### Returns:
         - `torch.Tensor`: The output tensor.
     """
+    if isinstance(mask, torch.Tensor) and mask.device != q.device:
+        # Ensure mask lives on the same device as attention tensors to avoid device mismatch in sageattention.
+        mask = mask.to(q.device)
+
     if not flux:
         b, _, dim_head = q.shape
         dim_head //= heads

@@ -1,6 +1,9 @@
 import contextlib
 import functools
+import importlib.util
 import logging
+import os
+import traceback
 from dataclasses import dataclass
 
 import torch
@@ -14,8 +17,13 @@ try:
     from sfast.cuda.graphs import make_dynamic_graphed_callable
     from sfast.jit import utils as jit_utils
     from sfast.jit.trace_helper import trace_with_kwargs
-except:
-    pass
+except Exception:  # pragma: no cover - sfast optional dependency
+    CompilationConfig = None
+    _enable_xformers = None
+    _modify_model = None
+    make_dynamic_graphed_callable = None
+    jit_utils = None
+    trace_with_kwargs = None
 
 
 def hash_arg(arg):
@@ -36,11 +44,6 @@ def hash_arg(arg):
 class ModuleFactory:
     def get_converted_kwargs(self):
         return self.converted_kwargs
-
-
-import torch as th
-import torch.nn as nn
-import copy
 
 
 class BaseModelApplyModelModule(torch.nn.Module):
@@ -88,8 +91,6 @@ class BaseModelApplyModelModuleFactory(ModuleFactory):
         self.callable = callable
         self.unet_config = callable.__self__.model_config.unet_config
         self.kwargs = kwargs
-        self.patch_module = {}
-        self.patch_module_parameter = {}
         self.converted_kwargs = self.gen_converted_kwargs()
 
     def gen_converted_kwargs(self):
@@ -97,18 +98,6 @@ class BaseModelApplyModelModuleFactory(ModuleFactory):
         for arg_name, arg in self.kwargs.items():
             if arg_name in self.kwargs_name:
                 converted_kwargs[arg_name] = arg
-
-        transformer_options = self.kwargs.get("transformer_options", {})
-        patches = transformer_options.get("patches", {})
-
-        patch_module = {}
-        patch_module_parameter = {}
-
-        new_transformer_options = {}
-        new_transformer_options["patches"] = patch_module_parameter
-
-        self.patch_module = patch_module
-        self.patch_module_parameter = patch_module_parameter
         return converted_kwargs
 
     def gen_cache_key(self):
@@ -185,9 +174,30 @@ class LazyTraceModule:
                 logger.info(
                     f'Tracing {getattr(m_model, "__name__", m_model.__class__.__name__)}'
                 )
-                traced_m, call_helper = trace_with_kwargs(
-                    m_model, None, m_kwargs, **self.kwargs_
-                )
+
+                tensor_debug = os.getenv("STABLE_FAST_DEBUG_TENSOR", "0") == "1"
+                if tensor_debug:
+                    original_tensor = torch.tensor
+
+                    def _debug_tensor(*args, **kwargs):
+                        stack = "".join(traceback.format_stack(limit=8))
+                        logger.warning(
+                            "Stable Fast trace hit torch.tensor with args=%s kwargs=%s\n%s",
+                            args,
+                            kwargs,
+                            stack,
+                        )
+                        return original_tensor(*args, **kwargs)
+
+                    torch.tensor = _debug_tensor
+
+                try:
+                    traced_m, call_helper = trace_with_kwargs(
+                        m_model, None, m_kwargs, **self.kwargs_
+                    )
+                finally:
+                    if tensor_debug:
+                        torch.tensor = original_tensor
 
             traced_m = self.ts_compiler(traced_m)
             traced_module = call_helper(traced_m)
@@ -212,11 +222,9 @@ def build_lazy_trace_module(config, device, patch_id):
 
 def gen_stable_fast_config():
     config = CompilationConfig.Default()
-    try:
-        import xformers
-
+    if importlib.util.find_spec("xformers") is not None:
         config.enable_xformers = True
-    except ImportError:
+    else:
         print("xformers not installed, skip")
 
     # CUDA Graph is suggested for small batch sizes.
@@ -250,7 +258,7 @@ class StableFastPatch:
         )
 
     def to(self, device):
-        if type(device) == torch.device:
+        if isinstance(device, torch.device):
             if self.config.enable_cuda_graph or self.config.enable_jit_freeze:
                 if device.type == "cpu":
                     del self.stable_fast_model

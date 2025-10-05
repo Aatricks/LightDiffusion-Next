@@ -342,25 +342,27 @@ def resolve_areas_and_cond_masks_multidim(conditions, dims, device):
         if "area" in c:
             area = c["area"]
             if area[0] == "percentage":
-                # Vectorized calculation of area dimensions
+                # Compute area dimensions using pure Python arithmetic to keep tracing stable.
                 a = area[1:]
                 a_len = len(a) // 2
 
-                # Calculate all dimensions at once using tensor operations
-                dims_tensor = torch.tensor(dims, device="cpu")
-                first_part = torch.tensor(a[:a_len], device="cpu") * dims_tensor
-                second_part = torch.tensor(a[a_len:], device="cpu") * dims_tensor
+                first_raw = a[:a_len]
+                second_raw = a[a_len:]
 
-                # Convert to rounded integers and tuple
-                first_part = torch.max(
-                    torch.ones_like(first_part), torch.round(first_part)
-                )
-                second_part = torch.round(second_part)
+                first_part = []
+                for idx, val in enumerate(first_raw):
+                    dim = dims[idx] if idx < len(dims) else dims[-1]
+                    computed = int(round(val * dim))
+                    first_part.append(max(1, computed))
+
+                second_part = []
+                for idx, val in enumerate(second_raw):
+                    dim_idx = idx if idx < len(dims) else len(dims) - 1
+                    dim = dims[dim_idx]
+                    second_part.append(int(round(val * dim)))
 
                 # Create the new area tuple
-                new_area = tuple(first_part.int().tolist()) + tuple(
-                    second_part.int().tolist()
-                )
+                new_area = tuple(first_part) + tuple(second_part)
 
                 # Create a modified copy with the new area
                 modified = c.copy()

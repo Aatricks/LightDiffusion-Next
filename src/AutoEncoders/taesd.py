@@ -179,8 +179,9 @@ class TAESD(nn.Module):
             - `latent_channels` (int, optional): Number of channels in the latent space. Defaults to 4.
         """
         super().__init__()
-        self.vae_shift = torch.nn.Parameter(torch.tensor(0.0))
-        self.vae_scale = torch.nn.Parameter(torch.tensor(1.0))
+        # Use torch factories to keep trace graph free from torch.tensor constructors.
+        self.vae_shift = torch.nn.Parameter(torch.zeros(1))
+        self.vae_scale = torch.nn.Parameter(torch.ones(1))
         self.taesd_encoder = Encoder2(latent_channels)
         self.taesd_decoder = Decoder2(latent_channels)
         decoder_path = (

@@ -164,7 +164,8 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         self.layer_idx = None
         self.special_tokens = special_tokens
 
-        self.logit_scale = torch.nn.Parameter(torch.tensor(4.6055))
+        # Avoid torch.tensor constructor to keep Stable Fast tracing clean.
+        self.logit_scale = torch.nn.Parameter(torch.full((1,), 4.6055))
         self.enable_attention_masks = enable_attention_masks
         self.zero_out_masked = zero_out_masked
 

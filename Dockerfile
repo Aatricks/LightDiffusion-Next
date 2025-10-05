@@ -10,8 +10,10 @@ ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
 
-# Install Python 3.10 and system dependencies
-RUN apt-get update && apt-get install -y \
+# Install Python 3.10 and system dependencies (cache apt metadata between builds)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y \
     python3.10 \
     python3.10-dev \
     python3.10-venv \
@@ -45,9 +47,15 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip install --upgrade pip
 RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip install uv
 
-# Install PyTorch with CUDA support
-RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system --index-url https://download.pytorch.org/whl/cu128 \
-    torch torchvision "triton>=2.1.0"
+# Install PyTorch with CUDA support (skip xformers for RTX 50 series GPUs)
+RUN --mount=type=cache,target=/root/.cache/uv /bin/sh -c 'set -e; \
+    python3 -m uv pip install --system --index-url https://download.pytorch.org/whl/cu128 \
+        torch torchvision "triton>=2.1.0"; \
+    if echo "${TORCH_CUDA_ARCH_LIST}" | grep -q "12\.0"; then \
+        echo "Detected compute capability 12.0 (RTX 50 series). Skipping xformers install."; \
+    else \
+        python3 -m uv pip install --system xformers; \
+    fi'
 
 # Install numpy with version constraint
 RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system "numpy<2.0.0"
@@ -72,23 +80,29 @@ ENV INSTALL_STABLE_FAST=${INSTALL_STABLE_FAST}
 ARG INSTALL_OLLAMA=0
 ENV INSTALL_OLLAMA=${INSTALL_OLLAMA}
 
-# Build and install stable-fast with matching CUDA architectures
-RUN --mount=type=cache,target=/root/.cache/pip /bin/sh -c ' \
+# Build and install stable-fast with matching CUDA architectures (cached wheels)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/build-cache/stablefast,sharing=locked /bin/sh -c ' \
     if [ "${INSTALL_STABLE_FAST}" = "1" ]; then \
         echo "Installing stable-fast for CUDA architectures: ${TORCH_CUDA_ARCH_LIST}"; \
         export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"; \
         export FORCE_CUDA=1; \
-        python3 -m pip install --no-build-isolation \
+        mkdir -p /build-cache/stablefast; \
+        python3 -m pip wheel --no-build-isolation --wheel-dir /build-cache/stablefast \
             git+https://github.com/chengzeyi/stable-fast.git@main#egg=stable-fast; \
+        python3 -m pip install --no-build-isolation --no-index --find-links /build-cache/stablefast stable-fast; \
     else \
         echo "Skipping stable-fast installation (INSTALL_STABLE_FAST=${INSTALL_STABLE_FAST})"; \
     fi'
 
 # Optionally install Ollama with the qwen3:0.6b model for prompt enhancement
-RUN /bin/sh -c ' \
+RUN --mount=type=cache,target=/build-cache/ollama,sharing=locked /bin/sh -c ' \
     if [ "${INSTALL_OLLAMA}" = "1" ]; then \
         echo "Installing Ollama and pulling qwen3:0.6b"; \
-        curl -fsSL https://ollama.com/install.sh | sh; \
+        mkdir -p /build-cache/ollama; \
+        curl -fsSL https://ollama.com/install.sh -o /build-cache/ollama/install.sh; \
+        sh /build-cache/ollama/install.sh; \
+        export OLLAMA_HOME=/build-cache/ollama; \
         ollama serve >/tmp/ollama.log 2>&1 & \
         OLLAMA_PID=$!; \
         attempts=0; \
@@ -113,7 +127,8 @@ COPY . .
 
 # Patch SageAttention setup.py to support TORCH_CUDA_ARCH_LIST environment variable
 # Only attempt to patch if the SageAttention directory exists in the build context
-RUN if [ -d "SageAttention" ]; then \
+RUN --mount=type=cache,target=/build-cache/sageattention,sharing=locked \
+    if [ -d "SageAttention" ]; then \
         echo "Found SageAttention - applying patch" && \
         cd SageAttention && \
         python3 ../docker/patch_sageattention.py && \
@@ -128,19 +143,21 @@ RUN if [ -d "SageAttention" ]; then \
 
 # Build and install SageAttention from source (only if present)
 # Limit parallel jobs to prevent out-of-memory errors during compilation
-ENV MAX_JOBS=2
-RUN if [ -d "SageAttention" ]; then \
+#ENV MAX_JOBS=2
+RUN --mount=type=cache,target=/root/.cache/torch_extensions,sharing=locked \
+    --mount=type=cache,target=/build-cache/sageattention,sharing=locked \
+    if [ -d "SageAttention" ]; then \
         echo "Building SageAttention (local copy)" && \
         cd SageAttention && \
-        python3 setup.py build_ext --parallel 2 && \
-        python3 -m pip install -e . --no-build-isolation && \
+        python3 -m pip wheel --no-build-isolation --wheel-dir /build-cache/sageattention . && \
+        python3 -m pip install --no-index /build-cache/sageattention/*.whl && \
         cd .. && \
         rm -rf SageAttention/build SageAttention/*.egg-info; \
     else \
         echo "Building SageAttention (cloned)" && \
         cd /tmp/SageAttention && \
-        python3 setup.py build_ext --parallel 2 && \
-        python3 -m pip install -e . --no-build-isolation && \
+        python3 -m pip wheel --no-build-isolation --wheel-dir /build-cache/sageattention . && \
+        python3 -m pip install --no-index /build-cache/sageattention/*.whl && \
         rm -rf /tmp/SageAttention/build /tmp/SageAttention/*.egg-info && \
         rm -rf /tmp/SageAttention; \
     fi
@@ -148,12 +165,14 @@ RUN if [ -d "SageAttention" ]; then \
 # Build and install SpargeAttention from source
 # Note: SpargeAttn only supports compute capabilities: 8.0, 8.6, 8.7, 8.9, 9.0
 # Skip if building for unsupported architectures (e.g., 12.0 for RTX 50 series)
-RUN if [ -d "SpargeAttn" ]; then \
+RUN --mount=type=cache,target=/root/.cache/torch_extensions,sharing=locked \
+    --mount=type=cache,target=/build-cache/spargeattn,sharing=locked \
+    if [ -d "SpargeAttn" ]; then \
         cd SpargeAttn && \
         if echo "${TORCH_CUDA_ARCH_LIST}" | grep -qE '(8\.0|8\.6|8\.7|8\.9|9\.0)'; then \
             echo "Building SpargeAttn for supported architectures: ${TORCH_CUDA_ARCH_LIST}"; \
-            python3 setup.py build_ext --parallel 2 && \
-            python3 -m pip install -e . --no-build-isolation && \
+            python3 -m pip wheel --no-build-isolation --wheel-dir /build-cache/spargeattn . && \
+            python3 -m pip install --no-index /build-cache/spargeattn/*.whl && \
             rm -rf build *.egg-info; \
         else \
             echo "Skipping SpargeAttn - architecture ${TORCH_CUDA_ARCH_LIST} not supported (requires 8.0-9.0)"; \
@@ -165,8 +184,8 @@ RUN if [ -d "SpargeAttn" ]; then \
         cd /tmp/SpargeAttn && \
         if echo "${TORCH_CUDA_ARCH_LIST}" | grep -qE '(8\.0|8\.6|8\.7|8\.9|9\.0)'; then \
             echo "Building cloned SpargeAttn for supported architectures: ${TORCH_CUDA_ARCH_LIST}"; \
-            python3 setup.py build_ext --parallel 2 && \
-            python3 -m pip install -e . --no-build-isolation && \
+            python3 -m pip wheel --no-build-isolation --wheel-dir /build-cache/spargeattn . && \
+            python3 -m pip install --no-index /build-cache/spargeattn/*.whl && \
             rm -rf build *.egg-info; \
         else \
             echo "Skipping cloned SpargeAttn - architecture ${TORCH_CUDA_ARCH_LIST} not supported (requires 8.0-9.0)"; \

@@ -353,7 +353,21 @@ class ModelSamplingDiscrete(torch.nn.Module):
         if percent >= 1.0:
             return 0.0
         percent = 1.0 - percent
-        return self.sigma(torch.tensor(percent * 999.0)).item()
+        # Avoid creating torch tensors so Stable Fast tracing stays pure-python here.
+        timestep = percent * 999.0
+        max_index = len(self.sigmas) - 1
+        if max_index <= 0:
+            return math.exp(self.log_sigmas[0].item())
+
+        timestep = max(0.0, min(timestep, float(max_index)))
+        low_idx = int(math.floor(timestep))
+        high_idx = min(low_idx + 1, max_index)
+        w = timestep - low_idx
+
+        log_low = self.log_sigmas[low_idx].item()
+        log_high = self.log_sigmas[high_idx].item()
+        log_sigma = (1.0 - w) * log_low + w * log_high
+        return math.exp(log_sigma)
 
 
 class InterruptProcessingException(Exception):
