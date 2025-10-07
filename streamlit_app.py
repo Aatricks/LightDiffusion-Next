@@ -530,47 +530,133 @@ def apply_multiscale_preset(preset_name):
         return None
 
 
+def ensure_generation_state_consistency():
+    """Ensure session state matches the actual background thread status"""
+    job_state = st.session_state.get("generation_job")
+    if job_state is None:
+        return
+
+    thread = job_state.get("thread")
+    if thread is not None and not thread.is_alive():
+        job_state.update({"thread": None, "complete_event": None, "start_time": None})
+        st.session_state.generation_job = job_state
+
+    if st.session_state.get("is_generating") and job_state.get("thread") is None:
+        st.session_state.is_generating = False
+        st.session_state.interrupt_generation = False
+
+
+def stop_active_generation(
+    status_placeholder=None,
+    wait_message="⚠️ Stopping current generation...",
+    complete_message="Generation stopped.",
+    timeout=120.0,
+    show_complete_message=True,
+):
+    """Signal the sampler to stop and wait for the background thread to exit"""
+    ensure_generation_state_consistency()
+    job_state = st.session_state.get("generation_job", {})
+    thread = job_state.get("thread")
+
+    if thread is None or not thread.is_alive():
+        job_state.update({"thread": None, "complete_event": None, "start_time": None})
+        st.session_state.generation_job = job_state
+        st.session_state.is_generating = False
+        st.session_state.interrupt_generation = False
+        return True
+
+    st.session_state.interrupt_generation = True
+
+    if app_instance is not None and hasattr(app_instance, "app"):
+        try:
+            app_instance.app.request_interrupt()
+        except Exception:
+            pass
+
+    event = job_state.get("complete_event")
+    start_time = time.time()
+    last_update = -1.0
+
+    while thread.is_alive():
+        if status_placeholder is not None and time.time() - last_update >= 0.5:
+            elapsed = time.time() - start_time
+            status_placeholder.warning(f"{wait_message} ({elapsed:.1f}s)")
+            last_update = time.time()
+
+        if event is not None:
+            event.wait(timeout=0.1)
+        else:
+            time.sleep(0.1)
+
+        if timeout is not None and (time.time() - start_time) > timeout:
+            if status_placeholder is not None:
+                status_placeholder.error("❌ Timed out while stopping the current generation.")
+            return False
+
+    st.session_state.is_generating = False
+    st.session_state.interrupt_generation = False
+
+    job_state.update({"thread": None, "complete_event": None, "start_time": None})
+    st.session_state.generation_job = job_state
+
+    if app_instance is not None and hasattr(app_instance, "app"):
+        try:
+            app_instance.app.clear_interrupt()
+        except Exception:
+            pass
+
+    if status_placeholder is not None and show_complete_message:
+        status_placeholder.info(complete_message)
+
+    return True
+
+
 def generate_images(settings, progress_placeholder, status_placeholder, gallery_placeholder):
     """Generate images with the given settings and live preview support"""
     global app_instance, pipeline
-    
-    # Safety check
+
     if app_instance is None or pipeline is None:
         status_placeholder.error("❌ LightDiffusion is not initialized yet!")
         return []
-    
+
+    temp_img2img_path = None
+    generation_error: Exception | None = None
+    interrupted = False
+    gen_thread: threading.Thread | None = None
+
     try:
-        # Reset interrupt flag at start
         st.session_state.interrupt_generation = False
         st.session_state.is_generating = True
         st.session_state.enhanced_prompt_preview = None
-        
-        # Set preview enabled state
-        app_instance.app.previewer_var.set(settings["enable_preview"])
-        app_instance.app.cleanup_all_previews()
-        
-        # Set model persistence
+
+        if hasattr(app_instance, "app"):
+            app_instance.app.previewer_var.set(settings["enable_preview"])
+            app_instance.app.cleanup_all_previews()
+            app_instance.app.clear_interrupt()
+
         from src.Device.ModelCache import set_keep_models_loaded
+
         set_keep_models_loaded(settings["keep_models_loaded"])
-        
-        # Handle img2img
-        img2img_image_path = None
+
         if settings["img2img_enabled"] and settings.get("img2img_image") is not None:
             img_array = settings["img2img_image"]
             if isinstance(img_array, np.ndarray):
                 img_pil = Image.fromarray(img_array)
-                img2img_image_path = "temp_img2img.png"
-                img_pil.save(img2img_image_path)
-        
+                temp_img2img_path = "temp_img2img.png"
+                img_pil.save(temp_img2img_path)
+
         status_placeholder.info("🎨 Generating images...")
-        
-        # Capture metadata returned from pipeline (enhanced prompts, etc.)
+
         pipeline_result = None
         generation_complete = threading.Event()
-        
-        # Run generation in background thread
+
+        job_state = st.session_state.get("generation_job", {})
+        job_state["complete_event"] = generation_complete
+        job_state["start_time"] = time.time()
+        st.session_state.generation_job = job_state
+
         def run_generation():
-            nonlocal pipeline_result
+            nonlocal pipeline_result, generation_error
             try:
                 pipeline_result = pipeline(
                     prompt=settings["prompt"],
@@ -583,7 +669,7 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
                     adetailer=settings["adetailer"],
                     enhance_prompt=settings["enhance_prompt"],
                     img2img=settings["img2img_enabled"],
-                    img2img_image=img2img_image_path,
+                    img2img_image=temp_img2img_path,
                     stable_fast=settings["stable_fast"],
                     reuse_seed=settings["reuse_seed"],
                     flux_enabled=settings["flux_enabled"],
@@ -596,62 +682,76 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
                     multiscale_fullres_start=settings["multiscale_fullres_start"],
                     multiscale_fullres_end=settings["multiscale_fullres_end"],
                 )
+            except InterruptedError as exc:
+                generation_error = exc
+            except Exception as exc:  # pragma: no cover - surfaced to UI
+                generation_error = exc
             finally:
                 generation_complete.set()
-        
-        # Start generation thread
+
         gen_thread = threading.Thread(target=run_generation, daemon=True)
         gen_thread.start()
-        
-        # Monitor for preview updates if enabled
-        if settings["enable_preview"]:
-            last_preview_time = 0
-            preview_container = gallery_placeholder.empty()
-            
-            while not generation_complete.is_set():
-                # Check for interrupt
-                if st.session_state.interrupt_generation:
-                    status_placeholder.warning("⚠️ Generation interrupted!")
-                    # Attempt to stop generation gracefully
-                    try:
-                        import torch
-                        if torch.cuda.is_available():
-                            torch.cuda.synchronize()
-                    except Exception:
-                        pass
-                    break
-                
+
+        job_state = st.session_state.get("generation_job", {})
+        job_state["thread"] = gen_thread
+        job_state["complete_event"] = generation_complete
+        job_state["start_time"] = time.time()
+        st.session_state.generation_job = job_state
+
+        preview_container = (
+            gallery_placeholder.empty() if settings["enable_preview"] else None
+        )
+        last_preview_time = 0
+        interrupt_notified = False
+
+        while not generation_complete.wait(0.2):
+            if st.session_state.interrupt_generation and not interrupt_notified:
+                interrupted = True
+                interrupt_notified = True
+                try:
+                    app_instance.app.request_interrupt()
+                except Exception:
+                    pass
+                status_placeholder.warning("⚠️ Cancelling generation...")
+
+            if settings["enable_preview"]:
                 current_previews = app_instance.app.get_latest_previews()
                 if current_previews and app_instance.app.last_preview_time > last_preview_time:
                     last_preview_time = app_instance.app.last_preview_time
                     preview_images = []
                     for preview_path in current_previews:
                         try:
-                            preview_images.append(Image.open(preview_path))
+                            with Image.open(preview_path) as preview_img:
+                                preview_images.append(preview_img.copy())
                         except Exception:
-                            pass
-                    if preview_images:
+                            continue
+
+                    if preview_images and preview_container is not None:
                         with preview_container.container():
                             st.caption("🔄 Preview (TAESD)")
-                            # Use columns to prevent caching issues
                             cols = st.columns(len(preview_images))
-                            for idx, (col, img) in enumerate(zip(cols, preview_images)):
+                            for col, img in zip(cols, preview_images):
                                 with col:
-                                    st.image(img, width='stretch')
-                        status_placeholder.info(f"🎨 Generating... ({len(preview_images)} preview(s))")
-                time.sleep(0.5)
-        
-        # Wait for generation to complete
-        gen_thread.join(timeout=0.1 if st.session_state.interrupt_generation else None)
-        
-        # Cleanup
-        app_instance.app.cleanup_all_previews()
-        if os.path.exists("temp_img2img.png"):
-            os.remove("temp_img2img.png")
-        
-        # Check if interrupted
-        if st.session_state.interrupt_generation:
-            st.session_state.is_generating = False
+                                    st.image(img, width="stretch")
+                        status_placeholder.info(
+                            f"🎨 Generating... ({len(preview_images)} preview(s))"
+                        )
+
+        gen_thread.join(timeout=1.0)
+        if gen_thread.is_alive():
+            status_placeholder.warning("⚠️ Waiting for generation to stop...")
+            gen_thread.join()
+
+        if isinstance(generation_error, InterruptedError):
+            status_placeholder.warning("⚠️ Generation interrupted!")
+            st.session_state.enhanced_prompt_preview = None
+            return []
+
+        if generation_error is not None:
+            raise generation_error
+
+        if interrupted and st.session_state.interrupt_generation:
+            status_placeholder.warning("⚠️ Generation stopped.")
             st.session_state.enhanced_prompt_preview = None
             return []
 
@@ -659,21 +759,46 @@ def generate_images(settings, progress_placeholder, status_placeholder, gallery_
             st.session_state.enhanced_prompt_preview = pipeline_result
         else:
             st.session_state.enhanced_prompt_preview = None
-        
+
         status_placeholder.success("✅ Generation complete!")
-        st.session_state.is_generating = False
         return load_generated_images()
-        
-    except Exception as e:
-        import traceback
-        status_placeholder.error(f"❌ Error: {str(e)}")
-        st.error(traceback.format_exc())
-        app_instance.app.cleanup_all_previews()
-        if os.path.exists("temp_img2img.png"):
-            os.remove("temp_img2img.png")
-        st.session_state.is_generating = False
+
+    except InterruptedError:
+        status_placeholder.warning("⚠️ Generation interrupted!")
         st.session_state.enhanced_prompt_preview = None
         return []
+    except Exception as e:  # pragma: no cover - surfaced to UI
+        import traceback
+
+        status_placeholder.error(f"❌ Error: {str(e)}")
+        st.error(traceback.format_exc())
+        st.session_state.enhanced_prompt_preview = None
+        return []
+    finally:
+        st.session_state.is_generating = False
+        st.session_state.interrupt_generation = False
+
+        job_state = st.session_state.get("generation_job", {})
+        tracked_thread = job_state.get("thread")
+        if tracked_thread is None or tracked_thread is gen_thread or not tracked_thread.is_alive():
+            job_state.update({"thread": None, "complete_event": None, "start_time": None})
+            st.session_state.generation_job = job_state
+
+        if hasattr(app_instance, "app"):
+            try:
+                app_instance.app.cleanup_all_previews()
+            except Exception:
+                pass
+            try:
+                app_instance.app.clear_interrupt()
+            except Exception:
+                pass
+
+        if temp_img2img_path and os.path.exists(temp_img2img_path):
+            try:
+                os.remove(temp_img2img_path)
+            except Exception:
+                pass
 
 
 # Initialize session state
@@ -711,6 +836,14 @@ if "verbose_mode" not in st.session_state:
     st.session_state.verbose_mode = VERBOSE_MODE
 if "enhanced_prompt_preview" not in st.session_state:
     st.session_state.enhanced_prompt_preview = None
+if "generation_job" not in st.session_state:
+    st.session_state.generation_job = {
+        "thread": None,
+        "complete_event": None,
+        "start_time": None,
+    }
+
+ensure_generation_state_consistency()
 
 
 def initialize_lightdiffusion(status_dict, verbose=False):
@@ -1123,30 +1256,51 @@ with tab1:
         
         # Handle stop button
         if stop_btn:
-            st.session_state.interrupt_generation = True
-            status_placeholder.warning("⚠️ Stopping generation...")
-            time.sleep(0.5)
+            stop_success = stop_active_generation(
+                status_placeholder,
+                wait_message="⚠️ Cancelling current generation...",
+                complete_message="Generation cancelled.",
+            )
+            if not stop_success:
+                status_placeholder.error(
+                    "❌ Unable to cancel the current generation. Please try again."
+                )
+            time.sleep(0.2)
             st.rerun()
         
         # Handle generation
         if generate_btn:
-            # Safety check
+            ensure_generation_state_consistency()
+            job_state = st.session_state.get("generation_job", {})
+            active_thread = job_state.get("thread")
+            if active_thread is not None and not active_thread.is_alive():
+                active_thread = None
+
+            can_start_generation = True
+
             if not st.session_state.lightdiffusion_ready or pipeline is None:
-                status_placeholder.error("❌ LightDiffusion is not ready yet. Please wait for setup to complete.")
-            # If already generating, interrupt current generation
-            elif st.session_state.is_generating:
-                st.session_state.interrupt_generation = True
-                status_placeholder.warning("⚠️ Interrupting current generation...")
-                time.sleep(0.5)
-            
+                status_placeholder.error(
+                    "❌ LightDiffusion is not ready yet. Please wait for setup to complete."
+                )
+                can_start_generation = False
             elif not prompt.strip():
                 status_placeholder.warning("⚠️ Please enter a prompt!")
-            else:
-                # Track generation time
-                import time
+                can_start_generation = False
+            elif active_thread is not None:
+                stop_success = stop_active_generation(
+                    status_placeholder,
+                    wait_message="⚠️ Stopping previous generation...",
+                    show_complete_message=False,
+                )
+                if not stop_success:
+                    status_placeholder.error(
+                        "❌ Unable to stop the current generation. Please try again."
+                    )
+                    can_start_generation = False
+
+            if can_start_generation:
                 start_time = time.time()
-                
-                # Update settings
+
                 current_settings = {
                     "prompt": prompt,
                     "negative_prompt": negative_prompt,
@@ -1158,7 +1312,6 @@ with tab1:
                     "adetailer": adetailer,
                     "enhance_prompt": enhance_prompt,
                     "img2img_enabled": img2img_enabled,
-                    # Don't save img2img_image (numpy array) to settings file
                     "stable_fast": stable_fast,
                     "reuse_seed": reuse_seed,
                     "flux_enabled": flux_enabled,
@@ -1173,35 +1326,39 @@ with tab1:
                     "multiscale_preset": multiscale_preset,
                     "enable_preview": enable_preview,
                 }
-                
-                # Add img2img_image to generation settings but not persisted settings
+
                 generation_settings = current_settings.copy()
                 generation_settings["img2img_image"] = img2img_image
-                
+
                 st.session_state.settings.update(current_settings)
                 save_settings(st.session_state.settings)
-                
-                # Generate
+
                 with st.spinner("Generating images..."):
-                    generated_images = generate_images(generation_settings, progress_placeholder, status_placeholder, gallery_placeholder)
-                    
-                    # Calculate generation time
+                    generated_images = generate_images(
+                        generation_settings,
+                        progress_placeholder,
+                        status_placeholder,
+                        gallery_placeholder,
+                    )
+
                     gen_time = time.time() - start_time
-                    
+
                     if generated_images:
-                        # Save stats BEFORE displaying images
-                        st.session_state.settings.update({
-                            "last_gen_time": gen_time,
-                            "last_width": width,
-                            "last_height": height,
-                            "last_num_images": num_images,
-                        })
+                        st.session_state.settings.update(
+                            {
+                                "last_gen_time": gen_time,
+                                "last_width": width,
+                                "last_height": height,
+                                "last_num_images": num_images,
+                            }
+                        )
                         save_settings(st.session_state.settings)
-                        
-                        # Force rerun to update stats display
+
                         st.rerun()
                     else:
-                        gallery_placeholder.warning("No images were generated. Check the error messages above.")
+                        gallery_placeholder.warning(
+                            "No images were generated. Check the error messages above."
+                        )
 
 # ============================================================================
 # TAB 2: HISTORY

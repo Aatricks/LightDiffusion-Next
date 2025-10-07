@@ -19,6 +19,7 @@ class AppInstance:
         self.preview_files = []
         self.last_preview_time = 0
         self.progress = ProgressTracker()
+        self._interrupt_event = threading.Event()
 
         # Create preview directory
         os.makedirs(self.preview_dir, exist_ok=True)
@@ -80,6 +81,20 @@ class AppInstance:
     def cleanup(self):
         """Cleanup resources"""
         self.clear_preview_files()
+        self.clear_interrupt()
+
+    @property
+    def interrupt_flag(self) -> bool:
+        """Return True when an interrupt has been requested"""
+        return self._interrupt_event.is_set()
+
+    def request_interrupt(self):
+        """Signal sampling loops to stop"""
+        self._interrupt_event.set()
+
+    def clear_interrupt(self):
+        """Reset interrupt state after a run"""
+        self._interrupt_event.clear()
 
 
 class PreviewerVar:

@@ -21,11 +21,18 @@ from src.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
 from src.Utilities import Enhancer, Latent, upscale
 from src.WaveSpeed import fbcache_nodes
 from src.AutoHDR import ahdr
+from src.user import app_instance
 
 with open(os.path.join("./include/", "last_seed.txt"), "r") as f:
     last_seed = int(f.read())
 
 Downloader.CheckAndDownload()
+
+
+def _check_interruption():
+    app = getattr(app_instance, "app", None)
+    if app is not None and getattr(app, "interrupt_flag", False):
+        raise InterruptedError("Generation interrupted")
 
 
 def pipeline(
@@ -82,6 +89,11 @@ def pipeline(
     """
     global last_seed
 
+    app_ref = getattr(app_instance, "app", None)
+    if app_ref is not None:
+        app_ref.clear_interrupt()
+    _check_interruption()
+
     original_prompt = prompt
     enhancement_applied = False
 
@@ -103,14 +115,15 @@ def pipeline(
     if negative_prompt is None or negative_prompt.strip() == "":
         negative_prompt = "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic), (embedding:EasyNegative), (embedding:badhandv4), (embedding:lr), (embedding:ng_deepnegative_v1_75t)"
 
+    images_to_generate = max(1, number)
     if reuse_seed:
-        seed = last_seed
-
+        seeds = [last_seed] * images_to_generate
     else:
-        seed = random.randint(1, 2**64)
-        last_seed = seed
+        seeds = [random.randint(1, 2**64) for _ in range(images_to_generate)]
+        last_seed = seeds[-1]
+
     with open(os.path.join("./include/", "last_seed.txt"), "w") as f:
-        f.write(str(seed))
+        f.write(str(seeds[-1]))
     if enhance_prompt:
         try:
             enhanced_prompt = Enhancer.enhance_prompt(prompt)
@@ -140,7 +153,8 @@ def pipeline(
         saveimage = ImageSaver.SaveImage()
         latent_upscale = upscale.LatentUpscale()
         hdr = ahdr.HDREffects()
-    for _ in range(number):
+    for current_seed in seeds:
+        _check_interruption()
         if img2img:
             # Use explicit image path if provided, else fall back to legacy behavior where prompt is a path
             source_path = img2img_image or prompt
@@ -193,7 +207,7 @@ def pipeline(
                 )
                 ultimatesdupscale_250 = ultimatesdupscale.upscale(
                     upscale_by=2,
-                    seed=random.randint(1, 2**64),
+                    seed=current_seed,
                     steps=8,
                     cfg=6,
                     sampler_name=sampler_name,
@@ -218,6 +232,7 @@ def pipeline(
                     upscale_model=upscalemodelloader_244[0],
                     pipeline=True,
                 )
+                _check_interruption()
                 saveimage.save_images(
                     filename_prefix="LD-I2I",
                     images=hdr.apply_hdr2(ultimatesdupscale_250[0])
@@ -261,7 +276,7 @@ def pipeline(
                     conditioning=cliptextencodeflux_15[0]
                 )
                 ksampler_3 = ksampler.sample(
-                    seed=random.randint(1, 2**64),
+                    seed=current_seed,
                     steps=20,
                     cfg=1,
                     sampler_name="euler_cfgpp",
@@ -281,6 +296,7 @@ def pipeline(
                     flux=True,
                 )
 
+                _check_interruption()
                 saveimage.save_images(
                     filename_prefix="LD-Flux",
                     images=hdr.apply_hdr2(vaedecode_8[0])
@@ -336,7 +352,7 @@ def pipeline(
 
                 # Create sampler with multi-scale options
                 ksampler_239 = ksampler_instance.sample(
-                    seed=seed,
+                    seed=current_seed,
                     steps=20,
                     cfg=7,
                     sampler_name=sampler_name,
@@ -379,12 +395,14 @@ def pipeline(
                 else:
                     ksampler_253 = ksampler_239
 
+                _check_interruption()
                 vaedecode_240 = vaedecode.decode(
                     samples=ksampler_253[0],
                     vae=checkpointloadersimple_241[2],
                 )
 
             if adetailer:
+                _check_interruption()
                 with torch.inference_mode():
                     samloader = SAM.SAMLoader()
                     samloader_87 = samloader.load_model(
