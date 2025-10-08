@@ -14,7 +14,6 @@
 </br>
 </div>
 
-⭐ If this project helps you, please give it a star! It helps others discover it too.
 ---
 
 As a refactored and improved version of the original [LightDiffusion repository](https://github.com/Aatrick/LightDiffusion), this project enhances usability, maintainability, and functionality while introducing a host of new features to streamline your creative workflows.
@@ -100,6 +99,8 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 ---
 
 ## 🛠 Installation
+> [!WARNING]
+> **Disclaimer:** On Linux, the fastest way to get started is with the Docker setup below. Windows users often encounter an `EOF` build error when using Docker; if that happens, set up a local virtual environment instead and install SageAttention inside it.
 
 ### Quick Start
 
@@ -115,12 +116,8 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 
 Run LightDiffusion-Next in a containerized environment with GPU acceleration:
 
-**Prerequisites:**
-- Docker with NVIDIA Container Toolkit installed
-- NVIDIA GPU with CUDA support (Compute Capability 8.0+)
-- CUDA 12.0+ compatible GPU for SageAttention/SpargeAttn support
-- **Docker Desktop**: 12-16GB memory limit (Settings → Resources)
-- **System**: 16GB+ RAM recommended for building
+> [!IMPORTANT]
+> Confirm you have Docker Desktop configured with the NVIDIA Container Toolkit and at least 12-16GB of memory. Builds expect an NVIDIA GPU with compute capability 8.0 or higher and CUDA 12.0+ support for SageAttention/SpargeAttn.
 
 **Quick Start with Docker:**
 ```bash
@@ -160,7 +157,8 @@ docker-compose build \
 
 Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `INSTALL_OLLAMA=1` to bake in the prompt enhancer runtime.
 
-**Note**: RTX 50 series (compute 12.0) currently only supports SageAttention.
+> [!NOTE]
+> RTX 50 series (compute 12.0) GPUs currently only support SageAttention.
 
 **Access the Web Interface:**
 - **Streamlit UI** (default): `http://localhost:8501`
@@ -199,6 +197,8 @@ Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `
   ```
   
   **SpargeAttn (40-60% total speedup, requires WSL2/Linux):**
+  > [!CAUTION]
+  > SpargeAttn cannot be built with the default Windows linker. Use WSL2 or a native Linux environment and set the correct `TORCH_CUDA_ARCH_LIST` before installation.
   ```bash
   # On WSL2 or Linux only (Windows linker has path length limitations)
   cd SpargeAttn
@@ -235,3 +235,6 @@ Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `
 ---
 
 🎨 Enjoy exploring the powerful features of LightDiffusion-Next!
+
+> [!TIP]
+> ⭐ If this project helps you, please give it a star! It helps others discover it too.
