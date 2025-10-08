@@ -197,8 +197,8 @@ Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `
   ```
   
   **SpargeAttn (40-60% total speedup, requires WSL2/Linux):**
-  > [!CAUTION]
-  > SpargeAttn cannot be built with the default Windows linker. Use WSL2 or a native Linux environment and set the correct `TORCH_CUDA_ARCH_LIST` before installation.
+> [!CAUTION]
+> SpargeAttn cannot be built with the default Windows linker. Use WSL2 or a native Linux environment and set the correct `TORCH_CUDA_ARCH_LIST` before installation.
   ```bash
   # On WSL2 or Linux only (Windows linker has path length limitations)
   cd SpargeAttn
