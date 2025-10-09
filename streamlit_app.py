@@ -1,24 +1,31 @@
+"""
+LightDiffusion Streamlit UI
+A minimalistic, single-mode web interface focused on the generated image.
+All controls are in a togglable sidebar, main canvas displays preview/final at same size.
+"""
+
+import base64
+import io
 import streamlit as st
 import os
-import sys
 import json
 import glob
-import datetime
 import threading
 import time
 import numpy as np
 from PIL import Image
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+# Core Pipeline Integration
+from src.user.pipeline import pipeline
+from src.user import app_instance
+from src.Device.ModelCache import (
+    set_keep_models_loaded,
+    get_memory_info,
+    clear_model_cache
+)
+from src.FileManaging.Downloader import CheckAndDownload
 
-# Check for verbose mode
-VERBOSE_MODE = "--verbose" in sys.argv or "-v" in sys.argv
-
-# Defer imports to avoid blocking during setup
-pipeline = None
-app_instance = None
-
-# Page configuration
+# Page Configuration
 st.set_page_config(
     page_title="LightDiffusion",
     page_icon="🎨",
@@ -26,1436 +33,786 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for minimalistic styling with theme support
-def get_theme_css(is_dark_mode):
-    """Generate CSS based on current theme"""
-    if is_dark_mode:
-        return """
-<style>
-    /* Dark Mode Styling */
-    .stApp {
-        background-color: #1a1a1a;
-        color: #e0e0e0;
-    }
-    
-    /* Minimal header */
-    .main-header {
-        font-size: 2rem;
-        font-weight: 600;
-        color: #8b9dff;
-        margin-bottom: 0.5rem;
-    }
-    .subtitle {
-        color: #b0b0b0;
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
-    }
-    
-    /* Simplified buttons */
-    .stButton>button {
-        width: 100%;
-        background: #5568d3;
-        color: #ffffff;
-        border: none;
-        padding: 0.6rem 1.2rem;
-        font-weight: 500;
-        border-radius: 6px;
-        transition: background 0.2s;
-    }
-    .stButton>button:hover {
-        background: #667eea;
-    }
-    
-    /* Small icon buttons (help, theme) */
-    .stButton>button[kind="secondary"] {
-        background: #2d2d2d !important;
-        color: #e0e0e0 !important;
-        border: 1px solid #404040 !important;
-    }
-    .stButton>button[kind="secondary"]:hover {
-        background: #3d3d3d !important;
-    }
-    
-    /* Theme toggle button */
-    .theme-toggle-btn {
-        background: #2d2d2d !important;
-        color: #e0e0e0 !important;
-        border: 1px solid #404040 !important;
-    }
-    .theme-toggle-btn:hover {
-        background: #3d3d3d !important;
-    }
-    
-    /* Clean tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.5rem;
-        border-bottom: 1px solid #404040;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 0.5rem 1rem;
-        font-weight: 500;
-        font-size: 0.9rem;
-        color: #b0b0b0;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #8b9dff;
-    }
-    
-    /* Minimal expanders */
-    .stExpander {
-        border: none;
-        border-top: 1px solid #404040;
-        background-color: #1a1a1a;
-    }
-    .stExpander > summary {
-        color: #e0e0e0;
-    }
-    
-    /* Clean images */
-    div[data-testid="stImage"] {
-        border-radius: 4px;
-    }
-    
-    /* Input fields */
-    .stTextArea textarea, .stTextInput input {
-        background-color: #2d2d2d;
-        color: #e0e0e0;
-        border-color: #404040;
-    }
-    
-    /* Labels and text */
-    label, .stMarkdown, .stText {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Slider labels and values */
-    .stSlider > div > div > div,
-    .stSlider label,
-    .stSlider [data-baseweb="slider"] {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Number input labels */
-    .stNumberInput label {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Checkbox labels */
-    .stCheckbox label {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Selectbox labels */
-    .stSelectbox label {
-        color: #e0e0e0 !important;
-    }
-    
-    /* File uploader labels */
-    .stFileUploader label {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Text area labels */
-    .stTextArea label {
-        color: #e0e0e0 !important;
-    }
-    
-    /* General form labels */
-    [data-testid="stWidgetLabel"] {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Markdown headers in dark mode */
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, 
-    .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
-        color: #e0e0e0 !important;
-    }
-    
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #8b9dff;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #b0b0b0 !important;
-    }
-    
-    /* Caption text */
-    .stCaption {
-        color: #b0b0b0 !important;
-    }
-    
-    /* Info boxes */
-    .stAlert {
-        color: #e0e0e0;
-    }
-    
-    /* Hide default Streamlit elements for cleaner look */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Reduce padding */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 1rem;
-    }
-</style>
-"""
-    else:
-        return """
-<style>
-    /* Light Mode Styling */
-    .stApp {
-        background-color: #ffffff;
-        color: #1a1a1a;
-    }
-    
-    /* Minimal header */
-    .main-header {
-        font-size: 2rem;
-        font-weight: 600;
-        color: #667eea;
-        margin-bottom: 0.5rem;
-    }
-    .subtitle {
-        color: #8892a6;
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
-    }
-    
-    /* Simplified buttons */
-    .stButton>button {
-        width: 100%;
-        background: #667eea;
-        color: white;
-        border: none;
-        padding: 0.6rem 1.2rem;
-        font-weight: 500;
-        border-radius: 6px;
-        transition: background 0.2s;
-    }
-    .stButton>button:hover {
-        background: #5568d3;
-    }
-    
-    /* Small icon buttons (help, theme) */
-    .stButton>button[kind="secondary"] {
-        background: #f5f5f5 !important;
-        color: #1a1a1a !important;
-        border: 1px solid #e1e4e8 !important;
-    }
-    .stButton>button[kind="secondary"]:hover {
-        background: #e8e8e8 !important;
-    }
-    
-    /* Theme toggle button */
-    .theme-toggle-btn {
-        background: #f5f5f5 !important;
-        color: #1a1a1a !important;
-        border: 1px solid #e1e4e8 !important;
-    }
-    .theme-toggle-btn:hover {
-        background: #e8e8e8 !important;
-    }
-    
-    /* Clean tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.5rem;
-        border-bottom: 1px solid #e1e4e8;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 0.5rem 1rem;
-        font-weight: 500;
-        font-size: 0.9rem;
-        color: #666666;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #667eea;
-    }
-    
-    /* Minimal expanders */
-    .stExpander {
-        border: none;
-        border-top: 1px solid #e1e4e8;
-        background-color: #ffffff;
-    }
-    .stExpander > summary {
-        color: #1a1a1a;
-    }
-    
-    /* Clean images */
-    div[data-testid="stImage"] {
-        border-radius: 4px;
-    }
-    
-    /* Input fields */
-    .stTextArea textarea, .stTextInput input {
-        background-color: #ffffff;
-        color: #1a1a1a;
-        border-color: #e1e4e8;
-    }
-    
-    /* Labels and text */
-    label, .stMarkdown, .stText {
-        color: #1a1a1a !important;
-    }
-    
-    /* Slider labels and values */
-    .stSlider > div > div > div,
-    .stSlider label,
-    .stSlider [data-baseweb="slider"] {
-        color: #1a1a1a !important;
-    }
-    
-    /* Number input labels */
-    .stNumberInput label {
-        color: #1a1a1a !important;
-    }
-    
-    /* Checkbox labels */
-    .stCheckbox label {
-        color: #1a1a1a !important;
-    }
-    
-    /* Selectbox labels */
-    .stSelectbox label {
-        color: #1a1a1a !important;
-    }
-    
-    /* File uploader labels */
-    .stFileUploader label {
-        color: #1a1a1a !important;
-    }
-    
-    /* Text area labels */
-    .stTextArea label {
-        color: #1a1a1a !important;
-    }
-    
-    /* General form labels */
-    [data-testid="stWidgetLabel"] {
-        color: #1a1a1a !important;
-    }
-    
-    /* Markdown headers in light mode */
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, 
-    .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
-        color: #1a1a1a !important;
-    }
-    
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #667eea;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #666666 !important;
-    }
-    
-    /* Caption text */
-    .stCaption {
-        color: #666666 !important;
-    }
-    
-    /* Info boxes */
-    .stAlert {
-        color: #1a1a1a;
-    }
-    
-    /* Hide default Streamlit elements for cleaner look */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Reduce padding */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 1rem;
-    }
-</style>
-"""
-
-# Settings file
-SETTINGS_FILE = "webui_settings.json"
-
+# ============================================================================
+# Default Settings Schema
+# ============================================================================
 
 def get_default_settings():
-    """Get default settings for the webui"""
+    """Returns default settings for the UI"""
     return {
+        # Prompt & Text
         "prompt": "",
-        "negative_prompt": "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)",
+        "negative_prompt": "",
+        
+        # Dimensions & Batch
         "width": 512,
         "height": 512,
         "num_images": 1,
-        "batch_size": 1,
-        "hires_fix": False,
+        
+        # Generation Modes
+        "flux_mode": False,
+        "realistic_mode": False,
+        "img2img_mode": False,
+        "speed_mode": False,
+        
+        # Image Input (Img2Img)
+        "input_image_path": "",
+        
+        # Enhancement Features
+        "hiresfix": False,
         "adetailer": False,
         "enhance_prompt": False,
-        "img2img_enabled": False,
         "stable_fast": False,
+        
+        # Advanced Settings
         "reuse_seed": False,
-        "flux_enabled": False,
-        "prio_speed": False,
-        "realistic_model": False,
-        "multiscale_enabled": True,
-        "multiscale_intermittent": False,
+        "keep_models_loaded": True,
+        "enable_preview": True,
+        
+        # Multi-scale
+        "multiscale_preset": "balanced",
+        "multiscale_custom": False,
         "multiscale_factor": 0.5,
         "multiscale_fullres_start": 3,
         "multiscale_fullres_end": 8,
-        "keep_models_loaded": True,
-        "multiscale_preset": "quality",
-        "enable_preview": True,
-        "dark_mode": False,
+        "multiscale_intermittent_fullres": False,
+        
+        # UI Settings
+        "dark_mode": True,
+        "verbose_mode": False,
+        "sidebar_collapsed_by_default": False,
     }
 
+# ============================================================================
+# Settings Persistence
+# ============================================================================
+
+SETTINGS_FILE = "./webui_settings.json"
 
 def load_settings():
-    """Load settings from disk"""
-    try:
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                saved_settings = json.load(f)
-                default_settings = get_default_settings()
-                default_settings.update(saved_settings)
-                return default_settings
-    except Exception as e:
-        st.error(f"Error loading settings: {e}")
-    return get_default_settings()
-
+    """Load settings from disk, merge with defaults"""
+    defaults = get_default_settings()
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+                defaults.update(saved)
+        except Exception as e:
+            st.warning(f"Could not load settings: {e}")
+    return defaults
 
 def save_settings(settings):
     """Save settings to disk"""
     try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        st.error(f"Error saving settings: {e}")
+        st.error(f"Could not save settings: {e}")
 
+# ============================================================================
+# Session State Initialization
+# ============================================================================
 
-def load_generated_images():
-    """Load the most recent batch of generated images"""
-    image_files = glob.glob("./output/**/*.png", recursive=True)
+def init_session_state():
+    """Initialize all required session state variables"""
     
-    if not image_files:
-        return []
+    # Load settings
+    if "settings" not in st.session_state:
+        st.session_state.settings = load_settings()
     
-    image_files.sort(key=os.path.getmtime, reverse=True)
-    latest_time = os.path.getmtime(image_files[0])
+    # UI State
+    if "show_help" not in st.session_state:
+        st.session_state.show_help = False
+    if "dark_mode" not in st.session_state:
+        st.session_state.dark_mode = st.session_state.settings.get("dark_mode", True)
+    if "verbose_mode" not in st.session_state:
+        st.session_state.verbose_mode = st.session_state.settings.get("verbose_mode", False)
     
-    batch_images = []
-    for file in image_files:
-        if abs(os.path.getmtime(file) - latest_time) < 1.0:
-            try:
-                # Open image and convert to RGB to ensure compatibility
-                img = Image.open(file)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                # Create a copy to avoid file lock issues
-                img_copy = img.copy()
-                img.close()
-                batch_images.append(img_copy)
-            except Exception as e:
-                print(f"Error loading image {file}: {e}")
-                continue
-    
-    return batch_images
-
-
-def load_all_generated_images():
-    """Load all generated images for history view"""
-    image_files = glob.glob("./output/**/*.png", recursive=True)
-    
-    if not image_files:
-        return []
-    
-    image_files.sort(key=os.path.getmtime, reverse=True)
-    
-    images = []
-    for file_path in image_files:
-        try:
-            # Open image and create a copy to avoid file lock issues
-            img = Image.open(file_path)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img_copy = img.copy()
-            img_size = img.size
-            img.close()
-            
-            images.append({
-                "image": img_copy,
-                "path": file_path,
-                "filename": os.path.basename(file_path),
-                "folder": os.path.basename(os.path.dirname(file_path)),
-                "modified": datetime.datetime.fromtimestamp(
-                    os.path.getmtime(file_path)
-                ).strftime("%Y-%m-%d %H:%M:%S"),
-                "size": f"{img_size[0]}x{img_size[1]}",
-            })
-        except Exception as e:
-            print(f"Error loading image {file_path}: {e}")
-            continue
-    
-    return images
-
-
-def get_vram_info():
-    """Get VRAM usage information"""
-    try:
-        from src.Device.ModelCache import get_memory_info
-        return get_memory_info()
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def clear_model_cache_ui():
-    """Clear model cache from UI"""
-    try:
-        from src.Device.ModelCache import clear_model_cache
-        clear_model_cache()
-        return True
-    except Exception as e:
-        st.error(f"Error clearing cache: {e}")
-        return False
-
-
-def apply_multiscale_preset(preset_name):
-    """Apply multiscale preset values"""
-    if preset_name == "None":
-        return None
-    
-    try:
-        from src.sample.multiscale_presets import get_preset_parameters
-        return get_preset_parameters(preset_name)
-    except Exception as e:
-        st.error(f"Error applying preset {preset_name}: {e}")
-        return None
-
-
-def ensure_generation_state_consistency():
-    """Ensure session state matches the actual background thread status"""
-    job_state = st.session_state.get("generation_job")
-    if job_state is None:
-        return
-
-    thread = job_state.get("thread")
-    if thread is not None and not thread.is_alive():
-        job_state.update({"thread": None, "complete_event": None, "start_time": None})
-        st.session_state.generation_job = job_state
-
-    if st.session_state.get("is_generating") and job_state.get("thread") is None:
+    # Generation State
+    if "is_generating" not in st.session_state:
         st.session_state.is_generating = False
+    if "interrupt_generation" not in st.session_state:
         st.session_state.interrupt_generation = False
+    if "lightdiffusion_ready" not in st.session_state:
+        st.session_state.lightdiffusion_ready = False
+    if "enhanced_prompt_preview" not in st.session_state:
+        st.session_state.enhanced_prompt_preview = {}
+    if "generation_job" not in st.session_state:
+        st.session_state.generation_job = {}
+    
+    # Setup State
+    if "setup_progress" not in st.session_state:
+        st.session_state.setup_progress = 0.0
+    if "setup_message" not in st.session_state:
+        st.session_state.setup_message = "Initializing..."
+    if "setup_thread" not in st.session_state:
+        st.session_state.setup_thread = None
+    if "setup_status" not in st.session_state:
+        st.session_state.setup_status = {
+            "progress": 0.0,
+            "message": "Initializing...",
+            "complete": False,
+            "error": None,
+            "pipeline": None,
+            "app_instance": None
+        }
+    
+    # Display State
+    if "generated_images" not in st.session_state:
+        st.session_state.generated_images = []
+    if "display_size" not in st.session_state:
+        st.session_state.display_size = (512, 512)
 
-
-def stop_active_generation(
-    status_placeholder=None,
-    wait_message="⚠️ Stopping current generation...",
-    complete_message="Generation stopped.",
-    timeout=120.0,
-    show_complete_message=True,
-):
-    """Signal the sampler to stop and wait for the background thread to exit"""
-    ensure_generation_state_consistency()
-    job_state = st.session_state.get("generation_job", {})
-    thread = job_state.get("thread")
-
-    if thread is None or not thread.is_alive():
-        job_state.update({"thread": None, "complete_event": None, "start_time": None})
-        st.session_state.generation_job = job_state
-        st.session_state.is_generating = False
-        st.session_state.interrupt_generation = False
-        return True
-
-    st.session_state.interrupt_generation = True
-
-    if app_instance is not None and hasattr(app_instance, "app"):
-        try:
-            app_instance.app.request_interrupt()
-        except Exception:
-            pass
-
-    event = job_state.get("complete_event")
-    start_time = time.time()
-    last_update = -1.0
-
-    while thread.is_alive():
-        if status_placeholder is not None and time.time() - last_update >= 0.5:
-            elapsed = time.time() - start_time
-            status_placeholder.warning(f"{wait_message} ({elapsed:.1f}s)")
-            last_update = time.time()
-
-        if event is not None:
-            event.wait(timeout=0.1)
-        else:
-            time.sleep(0.1)
-
-        if timeout is not None and (time.time() - start_time) > timeout:
-            if status_placeholder is not None:
-                status_placeholder.error("❌ Timed out while stopping the current generation.")
-            return False
-
-    st.session_state.is_generating = False
-    st.session_state.interrupt_generation = False
-
-    job_state.update({"thread": None, "complete_event": None, "start_time": None})
-    st.session_state.generation_job = job_state
-
-    if app_instance is not None and hasattr(app_instance, "app"):
-        try:
-            app_instance.app.clear_interrupt()
-        except Exception:
-            pass
-
-    if status_placeholder is not None and show_complete_message:
-        status_placeholder.info(complete_message)
-
-    return True
-
-
-def generate_images(settings, progress_placeholder, status_placeholder, gallery_placeholder):
-    """Generate images with the given settings and live preview support"""
-    global app_instance, pipeline
-
-    if app_instance is None or pipeline is None:
-        status_placeholder.error("❌ LightDiffusion is not initialized yet!")
-        return []
-
-    temp_img2img_path = None
-    generation_error: Exception | None = None
-    interrupted = False
-    gen_thread: threading.Thread | None = None
-
-    try:
-        st.session_state.interrupt_generation = False
-        st.session_state.is_generating = True
-        st.session_state.enhanced_prompt_preview = None
-
-        if hasattr(app_instance, "app"):
-            app_instance.app.previewer_var.set(settings["enable_preview"])
-            app_instance.app.cleanup_all_previews()
-            app_instance.app.clear_interrupt()
-
-        from src.Device.ModelCache import set_keep_models_loaded
-
-        set_keep_models_loaded(settings["keep_models_loaded"])
-
-        if settings["img2img_enabled"] and settings.get("img2img_image") is not None:
-            img_array = settings["img2img_image"]
-            if isinstance(img_array, np.ndarray):
-                img_pil = Image.fromarray(img_array)
-                temp_img2img_path = "temp_img2img.png"
-                img_pil.save(temp_img2img_path)
-
-        status_placeholder.info("🎨 Generating images...")
-
-        pipeline_result = None
-        generation_complete = threading.Event()
-
-        job_state = st.session_state.get("generation_job", {})
-        job_state["complete_event"] = generation_complete
-        job_state["start_time"] = time.time()
-        st.session_state.generation_job = job_state
-
-        def run_generation():
-            nonlocal pipeline_result, generation_error
-            try:
-                pipeline_result = pipeline(
-                    prompt=settings["prompt"],
-                    negative_prompt=settings["negative_prompt"],
-                    w=settings["width"],
-                    h=settings["height"],
-                    number=settings["num_images"],
-                    batch=settings["batch_size"],
-                    hires_fix=settings["hires_fix"],
-                    adetailer=settings["adetailer"],
-                    enhance_prompt=settings["enhance_prompt"],
-                    img2img=settings["img2img_enabled"],
-                    img2img_image=temp_img2img_path,
-                    stable_fast=settings["stable_fast"],
-                    reuse_seed=settings["reuse_seed"],
-                    flux_enabled=settings["flux_enabled"],
-                    prio_speed=settings["prio_speed"],
-                    autohdr=True,
-                    realistic_model=settings["realistic_model"],
-                    enable_multiscale=settings["multiscale_enabled"],
-                    multiscale_intermittent_fullres=settings["multiscale_intermittent"],
-                    multiscale_factor=settings["multiscale_factor"],
-                    multiscale_fullres_start=settings["multiscale_fullres_start"],
-                    multiscale_fullres_end=settings["multiscale_fullres_end"],
-                )
-            except InterruptedError as exc:
-                generation_error = exc
-            except Exception as exc:  # pragma: no cover - surfaced to UI
-                generation_error = exc
-            finally:
-                generation_complete.set()
-
-        gen_thread = threading.Thread(target=run_generation, daemon=True)
-        gen_thread.start()
-
-        job_state = st.session_state.get("generation_job", {})
-        job_state["thread"] = gen_thread
-        job_state["complete_event"] = generation_complete
-        job_state["start_time"] = time.time()
-        st.session_state.generation_job = job_state
-
-        preview_container = (
-            gallery_placeholder.empty() if settings["enable_preview"] else None
-        )
-        last_preview_time = 0
-        interrupt_notified = False
-
-        while not generation_complete.wait(0.2):
-            if st.session_state.interrupt_generation and not interrupt_notified:
-                interrupted = True
-                interrupt_notified = True
-                try:
-                    app_instance.app.request_interrupt()
-                except Exception:
-                    pass
-                status_placeholder.warning("⚠️ Cancelling generation...")
-
-            if settings["enable_preview"]:
-                current_previews = app_instance.app.get_latest_previews()
-                if current_previews and app_instance.app.last_preview_time > last_preview_time:
-                    last_preview_time = app_instance.app.last_preview_time
-                    preview_images = []
-                    for preview_path in current_previews:
-                        try:
-                            with Image.open(preview_path) as preview_img:
-                                preview_images.append(preview_img.copy())
-                        except Exception:
-                            continue
-
-                    if preview_images and preview_container is not None:
-                        with preview_container.container():
-                            st.caption("🔄 Preview (TAESD)")
-                            cols = st.columns(len(preview_images))
-                            for col, img in zip(cols, preview_images):
-                                with col:
-                                    st.image(img, width="stretch")
-                        status_placeholder.info(
-                            f"🎨 Generating... ({len(preview_images)} preview(s))"
-                        )
-
-        gen_thread.join(timeout=1.0)
-        if gen_thread.is_alive():
-            status_placeholder.warning("⚠️ Waiting for generation to stop...")
-            gen_thread.join()
-
-        if isinstance(generation_error, InterruptedError):
-            status_placeholder.warning("⚠️ Generation interrupted!")
-            st.session_state.enhanced_prompt_preview = None
-            return []
-
-        if generation_error is not None:
-            raise generation_error
-
-        if interrupted and st.session_state.interrupt_generation:
-            status_placeholder.warning("⚠️ Generation stopped.")
-            st.session_state.enhanced_prompt_preview = None
-            return []
-
-        if isinstance(pipeline_result, dict) and settings.get("enhance_prompt"):
-            st.session_state.enhanced_prompt_preview = pipeline_result
-        else:
-            st.session_state.enhanced_prompt_preview = None
-
-        status_placeholder.success("✅ Generation complete!")
-        return load_generated_images()
-
-    except InterruptedError:
-        status_placeholder.warning("⚠️ Generation interrupted!")
-        st.session_state.enhanced_prompt_preview = None
-        return []
-    except Exception as e:  # pragma: no cover - surfaced to UI
-        import traceback
-
-        status_placeholder.error(f"❌ Error: {str(e)}")
-        st.error(traceback.format_exc())
-        st.session_state.enhanced_prompt_preview = None
-        return []
-    finally:
-        st.session_state.is_generating = False
-        st.session_state.interrupt_generation = False
-
-        job_state = st.session_state.get("generation_job", {})
-        tracked_thread = job_state.get("thread")
-        if tracked_thread is None or tracked_thread is gen_thread or not tracked_thread.is_alive():
-            job_state.update({"thread": None, "complete_event": None, "start_time": None})
-            st.session_state.generation_job = job_state
-
-        if hasattr(app_instance, "app"):
-            try:
-                app_instance.app.cleanup_all_previews()
-            except Exception:
-                pass
-            try:
-                app_instance.app.clear_interrupt()
-            except Exception:
-                pass
-
-        if temp_img2img_path and os.path.exists(temp_img2img_path):
-            try:
-                os.remove(temp_img2img_path)
-            except Exception:
-                pass
-
-
-# Initialize session state
-if "settings" not in st.session_state:
-    st.session_state.settings = load_settings()
-if "show_help" not in st.session_state:
-    st.session_state.show_help = False
-# Load dark_mode from saved settings first
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = st.session_state.settings.get("dark_mode", False)
-if "is_generating" not in st.session_state:
-    st.session_state.is_generating = False
-if "interrupt_generation" not in st.session_state:
-    st.session_state.interrupt_generation = False
-if "lightdiffusion_ready" not in st.session_state:
-    st.session_state.lightdiffusion_ready = False
-if "setup_progress" not in st.session_state:
-    st.session_state.setup_progress = 0.0
-if "setup_message" not in st.session_state:
-    st.session_state.setup_message = "Initializing..."
-if "setup_thread" not in st.session_state:
-    st.session_state.setup_thread = None
-if "setup_status" not in st.session_state:
-    # Thread-safe dictionary for communication
-    st.session_state.setup_status = {
-        "progress": 0.0,
-        "message": "Initializing...",
-        "ready": False,
-        "error": None,
-        "logs": [],
-        "pipeline": None,
-        "app_instance": None
-    }
-if "verbose_mode" not in st.session_state:
-    st.session_state.verbose_mode = VERBOSE_MODE
-if "enhanced_prompt_preview" not in st.session_state:
-    st.session_state.enhanced_prompt_preview = None
-if "generation_job" not in st.session_state:
-    st.session_state.generation_job = {
-        "thread": None,
-        "complete_event": None,
-        "start_time": None,
-    }
-
-ensure_generation_state_consistency()
-
+# ============================================================================
+# Background Initialization
+# ============================================================================
 
 def initialize_lightdiffusion(status_dict, verbose=False):
-    """Initialize LightDiffusion in the background"""
-    global pipeline, app_instance
-    
-    def log(message):
-        """Add a log entry with timestamp"""
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        log_entry = f"[{timestamp}] {message}"
-        status_dict["logs"].append(log_entry)
-        # Print to console in verbose mode
-        if verbose:
-            print(log_entry)
-    
+    """Initialize LightDiffusion in background thread"""
     try:
-        log("🔧 Initialization started")
+        status_dict["message"] = "Checking and downloading models..."
+        status_dict["progress"] = 0.1
         
-        # Update progress via thread-safe dict
-        status_dict["message"] = "Loading core modules..."
-        status_dict["progress"] = 0.05
-        log("📦 Loading core modules...")
+        # Download models
+        CheckAndDownload()
         
-        # Import basic dependencies first
-        status_dict["message"] = "Importing pipeline..."
-        status_dict["progress"] = 0.15
-        log("🔌 Importing pipeline module...")
+        status_dict["message"] = "Loading pipeline..."
+        status_dict["progress"] = 0.5
         
-        # Import the modules
-        from src.user.pipeline import pipeline as pipeline_func
-        from src.user import app_instance as app_inst
+        # Import pipeline (already done at top)
+        status_dict["pipeline"] = pipeline
+        status_dict["app_instance"] = app_instance
         
-        # Store in status dict for main thread to access
-        status_dict["pipeline"] = pipeline_func
-        status_dict["app_instance"] = app_inst
-        
-        # Also update globals (though status_dict is the source of truth)
-        pipeline = pipeline_func
-        app_instance = app_inst
-        log("✓ Pipeline imported successfully")
-        
-        status_dict["message"] = "Verifying models..."
-        status_dict["progress"] = 0.30
-        log("🔍 Verifying model files...")
-        
-        # This is where the heavy lifting happens
-        from src.FileManaging import Downloader
-        
-        status_dict["message"] = "Checking model files..."
-        status_dict["progress"] = 0.50
-        log("📥 Running model downloader...")
-        
-        Downloader.CheckAndDownload()
-        log("✓ All models verified and ready")
-        
-        status_dict["message"] = "Finalizing setup..."
-        status_dict["progress"] = 0.90
-        log("⚙️ Finalizing configuration...")
-        
-        status_dict["message"] = "✓ Ready to generate!"
+        status_dict["message"] = "Ready!"
         status_dict["progress"] = 1.0
-        status_dict["ready"] = True
-        log("🎉 LightDiffusion is ready!")
+        status_dict["complete"] = True
         
     except Exception as e:
-        status_dict["message"] = f"❌ Setup failed: {str(e)}"
-        status_dict["progress"] = 0.0
         status_dict["error"] = str(e)
-        log(f"❌ Error: {str(e)}")
-        print(f"LightDiffusion initialization error: {e}")
+        status_dict["complete"] = True
+        if verbose:
+            import traceback
+            traceback.print_exc()
 
-
-# Start initialization if not already started
-if not st.session_state.lightdiffusion_ready and st.session_state.setup_thread is None:
-    st.session_state.setup_thread = threading.Thread(
-        target=initialize_lightdiffusion, 
-        args=(st.session_state.setup_status, st.session_state.verbose_mode),
-        daemon=True
-    )
-    st.session_state.setup_thread.start()
-
-# Check if thread is still running but lost (e.g., after page refresh)
-if not st.session_state.lightdiffusion_ready and st.session_state.setup_thread is not None:
-    # Check if the thread is still alive
-    if not st.session_state.setup_thread.is_alive() and not st.session_state.setup_status["ready"]:
-        # Thread died without completing - restart it
-        st.session_state.setup_thread = threading.Thread(
-            target=initialize_lightdiffusion, 
-            args=(st.session_state.setup_status, st.session_state.verbose_mode),
+def start_initialization():
+    """Start background initialization if not already started"""
+    if st.session_state.setup_thread is None or not st.session_state.setup_thread.is_alive():
+        status_dict = st.session_state.setup_status
+        status_dict["complete"] = False
+        status_dict["error"] = None
+        
+        thread = threading.Thread(
+            target=initialize_lightdiffusion,
+            args=(status_dict, st.session_state.verbose_mode),
             daemon=True
         )
-        st.session_state.setup_thread.start()
+        thread.start()
+        st.session_state.setup_thread = thread
 
-# Update local state from thread-safe dict
-if not st.session_state.lightdiffusion_ready:
-    st.session_state.setup_progress = st.session_state.setup_status["progress"]
-    st.session_state.setup_message = st.session_state.setup_status["message"]
-    if st.session_state.setup_status["ready"]:
-        # Update globals from loaded modules
-        pipeline = st.session_state.setup_status["pipeline"]
-        app_instance = st.session_state.setup_status["app_instance"]
-        st.session_state.lightdiffusion_ready = True
-else:
-    # Ensure globals are set on subsequent runs
-    if pipeline is None and st.session_state.setup_status["pipeline"] is not None:
-        pipeline = st.session_state.setup_status["pipeline"]
-        app_instance = st.session_state.setup_status["app_instance"]
+# ============================================================================
+# CSS Styling
+# ============================================================================
 
-# Apply theme CSS based on loaded dark_mode setting
-st.markdown(get_theme_css(st.session_state.dark_mode), unsafe_allow_html=True)
+def inject_custom_css():
+    """Inject custom CSS for theming and responsive images"""
+    theme = "dark" if st.session_state.dark_mode else "light"
+    
+    css = f"""
+    <style>
+    /* Main theming */
+    :root {{
+        --ld-bg-primary: {'#0e1117' if theme == 'dark' else '#ffffff'};
+        --ld-bg-secondary: {'#262730' if theme == 'dark' else '#f0f2f6'};
+        --ld-text-primary: {'#fafafa' if theme == 'dark' else '#262730'};
+        --ld-text-secondary: {'#a3a8b4' if theme == 'dark' else '#6c757d'};
+        --ld-accent: {'#ff4b4b' if theme == 'dark' else '#ff4b4b'};
+    }}
+    
+    /* Responsive image container */
+    .ld-responsive-image {{
+        width: var(--ld-display-width, 100%);
+        height: var(--ld-display-height, auto);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    .ld-responsive-image img {{
+        width: var(--ld-display-width, auto) !important;
+        height: var(--ld-display-height, auto) !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+        border-radius: 8px;
+    }}
+    
+    /* Status indicators */
+    .status-generating {{
+        color: #ffa500;
+        animation: pulse 1.5s ease-in-out infinite;
+    }}
+    
+    @keyframes pulse {{
+        0%, 100% {{ opacity: 1; }}
+        50% {{ opacity: 0.6; }}
+    }}
+    
+    /* Sidebar styling */
+    .sidebar .sidebar-content {{
+        background-color: var(--ld-bg-secondary);
+    }}
+    
+    /* Compact expanders */
+    .streamlit-expanderHeader {{
+        font-size: 0.95rem;
+        font-weight: 500;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
 
-# Show setup progress if not ready
-if not st.session_state.lightdiffusion_ready:
-    setup_placeholder = st.empty()
-    with setup_placeholder.container():
-        st.markdown("### 🚀 Starting LightDiffusion")
-        st.info("⚙️ Setting up the AI models and dependencies...")
+# ============================================================================
+# Image Display Helpers
+# ============================================================================
+
+def compute_display_size(image_width, image_height, max_width=800, max_height=600):
+    """Compute display size that fits viewport while preserving aspect ratio"""
+    aspect_ratio = image_width / image_height
+    
+    if aspect_ratio > max_width / max_height:
+        # Width-constrained
+        display_w = max_width
+        display_h = int(max_width / aspect_ratio)
+    else:
+        # Height-constrained
+        display_h = max_height
+        display_w = int(max_height * aspect_ratio)
+    
+    return (display_w, display_h)
+
+@st.cache_data
+def image_to_base64(image, format="PNG"):
+    """Convert PIL Image to base64 string (cached)"""
+    buffered = io.BytesIO()
+    image.save(buffered, format=format)
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return img_str
+
+def render_responsive_image(image, target_display_size, placeholder=None):
+    """Render image at exact display size with CSS variables"""
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    
+    display_w, display_h = target_display_size
+    
+    # Create display copy (downscaled if needed)
+    if image.size != target_display_size:
+        display_image = image.resize(target_display_size, Image.Resampling.LANCZOS)
+    else:
+        display_image = image
+    
+    # Convert to base64
+    img_b64 = image_to_base64(display_image)
+    
+    # Render with CSS variables
+    html = f"""
+    <div class="ld-responsive-image" style="--ld-display-width: {display_w}px; --ld-display-height: {display_h}px;">
+        <img src="data:image/png;base64,{img_b64}" alt="Generated Image">
+    </div>
+    """
+    
+    if placeholder:
+        placeholder.markdown(html, unsafe_allow_html=True)
+    else:
+        st.markdown(html, unsafe_allow_html=True)
+
+# ============================================================================
+# Generation Functions
+# ============================================================================
+
+def generate_images(settings, status_placeholder, gallery_placeholder):
+    """Generate images with live preview support"""
+    
+    # Pre-generation checks
+    if not st.session_state.lightdiffusion_ready:
+        status_placeholder.error("❌ LightDiffusion is not initialized yet!")
+        return []
+    
+    if not settings["prompt"].strip():
+        status_placeholder.warning("⚠️ Please enter a prompt!")
+        return []
+    
+    # Setup generation state
+    st.session_state.interrupt_generation = False
+    st.session_state.is_generating = True
+    app_instance.app.cleanup_all_previews()
+    app_instance.app.clear_interrupt()
+    set_keep_models_loaded(settings["keep_models_loaded"])
+    
+    # Create output directories
+    os.makedirs("./output/preview_display", exist_ok=True)
+    
+    # Background generation thread
+    pipeline_result = None
+    generation_complete = threading.Event()
+    generation_error = None
+    
+    def run_generation():
+        nonlocal pipeline_result, generation_error
+        try:
+            # Prepare multiscale parameters
+            if settings["multiscale_custom"]:
+                # Use custom settings
+                multiscale_params = {
+                    "multiscale_preset": None,
+                    "enable_multiscale": True,
+                    "multiscale_factor": settings["multiscale_factor"],
+                    "multiscale_fullres_start": settings["multiscale_fullres_start"],
+                    "multiscale_fullres_end": settings["multiscale_fullres_end"],
+                    "multiscale_intermittent_fullres": settings["multiscale_intermittent_fullres"],
+                }
+            else:
+                # Use preset
+                multiscale_params = {
+                    "multiscale_preset": settings["multiscale_preset"],
+                }
+            
+            result = pipeline(
+                prompt=settings["prompt"],
+                negative_prompt=settings["negative_prompt"],
+                w=settings["width"],
+                h=settings["height"],
+                number=settings["num_images"],
+                batch=1,
+                hires_fix=settings["hiresfix"],
+                adetailer=settings["adetailer"],
+                enhance_prompt=settings["enhance_prompt"],
+                img2img=settings["img2img_mode"],
+                stable_fast=settings["stable_fast"],
+                reuse_seed=settings["reuse_seed"],
+                flux_enabled=settings["flux_mode"],
+                prio_speed=settings["speed_mode"],
+                autohdr=True,
+                realistic_model=settings["realistic_mode"],
+                img2img_image=settings.get("input_image_path") if settings["img2img_mode"] else None,
+                **multiscale_params,
+            )
+            pipeline_result = result
+        except Exception as e:
+            generation_error = e
+            if settings["verbose_mode"]:
+                import traceback
+                traceback.print_exc()
+        finally:
+            generation_complete.set()
+    
+    # Start generation thread
+    gen_thread = threading.Thread(target=run_generation, daemon=True)
+    gen_thread.start()
+    
+    # Track in session state
+    st.session_state.generation_job = {
+        "thread": gen_thread,
+        "complete_event": generation_complete,
+        "start_time": time.time()
+    }
+    
+    # Compute display size
+    display_size = compute_display_size(
+        settings["width"], 
+        settings["height"],
+        max_width=800,
+        max_height=600
+    )
+    st.session_state.display_size = display_size
+    
+    # Preview update loop
+    preview_container = gallery_placeholder.empty() if settings["enable_preview"] else None
+    last_preview_time = 0
+    
+    while not generation_complete.wait(0.2):
+        # Check for interrupt
+        if st.session_state.interrupt_generation:
+            app_instance.app.request_interrupt()
+            status_placeholder.warning("⏹️ Stopping generation...")
+            break
         
-        # Progress bar with percentage
-        progress_value = st.session_state.setup_progress
-        st.progress(progress_value)
+        # Update preview
+        if preview_container and settings["enable_preview"]:
+            current_time = time.time()
+            if current_time - last_preview_time > 0.5:  # Update every 0.5s
+                previews = app_instance.app.get_latest_previews()
+                if previews:
+                    try:
+                        latest_preview = Image.open(previews[-1])
+                        render_responsive_image(latest_preview, display_size, preview_container)
+                        last_preview_time = current_time
+                    except Exception:
+                        pass
         
-        # Status message with progress percentage
-        progress_pct = int(progress_value * 100)
-        st.markdown(f"**{progress_pct}%** - {st.session_state.setup_message}")
+        # Update status
+        elapsed = time.time() - st.session_state.generation_job["start_time"]
+        status_placeholder.info(f"🎨 Generating... ({elapsed:.1f}s)")
+    
+    # Cleanup previews
+    try:
+        app_instance.app.cleanup_all_previews()
+    except Exception:
+        pass
+    
+    # Small delay to ensure files are fully written
+    time.sleep(0.3)
+    
+    # Handle results
+    st.session_state.is_generating = False
+    
+    if generation_error:
+        status_placeholder.error(f"❌ Generation failed: {generation_error}")
+        return []
+    
+    # Find generated images (check all possible output directories)
+    generated_images = []
+    
+    # Determine which directory to check based on generation mode
+    if settings["flux_mode"]:
+        primary_dirs = ["./output/Flux"]
+    elif settings["img2img_mode"]:
+        primary_dirs = ["./output/Img2Img"]
+    elif settings["adetailer"]:
+        primary_dirs = ["./output/Adetailer", "./output/Classic", "./output/HiresFix"]
+    elif settings["hiresfix"]:
+        primary_dirs = ["./output/HiresFix"]
+    else:
+        primary_dirs = ["./output/Classic"]
+    
+    # Collect all PNG files from primary directories
+    all_outputs = []
+    for output_dir in primary_dirs:
+        if os.path.exists(output_dir):
+            files = glob.glob(f"{output_dir}/*.png")
+            all_outputs.extend(files)
+    
+    # Debug: print what we found
+    if settings["verbose_mode"]:
+        status_placeholder.info(f"Searching in: {primary_dirs}, Found {len(all_outputs)} files")
+    
+    # Sort by modification time and get the most recent
+    if all_outputs:
+        all_outputs = sorted(all_outputs, key=os.path.getmtime, reverse=True)
+        for f in all_outputs[:settings["num_images"]]:
+            try:
+                img = Image.open(f)
+                generated_images.append((img, f))
+            except Exception as e:
+                if settings["verbose_mode"]:
+                    status_placeholder.warning(f"Error loading {f}: {e}")
+    
+    if generated_images:
+        # Save to session state first
+        st.session_state.generated_images = generated_images
+        st.session_state.display_size = display_size
         
-        # Helpful tip while waiting
-        if progress_value < 0.5:
-            st.caption("💡 First-time setup may take a few minutes to download models...")
-        elif progress_value < 1.0:
-            st.caption("⏳ Almost ready...")
+        # Display first image
+        img, path = generated_images[0]
+        render_responsive_image(img, display_size, gallery_placeholder)
         
-        # Show logs in collapsible section
-        if st.session_state.setup_status["logs"]:
-            # Expand logs by default in verbose mode
-            with st.expander("📋 View Setup Logs", expanded=st.session_state.verbose_mode):
-                logs_text = "\n".join(st.session_state.setup_status["logs"])
-                st.code(logs_text, language=None)
+        elapsed = time.time() - st.session_state.generation_job["start_time"]
+        status_placeholder.success(f"✅ Generated {len(generated_images)} image(s) in {elapsed:.1f}s")
+        return [img for img, _ in generated_images]
+    else:
+        # Show a helpful message with debug info
+        if pipeline_result:
+            checked_dirs = ", ".join(primary_dirs)
+            status_placeholder.warning(f"⚠️ Generation completed but no images found. Checked: {checked_dirs}")
+        else:
+            status_placeholder.info("Generation stopped")
+        return []
+
+def stop_generation():
+    """Request generation stop"""
+    st.session_state.interrupt_generation = True
+
+# ============================================================================
+# Main UI
+# ============================================================================
+
+def main():
+    # Initialize session state
+    init_session_state()
+    
+    # Inject CSS
+    inject_custom_css()
+    
+    # Start initialization if needed
+    if not st.session_state.lightdiffusion_ready and not st.session_state.setup_status.get("complete"):
+        start_initialization()
+    
+    # Check initialization status
+    if not st.session_state.lightdiffusion_ready:
+        setup_status = st.session_state.setup_status
         
-        # Auto-refresh while setting up
-        if st.session_state.setup_progress < 1.0:
-            time.sleep(0.3)
+        if setup_status.get("error"):
+            st.error(f"❌ Initialization failed: {setup_status['error']}")
+            if st.button("Retry Initialization"):
+                st.session_state.setup_thread = None
+                st.rerun()
+            return
+        
+        if setup_status.get("complete"):
+            st.session_state.lightdiffusion_ready = True
             st.rerun()
         else:
-            # Clear the setup placeholder once complete
+            st.title("🎨 LightDiffusion")
+            st.info(setup_status.get("message", "Initializing..."))
+            progress = setup_status.get("progress", 0.0)
+            st.progress(progress)
             time.sleep(0.5)
-            setup_placeholder.empty()
-
-# Header with theme toggle and help button
-col_title, col_status, col_theme, col_help = st.columns([4, 1.5, 0.75, 0.75])
-with col_title:
-    st.markdown('<h1 class="main-header">LightDiffusion</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Fast AI image generation</p>', unsafe_allow_html=True)
-with col_status:
-    if st.session_state.lightdiffusion_ready:
-        st.markdown('<div style="margin-top: 15px;"><span style="color: #4ade80;">● Ready</span></div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div style="margin-top: 15px;"><span style="color: #fbbf24;">● Setting up...</span></div>', unsafe_allow_html=True)
-with col_theme:
-    theme_icon = "🌙" if not st.session_state.dark_mode else "☀️"
-    if st.button(theme_icon, help="Toggle theme", key="theme_toggle", type="secondary"):
-        st.session_state.dark_mode = not st.session_state.dark_mode
-        st.session_state.settings["dark_mode"] = st.session_state.dark_mode
-        save_settings(st.session_state.settings)
-        st.rerun()
-with col_help:
-    if st.button("?", help="Show help", type="secondary"):
-        st.session_state.show_help = not st.session_state.show_help
-
-# Help dialog
-if st.session_state.show_help:
-    with st.container():
-        st.info("""
-        **Quick Start Guide**
-        
-        1. **Prompt**: Describe what you want to generate
-        2. **Dimensions**: Set width and height (512x512 recommended)
-        3. **Images**: Choose how many to generate
-        4. Click **Generate**
-        
-        **Tips:**
-        - Use descriptive prompts for better results
-        - Enable **HiRes Fix** for 2x quality boost
-        - **Auto Enhance** improves faces automatically
-        - **Fast** mode prioritizes speed over quality
-        - **Flux** mode uses advanced Flux model
-        - **Img2Img** generates from an uploaded image
-        
-        **Multi-Scale Presets:**
-        - **Quality**: Best results, slower
-        - **Performance**: Fastest, good results
-        - **Balanced**: Good speed and quality
-        - **None**: Disable optimization
-        
-        **Advanced:**
-        - **Reuse Seed**: Same results with same prompt
-        - **Keep in VRAM**: Faster subsequent generations
-        - **Live Preview**: See progress during generation
-        """)
-        if st.button("Close Help"):
-            st.session_state.show_help = False
             st.rerun()
-
-# Main tabs
-tab1, tab2, tab3 = st.tabs(["Generate", "History", "Settings"])
-
-# ============================================================================
-# TAB 1: GENERATE
-# ============================================================================
-with tab1:
-    col_left, col_right = st.columns([1, 1])
+            return
     
-    with col_left:
-        # Prompt
-        prompt = st.text_area(
-            "Prompt",
-            value=st.session_state.settings["prompt"],
-            height=100,
-            placeholder="Describe what you want to generate...",
-            key="prompt_input"
-        )
+    # ========================================================================
+    # Header
+    # ========================================================================
+    
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.title("🎨 LightDiffusion")
+    with col2:
+        if st.button("❓ Help"):
+            st.session_state.show_help = not st.session_state.show_help
+    
+    if st.session_state.show_help:
+        st.info("""
+        **LightDiffusion Quick Guide:**
+        - Enter your prompt in the sidebar
+        - Adjust settings in the expandable sections
+        - Click Generate to create images
+        - Enable Live Preview to see progress
+        - All settings auto-save
+        """)
+    
+    # ========================================================================
+    # Sidebar Controls
+    # ========================================================================
+    
+    settings = st.session_state.settings
+    
+    with st.sidebar:
+        st.header("⚙️ Settings")
         
-        # Negative prompt
-        with st.expander("Negative Prompt", expanded=False):
+        # Prompt & Text
+        with st.expander("📝 Prompt & Text", expanded=True):
+            prompt = st.text_area(
+                "Prompt",
+                value=settings["prompt"],
+                height=100,
+                key="prompt_input"
+            )
+            settings["prompt"] = prompt
+            
             negative_prompt = st.text_area(
-                "What to avoid",
-                value=st.session_state.settings["negative_prompt"],
-                height=60,
+                "Negative Prompt",
+                value=settings["negative_prompt"],
+                height=80,
                 key="negative_prompt_input"
             )
+            settings["negative_prompt"] = negative_prompt
         
-        st.markdown("**Dimensions**")
-        dim_col1, dim_col2 = st.columns(2)
-        with dim_col1:
-            width = st.slider("Width", 64, 2048, st.session_state.settings["width"], 64)
-        with dim_col2:
-            height = st.slider("Height", 64, 2048, st.session_state.settings["height"], 64)
+        # Dimensions & Batch
+        with st.expander("📐 Dimensions & Batch", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                settings["width"] = st.number_input("Width", min_value=64, max_value=2048, value=settings["width"], step=64)
+            with col2:
+                settings["height"] = st.number_input("Height", min_value=64, max_value=2048, value=settings["height"], step=64)
+            
+            settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=10, value=settings["num_images"])
+            
+            # Presets
+            preset = st.selectbox("Presets", ["Custom", "512x512", "768x768", "1024x1024", "512x768 (Portrait)", "768x512 (Landscape)"])
+            if preset == "512x512":
+                settings["width"], settings["height"] = 512, 512
+            elif preset == "768x768":
+                settings["width"], settings["height"] = 768, 768
+            elif preset == "1024x1024":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "512x768 (Portrait)":
+                settings["width"], settings["height"] = 512, 768
+            elif preset == "768x512 (Landscape)":
+                settings["width"], settings["height"] = 768, 512
         
-        gen_col1, gen_col2 = st.columns(2)
-        with gen_col1:
-            num_images = st.slider("Images", 1, 10, st.session_state.settings["num_images"])
-        with gen_col2:
-            batch_size = st.slider("Batch", 1, 4, st.session_state.settings["batch_size"])
+        # Generation Modes
+        with st.expander("🎯 Generation Modes", expanded=False):
+            settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"])
+            settings["realistic_mode"] = st.checkbox("Realistic Mode", value=settings["realistic_mode"])
+            settings["speed_mode"] = st.checkbox("Speed Mode", value=settings["speed_mode"])
+            settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"])
+            
+            if settings["img2img_mode"]:
+                uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+                if uploaded_file:
+                    img_path = f"./output/uploaded_{uploaded_file.name}"
+                    with open(img_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    settings["input_image_path"] = img_path
+                    st.image(uploaded_file, caption="Input Image", use_column_width=True)
         
-        st.markdown("---")
+        # Enhancements
+        with st.expander("✨ Enhancements", expanded=False):
+            settings["hiresfix"] = st.checkbox("HiRes Fix", value=settings["hiresfix"])
+            settings["adetailer"] = st.checkbox("ADetailer", value=settings["adetailer"])
+            settings["enhance_prompt"] = st.checkbox("Enhance Prompt", value=settings["enhance_prompt"])
+            settings["stable_fast"] = st.checkbox("Stable Fast", value=settings["stable_fast"])
         
-        st.markdown("### ⚙️ Generation Modes")
+        # Advanced Settings
+        with st.expander("🔧 Advanced", expanded=False):
+            settings["reuse_seed"] = st.checkbox("Reuse Seed", value=settings["reuse_seed"])
+            settings["enable_preview"] = st.checkbox("Live Preview", value=settings["enable_preview"])
         
-        mode_col1, mode_col2 = st.columns(2)
-        with mode_col1:
-            flux_enabled = st.checkbox("🌊 Flux Mode", st.session_state.settings["flux_enabled"], help="Use Flux model for generation")
-            realistic_model = st.checkbox("� Realistic Model", st.session_state.settings["realistic_model"], help="Use model optimized for realistic images")
-        with mode_col2:
-            img2img_enabled = st.checkbox("🖼️ Image to Image", st.session_state.settings["img2img_enabled"], help="Generate from an existing image")
-            prio_speed = st.checkbox("🚀 Speed Priority", st.session_state.settings["prio_speed"], help="Optimize for faster generation")
-        
-        # Image to Image
-        img2img_image = None
-        if img2img_enabled:
-            img2img_image = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
-            if img2img_image:
-                img2img_image = Image.open(img2img_image)
-                st.image(img2img_image)
-                img2img_image = np.array(img2img_image)
-        
-        # Enhancement features
-        with st.expander("✨ Enhancement Features", expanded=False):
-            feat_col1, feat_col2 = st.columns(2)
-            with feat_col1:
-                hires_fix = st.checkbox("🔍 HiRes Fix", st.session_state.settings["hires_fix"], help="2x upscale with refinement pass")
-                adetailer = st.checkbox("� Auto Enhance", st.session_state.settings["adetailer"], help="Automatically enhance faces and bodies")
-            with feat_col2:
-                enhance_prompt = st.checkbox("✨ Enhance Prompt", st.session_state.settings["enhance_prompt"], help="Use AI to improve your prompt")
-                stable_fast = st.checkbox("⚡ Stable Fast", st.session_state.settings["stable_fast"], help="Compile model for 70% speed boost (first run slower)")
-        
-        # Advanced settings
-        with st.expander("Advanced", expanded=False):
-            adv_col1, adv_col2 = st.columns(2)
-            with adv_col1:
-                reuse_seed = st.checkbox("Reuse Seed", st.session_state.settings["reuse_seed"])
-                keep_models_loaded = st.checkbox("Keep in VRAM", st.session_state.settings["keep_models_loaded"])
-            with adv_col2:
-                enable_preview = st.checkbox("Live Preview", st.session_state.settings["enable_preview"])
-        
-        # Multi-scale settings
-        with st.expander("Multi-Scale", expanded=False):
-            multiscale_preset = st.selectbox(
+        # Multi-scale
+        with st.expander("🔬 Multi-scale", expanded=False):
+            preset_options = {
+                "quality": "Quality - Best image quality with intermittent full-res",
+                "balanced": "Balanced - Good quality and performance",
+                "performance": "Performance - Maximum speed with aggressive downscaling",
+                "disabled": "Disabled - Full resolution throughout",
+                "custom": "Custom - Configure all settings manually"
+            }
+            
+            # Determine current selection
+            if settings.get("multiscale_custom", False):
+                current_preset = "custom"
+            else:
+                current_preset = settings.get("multiscale_preset", "balanced")
+            
+            selected_preset = st.selectbox(
                 "Preset",
-                ["None", "quality", "performance", "balanced"],
-                index=["None", "quality", "performance", "balanced"].index(st.session_state.settings.get("multiscale_preset", "quality")) if st.session_state.settings.get("multiscale_preset", "quality") in ["None", "quality", "performance", "balanced"] else 0,
-                key="multiscale_preset_selector"
+                options=list(preset_options.keys()),
+                format_func=lambda x: preset_options[x],
+                index=list(preset_options.keys()).index(current_preset)
             )
             
-            # Apply preset values if changed
-            if st.session_state.settings.get("multiscale_preset") != multiscale_preset:
-                if multiscale_preset == "None":
-                    # Disable multi-scale completely
-                    st.session_state.settings["multiscale_enabled"] = False
-                    st.session_state.settings["multiscale_preset"] = multiscale_preset
-                    save_settings(st.session_state.settings)
-                    st.rerun()
-                else:
-                    # Apply preset values
-                    preset_params = apply_multiscale_preset(multiscale_preset)
-                    if preset_params:
-                        # Update session state with preset values
-                        st.session_state.settings["multiscale_enabled"] = preset_params["enable_multiscale"]
-                        st.session_state.settings["multiscale_factor"] = preset_params["multiscale_factor"]
-                        st.session_state.settings["multiscale_fullres_start"] = preset_params["multiscale_fullres_start"]
-                        st.session_state.settings["multiscale_fullres_end"] = preset_params["multiscale_fullres_end"]
-                        st.session_state.settings["multiscale_intermittent"] = preset_params["multiscale_intermittent_fullres"]
-                        st.session_state.settings["multiscale_preset"] = multiscale_preset
-                        save_settings(st.session_state.settings)
-                        st.rerun()
-            
-            multiscale_enabled = st.checkbox("Enable", st.session_state.settings["multiscale_enabled"])
-            
-            if multiscale_enabled:
-                multiscale_factor = st.slider(
-                    "Factor", 
-                    0.1, 1.0, 
-                    st.session_state.settings["multiscale_factor"], 
-                    0.1
+            if selected_preset == "custom":
+                settings["multiscale_custom"] = True
+                settings["multiscale_factor"] = st.slider(
+                    "Scale Factor",
+                    min_value=0.1,
+                    max_value=1.0,
+                    value=settings.get("multiscale_factor", 0.5),
+                    step=0.05,
+                    help="Scale factor for intermediate steps"
                 )
-                
-                ms_col1, ms_col2 = st.columns(2)
-                with ms_col1:
-                    multiscale_fullres_start = st.number_input(
-                        "Start", 
-                        0, 20, 
-                        st.session_state.settings["multiscale_fullres_start"]
-                    )
-                with ms_col2:
-                    multiscale_fullres_end = st.number_input(
-                        "End", 
-                        0, 20, 
-                        st.session_state.settings["multiscale_fullres_end"]
-                    )
-                
-                multiscale_intermittent = st.checkbox(
-                    "Intermittent", 
-                    st.session_state.settings["multiscale_intermittent"]
+                settings["multiscale_fullres_start"] = st.number_input(
+                    "Full-res Start Steps",
+                    min_value=0,
+                    max_value=20,
+                    value=settings.get("multiscale_fullres_start", 3),
+                    help="Number of first steps at full resolution"
+                )
+                settings["multiscale_fullres_end"] = st.number_input(
+                    "Full-res End Steps",
+                    min_value=0,
+                    max_value=20,
+                    value=settings.get("multiscale_fullres_end", 8),
+                    help="Number of last steps at full resolution"
+                )
+                settings["multiscale_intermittent_fullres"] = st.checkbox(
+                    "Intermittent Full-res",
+                    value=settings.get("multiscale_intermittent_fullres", False),
+                    help="Enable intermittent full-res rendering in low-res region"
                 )
             else:
-                # Set defaults when disabled
-                multiscale_factor = st.session_state.settings["multiscale_factor"]
-                multiscale_fullres_start = st.session_state.settings["multiscale_fullres_start"]
-                multiscale_fullres_end = st.session_state.settings["multiscale_fullres_end"]
-                multiscale_intermittent = st.session_state.settings["multiscale_intermittent"]
+                settings["multiscale_custom"] = False
+                settings["multiscale_preset"] = selected_preset
         
-        # Generate and Stop buttons
-        gen_col1, gen_col2 = st.columns([4, 1])
-        with gen_col1:
-            generate_btn = st.button(
-                "Generate" if st.session_state.lightdiffusion_ready else "Setting up...",
-                type="primary",
-                width='stretch',
-                disabled=not st.session_state.lightdiffusion_ready
-            )
-        with gen_col2:
-            stop_btn = st.button("⏹️", help="Stop generation", disabled=not st.session_state.is_generating)
-
-        if generate_btn:
-            st.session_state.enhanced_prompt_preview = None
+        # VRAM & Cache
+        with st.expander("💾 VRAM & Cache", expanded=False):
+            settings["keep_models_loaded"] = st.checkbox("Keep Models in VRAM", value=settings["keep_models_loaded"])
+            
+            if st.button("Clear Model Cache"):
+                clear_model_cache()
+                st.success("Cache cleared!")
+            
+            try:
+                mem_info = get_memory_info()
+                used_vram = mem_info.get('used_vram', 0)
+                total_vram = mem_info.get('total_vram', 0)
+                st.text(f"VRAM: {used_vram:.1f}GB / {total_vram:.1f}GB")
+            except Exception as e:
+                st.text(f"VRAM: Unable to detect ({str(e)})")
+        
+        # Verbose Mode
+        st.divider()
+        settings["verbose_mode"] = st.checkbox("Verbose Logging", value=settings["verbose_mode"])
+        st.session_state.verbose_mode = settings["verbose_mode"]
     
-    with col_right:
-        # Quick stats
-        if st.session_state.settings.get("last_gen_time"):
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-            with stat_col1:
-                st.metric("Resolution", f"{st.session_state.settings.get('last_width', width)}x{st.session_state.settings.get('last_height', height)}")
-            with stat_col2:
-                st.metric("Batch", f"{st.session_state.settings.get('last_num_images', num_images)}")
-            with stat_col3:
-                st.metric("Time", f"{st.session_state.settings.get('last_gen_time', 0):.1f}s")
-        
-        # Placeholders for status and results
-        status_placeholder = st.empty()
-        enhanced_prompt_placeholder = st.empty()
-        progress_placeholder = st.empty()
-        gallery_placeholder = st.empty()
-
-        preview_data = st.session_state.get("enhanced_prompt_preview")
-        if preview_data and preview_data.get("used_prompt"):
-            with enhanced_prompt_placeholder.container():
-                st.markdown("**Enhanced Prompt Preview**")
-                if preview_data.get("enhancement_applied"):
-                    st.caption("Prompt enhancer refined your text; this version was used for generation.")
-                else:
-                    st.caption("Prompt enhancer made no changes; generation used the same prompt.")
-                st.code(preview_data.get("used_prompt", ""), language=None)
-                if preview_data.get("enhancement_applied") and preview_data.get("original_prompt"):
-                    st.caption("Original prompt")
-                    st.code(preview_data.get("original_prompt", ""), language=None)
-        else:
-            enhanced_prompt_placeholder.empty()
-        
-        # Show existing images if any
-        existing_images = load_generated_images()
-        if existing_images:
-            # Display in columns to prevent media file storage issues
-            num_cols = min(len(existing_images), 4)
-            img_cols = gallery_placeholder.columns(num_cols)
-            for idx, img in enumerate(existing_images):
-                with img_cols[idx % num_cols]:
-                    st.image(img, width='stretch')
-        else:
-            gallery_placeholder.info("No images yet. Generate some to see them here!")
-        
-        # Handle stop button
-        if stop_btn:
-            stop_success = stop_active_generation(
-                status_placeholder,
-                wait_message="⚠️ Cancelling current generation...",
-                complete_message="Generation cancelled.",
-            )
-            if not stop_success:
-                status_placeholder.error(
-                    "❌ Unable to cancel the current generation. Please try again."
-                )
-            time.sleep(0.2)
-            st.rerun()
-        
-        # Handle generation
-        if generate_btn:
-            ensure_generation_state_consistency()
-            job_state = st.session_state.get("generation_job", {})
-            active_thread = job_state.get("thread")
-            if active_thread is not None and not active_thread.is_alive():
-                active_thread = None
-
-            can_start_generation = True
-
-            if not st.session_state.lightdiffusion_ready or pipeline is None:
-                status_placeholder.error(
-                    "❌ LightDiffusion is not ready yet. Please wait for setup to complete."
-                )
-                can_start_generation = False
-            elif not prompt.strip():
-                status_placeholder.warning("⚠️ Please enter a prompt!")
-                can_start_generation = False
-            elif active_thread is not None:
-                stop_success = stop_active_generation(
-                    status_placeholder,
-                    wait_message="⚠️ Stopping previous generation...",
-                    show_complete_message=False,
-                )
-                if not stop_success:
-                    status_placeholder.error(
-                        "❌ Unable to stop the current generation. Please try again."
-                    )
-                    can_start_generation = False
-
-            if can_start_generation:
-                start_time = time.time()
-
-                current_settings = {
-                    "prompt": prompt,
-                    "negative_prompt": negative_prompt,
-                    "width": width,
-                    "height": height,
-                    "num_images": num_images,
-                    "batch_size": batch_size,
-                    "hires_fix": hires_fix,
-                    "adetailer": adetailer,
-                    "enhance_prompt": enhance_prompt,
-                    "img2img_enabled": img2img_enabled,
-                    "stable_fast": stable_fast,
-                    "reuse_seed": reuse_seed,
-                    "flux_enabled": flux_enabled,
-                    "prio_speed": prio_speed,
-                    "realistic_model": realistic_model,
-                    "multiscale_enabled": multiscale_enabled,
-                    "multiscale_intermittent": multiscale_intermittent,
-                    "multiscale_factor": multiscale_factor,
-                    "multiscale_fullres_start": multiscale_fullres_start,
-                    "multiscale_fullres_end": multiscale_fullres_end,
-                    "keep_models_loaded": keep_models_loaded,
-                    "multiscale_preset": multiscale_preset,
-                    "enable_preview": enable_preview,
-                }
-
-                generation_settings = current_settings.copy()
-                generation_settings["img2img_image"] = img2img_image
-
-                st.session_state.settings.update(current_settings)
-                save_settings(st.session_state.settings)
-
-                with st.spinner("Generating images..."):
-                    generated_images = generate_images(
-                        generation_settings,
-                        progress_placeholder,
-                        status_placeholder,
-                        gallery_placeholder,
-                    )
-
-                    gen_time = time.time() - start_time
-
-                    if generated_images:
-                        st.session_state.settings.update(
-                            {
-                                "last_gen_time": gen_time,
-                                "last_width": width,
-                                "last_height": height,
-                                "last_num_images": num_images,
-                            }
-                        )
-                        save_settings(st.session_state.settings)
-
-                        st.rerun()
-                    else:
-                        gallery_placeholder.warning(
-                            "No images were generated. Check the error messages above."
-                        )
-
-# ============================================================================
-# TAB 2: HISTORY
-# ============================================================================
-with tab2:
+    # Save settings
+    st.session_state.settings = settings
+    save_settings(settings)
+    
+    # ========================================================================
+    # Main Canvas
+    # ========================================================================
+    
+    # Generate / Stop buttons in main layout
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("Refresh", width='stretch'):
-            st.rerun()
+        generate_clicked = st.button("🎨 Generate", use_container_width=True, disabled=st.session_state.is_generating, type="primary")
     with col2:
-        if st.button("Clear All", width='stretch', type="secondary"):
-            if st.session_state.get("confirm_delete_all"):
-                try:
-                    image_files = glob.glob("./output/**/*.png", recursive=True)
-                    for file_path in image_files:
-                        os.remove(file_path)
-                    st.success(f"Deleted {len(image_files)} images")
-                    st.session_state.confirm_delete_all = False
-                    time.sleep(0.5)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
-            else:
-                st.session_state.confirm_delete_all = True
-                st.warning("Click again to confirm")
+        stop_clicked = st.button("⏹️ Stop", use_container_width=True, disabled=not st.session_state.is_generating)
     
-    # Load all images
-    all_images = load_all_generated_images()
+    if stop_clicked:
+        stop_generation()
     
-    if not all_images:
-        st.info("No images found")
-    else:
-        st.caption(f"Total: {len(all_images)}")
+    st.divider()
+    
+    status_placeholder = st.empty()
+    gallery_placeholder = st.empty()
+    
+    # Show existing images if any
+    if st.session_state.generated_images and not st.session_state.is_generating:
+        img, path = st.session_state.generated_images[0]
+        display_size = st.session_state.display_size
+        render_responsive_image(img, display_size, gallery_placeholder)
         
-        # Display images in grid
-        cols_per_row = 4
-        for idx in range(0, len(all_images), cols_per_row):
-            cols = st.columns(cols_per_row)
-            for col_idx, col in enumerate(cols):
-                img_idx = idx + col_idx
-                if img_idx < len(all_images):
-                    img_data = all_images[img_idx]
-                    with col:
-                        st.image(img_data["image"])
-                        with st.expander("Info"):
-                            st.caption(img_data['filename'])
-                            st.caption(f"{img_data['size']} • {img_data['modified']}")
-                            if st.button("Delete", key=f"delete_{img_idx}"):
-                                try:
-                                    os.remove(img_data['path'])
-                                    st.success("Deleted")
-                                    time.sleep(0.3)
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(str(e))
+        # Download button
+        with open(path, "rb") as f:
+            st.download_button(
+                label="💾 Download Image",
+                data=f,
+                file_name=os.path.basename(path),
+                mime="image/png"
+            )
+        
+        # Show all images if multiple
+        if len(st.session_state.generated_images) > 1:
+            st.subheader("All Generated Images")
+            cols = st.columns(min(3, len(st.session_state.generated_images)))
+            for idx, (img, path) in enumerate(st.session_state.generated_images):
+                with cols[idx % 3]:
+                    st.image(img, caption=f"Image {idx+1}", use_column_width=True)
+    else:
+        # Show placeholder
+        gallery_placeholder.info("👈 Configure settings and click Generate to create images")
+    
+    # Handle generate button
+    if generate_clicked:
+        # Clear previous images but keep display size
+        st.session_state.generated_images = []
+        # Don't clear the placeholder here - let generate_images handle it
+        generate_images(settings, status_placeholder, gallery_placeholder)
+        # Rerun to refresh the UI and show the final image properly
+        st.rerun()
 
 # ============================================================================
-# TAB 3: SETTINGS
+# Entry Point
 # ============================================================================
-with tab3:
-    # VRAM Info
-    st.markdown("**VRAM**")
-    if st.button("Check VRAM"):
-        vram_info = get_vram_info()
-        if "error" in vram_info:
-            st.error(vram_info['error'])
-        else:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total", f"{vram_info.get('total_vram', 0):.1f} GB")
-            with col2:
-                st.metric("Used", f"{vram_info.get('used_vram', 0):.1f} GB")
-            with col3:
-                st.metric("Free", f"{vram_info.get('free_vram', 0):.1f} GB")
-            
-            st.caption(f"Models cached: {vram_info.get('has_cached_checkpoint', False)}")
-    
-    st.divider()
-    
-    # Model Cache Management
-    st.markdown("**Cache**")
-    if st.button("Clear Cache", type="secondary"):
-        if clear_model_cache_ui():
-            st.success("Cache cleared")
-        else:
-            st.error("Failed to clear cache")
-    
-    st.divider()
-    
-    # About
-    st.markdown("**About**")
-    st.caption("LightDiffusion - Fast AI image generation")
-    st.caption("[GitHub](https://github.com/LightDiffusion/LightDiffusion-Next)")
 
-# Auto-save settings on every interaction
-st.session_state.settings.update({
-    "prompt": prompt if 'prompt_input' in locals() else st.session_state.settings["prompt"],
-    "negative_prompt": negative_prompt if 'negative_prompt_input' in locals() else st.session_state.settings["negative_prompt"],
-})
-save_settings(st.session_state.settings)
+if __name__ == "__main__":
+    main()
