@@ -243,5 +243,5 @@ CMD if [ "${INSTALL_OLLAMA}" = "1" ]; then \
     if [ "$UI_FRAMEWORK" = "gradio" ]; then \
         python3 app.py; \
     else \
-        streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=8501; \
+        streamlit run streamlit_app.py --logger.level=error --server.address=0.0.0.0 --server.port=8501; \
     fi
