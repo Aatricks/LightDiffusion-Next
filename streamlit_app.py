@@ -88,6 +88,7 @@ def get_default_settings():
 # ============================================================================
 
 SETTINGS_FILE = "./webui_settings.json"
+HISTORY_FILE = "./webui_history.json"
 
 def load_settings():
     """Load settings from disk, merge with defaults"""
@@ -108,6 +109,161 @@ def save_settings(settings):
             json.dump(settings, f, indent=2, ensure_ascii=False)
     except Exception as e:
         st.error(f"Could not save settings: {e}")
+
+def load_history():
+    """Load generation history from disk"""
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            st.warning(f"Could not load history: {e}")
+    return []
+
+def save_history(history):
+    """Save generation history to disk"""
+    try:
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        st.error(f"Could not save history: {e}")
+
+def add_to_history(image_paths, settings):
+    """Add generated images to history"""
+    history = load_history()
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    for img_path in image_paths:
+        if os.path.exists(img_path):
+            # Read any embedded PNG metadata
+            png_meta = {}
+            try:
+                with Image.open(img_path) as _img:
+                    png_meta = getattr(_img, "info", {}) or {}
+            except Exception:
+                png_meta = {}
+
+            entry = {
+                "timestamp": timestamp,
+                "image_path": img_path,
+                "prompt": settings.get("prompt", ""),
+                "negative_prompt": settings.get("negative_prompt", ""),
+                "width": settings.get("width", None),
+                "height": settings.get("height", None),
+                "flux_mode": settings.get("flux_mode", False),
+                "realistic_mode": settings.get("realistic_mode", False),
+                # Add extracted PNG metadata fields if present
+                "seed": png_meta.get("seed"),
+                "sampler": png_meta.get("sampler"),
+                "steps": png_meta.get("steps"),
+                "cfg": png_meta.get("cfg"),
+                "scheduler": png_meta.get("scheduler"),
+                "denoise": png_meta.get("denoise"),
+                "png_metadata": png_meta,
+            }
+            history.insert(0, entry)  # Add to beginning
+    
+    # Keep only last 100 entries
+    history = history[:100]
+    save_history(history)
+
+def clear_history():
+    """Clear all history and delete all tracked image files"""
+    history = load_history()
+    
+    # Delete all image files
+    for entry in history:
+        img_path = entry.get("image_path")
+        if img_path and os.path.exists(img_path):
+            try:
+                os.remove(img_path)
+            except Exception as e:
+                st.warning(f"Could not delete {os.path.basename(img_path)}: {e}")
+    
+    # Clear history
+    save_history([])
+
+def scan_output_folders():
+    """Scan all output folders and build history from existing images"""
+    output_dirs = [
+        "./output/Classic",
+        "./output/Flux",
+        "./output/HiresFix",
+        "./output/Img2Img",
+        "./output/Adetailer"
+    ]
+    
+    all_images = []
+    for output_dir in output_dirs:
+        if os.path.exists(output_dir):
+            images = glob.glob(f"{output_dir}/*.png")
+            all_images.extend(images)
+    
+    # Sort by modification time (newest first)
+    all_images = sorted(all_images, key=os.path.getmtime, reverse=True)
+    
+    # Load existing history to preserve metadata
+    existing_history = load_history()
+    existing_paths = {entry["image_path"]: entry for entry in existing_history}
+    
+    # Build new history
+    new_history = []
+    for img_path in all_images[:100]:  # Keep only last 100
+        if img_path in existing_paths:
+            # Use existing entry
+            new_history.append(existing_paths[img_path])
+        else:
+            # Create new entry with minimal info
+            try:
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(img_path)))
+                with Image.open(img_path) as img:
+                    width, height = img.size
+                    png_meta = getattr(img, "info", {}) or {}
+
+                entry = {
+                    "timestamp": timestamp,
+                    "image_path": img_path,
+                    "prompt": png_meta.get("prompt", "(prompt not available)"),
+                    "negative_prompt": png_meta.get("negative_prompt", ""),
+                    "width": width,
+                    "height": height,
+                    "flux_mode": png_meta.get("flux_enabled", False) or ("Flux" in img_path),
+                    "realistic_mode": png_meta.get("realistic_model", False),
+                    # Add commonly useful png metadata fields
+                    "seed": png_meta.get("seed"),
+                    "sampler": png_meta.get("sampler"),
+                    "steps": png_meta.get("steps"),
+                    "cfg": png_meta.get("cfg"),
+                    "scheduler": png_meta.get("scheduler"),
+                    "denoise": png_meta.get("denoise"),
+                    "png_metadata": png_meta,
+                }
+                new_history.append(entry)
+            except Exception:
+                pass
+    
+    save_history(new_history)
+    return new_history
+
+def delete_history_entry(entry_index):
+    """Delete a history entry and its associated image file"""
+    history = load_history()
+    if 0 <= entry_index < len(history):
+        entry = history[entry_index]
+        img_path = entry["image_path"]
+        
+        # Delete the actual image file
+        if os.path.exists(img_path):
+            try:
+                os.remove(img_path)
+            except Exception as e:
+                st.error(f"Could not delete image file: {e}")
+        
+        # Remove from history
+        history.pop(entry_index)
+        save_history(history)
+        return True
+    return False
 
 # ============================================================================
 # Session State Initialization
@@ -164,6 +320,10 @@ def init_session_state():
         st.session_state.generated_images = []
     if "display_size" not in st.session_state:
         st.session_state.display_size = (512, 512)
+    
+    # Page State
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "Generate"
 
 # ============================================================================
 # Background Initialization
@@ -520,6 +680,10 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
         st.session_state.generated_images = generated_images
         st.session_state.display_size = display_size
         
+        # Add to history
+        image_paths = [path for _, path in generated_images]
+        add_to_history(image_paths, settings)
+        
         # Display first image
         img, path = generated_images[0]
         render_responsive_image(img, display_size, gallery_placeholder)
@@ -588,15 +752,36 @@ def main():
             return
     
     # ========================================================================
-    # Header
+    # Header & Navigation
     # ========================================================================
     
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.title("🎨 LightDiffusion")
-    with col2:
-        if st.button("❓ Help"):
-            st.session_state.show_help = not st.session_state.show_help
+    st.title("🎨 LightDiffusion")
+    
+    # Page tabs
+    tab1, tab2 = st.tabs(["🎨 Generate", "📜 History"])
+    
+    # ========================================================================
+    # Generate Tab
+    # ========================================================================
+    
+    with tab1:
+        render_generate_page()
+    
+    # ========================================================================
+    # History Tab
+    # ========================================================================
+    
+    with tab2:
+        render_history_page()
+
+def render_generate_page():
+    """Render the main generation page"""
+    
+    settings = st.session_state.settings
+    
+    # Help button
+    if st.button("❓ Help"):
+        st.session_state.show_help = not st.session_state.show_help
     
     if st.session_state.show_help:
         st.info("""
@@ -606,13 +791,8 @@ def main():
         - Click Generate to create images
         - Enable Live Preview to see progress
         - All settings auto-save
+        - View past generations in the History tab
         """)
-    
-    # ========================================================================
-    # Sidebar Controls
-    # ========================================================================
-    
-    settings = st.session_state.settings
     
     with st.sidebar:
         st.header("⚙️ Settings")
@@ -715,7 +895,7 @@ def main():
                         with open(img_path, "wb") as f:
                             f.write(uploaded_file.getbuffer())
                         settings["input_image_path"] = img_path
-                        st.image(uploaded_file, caption="Input Image", use_column_width=True)
+                        st.image(uploaded_file, caption="Input Image", use_container_width=True)
         
         # Enhancements
         with st.expander("✨ Enhancements", expanded=False):
@@ -869,7 +1049,7 @@ def main():
             cols = st.columns(min(3, len(st.session_state.generated_images)))
             for idx, (img, path) in enumerate(st.session_state.generated_images):
                 with cols[idx % 3]:
-                    st.image(img, caption=f"Image {idx+1}", use_column_width=True)
+                    st.image(img, caption=f"Image {idx+1}", use_container_width=True)
     else:
         # Show placeholder
         gallery_placeholder.info("👈 Configure settings and click Generate to create images")
@@ -887,6 +1067,119 @@ def main():
         generate_images(settings, status_placeholder, gallery_placeholder)
         # Rerun to refresh the UI and show the final image properly
         st.rerun()
+
+def render_history_page():
+    """Render the history page with past generations"""
+    
+    st.header("📜 Generation History")
+    
+    # Action buttons
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 3])
+    with col1:
+        if st.button("🔄 Scan Folders"):
+            with st.spinner("Scanning output folders..."):
+                history = scan_output_folders()
+            st.success(f"Found {len(history)} images!")
+            st.rerun()
+    with col2:
+        if st.button("🗑️ Clear All"):
+            clear_history()
+            st.rerun()
+    
+    # Load history
+    history = load_history()
+    
+    with col3:
+        st.text(f"Total: {len(history)}")
+    
+    if not history:
+        st.info("No generation history yet. Create some images or click 'Scan Folders' to find existing ones!")
+        return
+    
+    st.divider()
+    
+    # Display history in a grid (3 columns)
+    cols_per_row = 3
+    for idx in range(0, len(history), cols_per_row):
+        cols = st.columns(cols_per_row)
+        
+        for col_idx, col in enumerate(cols):
+            entry_idx = idx + col_idx
+            if entry_idx >= len(history):
+                break
+            
+            entry = history[entry_idx]
+            img_path = entry["image_path"]
+            
+            with col:
+                # Check if image still exists
+                if os.path.exists(img_path):
+                    try:
+                        img = Image.open(img_path)
+                        st.image(img, use_container_width=True)
+                        
+                        # Compact info
+                        with st.expander("ℹ️ Details", expanded=False):
+                            st.text(f"🕒 {entry.get('timestamp')}")
+                            st.text(f"📐 {entry.get('width')}x{entry.get('height')}")
+                            
+                            # Key metadata
+                            seed = entry.get("seed")
+                            sampler = entry.get("sampler")
+                            steps = entry.get("steps")
+                            cfg = entry.get("cfg")
+                            if seed:
+                                st.text(f"🔢 Seed: {seed}")
+                            if sampler:
+                                st.text(f"🎛️ Sampler: {sampler}")
+                            if steps or cfg:
+                                st.text(f"⚙️ Steps/CFG: {steps or '?'} / {cfg or '?'}")
+                            
+                            if entry.get('flux_mode'):
+                                st.text("⚡ Flux Mode")
+                            if entry.get('realistic_mode'):
+                                st.text("📸 Realistic")
+                            
+                            st.text_area(
+                                "Prompt",
+                                value=entry.get("prompt", ""),
+                                height=60,
+                                disabled=True,
+                                key=f"prompt_{entry_idx}"
+                            )
+                            
+                            # Action buttons
+                            col_dl, col_del = st.columns(2)
+                            with col_dl:
+                                with open(img_path, "rb") as f:
+                                    st.download_button(
+                                        label="💾",
+                                        data=f,
+                                        file_name=os.path.basename(img_path),
+                                        mime="image/png",
+                                        key=f"download_{entry_idx}",
+                                        use_container_width=True
+                                    )
+                            with col_del:
+                                if st.button("🗑️", key=f"delete_{entry_idx}", use_container_width=True):
+                                    if delete_history_entry(entry_idx):
+                                        st.rerun()
+                            # All metadata expander (minimalistic)
+                            with st.expander("🧾 All metadata", expanded=False):
+                                # Combine top-level and png metadata for inspection
+                                meta_display = {k: v for k, v in entry.items() if k != 'png_metadata'}
+                                png_meta = entry.get('png_metadata') or {}
+                                merged = {"entry": meta_display, "png_metadata": png_meta}
+                                try:
+                                    st.json(merged)
+                                except Exception:
+                                    st.text(str(merged))
+                    except Exception as e:
+                        st.error(f"Error loading image: {e}")
+                else:
+                    st.warning("⚠️ Image not found")
+                    st.text(f"🕒 {entry['timestamp']}")
+                    st.caption(os.path.basename(img_path))
 
 # ============================================================================
 # Entry Point

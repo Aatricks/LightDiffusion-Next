@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 output_directory = "./output"
 
@@ -140,7 +141,17 @@ class SaveImage:
                     )
 
                     img = Image.fromarray(sub_image_scaled)
-                    metadata = None
+                    # Attach PNG text metadata if provided
+                    if extra_pnginfo:
+                        metadata = PngInfo()
+                        for k, v in extra_pnginfo.items():
+                            try:
+                                metadata.add_text(str(k), str(v))
+                            except Exception:
+                                # Ensure metadata writing never blocks saving
+                                pass
+                    else:
+                        metadata = None
 
                     filename_with_batch_num = filename.replace(
                         "%batch_num%", str(batch_number)
@@ -190,7 +201,16 @@ class SaveImage:
             # Scale to 0-255 range and convert to PIL Image
             i_scaled = np.clip(i * 255.0, 0, 255).astype(np.uint8)
             img = Image.fromarray(i_scaled)
-            metadata = None
+            # Attach PNG text metadata if provided
+            if extra_pnginfo:
+                metadata = PngInfo()
+                for k, v in extra_pnginfo.items():
+                    try:
+                        metadata.add_text(str(k), str(v))
+                    except Exception:
+                        pass
+            else:
+                metadata = None
 
             filename_with_batch_num = filename.replace("%batch_num%", str(batch_number))
             file = f"{filename_with_batch_num}_{counter:05}_.png"
