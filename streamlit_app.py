@@ -702,7 +702,51 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
 
 def stop_generation():
     """Request generation stop"""
+    # Signal via session state (used by the UI loop) and also immediately
+    # notify the app-level interrupt event so sampling loops can react
+    # without waiting for another rerun / preview update.
     st.session_state.interrupt_generation = True
+    try:
+        app_instance.app.request_interrupt()
+    except Exception:
+        # If app instance isn't available for some reason, ignore and
+        # rely on session state mechanism.
+        pass
+    # Wake any waiting preview loop and mark generation as stopped so the
+    # UI re-enables controls immediately. The background thread may still
+    # be cleaning up; we intentionally re-enable the Generate button so the
+    # user can start a new job if desired (forceful stop behavior).
+    try:
+        job = st.session_state.get("generation_job")
+        if job and isinstance(job, dict):
+            ev = job.get("complete_event")
+            if ev is not None and hasattr(ev, "set"):
+                ev.set()
+    except Exception:
+        pass
+
+    # Re-enable controls immediately to give the user responsive feedback.
+    st.session_state.is_generating = False
+    # Also ensure we do not re-trigger generation accidentally and clear any
+    # stale job state so the UI shows Generate enabled right away.
+    try:
+        st.session_state.start_generation = False
+        # Mark the current generation job as aborted so other logic can
+        # detect that a background cleanup thread may still be running.
+        job = st.session_state.get("generation_job")
+        if job and isinstance(job, dict):
+            job["aborted"] = True
+            st.session_state.generation_job = job
+    except Exception:
+        pass
+
+    # Force a rerun so the UI immediately reflects the new state.
+    try:
+        st.rerun()
+    except Exception:
+        # If rerun fails (e.g. called from a context where rerun is not allowed),
+        # ignore and let the next user interaction refresh the UI.
+        pass
 
 
 def prepare_generation():
@@ -778,9 +822,11 @@ def render_generate_page():
     """Render the main generation page"""
     
     settings = st.session_state.settings
-    
-    # Help button
-    if st.button("❓ Help"):
+    # Flag used to disable interactive controls while generation is running
+    controls_disabled = st.session_state.is_generating
+
+    # Help button (disabled during generation to match other settings)
+    if st.button("❓ Help", disabled=controls_disabled):
         st.session_state.show_help = not st.session_state.show_help
     
     if st.session_state.show_help:
@@ -799,8 +845,9 @@ def render_generate_page():
         # Disable controls while a generation is active to avoid
         # user-driven reruns that can desync the UI thread and the
         # background generation thread. The Stop button remains active
-        # so the user can interrupt generation.
-        controls_disabled = st.session_state.is_generating
+        # so the user can interrupt generation. The `controls_disabled`
+        # flag is defined at the top of this function so it can also be
+        # used by the Help button in the main layout.
         if controls_disabled:
             st.warning("⚠️ Generation in progress — settings are locked until the current job finishes or you press Stop.")
         
@@ -1061,12 +1108,27 @@ def render_generate_page():
     if st.session_state.get("start_generation", False):
         # Reset the trigger so we don't start again on subsequent reruns
         st.session_state.start_generation = False
-        # Clear previous images but keep display size
-        st.session_state.generated_images = []
-        # Start generation (this will update placeholders/live preview)
-        generate_images(settings, status_placeholder, gallery_placeholder)
-        # Rerun to refresh the UI and show the final image properly
-        st.rerun()
+
+        # If a previous generation thread is still cleaning up, refuse to
+        # start a new generation immediately to avoid running two jobs
+        # concurrently. The Stop action sets `is_generating=False` to
+        # re-enable the Generate button, but the underlying thread may
+        # still be terminating; detect and warn instead of starting.
+        prev_job = st.session_state.get("generation_job") or {}
+        prev_thread = prev_job.get("thread") if isinstance(prev_job, dict) else None
+        if prev_thread is not None and hasattr(prev_thread, "is_alive") and prev_thread.is_alive():
+            status_placeholder.warning(
+                "⚠️ Previous generation is still stopping. Please wait a moment and try Generate again."
+            )
+            # Don't start a new generation while the old thread is alive
+            st.session_state.start_generation = False
+        else:
+            # Clear previous images but keep display size
+            st.session_state.generated_images = []
+            # Start generation (this will update placeholders/live preview)
+            generate_images(settings, status_placeholder, gallery_placeholder)
+            # Rerun to refresh the UI and show the final image properly
+            st.rerun()
 
 def render_history_page():
     """Render the history page with past generations"""
