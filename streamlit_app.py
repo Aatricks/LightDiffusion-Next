@@ -84,6 +84,7 @@ def get_default_settings():
         # UI Settings
         "dark_mode": True,
         "verbose_mode": False,
+    "ui_scale": 1.0,
         "sidebar_collapsed_by_default": False,
     }
 
@@ -214,11 +215,40 @@ def add_to_history(image_paths, settings):
                 "seed": seed_meta,
                 "sampler": png_meta.get("sampler"),
                 "steps": png_meta.get("steps"),
+                # Generation timing metadata (may be added after generation)
+                "generation_duration": None,
+                "avg_iters_per_s": None,
                 "cfg": png_meta.get("cfg"),
                 "scheduler": png_meta.get("scheduler"),
                 "denoise": png_meta.get("denoise"),
                 "png_metadata": png_meta,
             }
+            # Parse timing metadata from PNG chunk if present
+            try:
+                gd = png_meta.get("generation_duration")
+                if gd is not None:
+                    try:
+                        entry["generation_duration"] = float(gd)
+                    except Exception:
+                        # If it has a trailing 's' or is a string, try to clean
+                        try:
+                            entry["generation_duration"] = float(str(gd).rstrip('s'))
+                        except Exception:
+                            entry["generation_duration"] = None
+            except Exception:
+                pass
+            try:
+                ai = png_meta.get("avg_iters_per_s")
+                if ai is not None:
+                    try:
+                        entry["avg_iters_per_s"] = float(ai)
+                    except Exception:
+                        try:
+                            entry["avg_iters_per_s"] = float(str(ai).rstrip('s'))
+                        except Exception:
+                            entry["avg_iters_per_s"] = None
+            except Exception:
+                pass
             history.insert(0, entry)  # Add to beginning
     
     # Keep only last 100 entries
@@ -292,11 +322,38 @@ def scan_output_folders():
                     "seed": sanitize_seed_for_display(png_meta.get("seed")),
                     "sampler": png_meta.get("sampler"),
                     "steps": png_meta.get("steps"),
+                    "generation_duration": None,
+                    "avg_iters_per_s": None,
                     "cfg": png_meta.get("cfg"),
                     "scheduler": png_meta.get("scheduler"),
                     "denoise": png_meta.get("denoise"),
                     "png_metadata": png_meta,
                 }
+                # Parse timing metadata if present
+                try:
+                    gd = png_meta.get("generation_duration")
+                    if gd is not None:
+                        try:
+                            entry["generation_duration"] = float(gd)
+                        except Exception:
+                            try:
+                                entry["generation_duration"] = float(str(gd).rstrip('s'))
+                            except Exception:
+                                entry["generation_duration"] = None
+                except Exception:
+                    pass
+                try:
+                    ai = png_meta.get("avg_iters_per_s")
+                    if ai is not None:
+                        try:
+                            entry["avg_iters_per_s"] = float(ai)
+                        except Exception:
+                            try:
+                                entry["avg_iters_per_s"] = float(str(ai).rstrip('s'))
+                            except Exception:
+                                entry["avg_iters_per_s"] = None
+                except Exception:
+                    pass
                 new_history.append(entry)
             except Exception:
                 pass
@@ -336,8 +393,6 @@ def init_session_state():
         st.session_state.settings = load_settings()
     
     # UI State
-    if "show_help" not in st.session_state:
-        st.session_state.show_help = False
     if "dark_mode" not in st.session_state:
         st.session_state.dark_mode = st.session_state.settings.get("dark_mode", True)
     if "verbose_mode" not in st.session_state:
@@ -382,6 +437,9 @@ def init_session_state():
         st.session_state.generated_image_paths = []
     if "display_size" not in st.session_state:
         st.session_state.display_size = (512, 512)
+    if "ui_display_size" not in st.session_state:
+        default_scale = load_settings().get("ui_scale", 1.0)
+        st.session_state.ui_display_size = (min(int(512 * default_scale), 1400), min(int(512 * default_scale), 1000))
     
     # Page State
     if "current_page" not in st.session_state:
@@ -449,7 +507,10 @@ def inject_custom_css():
         --ld-bg-secondary: {'#262730' if theme == 'dark' else '#f0f2f6'};
         --ld-text-primary: {'#fafafa' if theme == 'dark' else '#262730'};
         --ld-text-secondary: {'#a3a8b4' if theme == 'dark' else '#6c757d'};
-        --ld-accent: {'#ff4b4b' if theme == 'dark' else '#ff4b4b'};
+    --ld-accent: {'#ff4b4b' if theme == 'dark' else '#ff4b4b'};
+    /* Status bar background and text chosen for strong contrast */
+    --ld-status-bg: {'rgba(0,0,0,0.35)' if theme == 'dark' else 'rgba(0,0,0,0.28)'};
+    --ld-status-text: {'#ffffff' if theme == 'dark' else '#ffffff'};
     }}
     
     /* Responsive image container */
@@ -496,6 +557,31 @@ def inject_custom_css():
     .streamlit-expanderHeader {{
         font-size: 0.95rem;
         font-weight: 500;
+    }}
+    /* Compact fixed status bar shown during generation (small, non-intrusive) */
+    .ld-status-bar {{
+        position: fixed;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: var(--ld-status-bg);
+        color: var(--ld-status-text);
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 0.92rem;
+        z-index: 9999;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }}
+    /* Auto-hide animation for final/status messages */
+    .ld-status-bar.auto-hide {{
+        animation: ld-fadeout 0.9s ease-in-out forwards;
+        animation-delay: 8s; /* visible for 8 seconds, then fade */
+    }}
+    @keyframes ld-fadeout {{
+        0% {{ opacity: 1; transform: translateY(0px); visibility: visible; }}
+        100% {{ opacity: 0; transform: translateY(8px); visibility: hidden; }}
     }}
     </style>
     """
@@ -560,7 +646,7 @@ def render_responsive_image(image, target_display_size, placeholder=None):
 # Generation Functions
 # ============================================================================
 
-def generate_images(settings, status_placeholder, gallery_placeholder):
+def generate_images(settings, status_placeholder, gallery_placeholder, status_bar=None):
     """Generate images with live preview support"""
     
     # Pre-generation checks
@@ -647,7 +733,9 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
         "start_time": time.time()
     }
     
-    # Compute display size
+    # Compute display size (base) and a larger UI display size used for both
+    # live previews and final output. The UI size is independent from the
+    # raw image pixels and intentionally scaled up for improved visibility.
     display_size = compute_display_size(
         settings["width"], 
         settings["height"],
@@ -655,6 +743,15 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
         max_height=600
     )
     st.session_state.display_size = display_size
+
+    # UI scale factor (user-configurable) and clamping maximums
+    UI_SCALE = float(settings.get("ui_scale", 1.0))
+    UI_MAX_WIDTH = 1400
+    UI_MAX_HEIGHT = 1000
+    ui_full_w = min(int(display_size[0] * UI_SCALE), UI_MAX_WIDTH)
+    ui_full_h = min(int(display_size[1] * UI_SCALE), UI_MAX_HEIGHT)
+    # Store for potential use elsewhere
+    st.session_state.ui_display_size = (ui_full_w, ui_full_h)
     
     # Preview update loop
     preview_container = gallery_placeholder.empty() if settings["enable_preview"] else None
@@ -664,7 +761,13 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
         # Check for interrupt
         if st.session_state.interrupt_generation:
             app_instance.app.request_interrupt()
-            status_placeholder.warning("⏹️ Stopping generation...")
+            try:
+                if status_bar is not None:
+                    status_bar.markdown("<div class=\"ld-status-bar auto-hide\">⏹️ Stopping generation...</div>", unsafe_allow_html=True)
+                else:
+                    status_placeholder.warning("⏹️ Stopping generation...")
+            except Exception:
+                status_placeholder.warning("⏹️ Stopping generation...")
             break
         
         # Update preview
@@ -682,10 +785,13 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
                             for i, pth in enumerate(recent):
                                 try:
                                     img_prev = Image.open(pth)
-                                    # Use smaller thumbnails for preview
-                                    thumb_w = min(display_size[0] // 2, 384)
-                                    thumb_h = min(display_size[1] // 2, 288)
-                                    render_responsive_image(img_prev, (thumb_w, thumb_h), cols[i % cols_count])
+                                    # Compute per-column tile size so previews and
+                                    # outputs render at the same visual size.
+                                    cols_for_preview = cols_count or 1
+                                    tile_w = max(64, int(ui_full_w / cols_for_preview))
+                                    # maintain aspect ratio from the base display_size
+                                    tile_h = max(64, int(tile_w * (display_size[1] / (display_size[0] or 1))))
+                                    render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
                                 except Exception:
                                     # Ignore preview rendering errors
                                     pass
@@ -693,9 +799,16 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
                     except Exception:
                         pass
         
-        # Update status
+        # Update compact status bar (avoid large banners)
         elapsed = time.time() - st.session_state.generation_job["start_time"]
-        status_placeholder.info(f"🎨 Generating... ({elapsed:.1f}s)")
+        try:
+            if status_bar is not None:
+                status_bar.markdown(f"<div class=\"ld-status-bar\">🎨 Generating — {elapsed:.1f}s</div>", unsafe_allow_html=True)
+            else:
+                status_placeholder.info(f"🎨 Generating... ({elapsed:.1f}s)")
+        except Exception:
+            # Fallback to the original banner if status bar update fails
+            status_placeholder.info(f"🎨 Generating... ({elapsed:.1f}s)")
     
     # Cleanup previews
     try:
@@ -710,7 +823,16 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
     st.session_state.is_generating = False
     
     if generation_error:
-        status_placeholder.error(f"❌ Generation failed: {generation_error}")
+        short_err = str(generation_error)
+        if len(short_err) > 120:
+            short_err = short_err[:117] + "..."
+        try:
+            if status_bar is not None:
+                status_bar.markdown(f"<div class=\"ld-status-bar auto-hide\">❌ Generation failed: {short_err}</div>", unsafe_allow_html=True)
+            else:
+                status_placeholder.error(f"❌ Generation failed: {generation_error}")
+        except Exception:
+            status_placeholder.error(f"❌ Generation failed: {generation_error}")
         return []
     
     # Find generated images (check all possible output directories)
@@ -778,19 +900,91 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
         st.session_state.generated_image_paths = generated_image_paths
         st.session_state.display_size = display_size
 
-        # Add to history
+        # Compute elapsed time for the job
+        job_elapsed = time.time() - st.session_state.generation_job.get("start_time", time.time())
+
+        # Attempt to write generation duration and average iterations/s into
+        # each generated image's PNG metadata so history and files contain
+        # this useful diagnostic information.
+        try:
+            from PIL.PngImagePlugin import PngInfo
+            for path in generated_image_paths:
+                try:
+                    with Image.open(path) as im:
+                        png_meta = getattr(im, "info", {}) or {}
+
+                        # Try to extract steps from existing metadata
+                        steps_val = png_meta.get("steps") or png_meta.get("step")
+                        steps = None
+                        try:
+                            if steps_val is not None:
+                                steps = int(float(steps_val))
+                        except Exception:
+                            steps = None
+
+                        avg_iters = None
+                        if steps is not None and job_elapsed > 0:
+                            avg_iters = steps / job_elapsed
+
+                        # Build new PNG info while preserving existing text keys
+                        pnginfo = PngInfo()
+                        for k, v in (png_meta.items() if isinstance(png_meta, dict) else []):
+                            try:
+                                pnginfo.add_text(str(k), str(v))
+                            except Exception:
+                                pass
+
+                        pnginfo.add_text("generation_duration", f"{job_elapsed:.3f}")
+                        if avg_iters is not None:
+                            pnginfo.add_text("avg_iters_per_s", f"{avg_iters:.3f}")
+                        else:
+                            pnginfo.add_text("avg_iters_per_s", "unknown")
+
+                        # Re-save image with the updated metadata
+                        try:
+                            im.save(path, pnginfo=pnginfo)
+                        except Exception:
+                            # Some images may be read-only or locked — ignore write errors
+                            if settings.get("verbose_mode"):
+                                status_placeholder.warning(f"Could not persist metadata to {os.path.basename(path)}")
+                except Exception:
+                    if settings.get("verbose_mode"):
+                        status_placeholder.warning(f"Failed updating metadata for {path}")
+        except Exception:
+            # PIL PngInfo not available or another failure — skip metadata writing
+            if settings.get("verbose_mode"):
+                status_placeholder.warning("Could not attach generation metadata to images")
+
+        # Add to history (reads metadata back from files)
         add_to_history(generated_image_paths, settings)
 
         # Display tiled gallery of all images in the same placeholder so the
         # user immediately sees the whole batch (no extra rerun required).
         try:
+            # Render final images using the same per-column tile sizing so
+            # previews and final output visually match. For a single image
+            # we use the full UI size for maximum visibility.
             with gallery_placeholder.container():
-                cols = st.columns(min(3, len(generated_image_paths)))
+                cols_count = min(3, len(generated_image_paths)) or 1
+                cols = st.columns(cols_count)
                 for idx, path in enumerate(generated_image_paths):
                     try:
                         img = Image.open(path)
-                        with cols[idx % 3]:
-                            st.image(img, caption=f"Image {idx+1}", use_container_width=True)
+                        # If we only have one image, render at the full UI size.
+                        if len(generated_image_paths) == 1:
+                            tile_w, tile_h = ui_full_w, ui_full_h
+                        else:
+                            tile_w = max(64, int(ui_full_w / cols_count))
+                            tile_h = max(64, int(tile_w * (display_size[1] / (display_size[0] or 1))))
+
+                        # Use the responsive renderer so final images match preview size
+                        try:
+                            render_responsive_image(img, (tile_w, tile_h), cols[idx % cols_count])
+                            cols[idx % cols_count].caption(f"Image {idx+1}")
+                        except Exception:
+                            # Fallback to Streamlit image if something goes wrong
+                            with cols[idx % cols_count]:
+                                st.image(img, caption=f"Image {idx+1}", use_container_width=True)
                     except Exception as e:
                         if settings["verbose_mode"]:
                             status_placeholder.warning(f"Error rendering {path}: {e}")
@@ -798,21 +992,45 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
             # Fall back to rendering only the first image if tiled gallery fails
             try:
                 first_img = Image.open(generated_image_paths[0])
-                render_responsive_image(first_img, display_size, gallery_placeholder)
+                # If only one image, use the full UI size; otherwise use per-column
+                if len(generated_image_paths) == 1:
+                    render_responsive_image(first_img, (ui_full_w, ui_full_h), gallery_placeholder)
+                else:
+                    fallback_tile_w = max(64, int(ui_full_w / min(3, len(generated_image_paths))))
+                    fallback_tile_h = max(64, int(fallback_tile_w * (display_size[1] / (display_size[0] or 1))))
+                    render_responsive_image(first_img, (fallback_tile_w, fallback_tile_h), gallery_placeholder)
             except Exception:
                 pass
 
         elapsed = time.time() - st.session_state.generation_job["start_time"]
-        status_placeholder.success(f"✅ Generated {len(generated_image_paths)} image(s) in {elapsed:.1f}s")
+        try:
+            if status_bar is not None:
+                status_bar.markdown(f"<div class=\"ld-status-bar auto-hide\">✅ Generated {len(generated_image_paths)} image(s) — {elapsed:.1f}s</div>", unsafe_allow_html=True)
+            else:
+                status_placeholder.success(f"✅ Generated {len(generated_image_paths)} image(s) in {elapsed:.1f}s")
+        except Exception:
+            status_placeholder.success(f"✅ Generated {len(generated_image_paths)} image(s) in {elapsed:.1f}s")
         # Return paths for callers that might use them (not used currently)
         return generated_image_paths
     else:
         # Show a helpful message with debug info
         if pipeline_result:
             checked_dirs = ", ".join(primary_dirs)
-            status_placeholder.warning(f"⚠️ Generation completed but no images found. Checked: {checked_dirs}")
+            try:
+                if status_bar is not None:
+                    status_bar.markdown(f"<div class=\"ld-status-bar auto-hide\">⚠️ Completed but no images found (checked: {checked_dirs})</div>", unsafe_allow_html=True)
+                else:
+                    status_placeholder.warning(f"⚠️ Generation completed but no images found. Checked: {checked_dirs}")
+            except Exception:
+                status_placeholder.warning(f"⚠️ Generation completed but no images found. Checked: {checked_dirs}")
         else:
-            status_placeholder.info("Generation stopped")
+            try:
+                if status_bar is not None:
+                    status_bar.markdown("<div class=\"ld-status-bar auto-hide\">Generation stopped</div>", unsafe_allow_html=True)
+                else:
+                    status_placeholder.info("Generation stopped")
+            except Exception:
+                status_placeholder.info("Generation stopped")
         return []
 
 def stop_generation():
@@ -902,7 +1120,7 @@ def main():
             st.session_state.lightdiffusion_ready = True
             st.rerun()
         else:
-            st.title("🎨 LightDiffusion")
+            # App title removed during initialization; keep status message only
             st.info(setup_status.get("message", "Initializing..."))
             progress = setup_status.get("progress", 0.0)
             st.progress(progress)
@@ -914,7 +1132,7 @@ def main():
     # Header & Navigation
     # ========================================================================
     
-    st.title("🎨 LightDiffusion")
+    # App title removed from main header to provide a cleaner UI
     
     # Page tabs
     tab1, tab2 = st.tabs(["🎨 Generate", "📜 History"])
@@ -940,22 +1158,13 @@ def render_generate_page():
     # Flag used to disable interactive controls while generation is running
     controls_disabled = st.session_state.is_generating
 
-    # Help button (disabled during generation to match other settings)
-    if st.button("❓ Help", disabled=controls_disabled):
-        st.session_state.show_help = not st.session_state.show_help
-    
-    if st.session_state.show_help:
-        st.info("""
-        **LightDiffusion Quick Guide:**
-        - Enter your prompt in the sidebar
-        - Adjust settings in the expandable sections
-        - Click Generate to create images
-        - Enable Live Preview to see progress
-        - All settings auto-save
-        - View past generations in the History tab
-        """)
     
     with st.sidebar:
+        # App title in sidebar with link to GitHub
+        st.markdown(
+            '<a href="https://github.com/Aatricks/LightDiffusion-Next" target="_blank" style="text-decoration:none;color:inherit;"><h2 style="margin:0 0 8px 0;">LightDiffusion</h2></a>',
+            unsafe_allow_html=True,
+        )
         st.header("⚙️ Settings")
         # Disable controls while a generation is active to avoid
         # user-driven reruns that can desync the UI thread and the
@@ -1172,6 +1381,23 @@ def render_generate_page():
         st.divider()
         settings["verbose_mode"] = st.checkbox("Verbose Logging", value=settings["verbose_mode"], disabled=controls_disabled)
         st.session_state.verbose_mode = settings["verbose_mode"]
+        # UI display scale
+        settings["ui_scale"] = st.slider(
+            "UI Display Scale",
+            min_value=0.5,
+            max_value=3.0,
+            value=settings.get("ui_scale", 1.0),
+            step=0.25,
+            help="Scale factor applied to preview and output display size (independent of image resolution).",
+            disabled=controls_disabled,
+        )
+        # Update computed ui_display_size when user changes scale in the sidebar
+        try:
+            scale_val = float(settings["ui_scale"])
+            base_display = st.session_state.get("display_size", (512, 512))
+            st.session_state.ui_display_size = (min(int(base_display[0] * scale_val), 1400), min(int(base_display[1] * scale_val), 1000))
+        except Exception:
+            pass
     
     # Save settings
     st.session_state.settings = settings
@@ -1205,31 +1431,37 @@ def render_generate_page():
     
     status_placeholder = st.empty()
     gallery_placeholder = st.empty()
+    # Small fixed status bar placeholder (used for compact timer/messages)
+    status_bar = st.empty()
     
     # Show existing images if any (paths stored in session state)
     if st.session_state.generated_image_paths and not st.session_state.is_generating:
         display_size = st.session_state.display_size
+        ui_full_w, ui_full_h = st.session_state.get(
+            "ui_display_size",
+            (
+                min(int(display_size[0] * float(settings.get("ui_scale", 1.0))), 1400),
+                min(int(display_size[1] * float(settings.get("ui_scale", 1.0))), 1000),
+            ),
+        )
 
-        # Show tiled gallery of all generated images
+        # Show tiled gallery of all generated images (tiles sized to match preview)
         paths = st.session_state.generated_image_paths
-        cols = st.columns(min(3, len(paths)))
+        cols_count = min(3, len(paths)) or 1
+        cols = st.columns(cols_count)
         for idx, path in enumerate(paths):
             try:
                 with open(path, "rb") as f:
                     img = Image.open(f)
-                    key_suffix = hashlib.md5(path.encode('utf-8')).hexdigest()[:8]
-                    with cols[idx % 3]:
-                        render_responsive_image(img, display_size)
-                        st.download_button(
-                            label="💾",
-                            data=f,
-                            file_name=os.path.basename(path),
-                            mime="image/png",
-                            key=f"download_generated_{idx}_{key_suffix}",
-                            use_container_width=True,
-                        )
+                    if len(paths) == 1:
+                        tile_w, tile_h = ui_full_w, ui_full_h
+                    else:
+                        tile_w = max(64, int(ui_full_w / cols_count))
+                        tile_h = max(64, int(tile_w * (display_size[1] / (display_size[0] or 1))))
+                    with cols[idx % cols_count]:
+                        render_responsive_image(img, (tile_w, tile_h))
             except Exception as e:
-                with cols[idx % 3]:
+                with cols[idx % cols_count]:
                     st.warning(f"Could not load image: {e}")
     else:
         # Show placeholder
@@ -1261,7 +1493,7 @@ def render_generate_page():
             st.session_state.generated_images = []
             st.session_state.generated_image_paths = []
             # Start generation (this will update placeholders/live preview)
-            generate_images(settings, status_placeholder, gallery_placeholder)
+            generate_images(settings, status_placeholder, gallery_placeholder, status_bar)
             # Rerun to refresh the UI and show the final image properly
             st.rerun()
 
@@ -1334,6 +1566,19 @@ def render_history_page():
                                 st.text(f"🎛️ Sampler: {sampler}")
                             if steps or cfg:
                                 st.text(f"⚙️ Steps/CFG: {steps or '?'} / {cfg or '?'}")
+                            # Timing metrics (if available)
+                            gen_dur = entry.get("generation_duration")
+                            avg_it = entry.get("avg_iters_per_s")
+                            if gen_dur is not None:
+                                try:
+                                    st.text(f"⏱️ Duration: {float(gen_dur):.2f}s")
+                                except Exception:
+                                    st.text(f"⏱️ Duration: {gen_dur}")
+                            if avg_it is not None:
+                                try:
+                                    st.text(f"⚡ Avg iters/s: {float(avg_it):.2f}")
+                                except Exception:
+                                    st.text(f"⚡ Avg iters/s: {avg_it}")
                             
                             if entry.get('flux_mode'):
                                 st.text("⚡ Flux Mode")
