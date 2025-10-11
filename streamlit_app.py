@@ -14,6 +14,8 @@ import threading
 import time
 import numpy as np
 from PIL import Image
+import hashlib
+# (no additional top-level imports required)
 
 # Core Pipeline Integration
 from src.user.pipeline import pipeline
@@ -48,6 +50,8 @@ def get_default_settings():
         "width": 512,
         "height": 512,
         "num_images": 1,
+        # How many images to generate per internal batch (affects VRAM)
+        "batch_size": 1,
         
         # Generation Modes
         "flux_mode": False,
@@ -115,7 +119,30 @@ def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                saved = json.load(f)
+                # Sanitize any saved seed fields that look like tensor dumps.
+                changed = False
+                for e in saved:
+                    if isinstance(e, dict):
+                        if 'seed' in e:
+                            sanitized = sanitize_seed_for_display(e.get('seed'))
+                            if sanitized != e.get('seed'):
+                                e['seed'] = sanitized
+                                changed = True
+                        png_meta = e.get('png_metadata') or {}
+                        if isinstance(png_meta, dict) and 'seed' in png_meta:
+                            sanitized_png_seed = sanitize_seed_for_display(png_meta.get('seed'))
+                            if sanitized_png_seed != png_meta.get('seed'):
+                                png_meta['seed'] = sanitized_png_seed
+                                e['png_metadata'] = png_meta
+                                changed = True
+                # If we cleaned anything, persist the cleaned history back to disk
+                if changed:
+                    try:
+                        save_history(saved)
+                    except Exception:
+                        pass
+                return saved
         except Exception as e:
             st.warning(f"Could not load history: {e}")
     return []
@@ -127,6 +154,25 @@ def save_history(history):
             json.dump(history, f, indent=2, ensure_ascii=False)
     except Exception as e:
         st.error(f"Could not save history: {e}")
+
+def sanitize_seed_for_display(seed_value):
+    """Return a safe seed string or None if the value looks like a tensor/image dump.
+
+    This avoids storing or displaying very large tensor representations that
+    were accidentally written by earlier versions of the adetailer pipeline.
+    """
+    if seed_value is None:
+        return None
+    if isinstance(seed_value, (int, float)):
+        return str(int(seed_value))
+    if isinstance(seed_value, str):
+        s = seed_value.strip()
+        # Heuristics: if it contains literal 'tensor' or multiline dumps/brackets,
+        # treat it as invalid.
+        if "tensor(" in s.lower() or "[" in s or "\n" in s or len(s) > 240:
+            return None
+        return s
+    return None
 
 def add_to_history(image_paths, settings):
     """Add generated images to history"""
@@ -143,6 +189,17 @@ def add_to_history(image_paths, settings):
             except Exception:
                 png_meta = {}
 
+            # Ensure seed_meta is always defined
+            seed_meta = None
+            # Sanitize seed metadata to avoid storing huge tensor dumps
+            seed_meta = sanitize_seed_for_display(png_meta.get("seed"))
+            # Also sanitize the nested png_meta so the stored history file
+            # does not contain enormous tensor dumps in the png_metadata field.
+            try:
+                png_meta["seed"] = sanitize_seed_for_display(png_meta.get("seed"))
+            except Exception:
+                pass
+
             entry = {
                 "timestamp": timestamp,
                 "image_path": img_path,
@@ -150,10 +207,11 @@ def add_to_history(image_paths, settings):
                 "negative_prompt": settings.get("negative_prompt", ""),
                 "width": settings.get("width", None),
                 "height": settings.get("height", None),
+                "batch_size": settings.get("batch_size"),
                 "flux_mode": settings.get("flux_mode", False),
                 "realistic_mode": settings.get("realistic_mode", False),
-                # Add extracted PNG metadata fields if present
-                "seed": png_meta.get("seed"),
+                # Add extracted PNG metadata fields if present (sanitized)
+                "seed": seed_meta,
                 "sampler": png_meta.get("sampler"),
                 "steps": png_meta.get("steps"),
                 "cfg": png_meta.get("cfg"),
@@ -227,10 +285,11 @@ def scan_output_folders():
                     "negative_prompt": png_meta.get("negative_prompt", ""),
                     "width": width,
                     "height": height,
+                    "batch_size": png_meta.get("batch_size"),
                     "flux_mode": png_meta.get("flux_enabled", False) or ("Flux" in img_path),
                     "realistic_mode": png_meta.get("realistic_model", False),
                     # Add commonly useful png metadata fields
-                    "seed": png_meta.get("seed"),
+                    "seed": sanitize_seed_for_display(png_meta.get("seed")),
                     "sampler": png_meta.get("sampler"),
                     "steps": png_meta.get("steps"),
                     "cfg": png_meta.get("cfg"),
@@ -317,7 +376,10 @@ def init_session_state():
     
     # Display State
     if "generated_images" not in st.session_state:
+        # Backwards compatibility: keep field but prefer paths below
         st.session_state.generated_images = []
+    if "generated_image_paths" not in st.session_state:
+        st.session_state.generated_image_paths = []
     if "display_size" not in st.session_state:
         st.session_state.display_size = (512, 512)
     
@@ -551,7 +613,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
                 w=settings["width"],
                 h=settings["height"],
                 number=settings["num_images"],
-                batch=1,
+                batch=settings.get("batch_size", 1),
                 hires_fix=settings["hiresfix"],
                 adetailer=settings["adetailer"],
                 enhance_prompt=settings["enhance_prompt"],
@@ -612,8 +674,21 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
                 previews = app_instance.app.get_latest_previews()
                 if previews:
                     try:
-                        latest_preview = Image.open(previews[-1])
-                        render_responsive_image(latest_preview, display_size, preview_container)
+                        # Show a tiled set of recent previews (up to 6)
+                        recent = previews[-6:]
+                        cols_count = min(3, len(recent)) or 1
+                        with preview_container.container():
+                            cols = st.columns(cols_count)
+                            for i, pth in enumerate(recent):
+                                try:
+                                    img_prev = Image.open(pth)
+                                    # Use smaller thumbnails for preview
+                                    thumb_w = min(display_size[0] // 2, 384)
+                                    thumb_h = min(display_size[1] // 2, 288)
+                                    render_responsive_image(img_prev, (thumb_w, thumb_h), cols[i % cols_count])
+                                except Exception:
+                                    # Ignore preview rendering errors
+                                    pass
                         last_preview_time = current_time
                     except Exception:
                         pass
@@ -639,7 +714,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
         return []
     
     # Find generated images (check all possible output directories)
-    generated_images = []
+    generated_image_paths = []
     
     # Determine which directory to check based on generation mode
     if settings["flux_mode"]:
@@ -664,33 +739,73 @@ def generate_images(settings, status_placeholder, gallery_placeholder):
     if settings["verbose_mode"]:
         status_placeholder.info(f"Searching in: {primary_dirs}, Found {len(all_outputs)} files")
     
-    # Sort by modification time and get the most recent
+    # Select outputs produced during this generation job by using the
+    # recorded generation start time. This reliably collects all files
+    # produced by the job (including multi-file outputs like adetailer
+    # head/body) without depending on filename heuristics.
     if all_outputs:
         all_outputs = sorted(all_outputs, key=os.path.getmtime, reverse=True)
-        for f in all_outputs[:settings["num_images"]]:
-            try:
-                img = Image.open(f)
-                generated_images.append((img, f))
-            except Exception as e:
-                if settings["verbose_mode"]:
-                    status_placeholder.warning(f"Error loading {f}: {e}")
+        job_start = None
+        try:
+            job_start = st.session_state.generation_job.get("start_time")
+        except Exception:
+            job_start = None
+
+        now_time = time.time()
+        if job_start:
+            # Gather files modified during the job window. Use a small
+            # tolerance before start in case some outputs were written
+            # immediately at the start timestamp.
+            job_window = [f for f in all_outputs if os.path.getmtime(f) >= (job_start - 2.0) and os.path.getmtime(f) <= (now_time + 2.0)]
+        else:
+            job_window = []
+
+        # If we found files that match the job window, use them; otherwise
+        # fall back to taking the most recent N files.
+        if job_window:
+            generated_image_paths.extend(sorted(job_window, key=os.path.getmtime))
+        else:
+            # Fallback: show the most recent files up to the requested count
+            for f in all_outputs[: settings.get("num_images", 1)]:
+                if os.path.exists(f):
+                    generated_image_paths.append(f)
+                else:
+                    if settings["verbose_mode"]:
+                        status_placeholder.warning(f"File disappeared before collection: {f}")
     
-    if generated_images:
-        # Save to session state first
-        st.session_state.generated_images = generated_images
+    if generated_image_paths:
+        # Save to session state as paths (safe to persist)
+        st.session_state.generated_image_paths = generated_image_paths
         st.session_state.display_size = display_size
-        
+
         # Add to history
-        image_paths = [path for _, path in generated_images]
-        add_to_history(image_paths, settings)
-        
-        # Display first image
-        img, path = generated_images[0]
-        render_responsive_image(img, display_size, gallery_placeholder)
-        
+        add_to_history(generated_image_paths, settings)
+
+        # Display tiled gallery of all images in the same placeholder so the
+        # user immediately sees the whole batch (no extra rerun required).
+        try:
+            with gallery_placeholder.container():
+                cols = st.columns(min(3, len(generated_image_paths)))
+                for idx, path in enumerate(generated_image_paths):
+                    try:
+                        img = Image.open(path)
+                        with cols[idx % 3]:
+                            st.image(img, caption=f"Image {idx+1}", use_container_width=True)
+                    except Exception as e:
+                        if settings["verbose_mode"]:
+                            status_placeholder.warning(f"Error rendering {path}: {e}")
+        except Exception:
+            # Fall back to rendering only the first image if tiled gallery fails
+            try:
+                first_img = Image.open(generated_image_paths[0])
+                render_responsive_image(first_img, display_size, gallery_placeholder)
+            except Exception:
+                pass
+
         elapsed = time.time() - st.session_state.generation_job["start_time"]
-        status_placeholder.success(f"✅ Generated {len(generated_images)} image(s) in {elapsed:.1f}s")
-        return [img for img, _ in generated_images]
+        status_placeholder.success(f"✅ Generated {len(generated_image_paths)} image(s) in {elapsed:.1f}s")
+        # Return paths for callers that might use them (not used currently)
+        return generated_image_paths
     else:
         # Show a helpful message with debug info
         if pipeline_result:
@@ -898,6 +1013,7 @@ def render_generate_page():
                 min_value=1,
                 max_value=10,
                 value=settings["num_images"],
+                key="num_images_input",
                 disabled=controls_disabled,
             )
 
@@ -917,6 +1033,21 @@ def render_generate_page():
                 settings["width"], settings["height"] = 512, 768
             elif preset == "768x512 (Landscape)":
                 settings["width"], settings["height"] = 768, 512
+            
+            # Batch size control (number of images processed per internal batch)
+            settings["batch_size"] = st.number_input(
+                "Batch Size (images per batch)",
+                min_value=1,
+                max_value=10,
+                value=settings.get("batch_size", 1),
+                key="batch_size_input",
+                disabled=controls_disabled,
+                help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster.",
+            )
+            # Batch size is independent from Number of Images — users may
+            # choose to process multiple images per internal batch even if
+            # the total requested images is smaller. The pipeline will
+            # respect both values appropriately.
         
         # Generation Modes
         with st.expander("🎯 Generation Modes", expanded=False):
@@ -1075,28 +1206,31 @@ def render_generate_page():
     status_placeholder = st.empty()
     gallery_placeholder = st.empty()
     
-    # Show existing images if any
-    if st.session_state.generated_images and not st.session_state.is_generating:
-        img, path = st.session_state.generated_images[0]
+    # Show existing images if any (paths stored in session state)
+    if st.session_state.generated_image_paths and not st.session_state.is_generating:
         display_size = st.session_state.display_size
-        render_responsive_image(img, display_size, gallery_placeholder)
-        
-        # Download button
-        with open(path, "rb") as f:
-            st.download_button(
-                label="💾 Download Image",
-                data=f,
-                file_name=os.path.basename(path),
-                mime="image/png"
-            )
-        
-        # Show all images if multiple
-        if len(st.session_state.generated_images) > 1:
-            st.subheader("All Generated Images")
-            cols = st.columns(min(3, len(st.session_state.generated_images)))
-            for idx, (img, path) in enumerate(st.session_state.generated_images):
+
+        # Show tiled gallery of all generated images
+        paths = st.session_state.generated_image_paths
+        cols = st.columns(min(3, len(paths)))
+        for idx, path in enumerate(paths):
+            try:
+                with open(path, "rb") as f:
+                    img = Image.open(f)
+                    key_suffix = hashlib.md5(path.encode('utf-8')).hexdigest()[:8]
+                    with cols[idx % 3]:
+                        render_responsive_image(img, display_size)
+                        st.download_button(
+                            label="💾",
+                            data=f,
+                            file_name=os.path.basename(path),
+                            mime="image/png",
+                            key=f"download_generated_{idx}_{key_suffix}",
+                            use_container_width=True,
+                        )
+            except Exception as e:
                 with cols[idx % 3]:
-                    st.image(img, caption=f"Image {idx+1}", use_container_width=True)
+                    st.warning(f"Could not load image: {e}")
     else:
         # Show placeholder
         gallery_placeholder.info("👈 Configure settings and click Generate to create images")
@@ -1125,6 +1259,7 @@ def render_generate_page():
         else:
             # Clear previous images but keep display size
             st.session_state.generated_images = []
+            st.session_state.generated_image_paths = []
             # Start generation (this will update placeholders/live preview)
             generate_images(settings, status_placeholder, gallery_placeholder)
             # Rerun to refresh the UI and show the final image properly
@@ -1184,6 +1319,9 @@ def render_history_page():
                         with st.expander("ℹ️ Details", expanded=False):
                             st.text(f"🕒 {entry.get('timestamp')}")
                             st.text(f"📐 {entry.get('width')}x{entry.get('height')}")
+                            batch = entry.get("batch_size")
+                            if batch is not None:
+                                st.text(f"🔁 Batch: {batch}")
                             
                             # Key metadata
                             seed = entry.get("seed")
@@ -1214,14 +1352,19 @@ def render_history_page():
                             col_dl, col_del = st.columns(2)
                             with col_dl:
                                 with open(img_path, "rb") as f:
-                                    st.download_button(
-                                        label="💾",
-                                        data=f,
-                                        file_name=os.path.basename(img_path),
-                                        mime="image/png",
-                                        key=f"download_{entry_idx}",
-                                        use_container_width=True
-                                    )
+                                        # Create a stable unique widget key using the
+                                        # entry index and a short hash of the path so
+                                        # keys cannot collide with other download
+                                        # buttons elsewhere in the app.
+                                        hist_key = hashlib.md5(img_path.encode('utf-8')).hexdigest()[:8]
+                                        st.download_button(
+                                            label="💾",
+                                            data=f,
+                                            file_name=os.path.basename(img_path),
+                                            mime="image/png",
+                                            key=f"download_history_{entry_idx}_{hist_key}",
+                                            use_container_width=True
+                                        )
                             with col_del:
                                 if st.button("🗑️", key=f"delete_{entry_idx}", use_container_width=True):
                                     if delete_history_entry(entry_idx):

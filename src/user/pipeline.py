@@ -7,6 +7,7 @@ import sys
 import numpy as np
 import torch
 from PIL import Image
+import re
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -247,6 +248,7 @@ def pipeline(
                     "denoise": "0.3",
                     "width": str(w),
                     "height": str(h),
+                    "batch_size": str(batch),
                     "img2img": "True",
                     "upscale_model": "RealESRGAN_x4plus.pth",
                     "hires_fix": str(hires_fix),
@@ -336,6 +338,7 @@ def pipeline(
                     "denoise": "1",
                     "width": str(w),
                     "height": str(h),
+                    "batch_size": str(batch),
                     "flux_enabled": "True",
                     "hires_fix": str(hires_fix),
                     "adetailer": str(adetailer),
@@ -525,10 +528,47 @@ def pipeline(
                         negative=cliptextencode_243[0],
                         pipeline=True,
                     )
-                    # Compute detailer seed safely
+                    # Compute detailer seed safely (guard against detailer returning
+                    # image tensors or other non-seed objects)
+                    def _extract_scalar_seed(candidate):
+                        try:
+                            # integers
+                            if isinstance(candidate, int):
+                                return str(candidate)
+                            # floats that represent integers
+                            if isinstance(candidate, float) and float(candidate).is_integer():
+                                return str(int(candidate))
+                            # numeric strings
+                            if isinstance(candidate, str):
+                                s = candidate.strip()
+                                if re.fullmatch(r"-?\d+", s):
+                                    return s
+                                # if it's a large string but contains an integer token, use the token
+                                m = re.search(r"\d{4,}", s)
+                                if m:
+                                    return m.group(0)
+                                return None
+                            # numpy scalars/arrays
+                            if isinstance(candidate, np.ndarray):
+                                if candidate.size == 1:
+                                    return str(int(candidate.item()))
+                                return None
+                            # torch tensors
+                            if isinstance(candidate, torch.Tensor):
+                                try:
+                                    if candidate.numel() == 1:
+                                        return str(int(candidate.item()))
+                                except Exception:
+                                    return None
+                        except Exception:
+                            return None
+                        return None
+
                     try:
                         if isinstance(detailerforeachdebug_145, (list, tuple)) and len(detailerforeachdebug_145) > 1:
-                            detailer_body_seed = str(detailerforeachdebug_145[1])
+                            candidate = detailerforeachdebug_145[1]
+                            extracted = _extract_scalar_seed(candidate)
+                            detailer_body_seed = extracted if extracted is not None else str(current_seed)
                         else:
                             detailer_body_seed = str(current_seed)
                     except Exception:
@@ -546,6 +586,7 @@ def pipeline(
                         "denoise": "0.5",
                         "width": str(w),
                         "height": str(h),
+                            "batch_size": str(batch),
                         "adetailer": "True",
                     }
 
@@ -613,10 +654,12 @@ def pipeline(
                         negative=cliptextencode_243[0],
                         pipeline=True,
                     )
-                    # Compute detailer head seed safely
+                    # Compute detailer head seed safely (same logic as body seed)
                     try:
                         if isinstance(detailerforeachdebug_145, (list, tuple)) and len(detailerforeachdebug_145) > 1:
-                            detailer_head_seed = str(detailerforeachdebug_145[1])
+                            candidate_h = detailerforeachdebug_145[1]
+                            extracted_h = _extract_scalar_seed(candidate_h)
+                            detailer_head_seed = extracted_h if extracted_h is not None else str(current_seed)
                         else:
                             detailer_head_seed = str(current_seed)
                     except Exception:
@@ -634,6 +677,7 @@ def pipeline(
                         "denoise": "0.5",
                         "width": str(w),
                         "height": str(h),
+                            "batch_size": str(batch),
                         "adetailer": "True",
                     }
 
@@ -670,6 +714,7 @@ def pipeline(
                     "denoise": "1",
                     "width": str(w),
                     "height": str(h),
+                        "batch_size": str(batch),
                     "hires_fix": str(hires_fix),
                     "adetailer": str(adetailer),
                     "stable_fast": str(stable_fast),
