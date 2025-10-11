@@ -201,11 +201,25 @@ def add_to_history(image_paths, settings):
             except Exception:
                 pass
 
+            # Prefer prompt text embedded in the image's PNG metadata when
+            # available (this is the authoritative prompt used by the
+            # pipeline). Fall back to the provided settings prompt.
+            png_prompt = None
+            png_negative = None
+            try:
+                png_prompt = png_meta.get("prompt")
+            except Exception:
+                png_prompt = None
+            try:
+                png_negative = png_meta.get("negative_prompt")
+            except Exception:
+                png_negative = None
+
             entry = {
                 "timestamp": timestamp,
                 "image_path": img_path,
-                "prompt": settings.get("prompt", ""),
-                "negative_prompt": settings.get("negative_prompt", ""),
+                "prompt": png_prompt if png_prompt not in (None, "") else settings.get("prompt", ""),
+                "negative_prompt": png_negative if png_negative not in (None, "") else settings.get("negative_prompt", ""),
                 "width": settings.get("width", None),
                 "height": settings.get("height", None),
                 "batch_size": settings.get("batch_size"),
