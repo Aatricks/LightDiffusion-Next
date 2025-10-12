@@ -15,6 +15,7 @@ import time
 import numpy as np
 from PIL import Image
 import hashlib
+import gc
 # (no additional top-level imports required)
 
 # Core Pipeline Integration
@@ -678,6 +679,18 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     app_instance.app.cleanup_all_previews()
     app_instance.app.clear_interrupt()
     set_keep_models_loaded(settings["keep_models_loaded"])
+    # If the user is attempting a large job, give them a heads-up that
+    # the app may temporarily unload models between chunks to avoid
+    # running out of VRAM. The actual unload happens inside the
+    # background worker so we only display the notice here.
+    try:
+        if settings.get("num_images", 1) >= 10 and settings.get("keep_models_loaded", True):
+            try:
+                status_placeholder.info("⚠️ Large job detected — the app will unload models between chunks to reduce VRAM usage.")
+            except Exception:
+                pass
+    except Exception:
+        pass
     
     # Create output directories
     os.makedirs("./output/preview_display", exist_ok=True)
@@ -688,62 +701,234 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     generation_error = None
     
     def run_generation():
+        """Run the pipeline in small chunks to avoid VRAM accumulation.
+
+        This routine intentionally does not call Streamlit APIs (they are
+        not thread-safe). It will set pipeline_result/generation_error and
+        signal the completion event so the main thread can react.
+        """
         nonlocal pipeline_result, generation_error
+        # Keep a local copy of the user's preference so we can restore it.
+        original_keep_models = bool(settings.get("keep_models_loaded", True))
+        forced_unload_for_large_job = False
+
         try:
-            # Prepare multiscale parameters
-            if settings["multiscale_custom"]:
-                # Use custom settings
+            total_images = int(settings.get("num_images", 1))
+            configured_batch = int(settings.get("batch_size", 1))
+
+            # For very large jobs, force unloading models between chunks to
+            # avoid gradual VRAM growth in some backends. We do not persist
+            # this change to the saved settings; it only applies during this
+            # generation run.
+            LARGE_JOB_MIN_IMAGES = 10
+            if total_images >= LARGE_JOB_MIN_IMAGES and original_keep_models:
+                try:
+                    set_keep_models_loaded(False)
+                    forced_unload_for_large_job = True
+                except Exception:
+                    # If the backend refuses, continue but try other mitigations
+                    forced_unload_for_large_job = False
+
+            # Prepare multiscale params once
+            if settings.get("multiscale_custom"):
                 multiscale_params = {
                     "multiscale_preset": None,
                     "enable_multiscale": True,
-                    "multiscale_factor": settings["multiscale_factor"],
-                    "multiscale_fullres_start": settings["multiscale_fullres_start"],
-                    "multiscale_fullres_end": settings["multiscale_fullres_end"],
-                    "multiscale_intermittent_fullres": settings["multiscale_intermittent_fullres"],
+                    "multiscale_factor": settings.get("multiscale_factor", 0.5),
+                    "multiscale_fullres_start": settings.get("multiscale_fullres_start", 3),
+                    "multiscale_fullres_end": settings.get("multiscale_fullres_end", 8),
+                    "multiscale_intermittent_fullres": settings.get("multiscale_intermittent_fullres", False),
                 }
             else:
-                # Use preset
-                multiscale_params = {
-                    "multiscale_preset": settings["multiscale_preset"],
-                }
-            
-            result = pipeline(
-                prompt=settings["prompt"],
-                negative_prompt=settings["negative_prompt"],
-                w=settings["width"],
-                h=settings["height"],
-                number=settings["num_images"],
-                batch=settings.get("batch_size", 1),
-                hires_fix=settings["hiresfix"],
-                adetailer=settings["adetailer"],
-                enhance_prompt=settings["enhance_prompt"],
-                img2img=settings["img2img_mode"],
-                stable_fast=settings["stable_fast"],
-                reuse_seed=settings["reuse_seed"],
-                flux_enabled=settings["flux_mode"],
-                prio_speed=settings["speed_mode"],
-                autohdr=True,
-                realistic_model=settings["realistic_mode"],
-                img2img_image=settings.get("input_image_path") if settings["img2img_mode"] else None,
-                **multiscale_params,
-            )
-            pipeline_result = result
+                multiscale_params = {"multiscale_preset": settings.get("multiscale_preset", "balanced")}
+
+            images_generated = 0
+            last_error = None
+
+            def _attempt_memory_recovery(force_clear=False):
+                """Try a few cheap memory recovery steps: clear previews, GC,
+                clear model cache (optionally) and empty CUDA cache if available.
+                If force_clear=True the model cache will be cleared unconditionally;
+                otherwise we consult VRAM usage and only clear when it looks high.
+                """
+                try:
+                    # Close any preview files the app created
+                    try:
+                        app_instance.app.cleanup_all_previews()
+                    except Exception:
+                        pass
+
+                    gc.collect()
+
+                    # Clear model cache only when explicitly requested or when
+                    # VRAM utilization is high. This avoids unnecessary reloads
+                    # between small chunks while still protecting long runs.
+                    try:
+                        if force_clear:
+                            clear_model_cache()
+                        else:
+                            try:
+                                mem_info = get_memory_info()
+                                used = float(mem_info.get('used_vram', 0) or 0)
+                                total = float(mem_info.get('total_vram', 0) or 0)
+                                if total > 0 and (used / total) >= 0.85:
+                                    clear_model_cache()
+                            except Exception:
+                                # If we can't read memory info, avoid clearing
+                                # cache unless explicitly forced.
+                                pass
+                    except Exception:
+                        pass
+
+                    try:
+                        import torch
+                        if getattr(torch, "cuda", None) and torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        # Torch not available or cuda not present
+                        pass
+
+                    # Small delay to give drivers time to reclaim memory
+                    time.sleep(0.15)
+                except Exception:
+                    pass
+
+            # Generate in chunks to avoid holding onto intermediate RAM across
+            # many generated images. We try progressively smaller chunk sizes
+            # if an OOM occurs.
+            while images_generated < total_images and not stop_event.is_set():
+                remaining = total_images - images_generated
+                target_chunk = min(configured_batch, remaining)
+                attempt_chunk = target_chunk
+
+                # If the user explicitly asked to keep models loaded, we still
+                # try using smaller chunks for stability.
+                while attempt_chunk > 0 and not stop_event.is_set():
+                    try:
+                        result = pipeline(
+                            prompt=settings.get("prompt", ""),
+                            negative_prompt=settings.get("negative_prompt", ""),
+                            w=settings.get("width"),
+                            h=settings.get("height"),
+                            number=attempt_chunk,
+                            batch=min(attempt_chunk, configured_batch),
+                            hires_fix=settings.get("hiresfix", False),
+                            adetailer=settings.get("adetailer", False),
+                            enhance_prompt=settings.get("enhance_prompt", False),
+                            img2img=settings.get("img2img_mode", False),
+                            stable_fast=settings.get("stable_fast", False),
+                            reuse_seed=settings.get("reuse_seed", False),
+                            flux_enabled=settings.get("flux_mode", False),
+                            prio_speed=settings.get("speed_mode", False),
+                            autohdr=True,
+                            realistic_model=settings.get("realistic_mode", False),
+                            img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,
+                            **multiscale_params,
+                        )
+
+                        # We don't keep large pipeline return values around —
+                        # just note that a result existed and then free it so
+                        # memory can be reclaimed.
+                        pipeline_result = True
+                        try:
+                            del result
+                        except Exception:
+                            pass
+
+                        images_generated += attempt_chunk
+
+                        # Aggressively try to free any leftover memory between
+                        # chunks so long-running generation runs remain stable.
+                        # For routine between-chunk cleanup only force a
+                        # full model unload when the user selected the large
+                        # job mitigation; otherwise be conservative.
+                        _attempt_memory_recovery(force_clear=forced_unload_for_large_job)
+                        break
+                    except Exception as e:
+                        last_error = e
+                        # Heuristic: treat messages mentioning OOM/CUDA as memory
+                        # exhaustion and try to recover by shrinking chunk size.
+                        msg = str(e).lower() if e is not None else ""
+                        is_oom = (
+                            "out of memory" in msg
+                            or "cuda" in msg and ("out" in msg or "oom" in msg)
+                            or isinstance(e, MemoryError)
+                        )
+
+                        if not is_oom:
+                            # Not a memory error — rethrow and let outer handler
+                            # capture it and end the run.
+                            raise
+
+                        # Try to recover from OOM: shrink the attempted chunk
+                        # size and clear caches before retrying.
+                        new_attempt = max(1, attempt_chunk // 2)
+                        if new_attempt >= attempt_chunk:
+                            new_attempt = 1
+                        attempt_chunk = new_attempt
+
+                        # On OOM we want to aggressively clear caches before
+                        # retrying smaller batches.
+                        _attempt_memory_recovery(force_clear=True)
+
+                        # If we've reduced to single-image chunks and still OOM,
+                        # try one last time with a full cache clear and then
+                        # propagate the failure if it still fails.
+                        if attempt_chunk == 1:
+                            try:
+                                clear_model_cache()
+                            except Exception:
+                                pass
+                            gc.collect()
+                            try:
+                                import torch as _torch
+                                if getattr(_torch, "cuda", None) and _torch.cuda.is_available():
+                                    _torch.cuda.empty_cache()
+                            except Exception:
+                                pass
+
+                            # Next loop iteration will try a single-image run.
+
+                # End inner attempt loop
+
+                # If we exited the inner loop due to an interrupt, break outer loop
+                if stop_event.is_set():
+                    break
+
+            # If the inner logic ended with an exception, surface it
+            if last_error is not None and images_generated < total_images:
+                raise last_error
+
         except Exception as e:
             generation_error = e
-            if settings["verbose_mode"]:
+            if settings.get("verbose_mode"):
                 import traceback
                 traceback.print_exc()
         finally:
+            # Restore user's preferred "keep models loaded" flag if we
+            # temporarily overrode it for large jobs.
+            try:
+                if forced_unload_for_large_job and original_keep_models:
+                    set_keep_models_loaded(original_keep_models)
+            except Exception:
+                pass
+
             generation_complete.set()
     
+    # Create a thread-safe stop event for the background worker so the
+    # main thread can request a clean stop without touching Streamlit
+    # session state from the worker thread.
+    stop_event = threading.Event()
+
     # Start generation thread
     gen_thread = threading.Thread(target=run_generation, daemon=True)
     gen_thread.start()
-    
+
     # Track in session state
     st.session_state.generation_job = {
         "thread": gen_thread,
         "complete_event": generation_complete,
+        "stop_event": stop_event,
         "start_time": time.time()
     }
     
@@ -1069,6 +1254,13 @@ def stop_generation():
             ev = job.get("complete_event")
             if ev is not None and hasattr(ev, "set"):
                 ev.set()
+            # Signal the worker thread via the thread-safe stop_event if present
+            stop_ev = job.get("stop_event")
+            if stop_ev is not None and hasattr(stop_ev, "set"):
+                try:
+                    stop_ev.set()
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -1234,7 +1426,7 @@ def render_generate_page():
             settings["num_images"] = st.number_input(
                 "Number of Images",
                 min_value=1,
-                max_value=10,
+                max_value=1000,
                 value=settings["num_images"],
                 key="num_images_input",
                 disabled=controls_disabled,
