@@ -117,11 +117,10 @@ def sample_euler_ancestral(
     )
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        if (
-            not pipeline
-            and hasattr(app_instance.app, "interrupt_flag")
-            and app_instance.app.interrupt_flag
-        ):
+        # Allow interruption even when running as part of the pipeline.
+        # Previously the check was gated by `not pipeline`, which prevented
+        # UI-driven interrupts from taking effect during pipeline mode.
+        if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:
@@ -267,11 +266,8 @@ def sample_euler(
     gamma_max = min(s_churn / (len(sigmas) - 1), 2**0.5 - 1) if s_churn > 0 else 0
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        if (
-            not pipeline
-            and hasattr(app_instance.app, "interrupt_flag")
-            and app_instance.app.interrupt_flag
-        ):
+        # Check for external interrupt request regardless of pipeline flag
+        if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:
@@ -523,11 +519,7 @@ def sample_euler_dy_cfg_pp(
     disable_gui = pipeline
 
     for i in trange(len(sigmas) - 1, disable=disable):
-        if (
-            not pipeline
-            and hasattr(app_instance.app, "interrupt_flag")
-            and app_instance.app.interrupt_flag
-        ):
+        if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:
@@ -668,11 +660,7 @@ def sample_euler_ancestral_dy_cfg_pp(
 
     s_in = x.new_ones([x.shape[0]])
     for i in trange(len(sigmas) - 1, disable=disable):
-        if (
-            not pipeline
-            and hasattr(app_instance.app, "interrupt_flag")
-            and app_instance.app.interrupt_flag
-        ):
+        if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:
@@ -881,11 +869,7 @@ def sample_dpmpp_2m_cfgpp(
     )
 
     for i in trange(n_steps, disable=disable):
-        if (
-            not pipeline
-            and hasattr(app_instance.app, "interrupt_flag")
-            and app_instance.app.interrupt_flag
-        ):
+        if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:
@@ -1108,11 +1092,7 @@ def sample_dpmpp_sde_cfgpp(
     )
 
     for i in trange(n_steps, disable=disable):
-        if (
-            not pipeline
-            and hasattr(app_instance.app, "interrupt_flag")
-            and app_instance.app.interrupt_flag
-        ):
+        if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:

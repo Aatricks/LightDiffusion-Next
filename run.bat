@@ -46,7 +46,7 @@ echo.
 echo To use Gradio UI instead, run: python app.py
 echo For verbose mode, run: streamlit run streamlit_app.py -- --verbose
 echo.
-streamlit run streamlit_app.py
+streamlit run streamlit_app.py --logger.level=error
 
 REM Deactivate the virtual environment
 deactivate

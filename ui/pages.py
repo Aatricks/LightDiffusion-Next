@@ -1,0 +1,355 @@
+"""Page rendering helpers for LightDiffusion-Next.
+
+This module contains page-level render functions that can be imported
+by the main app entrypoint. Breaking pages out makes the main file
+shorter and easier to navigate.
+"""
+import os
+import hashlib
+import streamlit as st
+from PIL import Image
+
+from ui.history import load_history, scan_output_folders, clear_history, delete_history_entry
+from ui import settings as ui_settings
+from ui.generation import generate_images, stop_generation, prepare_generation
+from ui.helpers import render_responsive_image, compute_display_size
+from src.Device.ModelCache import get_memory_info, clear_model_cache
+
+
+def render_generate_page():
+    """Render the main generation page (moved from streamlit_app).
+
+    This function uses the UI helpers and delegates generation to
+    `ui.generation.generate_images` so the page code stays focused on
+    laying out controls and placeholders.
+    """
+    settings = st.session_state.settings
+    controls_disabled = st.session_state.is_generating
+
+    with st.sidebar:
+        st.markdown(
+            '<a href="https://github.com/Aatricks/LightDiffusion-Next" target="_blank" style="text-decoration:none;color:inherit;"><h2 style="margin:0 0 8px 0;">LightDiffusion</h2></a>',
+            unsafe_allow_html=True,
+        )
+        st.header("⚙️ Settings")
+        if controls_disabled:
+            st.warning("⚠️ Generation in progress — settings are locked until the current job finishes or you press Stop.")
+
+        with st.expander("📝 Prompt & Text", expanded=True):
+            prompt = st.text_area("Prompt", value=settings["prompt"], height=100, key="prompt_input", disabled=controls_disabled)
+            settings["prompt"] = prompt
+            negative_prompt = st.text_area("Negative Prompt", value=settings["negative_prompt"], height=80, key="negative_prompt_input", disabled=controls_disabled)
+            settings["negative_prompt"] = negative_prompt
+
+        with st.expander("📐 Dimensions & Batch", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                settings["width"] = st.number_input("Width", min_value=64, max_value=2048, value=settings["width"], step=64, disabled=controls_disabled)
+            with col2:
+                settings["height"] = st.number_input("Height", min_value=64, max_value=2048, value=settings["height"], step=64, disabled=controls_disabled)
+
+            settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=1000, value=settings["num_images"], key="num_images_input", disabled=controls_disabled)
+
+            preset = st.selectbox("Presets", ["Custom", "512x512", "768x768", "1024x1024", "512x768 (Portrait)", "768x512 (Landscape)"], disabled=controls_disabled)
+            if preset == "512x512":
+                settings["width"], settings["height"] = 512, 512
+            elif preset == "768x768":
+                settings["width"], settings["height"] = 768, 768
+            elif preset == "1024x1024":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "512x768 (Portrait)":
+                settings["width"], settings["height"] = 512, 768
+            elif preset == "768x512 (Landscape)":
+                settings["width"], settings["height"] = 768, 512
+
+            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster.")
+
+        with st.expander("🎯 Generation Modes", expanded=False):
+            settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"], disabled=controls_disabled)
+            settings["realistic_mode"] = st.checkbox("Realistic Mode", value=settings["realistic_mode"], disabled=controls_disabled)
+            settings["speed_mode"] = st.checkbox("Speed Mode", value=settings["speed_mode"], disabled=controls_disabled)
+            settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
+
+            if settings["img2img_mode"]:
+                if controls_disabled:
+                    st.info("Image upload is disabled while generation is running. Stop the job to change the input image.")
+                    if settings.get("input_image_path") and os.path.exists(settings.get("input_image_path")):
+                        try:
+                            st.image(settings.get("input_image_path"), caption="Current Input Image", use_column_width=True)
+                        except Exception:
+                            pass
+                else:
+                    uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+                    if uploaded_file:
+                        img_path = f"./output/uploaded_{uploaded_file.name}"
+                        with open(img_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        settings["input_image_path"] = img_path
+                        st.image(uploaded_file, caption="Input Image", use_container_width=True)
+
+        with st.expander("✨ Enhancements", expanded=False):
+            settings["hiresfix"] = st.checkbox("HiRes Fix", value=settings["hiresfix"], disabled=controls_disabled)
+            settings["adetailer"] = st.checkbox("ADetailer", value=settings["adetailer"], disabled=controls_disabled)
+            settings["enhance_prompt"] = st.checkbox("Enhance Prompt", value=settings["enhance_prompt"], disabled=controls_disabled)
+            settings["stable_fast"] = st.checkbox("Stable Fast", value=settings["stable_fast"], disabled=controls_disabled)
+
+        with st.expander("🔧 Advanced", expanded=False):
+            settings["reuse_seed"] = st.checkbox("Reuse Seed", value=settings["reuse_seed"], disabled=controls_disabled)
+            settings["enable_preview"] = st.checkbox("Live Preview", value=settings["enable_preview"], disabled=controls_disabled)
+
+        with st.expander("🔬 Multi-scale", expanded=False):
+            preset_options = {
+                "quality": "Quality - Best image quality with intermittent full-res",
+                "balanced": "Balanced - Good quality and performance",
+                "performance": "Performance - Maximum speed with aggressive downscaling",
+                "disabled": "Disabled - Full resolution throughout",
+                "custom": "Custom - Configure all settings manually"
+            }
+            if settings.get("multiscale_custom", False):
+                current_preset = "custom"
+            else:
+                current_preset = settings.get("multiscale_preset", "balanced")
+
+            selected_preset = st.selectbox("Preset", options=list(preset_options.keys()), format_func=lambda x: preset_options[x], index=list(preset_options.keys()).index(current_preset), disabled=controls_disabled)
+            if selected_preset == "custom":
+                settings["multiscale_custom"] = True
+                settings["multiscale_factor"] = st.slider("Scale Factor", min_value=0.1, max_value=1.0, value=settings.get("multiscale_factor", 0.5), step=0.05, help="Scale factor for intermediate steps", disabled=controls_disabled)
+                settings["multiscale_fullres_start"] = st.number_input("Full-res Start Steps", min_value=0, max_value=20, value=settings.get("multiscale_fullres_start", 3), help="Number of first steps at full resolution", disabled=controls_disabled)
+                settings["multiscale_fullres_end"] = st.number_input("Full-res End Steps", min_value=0, max_value=20, value=settings.get("multiscale_fullres_end", 8), help="Number of last steps at full resolution", disabled=controls_disabled)
+                settings["multiscale_intermittent_fullres"] = st.checkbox("Intermittent Full-res", value=settings.get("multiscale_intermittent_fullres", False), help="Enable intermittent full-res rendering in low-res region", disabled=controls_disabled)
+            else:
+                settings["multiscale_custom"] = False
+                settings["multiscale_preset"] = selected_preset
+
+        with st.expander("💾 VRAM & Cache", expanded=False):
+            settings["keep_models_loaded"] = st.checkbox("Keep Models in VRAM", value=settings["keep_models_loaded"], disabled=controls_disabled)
+
+            if st.button("Clear Model Cache", disabled=controls_disabled):
+                clear_model_cache()
+                st.success("Cache cleared!")
+            try:
+                mem_info = get_memory_info()
+                used_vram = mem_info.get('used_vram', 0)
+                total_vram = mem_info.get('total_vram', 0)
+                st.text(f"VRAM: {used_vram:.1f}GB / {total_vram:.1f}GB")
+            except Exception as e:
+                st.text(f"VRAM: Unable to detect ({str(e)})")
+
+        st.divider()
+        settings["verbose_mode"] = st.checkbox("Verbose Logging", value=settings["verbose_mode"], disabled=controls_disabled)
+        st.session_state.verbose_mode = settings["verbose_mode"]
+        settings["ui_scale"] = st.slider("UI Display Scale", min_value=0.5, max_value=3.0, value=settings.get("ui_scale", 1.0), step=0.25, help="Scale factor applied to preview and output display size (independent of image resolution).", disabled=controls_disabled)
+        try:
+            scale_val = float(settings["ui_scale"])
+            base_display = st.session_state.get("display_size", (512, 512))
+            st.session_state.ui_display_size = (min(int(base_display[0] * scale_val), 1400), min(int(base_display[1] * scale_val), 1000))
+        except Exception:
+            pass
+
+    st.session_state.settings = settings
+    ui_settings.save_settings(settings)
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.button("🎨 Generate", use_container_width=True, disabled=st.session_state.is_generating, type="primary", on_click=prepare_generation)
+    with col2:
+        stop_clicked = st.button("⏹️ Stop", use_container_width=True, disabled=not st.session_state.is_generating)
+
+    if stop_clicked:
+        stop_generation()
+
+    st.divider()
+
+    status_placeholder = st.empty()
+    gallery_placeholder = st.empty()
+    status_bar = st.empty()
+
+    if st.session_state.generated_image_paths and not st.session_state.is_generating:
+        paths = st.session_state.generated_image_paths
+
+        # Determine base display size from the first generated image so the
+        # UI matches the actual generated file's aspect ratio instead of the
+        # user-entered width/height values (which may be different for
+        # Img2Img/ADetailer flows).
+        try:
+            with Image.open(paths[0]) as first_img:
+                first_w, first_h = first_img.size
+        except Exception:
+            # Fallback to the previously stored display size if the file is
+            # not available or cannot be opened.
+            stored_ds = st.session_state.get("display_size", (512, 512))
+            first_w, first_h = stored_ds
+
+        display_size = compute_display_size(first_w, first_h)
+        UI_SCALE = float(settings.get("ui_scale", 1.0))
+        UI_MAX_WIDTH = 1400
+        UI_MAX_HEIGHT = 1000
+        ui_full_w = min(int(display_size[0] * UI_SCALE), UI_MAX_WIDTH)
+        ui_full_h = min(int(display_size[1] * UI_SCALE), UI_MAX_HEIGHT)
+
+        # Persist the computed display sizes in session so other UI pieces
+        # (and generation code) can reuse them.
+        st.session_state.display_size = display_size
+        st.session_state.ui_display_size = (ui_full_w, ui_full_h)
+
+        cols_count = min(3, len(paths)) or 1
+        cols = st.columns(cols_count)
+        for idx, path in enumerate(paths):
+            try:
+                with Image.open(path) as img:
+                    orig_w, orig_h = img.size
+                    if len(paths) == 1:
+                        tile_w, tile_h = ui_full_w, ui_full_h
+                    else:
+                        tile_w = max(64, int(ui_full_w / cols_count))
+                        tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
+
+                    with cols[idx % cols_count]:
+                        render_responsive_image(img, (tile_w, tile_h))
+            except Exception as e:
+                with cols[idx % cols_count]:
+                    st.warning(f"Could not load image: {e}")
+    else:
+        gallery_placeholder.info("👈 Configure settings and click Generate to create images")
+
+    if st.session_state.get("start_generation", False):
+        st.session_state.start_generation = False
+        prev_job = st.session_state.get("generation_job") or {}
+        prev_thread = prev_job.get("thread") if isinstance(prev_job, dict) else None
+        if prev_thread is not None and hasattr(prev_thread, "is_alive") and prev_thread.is_alive():
+            status_placeholder.warning("⚠️ Previous generation is still stopping. Please wait a moment and try Generate again.")
+            st.session_state.start_generation = False
+        else:
+            st.session_state.generated_images = []
+            st.session_state.generated_image_paths = []
+            generate_images(settings, status_placeholder, gallery_placeholder, status_bar)
+            st.rerun()
+
+
+def render_history_page():
+    """Render the history page with past generations (delegated)."""
+    st.header("📜 Generation History")
+
+    # Action buttons
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 3])
+    with col1:
+        if st.button("🔄 Scan Folders"):
+            with st.spinner("Scanning output folders..."):
+                history = scan_output_folders()
+            st.success(f"Found {len(history)} images!")
+            st.rerun()
+    with col2:
+        if st.button("🗑️ Clear All"):
+            clear_history()
+            st.rerun()
+
+    # Load history
+    history = load_history()
+
+    with col3:
+        st.text(f"Total: {len(history)}")
+
+    if not history:
+        st.info("No generation history yet. Create some images or click 'Scan Folders' to find existing ones!")
+        return
+
+    st.divider()
+
+    # Display history in a grid (3 columns)
+    cols_per_row = 3
+    for idx in range(0, len(history), cols_per_row):
+        cols = st.columns(cols_per_row)
+        
+        for col_idx, col in enumerate(cols):
+            entry_idx = idx + col_idx
+            if entry_idx >= len(history):
+                break
+            
+            entry = history[entry_idx]
+            img_path = entry["image_path"]
+            
+            with col:
+                # Check if image still exists
+                if os.path.exists(img_path):
+                    try:
+                        img = Image.open(img_path)
+                        st.image(img, use_container_width=True)
+                        
+                        # Compact info
+                        with st.expander("ℹ️ Details", expanded=False):
+                            st.text(f"🕒 {entry.get('timestamp')}")
+                            st.text(f"📐 {entry.get('width')}x{entry.get('height')}")
+                            batch = entry.get("batch_size")
+                            if batch is not None:
+                                st.text(f"🔁 Batch: {batch}")
+                            
+                            # Key metadata
+                            seed = entry.get("seed")
+                            sampler = entry.get("sampler")
+                            steps = entry.get("steps")
+                            cfg = entry.get("cfg")
+                            if seed:
+                                st.text(f"🔢 Seed: {seed}")
+                            if sampler:
+                                st.text(f"🎛️ Sampler: {sampler}")
+                            if steps or cfg:
+                                st.text(f"⚙️ Steps/CFG: {steps or '?'} / {cfg or '?'}")
+                            # Timing metrics (if available)
+                            gen_dur = entry.get("generation_duration")
+                            avg_it = entry.get("avg_iters_per_s")
+                            if gen_dur is not None:
+                                try:
+                                    st.text(f"⏱️ Duration: {float(gen_dur):.2f}s")
+                                except Exception:
+                                    st.text(f"⏱️ Duration: {gen_dur}")
+                            if avg_it is not None:
+                                try:
+                                    st.text(f"⚡ Avg iters/s: {float(avg_it):.2f}")
+                                except Exception:
+                                    st.text(f"⚡ Avg iters/s: {avg_it}")
+                            
+                            if entry.get('flux_mode'):
+                                st.text("⚡ Flux Mode")
+                            if entry.get('realistic_mode'):
+                                st.text("📸 Realistic")
+                            
+                            st.text_area(
+                                "Prompt",
+                                value=entry.get("prompt", ""),
+                                height=60,
+                                disabled=True,
+                                key=f"prompt_{entry_idx}"
+                            )
+                            
+                            # Action buttons
+                            col_dl, col_del = st.columns(2)
+                            with col_dl:
+                                with open(img_path, "rb") as f:
+                                        hist_key = hashlib.md5(img_path.encode('utf-8')).hexdigest()[:8]
+                                        st.download_button(
+                                            label="💾",
+                                            data=f,
+                                            file_name=os.path.basename(img_path),
+                                            mime="image/png",
+                                            key=f"download_history_{entry_idx}_{hist_key}",
+                                            use_container_width=True
+                                        )
+                            with col_del:
+                                if st.button("🗑️", key=f"delete_{entry_idx}", use_container_width=True):
+                                    if delete_history_entry(entry_idx):
+                                        st.rerun()
+                            # All metadata expander (minimalistic)
+                            with st.expander("🧾 All metadata", expanded=False):
+                                meta_display = {k: v for k, v in entry.items() if k != 'png_metadata'}
+                                png_meta = entry.get('png_metadata') or {}
+                                merged = {"entry": meta_display, "png_metadata": png_meta}
+                                try:
+                                    st.json(merged)
+                                except Exception:
+                                    st.text(str(merged))
+                    except Exception as e:
+                        st.error(f"Error loading image: {e}")
+                else:
+                    st.warning("⚠️ Image not found")
+                    st.text(f"🕒 {entry['timestamp']}")
+                    st.caption(os.path.basename(img_path))

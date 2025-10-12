@@ -1,11 +1,13 @@
 import argparse
 import os
 import random
+import time
 import sys
 
 import numpy as np
 import torch
 from PIL import Image
+import re
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -233,11 +235,37 @@ def pipeline(
                     pipeline=True,
                 )
                 _check_interruption()
+                # Build PNG metadata for this img2img/upscale result
+                i2i_meta = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "seed": str(current_seed),
+                    "sampler": str(sampler_name),
+                    "steps": "8",
+                    "cfg": "6",
+                    "scheduler": "karras",
+                    "denoise": "0.3",
+                    "width": str(w),
+                    "height": str(h),
+                    "batch_size": str(batch),
+                    "img2img": "True",
+                    "upscale_model": "RealESRGAN_x4plus.pth",
+                    "hires_fix": str(hires_fix),
+                    "adetailer": str(adetailer),
+                    "stable_fast": str(stable_fast),
+                    "flux_enabled": str(flux_enabled),
+                    "realistic_model": str(realistic_model),
+                    "reuse_seed": str(reuse_seed),
+                    "multiscale_preset": str(multiscale_preset),
+                }
+
+                i2i_imgs = hdr.apply_hdr2(ultimatesdupscale_250[0]) if autohdr else ultimatesdupscale_250[0]
                 saveimage.save_images(
                     filename_prefix="LD-I2I",
-                    images=hdr.apply_hdr2(ultimatesdupscale_250[0])
-                    if autohdr
-                    else ultimatesdupscale_250[0],
+                    images=i2i_imgs,
+                    prompt=prompt,
+                    extra_pnginfo=i2i_meta,
                 )
         elif flux_enabled:
             Downloader.CheckAndDownloadFlux()
@@ -297,11 +325,34 @@ def pipeline(
                 )
 
                 _check_interruption()
+                # Build PNG metadata for Flux results
+                flux_meta = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "seed": str(current_seed),
+                    "sampler": "euler_cfgpp",
+                    "steps": "20",
+                    "cfg": "1",
+                    "scheduler": "beta",
+                    "denoise": "1",
+                    "width": str(w),
+                    "height": str(h),
+                    "batch_size": str(batch),
+                    "flux_enabled": "True",
+                    "hires_fix": str(hires_fix),
+                    "adetailer": str(adetailer),
+                    "stable_fast": str(stable_fast),
+                    "realistic_model": str(realistic_model),
+                    "reuse_seed": str(reuse_seed),
+                }
+
+                flux_imgs = hdr.apply_hdr2(vaedecode_8[0]) if autohdr else vaedecode_8[0]
                 saveimage.save_images(
                     filename_prefix="LD-Flux",
-                    images=hdr.apply_hdr2(vaedecode_8[0])
-                    if autohdr
-                    else vaedecode_8[0],
+                    images=flux_imgs,
+                    prompt=prompt,
+                    extra_pnginfo=flux_meta,
                 )
         else:
             while prompt is None:
@@ -477,11 +528,77 @@ def pipeline(
                         negative=cliptextencode_243[0],
                         pipeline=True,
                     )
+                    # Compute detailer seed safely (guard against detailer returning
+                    # image tensors or other non-seed objects)
+                    def _extract_scalar_seed(candidate):
+                        try:
+                            # integers
+                            if isinstance(candidate, int):
+                                return str(candidate)
+                            # floats that represent integers
+                            if isinstance(candidate, float) and float(candidate).is_integer():
+                                return str(int(candidate))
+                            # numeric strings
+                            if isinstance(candidate, str):
+                                s = candidate.strip()
+                                if re.fullmatch(r"-?\d+", s):
+                                    return s
+                                # if it's a large string but contains an integer token, use the token
+                                m = re.search(r"\d{4,}", s)
+                                if m:
+                                    return m.group(0)
+                                return None
+                            # numpy scalars/arrays
+                            if isinstance(candidate, np.ndarray):
+                                if candidate.size == 1:
+                                    return str(int(candidate.item()))
+                                return None
+                            # torch tensors
+                            if isinstance(candidate, torch.Tensor):
+                                try:
+                                    if candidate.numel() == 1:
+                                        return str(int(candidate.item()))
+                                except Exception:
+                                    return None
+                        except Exception:
+                            return None
+                        return None
+
+                    try:
+                        if isinstance(detailerforeachdebug_145, (list, tuple)) and len(detailerforeachdebug_145) > 1:
+                            candidate = detailerforeachdebug_145[1]
+                            extracted = _extract_scalar_seed(candidate)
+                            detailer_body_seed = extracted if extracted is not None else str(current_seed)
+                        else:
+                            detailer_body_seed = str(current_seed)
+                    except Exception:
+                        detailer_body_seed = str(current_seed)
+
+                    body_meta = {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                        "prompt": prompt,
+                        "negative_prompt": negative_prompt,
+                        "seed": detailer_body_seed,
+                        "sampler": str(sampler_name),
+                        "steps": "20",
+                        "cfg": "6.5",
+                        "scheduler": "karras",
+                        "denoise": "0.5",
+                        "width": str(w),
+                        "height": str(h),
+                            "batch_size": str(batch),
+                        "adetailer": "True",
+                    }
+
+                    if autohdr:
+                        body_imgs = hdr.apply_hdr2(detailerforeachdebug_145[0])
+                    else:
+                        body_imgs = detailerforeachdebug_145[0]
                     saveimage.save_images(
                         filename_prefix="LD-body",
-                        images=hdr.apply_hdr2(detailerforeachdebug_145[0])
-                        if autohdr
-                        else detailerforeachdebug_145[0],
+                        images=body_imgs,
+                        prompt=prompt,
+                        extra_pnginfo=body_meta,
                     )
                     ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
                     ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
@@ -537,18 +654,85 @@ def pipeline(
                         negative=cliptextencode_243[0],
                         pipeline=True,
                     )
+                    # Compute detailer head seed safely (same logic as body seed)
+                    try:
+                        if isinstance(detailerforeachdebug_145, (list, tuple)) and len(detailerforeachdebug_145) > 1:
+                            candidate_h = detailerforeachdebug_145[1]
+                            extracted_h = _extract_scalar_seed(candidate_h)
+                            detailer_head_seed = extracted_h if extracted_h is not None else str(current_seed)
+                        else:
+                            detailer_head_seed = str(current_seed)
+                    except Exception:
+                        detailer_head_seed = str(current_seed)
+
+                    head_meta = {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                        "prompt": prompt,
+                        "negative_prompt": negative_prompt,
+                        "seed": detailer_head_seed,
+                        "sampler": str(sampler_name),
+                        "steps": "20",
+                        "cfg": "6.5",
+                        "scheduler": "karras",
+                        "denoise": "0.5",
+                        "width": str(w),
+                        "height": str(h),
+                            "batch_size": str(batch),
+                        "adetailer": "True",
+                    }
+
+                    if autohdr:
+                        head_imgs = hdr.apply_hdr2(detailerforeachdebug_145[0])
+                    else:
+                        head_imgs = detailerforeachdebug_145[0]
                     saveimage.save_images(
                         filename_prefix="LD-head",
-                        images=hdr.apply_hdr2(detailerforeachdebug_145[0])
-                        if autohdr
-                        else detailerforeachdebug_145[0],
+                        images=head_imgs,
+                        prompt=prompt,
+                        extra_pnginfo=head_meta,
                     )
             else:
+                # Determine sampling metadata for main outputs
+                if hires_fix:
+                    main_steps = 10
+                    main_cfg = 8
+                    main_sampler = "euler_ancestral_cfgpp"
+                else:
+                    main_steps = 20
+                    main_cfg = 7
+                    main_sampler = sampler_name
+
+                main_meta = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "seed": str(current_seed),
+                    "sampler": str(main_sampler),
+                    "steps": str(main_steps),
+                    "cfg": str(main_cfg),
+                    "scheduler": "karras",
+                    "denoise": "1",
+                    "width": str(w),
+                    "height": str(h),
+                        "batch_size": str(batch),
+                    "hires_fix": str(hires_fix),
+                    "adetailer": str(adetailer),
+                    "stable_fast": str(stable_fast),
+                    "flux_enabled": str(flux_enabled),
+                    "realistic_model": str(realistic_model),
+                    "reuse_seed": str(reuse_seed),
+                    "multiscale_preset": str(multiscale_preset),
+                }
+
+                if autohdr:
+                    main_imgs = hdr.apply_hdr2(vaedecode_240[0])
+                else:
+                    main_imgs = vaedecode_240[0]
                 saveimage.save_images(
                     filename_prefix="LD-HF" if hires_fix else "LD",
-                    images=hdr.apply_hdr2(vaedecode_240[0])
-                    if autohdr
-                    else vaedecode_240[0],
+                    images=main_imgs,
+                    prompt=prompt,
+                    extra_pnginfo=main_meta,
                 )
 
     return {
