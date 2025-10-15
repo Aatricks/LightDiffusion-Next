@@ -62,7 +62,7 @@ def render_generate_page():
             elif preset == "768x512 (Landscape)":
                 settings["width"], settings["height"] = 768, 512
 
-            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster.")
+            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster. This setting is honored independently of 'Number of Images' (the pipeline may use internal batching even when you request fewer images).")
 
         with st.expander("🎯 Generation Modes", expanded=False):
             settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"], disabled=controls_disabled)
