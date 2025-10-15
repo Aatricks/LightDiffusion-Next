@@ -123,6 +123,11 @@ app = FastAPI(title="LightDiffusion Server", version="1.0.0")
 # Batching buffer -----------------------------------------------------------
 LD_MAX_BATCH_SIZE = int(os.getenv("LD_MAX_BATCH_SIZE", "4"))
 LD_BATCH_TIMEOUT = float(os.getenv("LD_BATCH_TIMEOUT", "0.5"))
+# If set to true (1/true), the worker will wait the coalescing timeout when
+# there is a single candidate in a chosen group; otherwise singletons are
+# processed immediately. Default is to process singletons immediately to
+# favor throughput and avoid perceived "stuck" behavior.
+LD_BATCH_WAIT_SINGLETONS = os.getenv("LD_BATCH_WAIT_SINGLETONS", "0").lower() in ("1", "true", "yes")
 
 
 class PendingRequest:
@@ -166,10 +171,21 @@ class GenerationBuffer:
             bool(req.stable_fast),
             bool(req.flux_enabled),
             bool(req.img2img_enabled),
-            # Note: hires_fix and adetailer are intentionally NOT part of
-            # the grouping signature so they can be executed per-sample
-            # after a shared forward pass. This enables batching across
-            # requests that differ only by these post-processing flags.
+            # Treat multiscale options as batch-level — mixing them may
+            # change the sampling schedule and therefore cannot be
+            # safely combined into a single forward pass.
+            bool(req.multiscale_enabled),
+            bool(req.multiscale_intermittent),
+            float(req.multiscale_factor),
+            int(req.multiscale_fullres_start),
+            int(req.multiscale_fullres_end),
+            # Speed/priority and VRAM retention flags are also batch
+            # level: they affect model selection and caching.
+            bool(req.prio_speed),
+            bool(req.keep_models_loaded),
+            # Note: hires_fix and adetailer remain intentionally NOT part
+            # of this signature because they are executed per-sample
+            # after a shared forward pass.
             bool(req.enable_preview),
         )
 
@@ -203,16 +219,34 @@ class GenerationBuffer:
                     continue
 
                 candidates = groups[chosen_sig]
-                # Sort by arrival time
+                # Sort by arrival time (oldest first)
                 candidates.sort(key=lambda x: x.arrival)
 
-                # If only one candidate and it's too new, wait a bit for more
-                if len(candidates) == 1 and (time.time() - candidates[0].arrival) < LD_BATCH_TIMEOUT:
-                    # Not enough time has passed to form a batch; continue waiting
-                    self._new_request.clear()
-                    # small sleep outside lock so other producers can add
-                    await asyncio.sleep(LD_BATCH_TIMEOUT)
-                    continue
+                # Debug: show group sizes for observability
+                try:
+                    group_summary = {str(sig): len(arr) for sig, arr in groups.items()}
+                    logger.debug("Batch worker: pending groups=%s chosen_sig=%s group_size=%d oldest_arrival=%.3f",
+                                 group_summary, str(chosen_sig), len(candidates), candidates[0].arrival if candidates else 0.0)
+                except Exception:
+                    pass
+
+                # Determine whether to wait for coalescing when there's only a
+                # single candidate. This is controlled by LD_BATCH_WAIT_SINGLETONS
+                # so operators can toggle the behavior at runtime via env.
+                if len(candidates) == 1:
+                    age = time.time() - candidates[0].arrival
+                    if LD_BATCH_WAIT_SINGLETONS and age < LD_BATCH_TIMEOUT:
+                        # Old behavior: wait a bit for more arrivals before
+                        # processing a singleton so we can form a larger batch.
+                        logger.debug("Singleton group for signature %s is too new (age=%.3fs < timeout=%.3fs). Sleeping to coalesce.", str(chosen_sig), age, LD_BATCH_TIMEOUT)
+                        self._new_request.clear()
+                        await asyncio.sleep(LD_BATCH_TIMEOUT)
+                        continue
+                    else:
+                        # Eager processing path (default): process singletons
+                        # immediately to avoid perceived "stuck" behavior.
+                        logger.debug("Processing singleton group for signature %s immediately (age=%.3fs). LD_BATCH_WAIT_SINGLETONS=%s",
+                                     str(chosen_sig), age, LD_BATCH_WAIT_SINGLETONS)
 
                 # Pick up to max batch size
                 to_process = candidates[:LD_MAX_BATCH_SIZE]
@@ -227,6 +261,10 @@ class GenerationBuffer:
 
             # Process the selected group outside the lock
             try:
+                try:
+                    logger.debug("Processing group chosen_sig=%s items=%d request_ids=%s", str(chosen_sig), len(to_process), [p.request_id for p in to_process])
+                except Exception:
+                    pass
                 await self._process_group(to_process)
                 # Update lightweight metrics only on success
                 try:
@@ -296,6 +334,7 @@ class GenerationBuffer:
 
         # Toggle preview state for the duration of the pipeline call
         prev_preview_state = None
+        prev_keep_models_loaded = None
         try:
             try:
                 prev_preview_state = _app_instance.app.previewer_var.get()
@@ -303,28 +342,104 @@ class GenerationBuffer:
             except Exception:
                 prev_preview_state = None
 
-            loop = asyncio.get_running_loop()
-            # Run pipeline in thread pool to avoid blocking the event loop
-            func = functools.partial(pipeline, **pipeline_kwargs)
-            result = await loop.run_in_executor(None, func)
+            # Respect per-group model cache directive: toggle "keep loaded"
+            # so the sampling pipeline sees the requested caching behavior.
+            try:
+                model_cache = get_model_cache()
+                prev_keep_models_loaded = model_cache.get_keep_models_loaded()
+                model_cache.set_keep_models_loaded(bool(first_req.keep_models_loaded))
+            except Exception:
+                prev_keep_models_loaded = None
 
-            # Expect pipeline to return a mapping under 'batched_results' when
-            # run in batched mode; otherwise fall back to scanning.
+            loop = asyncio.get_running_loop()
+            # Special-case: flux-enabled groups require flux-specific
+            # model/clip loaders which the batched code path does not
+            # configure. To ensure flux requests continue to work we run
+            # them individually through the pipeline and collect their
+            # saved artifacts per-request.
             saved_map: Dict[str, List[dict]] = {}
-            if isinstance(result, dict) and "batched_results" in result:
-                saved_map = result["batched_results"]
+            if first_req.flux_enabled:
+                for p in items:
+                    start_ts_single = time.time()
+                    # Build per-request per-sample info list
+                    per_single_info = []
+                    for k in range(max(1, p.req.num_images)):
+                        per_single_info.append(
+                            {
+                                "request_id": p.request_id,
+                                "filename_prefix": f"LD-REQ-{p.request_id}",
+                                "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
+                                "hires_fix": bool(p.req.hires_fix),
+                                "adetailer": bool(p.req.adetailer),
+                            }
+                        )
+
+                    pipeline_kwargs_single = dict(
+                        prompt=p.req.prompt,
+                        w=first_req.width,
+                        h=first_req.height,
+                        number=max(1, p.req.num_images),
+                        batch=p.req.batch_size,
+                        enhance_prompt=p.req.enhance_prompt,
+                        img2img=p.req.img2img_enabled,
+                        stable_fast=p.req.stable_fast,
+                        reuse_seed=p.req.reuse_seed,
+                        flux_enabled=True,
+                        prio_speed=first_req.prio_speed,
+                        autohdr=True,
+                        realistic_model=first_req.realistic_model,
+                        negative_prompt=p.req.negative_prompt or "",
+                        multiscale_preset=None,
+                        enable_multiscale=first_req.multiscale_enabled,
+                        multiscale_factor=first_req.multiscale_factor,
+                        multiscale_fullres_start=first_req.multiscale_fullres_start,
+                        multiscale_fullres_end=first_req.multiscale_fullres_end,
+                        multiscale_intermittent_fullres=first_req.multiscale_intermittent,
+                        img2img_image=p.req.img2img_image,
+                        per_sample_info=per_single_info,
+                    )
+
+                    try:
+                        result_single = await loop.run_in_executor(None, functools.partial(pipeline, **pipeline_kwargs_single))
+                    except Exception as e:
+                        logger.exception("Per-request pipeline call failed for flux request %s: %s", p.request_id, e)
+                        result_single = None
+
+                    if isinstance(result_single, dict) and "batched_results" in result_single:
+                        for rid, arr in result_single["batched_results"].items():
+                            saved_map.setdefault(rid, []).extend(arr if isinstance(arr, list) else [arr])
+                    else:
+                        # Fallback: scan filesystem for files created since the
+                        # single-call started and group by filename prefix.
+                        files = _find_images_since(start_ts_single - 60)
+                        for f in files:
+                            name = os.path.basename(f)
+                            if f"LD-REQ-{p.request_id}" in name:
+                                saved_map.setdefault(p.request_id, []).append({
+                                    "filename": name,
+                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                })
             else:
-                # Fallback: scan filesystem for files created since group start
-                files = _find_images_since(time.time() - 60)
-                for f in files:
-                    # naive grouping by filename prefix (LD-REQ-<rid>)
-                    name = os.path.basename(f)
-                    for p in items:
-                        if f"LD-REQ-{p.request_id}" in name:
-                            saved_map.setdefault(p.request_id, []).append({
-                                "filename": name,
-                                "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
-                            })
+                # Run pipeline in thread pool to avoid blocking the event loop
+                func = functools.partial(pipeline, **pipeline_kwargs)
+                result = await loop.run_in_executor(None, func)
+
+                # Expect pipeline to return a mapping under 'batched_results' when
+                # run in batched mode; otherwise fall back to scanning.
+                if isinstance(result, dict) and "batched_results" in result:
+                    saved_map = result["batched_results"]
+                else:
+                    # Fallback: scan filesystem for files created since group start
+                    files = _find_images_since(time.time() - 60)
+                    for f in files:
+                        # naive grouping by filename prefix (LD-REQ-<rid>)
+                        name = os.path.basename(f)
+                        for p in items:
+                            if f"LD-REQ-{p.request_id}" in name:
+                                saved_map.setdefault(p.request_id, []).append({
+                                    "filename": name,
+                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                })
 
             # For each pending item, collect its images and set future result
             for p in items:
@@ -353,6 +468,17 @@ class GenerationBuffer:
             try:
                 if prev_preview_state is not None:
                     _app_instance.app.previewer_var.set(prev_preview_state)
+            except Exception:
+                pass
+            try:
+                # Restore previous model cache keep-loaded setting if we
+                # changed it above.
+                if prev_keep_models_loaded is not None:
+                    try:
+                        model_cache = get_model_cache()
+                        model_cache.set_keep_models_loaded(bool(prev_keep_models_loaded))
+                    except Exception:
+                        pass
             except Exception:
                 pass
 

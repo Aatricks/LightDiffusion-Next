@@ -255,12 +255,20 @@ def pipeline(
                 stop_at_clip_layer=-2, clip=loraloader_274[1]
             )
             if stable_fast is True:
-                from src.StableFast import StableFast
+                try:
+                    from src.StableFast import StableFast
 
-                applystablefast = StableFast.ApplyStableFastUnet()
-                applystablefast_158 = applystablefast.apply_stable_fast(
-                    enable_cuda_graph=False, model=loraloader_274[0]
-                )
+                    applystablefast = StableFast.ApplyStableFastUnet()
+                    applystablefast_158 = applystablefast.apply_stable_fast(
+                        enable_cuda_graph=False, model=loraloader_274[0]
+                    )
+                except Exception:
+                    logger = logging.getLogger(__name__)
+                    logger.exception("StableFast apply failed at batch setup; falling back to normal model")
+                    # Keep a single-element tuple so downstream code that
+                    # expects applystablefast_158[0] to be the model still
+                    # works.
+                    applystablefast_158 = (loraloader_274[0],)
             else:
                 applystablefast_158 = loraloader_274
 
@@ -738,13 +746,18 @@ def pipeline(
                     loraloader_274 = checkpointloadersimple_241
 
                 if stable_fast is True:
-                    from src.StableFast import StableFast
+                    try:
+                        from src.StableFast import StableFast
 
-                    applystablefast = StableFast.ApplyStableFastUnet()
-                    applystablefast_158 = applystablefast.apply_stable_fast(
-                        enable_cuda_graph=False,
-                        model=loraloader_274[0],
-                    )
+                        applystablefast = StableFast.ApplyStableFastUnet()
+                        applystablefast_158 = applystablefast.apply_stable_fast(
+                            enable_cuda_graph=False,
+                            model=loraloader_274[0],
+                        )
+                    except Exception:
+                        logger = logging.getLogger(__name__)
+                        logger.exception("StableFast apply failed for single-run path; falling back to normal model")
+                        applystablefast_158 = (loraloader_274[0],)
                 else:
                     applystablefast_158 = loraloader_274
 
@@ -956,13 +969,18 @@ def pipeline(
                     width=w, height=h, batch_size=batch
                 )
                 if stable_fast is True:
-                    from src.StableFast import StableFast
+                    try:
+                        from src.StableFast import StableFast
 
-                    applystablefast = StableFast.ApplyStableFastUnet()
-                    applystablefast_158 = applystablefast.apply_stable_fast(
-                        enable_cuda_graph=False,
-                        model=loraloader_274[0],
-                    )
+                        applystablefast = StableFast.ApplyStableFastUnet()
+                        applystablefast_158 = applystablefast.apply_stable_fast(
+                            enable_cuda_graph=False,
+                            model=loraloader_274[0],
+                        )
+                    except Exception:
+                        logger = logging.getLogger(__name__)
+                        logger.exception("StableFast apply failed for flux/alternate path; falling back to normal model")
+                        applystablefast_158 = (loraloader_274[0],)
                 else:
                     applystablefast_158 = loraloader_274
                     # fb_cache = fbcache_nodes.ApplyFBCacheOnModel()

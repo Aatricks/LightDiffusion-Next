@@ -221,6 +221,25 @@ def build_lazy_trace_module(config, device, patch_id):
 
 
 def gen_stable_fast_config():
+    # If the optional sfast package failed to import at module load time
+    # then CompilationConfig will be None. In that case we return a
+    # lightweight fallback config object with conservative defaults so
+    # callers can safely continue without the accelerated compilation
+    # features.
+    if CompilationConfig is None:
+        logger.warning("StableFast: optional 'sfast' dependency not available; using fallback no-op config")
+        class _FallbackConfig:
+            def __init__(self):
+                self.enable_xformers = False
+                self.enable_cuda_graph = False
+                self.enable_jit_freeze = False
+                self.enable_cnn_optimization = False
+                self.prefer_lowp_gemm = False
+                self.enable_triton = False
+                self.memory_format = None
+
+        return _FallbackConfig()
+
     config = CompilationConfig.Default()
     if importlib.util.find_spec("xformers") is not None:
         config.enable_xformers = True
@@ -271,6 +290,15 @@ class StableFastPatch:
 
 class ApplyStableFastUnet:
     def apply_stable_fast(self, model, enable_cuda_graph):
+        # If the compilation components are not present, skip applying
+        # the StableFast transformation and return the original model
+        # in a single-element tuple so callers can index [0] as usual.
+        if CompilationConfig is None or trace_with_kwargs is None or _modify_model is None:
+            logger.warning(
+                "StableFast.apply_stable_fast: sfast optional components missing; skipping stable-fast patch and returning original model"
+            )
+            return (model,)
+
         config = gen_stable_fast_config()
 
         if config.memory_format is not None:
