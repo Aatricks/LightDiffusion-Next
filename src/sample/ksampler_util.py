@@ -98,8 +98,18 @@ def apply_empty_x_to_equal_area(
 
 
 # Define the namedtuple class once outside the function for reuse
+# Add `batch_indices` to track which batch positions this condition applies to
 CondObj = collections.namedtuple(
-    "cond_obj", ["input_x", "mult", "conditioning", "area", "control", "patches"]
+    "cond_obj",
+    [
+        "input_x",
+        "mult",
+        "conditioning",
+        "area",
+        "control",
+        "patches",
+        "batch_indices",
+    ],
 )
 
 
@@ -120,10 +130,26 @@ def get_area_and_mult(conds: dict, x_in: torch.Tensor, timestep_in: int) -> Cond
     # Define area dimensions in one operation
     area = (x_shape[2], x_shape[3], 0, 0)
 
-    # Extract input region efficiently
-    # Since area[2] and area[3] are 0, this is essentially taking the full tensor
-    # But we maintain the slice operation for consistency
-    input_x = x_in[:, :, : area[0], : area[1]]
+    # Device for any tensors we create / select from
+    device = x_in.device
+
+    # Allow per-condition routing to a subset of the full batch by honoring
+    # an optional `batch_index` key on the condition dict. Normalize early
+    # so we can slice `x_in` correctly.
+    batch_indices = conds.get("batch_index", None)
+    if isinstance(batch_indices, int):
+        batch_indices = [batch_indices]
+
+    # If this condition targets a subset of the batch via `batch_indices`,
+    # only return those batch rows so downstream concatenation and timestep
+    # handling operate on the intended per-chunk batch size.
+    if batch_indices is None:
+        # Use full batch
+        input_x = x_in[:, :, : area[0], : area[1]]
+    else:
+        # Normalize to a tensor of indices and select only those rows
+        idx = torch.tensor(batch_indices, dtype=torch.long, device=device)
+        input_x = x_in[idx, :, : area[0], : area[1]]
 
     # Create multiplier tensor directly without intermediate mask creation
     # This avoids an unnecessary tensor allocation and multiplication
@@ -132,10 +158,13 @@ def get_area_and_mult(conds: dict, x_in: torch.Tensor, timestep_in: int) -> Cond
     # Prepare conditioning dictionary with cached device and batch_size
     conditioning = {}
     model_conds = conds["model_conds"]
-    batch_size = x_shape[0]
-    device = x_in.device
+    if batch_indices is None:
+        batch_size = x_shape[0]
+    else:
+        batch_size = len(batch_indices)
 
-    # Process conditions with cached parameters
+    # Process conditions with cached parameters; pass the smaller batch_size so
+    # model_conds can return conditioning tensors sized for the subset.
     for c in model_conds:
         conditioning[c] = model_conds[c].process_cond(
             batch_size=batch_size, device=device, area=area
@@ -146,7 +175,7 @@ def get_area_and_mult(conds: dict, x_in: torch.Tensor, timestep_in: int) -> Cond
     patches = None
 
     # Use the pre-defined namedtuple class instead of creating it every call
-    return CondObj(input_x, mult, conditioning, area, control, patches)
+    return CondObj(input_x, mult, conditioning, area, control, patches, batch_indices)
 
 
 def normal_scheduler(
@@ -272,7 +301,10 @@ def calculate_sigmas(
 
 
 def prepare_noise(
-    latent_image: torch.Tensor, seed: int, noise_inds: list = None
+    latent_image: torch.Tensor,
+    seed: int,
+    noise_inds: list = None,
+    seeds_per_sample: list | None = None,
 ) -> torch.Tensor:
     """#### Prepare noise for a latent image.
 
@@ -284,6 +316,35 @@ def prepare_noise(
     #### Returns:
         - `torch.Tensor`: The prepared noise tensor.
     """
+    # If explicit per-sample seeds are provided, honor them. This allows a
+    # single forward-pass to generate different noise realizations per sample
+    # in the batch while still using a single call to the sampler.
+    if seeds_per_sample is not None:
+        # Normalize to numpy array for uniqueness operations
+        sps = np.array(seeds_per_sample)
+        if sps.shape[0] != latent_image.size(0):
+            raise ValueError(
+                "seeds_per_sample length must match latent batch size"
+            )
+        unique_seeds, inverse = np.unique(sps, return_inverse=True)
+        noises = []
+        for us in unique_seeds:
+            g = torch.Generator()
+            g.manual_seed(int(us))
+            noise = torch.randn(
+                [1] + list(latent_image.size())[1:],
+                dtype=latent_image.dtype,
+                layout=latent_image.layout,
+                generator=g,
+                device="cpu",
+            )
+            noises.append(noise)
+        # Map back to per-sample order
+        noises = [noises[i] for i in inverse]
+        noises = torch.cat(noises, axis=0)
+        return noises
+
+    # Legacy behaviour: single base seed used for generating all noise.
     generator = torch.manual_seed(seed)
     if noise_inds is None:
         return torch.randn(

@@ -1212,7 +1212,8 @@ def common_ksampler(
         )
     else:
         batch_inds = latent["batch_index"] if "batch_index" in latent else None
-        noise = ksampler_util.prepare_noise(latent_image, seed, batch_inds)
+        seeds_per_sample = latent.get("seeds", None)
+        noise = ksampler_util.prepare_noise(latent_image, seed, batch_inds, seeds_per_sample=seeds_per_sample)
 
     noise_mask = None
     if "noise_mask" in latent:

@@ -176,8 +176,15 @@ class SaveImage:
                         pnginfo=metadata,
                         compress_level=self.compress_level,
                     )
+                    # Return the actual subfolder relative to ./output so callers can locate files
+                    save_rel = os.path.relpath(save_path, "./output")
                     results.append(
-                        {"filename": file, "subfolder": subfolder, "type": self.type}
+                        {
+                            "filename": file,
+                            "subfolder": save_rel,
+                            "requested_subfolder": subfolder,
+                            "type": self.type,
+                        }
                     )
                     counter += 1
                 continue  # Skip the rest of the loop for this batch
@@ -232,8 +239,15 @@ class SaveImage:
                 pnginfo=metadata,
                 compress_level=self.compress_level,
             )
+            # Return the actual subfolder relative to ./output so callers can locate files
+            save_rel = os.path.relpath(save_path, "./output")
             results.append(
-                {"filename": file, "subfolder": subfolder, "type": self.type}
+                {
+                    "filename": file,
+                    "subfolder": save_rel,
+                    "requested_subfolder": subfolder,
+                    "type": self.type,
+                }
             )
             counter += 1
 

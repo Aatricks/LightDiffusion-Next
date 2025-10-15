@@ -219,9 +219,9 @@ class Noise_RandomNoise:
         """
         latent_image = input_latent["samples"]
         batch_inds = (
-            input_latent["batch_index"] if "batch_index" in input_latent else None
-        )
-        return ksampler_util.prepare_noise(latent_image, self.seed, batch_inds)
+                input_latent["batch_index"] if "batch_index" in input_latent else None
+            )
+        return ksampler_util.prepare_noise(latent_image, self.seed, batch_inds, seeds_per_sample=None)
 
 
 def sample_with_custom_noise(
