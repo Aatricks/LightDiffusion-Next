@@ -62,7 +62,7 @@ def render_generate_page():
             elif preset == "768x512 (Landscape)":
                 settings["width"], settings["height"] = 768, 512
 
-            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster.")
+            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster. This setting is honored independently of 'Number of Images' (the pipeline may use internal batching even when you request fewer images).")
 
         with st.expander("🎯 Generation Modes", expanded=False):
             settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"], disabled=controls_disabled)
@@ -284,10 +284,17 @@ def render_history_page():
                                 st.text(f"🔁 Batch: {batch}")
                             
                             # Key metadata
-                            seed = entry.get("seed")
-                            sampler = entry.get("sampler")
-                            steps = entry.get("steps")
-                            cfg = entry.get("cfg")
+                            # Prefer top-level values (already sanitized) but
+                            # fall back to the raw PNG metadata when the
+                            # top-level entry is missing or intentionally
+                            # suppressed. This makes the Details panel show
+                            # a friendly value while the All metadata view
+                            # preserves the full JSON blob.
+                            png_meta = entry.get("png_metadata") or {}
+                            seed = entry.get("seed") or png_meta.get("seed")
+                            sampler = entry.get("sampler") or png_meta.get("sampler")
+                            steps = entry.get("steps") or png_meta.get("steps")
+                            cfg = entry.get("cfg") or png_meta.get("cfg")
                             if seed:
                                 st.text(f"🔢 Seed: {seed}")
                             if sampler:

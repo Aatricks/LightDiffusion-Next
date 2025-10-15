@@ -572,18 +572,36 @@ def load_text_encoder_state_dicts(
     return clip
 
 class CLIPTextEncode:
-    """#### Text encoding class for the CLIP model."""
-    def encode(self, clip: CLIP, text: str, flux_enabled: bool = False) -> tuple:
+    """#### Text encoding class for the CLIP model.
+
+    Supports encoding a single prompt or a list of prompts. When a list is
+    provided the returned tuple's first element is a list with one entry per
+    prompt in the same format used by the original single-text API. This keeps
+    compatibility with code that indexes into the returned value as
+    `cliptextencode(...)[0]`.
+    """
+    def encode(self, clip: CLIP, text: str | list, flux_enabled: bool = False) -> tuple:
         """#### Encode the input text.
 
-        #### Args:
-            - `clip` (CLIP): The CLIP object.
-            - `text` (str): The input text.
-            - `flux_enabled` (bool, optional): Whether to enable flux. Defaults to False.
+        Args:
+            clip (CLIP): The CLIP object.
+            text (str | list): The input text or list of texts.
+            flux_enabled (bool, optional): Whether to enable flux. Defaults to False.
 
-        #### Returns:
-            - `tuple`: The encoded text and the pooled output.
+        Returns:
+            tuple: A single-element tuple whose first item is a list of
+            condition entries. Each entry is [cond_tensor, {"pooled_output": pooled}].
         """
+        # Support batch encoding for a list of prompts
+        if isinstance(text, (list, tuple)):
+            out = []
+            for t in text:
+                tokens = clip.tokenize(t)
+                cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True, flux_enabled=flux_enabled)
+                out.append([cond, {"pooled_output": pooled}])
+            return (out,)
+
+        # Fallback to original single-text behaviour
         tokens = clip.tokenize(text)
         cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True, flux_enabled=flux_enabled)
         return ([[cond, {"pooled_output": pooled}]],)

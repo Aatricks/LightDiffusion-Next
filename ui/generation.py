@@ -147,7 +147,14 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             w=settings.get("width"),
                             h=settings.get("height"),
                             number=attempt_chunk,
-                            batch=min(attempt_chunk, configured_batch),
+                            # Honor the configured batch size as an independent
+                            # setting. Previously the batch argument was clamped
+                            # to the remaining number of images which made the
+                            # Batch Size ineffective when requesting fewer
+                            # images than the configured batch. Pass the
+                            # configured_batch explicitly so the pipeline can
+                            # use it for internal grouping.
+                            batch=configured_batch,
                             hires_fix=settings.get("hiresfix", False),
                             adetailer=settings.get("adetailer", False),
                             enhance_prompt=settings.get("enhance_prompt", False),
@@ -361,9 +368,19 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
             job_window = []
 
         if job_window:
-            generated_image_paths.extend(sorted(job_window, key=os.path.getmtime))
+            # The pipeline may produce multiple outputs for a single
+            # request when an internal batch is larger than the
+            # user-visible `num_images`. Previews already show the
+            # per-batch results; include all files produced during the
+            # job so the final gallery matches what was previewed.
+            generated_image_paths.extend(sorted(job_window, key=os.path.getmtime, reverse=True))
         else:
-            for f in all_outputs[: settings.get("num_images", 1)]:
+            # Fallback: when we couldn't find files within the job time
+            # window, pick the most recent outputs. Show at least the
+            # user's requested number but also at least the configured
+            # batch size so batch-generated outputs are visible.
+            n_show = max(int(settings.get("num_images", 1)), int(settings.get("batch_size", 1)))
+            for f in all_outputs[:n_show]:
                 if os.path.exists(f):
                     generated_image_paths.append(f)
                 else:

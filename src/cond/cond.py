@@ -1,4 +1,6 @@
 import torch
+import os
+import logging
 from src.Utilities import util
 from src.Device import Device
 from src.cond import cond_util
@@ -137,11 +139,25 @@ def convert_cond(cond: list) -> list:
     """
     out = []
     for c in cond:
-        temp = c[1].copy()
+        # Support both the expected (tensor, meta_dict) pair and the
+        # legacy/raw-case where a caller might provide a bare tensor.
+        if isinstance(c, (list, tuple)) and len(c) > 1 and isinstance(c[1], dict):
+            temp = c[1].copy()
+        else:
+            temp = {}
+
         model_conds = temp.get("model_conds", {})
-        if c[0] is not None:
-            model_conds["c_crossattn"] = CONDCrossAttn(c[0])
-            temp["cross_attn"] = c[0]
+
+        # Extract condition tensor whether c is a pair or a bare tensor
+        cond_tensor = c[0] if isinstance(c, (list, tuple)) else c
+        if cond_tensor is not None:
+            try:
+                model_conds["c_crossattn"] = CONDCrossAttn(cond_tensor)
+                temp["cross_attn"] = cond_tensor
+            except Exception:
+                # If cond_tensor is malformed, skip adding cross-attn
+                pass
+
         temp["model_conds"] = model_conds
         out.append(temp)
     return out
@@ -209,10 +225,14 @@ def calc_cond_batch(
         area = []
         control = None
         patches = None
+        batch_sizes = []
+        batch_indices_list = []
         for x in to_batch:
             o = to_run.pop(x)
             p = o[0]
             input_x.append(p.input_x)
+            batch_sizes.append(p.input_x.shape[0])
+            batch_indices_list.append(p.batch_indices)
             mult.append(p.mult)
             c.append(p.conditioning)
             area.append(p.area)
@@ -221,9 +241,60 @@ def calc_cond_batch(
             patches = p.patches
 
         batch_chunks = len(cond_or_uncond)
-        input_x = torch.cat(input_x)
-        c = cond_util.cond_cat(c)
-        timestep_ = torch.cat([timestep] * batch_chunks)
+        # Keep the original list of per-chunk inputs/conds so we can
+        # gracefully fall back to per-chunk calls if concatenation would
+        # produce an unexpected mismatch.
+        input_x_list = input_x[:]  # list of tensors per chunk
+        c_list = c[:]  # list of conditioning dicts per chunk
+        input_x = torch.cat(input_x_list)
+
+        # Optional debug logging to help reproduce shape mismatch issues
+        if os.environ.get("LD_BATCH_DEBUG"):
+            try:
+                print(
+                    f"[COND DEBUG] batch_chunks={batch_chunks} batch_sizes={batch_sizes} input_x_shapes={[list(t.shape) for t in input_x_list]} timestep_type={type(timestep)} timestep_shape={getattr(timestep, 'shape', None)}"
+                )
+            except Exception:
+                pass
+        c = cond_util.cond_cat(c_list)
+
+        # Build a timestep vector that matches the concatenated input_x batch
+        # by repeating the timestep for each item in the concatenated batch.
+        device = input_x.device
+
+        # Build per-chunk timestep vectors that align exactly with the
+        # concatenated input_x. `timestep` may be:
+        #  - a scalar (python number)
+        #  - a 0-d / 1-d torch.Tensor with a single element
+        #  - a per-sample tensor with length == x_in.shape[0]
+        # In the per-sample case we must select the exact indices for
+        # each chunk using `batch_indices` so shapes match the
+        # corresponding input_x list entries.
+        per_chunk_timesteps = []
+        for s, b_inds in zip(batch_sizes, batch_indices_list):
+            if isinstance(timestep, torch.Tensor):
+                if timestep.numel() == 1:
+                    # scalar-like tensor
+                    per_chunk_timesteps.append(timestep.to(device).reshape(1).repeat(s))
+                elif timestep.shape[0] == x_in.shape[0]:
+                    # timestep is aligned to the original full batch
+                    if b_inds is None:
+                        # chunk covers the whole batch
+                        per_chunk_timesteps.append(timestep.to(device))
+                    else:
+                        idx = torch.tensor(b_inds, dtype=torch.long, device=device)
+                        per_chunk_timesteps.append(timestep.to(device)[idx])
+                elif timestep.shape[0] == s:
+                    # timestep already matches this chunk size
+                    per_chunk_timesteps.append(timestep.to(device))
+                else:
+                    # Fallback: replicate first element to match chunk size
+                    per_chunk_timesteps.append(timestep.to(device).reshape(1).repeat(s))
+            else:
+                # Plain python scalar
+                per_chunk_timesteps.append(torch.tensor([timestep], device=device).repeat(s))
+
+        timestep_ = torch.cat(per_chunk_timesteps)
 
         if control is not None:
             c["control"] = control.get_control(
@@ -246,39 +317,241 @@ def calc_cond_batch(
             else:
                 transformer_options["patches"] = patches
 
-        transformer_options["cond_or_uncond"] = cond_or_uncond[:]
-        transformer_options["sigmas"] = timestep
+    transformer_options["cond_or_uncond"] = cond_or_uncond[:]
+    # Use the per-sample timestep vector for transformer options so any
+    # downstream code that expects a per-sample 'sigmas' tensor receives
+    # the correctly sized tensor.
+    transformer_options["sigmas"] = timestep_
 
-        c["transformer_options"] = transformer_options
+    c["transformer_options"] = transformer_options
 
-        if "model_function_wrapper" in model_options:
-            output = model_options["model_function_wrapper"](
-                model.apply_model,
-                {
-                    "input": input_x,
-                    "timestep": timestep_,
-                    "c": c,
-                    "cond_or_uncond": cond_or_uncond,
-                },
-            ).chunk(batch_chunks)
-        else:
-            output = model.apply_model(input_x, timestep_, **c).chunk(batch_chunks)
+    # Prepare to run the model. Normally we run the model once on the
+    # concatenated inputs and split the output into the recorded chunk
+    # sizes. However, if something unexpected causes the concatenated
+    # size to differ from the sum of chunk sizes we fall back to
+    # per-chunk calls to ensure correctness.
+    expected_sum = sum(batch_sizes)
+    if input_x.shape[0] != expected_sum:
+        # Fallback: run model per-chunk
+        output_parts = []
+        for idx in range(batch_chunks):
+            single_input = input_x_list[idx]
+            single_size = batch_sizes[idx]
+            # Build timestep for this chunk using the same selection logic
+            # as the fast-path above so per-chunk call shapes agree.
+            if isinstance(timestep, torch.Tensor):
+                if timestep.numel() == 1:
+                    timestep_j = timestep.to(single_input.device).reshape(1).repeat(single_size)
+                elif timestep.shape[0] == x_in.shape[0]:
+                    b_inds = batch_indices_list[idx]
+                    if b_inds is None:
+                        timestep_j = timestep.to(single_input.device)
+                    else:
+                        idx_tensor = torch.tensor(b_inds, dtype=torch.long, device=single_input.device)
+                        timestep_j = timestep.to(single_input.device)[idx_tensor]
+                elif timestep.shape[0] == single_size:
+                    timestep_j = timestep.to(single_input.device)
+                else:
+                    timestep_j = timestep.to(single_input.device).reshape(1).repeat(single_size)
+            else:
+                timestep_j = torch.tensor([timestep] * single_size, device=single_input.device)
+
+            # Compose conditioning for this single chunk
+            c_chunk = cond_util.cond_cat([c_list[idx]])
+            # Add transformer options required by many models
+            transformer_options_chunk = {"cond_or_uncond": [cond_or_uncond[idx]], "sigmas": timestep_j}
+            c_chunk["transformer_options"] = transformer_options_chunk
+
+            if "model_function_wrapper" in model_options:
+                out_j = model_options["model_function_wrapper"](
+                    model.apply_model,
+                    {"input": single_input, "timestep": timestep_j, "c": c_chunk, "cond_or_uncond": [cond_or_uncond[idx]]},
+                )
+            else:
+                out_j = model.apply_model(single_input, timestep_j, **c_chunk)
+            output_parts.append(out_j)
+    else:
+        # Normal fast path: single call with concatenated inputs. Wrap the
+        # fast-path call in a try/except so that if a model wrapper or
+        # unexpected runtime condition raises, we gracefully fall back to
+        # calling the model per-chunk (slower but safe).
+        logger = logging.getLogger(__name__)
+        try:
+            if "model_function_wrapper" in model_options:
+                full_out = model_options["model_function_wrapper"](
+                    model.apply_model,
+                    {"input": input_x, "timestep": timestep_, "c": c, "cond_or_uncond": cond_or_uncond},
+                )
+            else:
+                full_out = model.apply_model(input_x, timestep_, **c)
+
+            # Split the output according to the recorded per-chunk sizes
+            output_parts = list(torch.split(full_out, batch_sizes, dim=0))
+        except Exception as fast_err:
+            # Fall back to per-chunk invocation to maximize correctness.
+            logger.exception("Fast-path model call failed, falling back to per-chunk calls: %s", fast_err)
+            output_parts = []
+            for idx in range(batch_chunks):
+                single_input = input_x_list[idx]
+                single_size = batch_sizes[idx]
+                # Build timestep for this chunk using the same selection logic
+                # as the fast-path above so per-chunk call shapes agree.
+                if isinstance(timestep, torch.Tensor):
+                    if timestep.numel() == 1:
+                        timestep_j = timestep.to(single_input.device).reshape(1).repeat(single_size)
+                    elif timestep.shape[0] == x_in.shape[0]:
+                        b_inds = batch_indices_list[idx]
+                        if b_inds is None:
+                            timestep_j = timestep.to(single_input.device)
+                        else:
+                            idx_tensor = torch.tensor(b_inds, dtype=torch.long, device=single_input.device)
+                            timestep_j = timestep.to(single_input.device)[idx_tensor]
+                    elif timestep.shape[0] == single_size:
+                        timestep_j = timestep.to(single_input.device)
+                    else:
+                        timestep_j = timestep.to(single_input.device).reshape(1).repeat(single_size)
+                else:
+                    timestep_j = torch.tensor([timestep] * single_size, device=single_input.device)
+
+                c_chunk = cond_util.cond_cat([c_list[idx]])
+                transformer_options_chunk = {"cond_or_uncond": [cond_or_uncond[idx]], "sigmas": timestep_j}
+                c_chunk["transformer_options"] = transformer_options_chunk
+
+                if "model_function_wrapper" in model_options:
+                    out_j = model_options["model_function_wrapper"](
+                        model.apply_model,
+                        {"input": single_input, "timestep": timestep_j, "c": c_chunk, "cond_or_uncond": [cond_or_uncond[idx]]},
+                    )
+                else:
+                    out_j = model.apply_model(single_input, timestep_j, **c_chunk)
+                output_parts.append(out_j)
 
         for o in range(batch_chunks):
             cond_index = cond_or_uncond[o]
             a = area[o]
+            out_part = output_parts[o]
+            batch_inds = batch_indices_list[o]
+
+            # If the condition was targeted to a subset of batch positions,
+            # update only those positions. Otherwise operate on the whole.
             if a is None:
-                out_conds[cond_index] += output[o] * mult[o]
-                out_counts[cond_index] += mult[o]
+                if batch_inds is None:
+                    out_conds[cond_index] += out_part * mult[o]
+                    out_counts[cond_index] += mult[o]
+                else:
+                    # Ensure batch_inds refer to valid rows for this target
+                    dev = out_conds[cond_index].device
+                    max_batch = out_conds[cond_index].shape[0]
+                    valid_indices = [int(b) for b in batch_inds if (-max_batch) <= int(b) < max_batch]
+                    if not valid_indices:
+                        # Nothing valid to update — log and skip to avoid CUDA asserts
+                        logging.warning(
+                            "cond.calc_cond_batch: no valid batch indices in %s for target with batch dim %d; skipping update",
+                            str(batch_inds),
+                            max_batch,
+                        )
+                        continue
+                    idx = torch.tensor(valid_indices, dtype=torch.long, device=dev)
+                    out_conds[cond_index][idx] += out_part[: idx.shape[0]] * mult[o][: idx.shape[0]]
+                    out_counts[cond_index][idx] += mult[o][: idx.shape[0]]
             else:
-                out_c = out_conds[cond_index]
-                out_cts = out_counts[cond_index]
                 dims = len(a) // 2
-                for i in range(dims):
-                    out_c = out_c.narrow(i + 2, a[i + dims], a[i])
-                    out_cts = out_cts.narrow(i + 2, a[i + dims], a[i])
-                out_c += output[o] * mult[o]
-                out_cts += mult[o]
+                # Extract region parameters
+                starts = a[dims:]
+                sizes = a[:dims]
+                # For typical 2D case, use slice indexing which is clearer
+                if batch_inds is None:
+                    if dims == 2:
+                        # Clamp and validate region coordinates to the target tensor
+                        H = out_conds[cond_index].shape[2]
+                        W = out_conds[cond_index].shape[3]
+                        y0, x0 = int(starts[0]), int(starts[1])
+                        h, w = int(sizes[0]), int(sizes[1])
+                        # Normalize negative starts
+                        if y0 < 0:
+                            y0 = 0
+                        if x0 < 0:
+                            x0 = 0
+                        y1 = min(H, y0 + max(0, h))
+                        x1 = min(W, x0 + max(0, w))
+                        region_h = y1 - y0
+                        region_w = x1 - x0
+                        if region_h <= 0 or region_w <= 0:
+                            logging.warning(
+                                "cond.calc_cond_batch: computed zero-sized region y0=%d x0=%d h=%d w=%d on target H=%d W=%d; skipping",
+                                y0,
+                                x0,
+                                h,
+                                w,
+                                H,
+                                W,
+                            )
+                        else:
+                            # Ensure out_part and mult[o] are cropped to the clamped region
+                            out_part_crop = out_part[..., :region_h, :region_w] if (out_part.shape[2] != region_h or out_part.shape[3] != region_w) else out_part
+                            mult_crop = mult[o][..., :region_h, :region_w] if (mult[o].shape[2] != region_h or mult[o].shape[3] != region_w) else mult[o]
+                            out_conds[cond_index][:, :, y0:y1, x0:x1] += out_part_crop * mult_crop
+                            out_counts[cond_index][:, :, y0:y1, x0:x1] += mult_crop
+                    else:
+                        # Fallback to original narrow-based behaviour for other dims
+                        out_c = out_conds[cond_index]
+                        out_cts = out_counts[cond_index]
+                        for i in range(dims):
+                            out_c = out_c.narrow(i + 2, a[i + dims], a[i])
+                            out_cts = out_cts.narrow(i + 2, a[i + dims], a[i])
+                        out_c += out_part * mult[o]
+                        out_cts += mult[o]
+                else:
+                    # Update only those batch indices inside the spatial region
+                    max_batch = out_conds[cond_index].shape[0]
+                    valid_indices = [int(b) for b in batch_inds if (-max_batch) <= int(b) < max_batch]
+                    if not valid_indices:
+                        logging.warning(
+                            "cond.calc_cond_batch: no valid batch indices in %s for spatial-region update on target with batch dim %d; skipping",
+                            str(batch_inds),
+                            max_batch,
+                        )
+                        continue
+                    idx = torch.tensor(valid_indices, dtype=torch.long, device=out_conds[cond_index].device)
+                    if dims == 2:
+                        H = out_conds[cond_index].shape[2]
+                        W = out_conds[cond_index].shape[3]
+                        y0, x0 = int(starts[0]), int(starts[1])
+                        h, w = int(sizes[0]), int(sizes[1])
+                        if y0 < 0:
+                            y0 = 0
+                        if x0 < 0:
+                            x0 = 0
+                        y1 = min(H, y0 + max(0, h))
+                        x1 = min(W, x0 + max(0, w))
+                        region_h = y1 - y0
+                        region_w = x1 - x0
+                        if region_h <= 0 or region_w <= 0:
+                            logging.warning(
+                                "cond.calc_cond_batch: computed zero-sized region for per-index update y0=%d x0=%d h=%d w=%d; skipping",
+                                y0,
+                                x0,
+                                h,
+                                w,
+                            )
+                            continue
+                        out_part_crop = out_part[..., :region_h, :region_w] if (out_part.shape[2] != region_h or out_part.shape[3] != region_w) else out_part
+                        mult_crop = mult[o][..., :region_h, :region_w] if (mult[o].shape[2] != region_h or mult[o].shape[3] != region_w) else mult[o]
+                        # Align batch axis of out_part_crop to indexing tensor length
+                        out_part_crop = out_part_crop[: idx.shape[0]]
+                        mult_crop = mult_crop[: idx.shape[0]]
+                        out_conds[cond_index][idx, :, y0:y1, x0:x1] += out_part_crop * mult_crop
+                        out_counts[cond_index][idx, :, y0:y1, x0:x1] += mult_crop
+                    else:
+                        # Per-index fallback to narrow update
+                        for bi_idx, bi in enumerate(batch_inds):
+                            out_c = out_conds[cond_index][bi]
+                            out_cts = out_counts[cond_index][bi]
+                            for i in range(dims):
+                                out_c = out_c.narrow(i + 2, a[i + dims], a[i])
+                                out_cts = out_cts.narrow(i + 2, a[i + dims], a[i])
+                            out_c += out_part[bi_idx] * mult[o][bi_idx]
+                            out_cts += mult[o][bi_idx]
 
     # Vectorize the division at the end
     for i in range(len(out_conds)):

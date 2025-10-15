@@ -2,6 +2,7 @@ import os
 import json
 import glob
 import time
+import re
 import streamlit as st
 from PIL import Image
 
@@ -16,7 +17,17 @@ def sanitize_seed_for_display(seed_value):
         return str(int(seed_value))
     if isinstance(seed_value, str):
         s = seed_value.strip()
+        # If the value is clearly a dump (tensor, list, multiline or huge)
+        # avoid returning the full content to the UI. As a helpful fallback
+        # try to extract a numeric token (common when a seed is embedded in
+        # a larger string). This keeps the compact, user-friendly seed in
+        # the Details view while preserving the full raw metadata in the
+        # hidden JSON blob.
         if "tensor(" in s.lower() or "[" in s or "\n" in s or len(s) > 240:
+            # Try to salvage a numeric-looking substring (at least 4 digits)
+            m = re.search(r"(\d{4,})", s)
+            if m:
+                return m.group(0)
             return None
         return s
     return None
@@ -37,12 +48,17 @@ def load_history():
                                 e['seed'] = sanitized
                                 changed = True
                         png_meta = e.get('png_metadata') or {}
-                        if isinstance(png_meta, dict) and 'seed' in png_meta:
-                            sanitized_png_seed = sanitize_seed_for_display(png_meta.get('seed'))
-                            if sanitized_png_seed != png_meta.get('seed'):
-                                png_meta['seed'] = sanitized_png_seed
-                                e['png_metadata'] = png_meta
+                        # Preserve PNG metadata as-is; however, if the top-
+                        # level `seed` is missing or was removed by
+                        # sanitization, try to populate a friendly top-level
+                        # seed using the PNG's embedded value so the Details
+                        # view shows a concise identifier.
+                        if not e.get('seed') and isinstance(png_meta, dict) and png_meta.get('seed'):
+                            try:
+                                e['seed'] = sanitize_seed_for_display(png_meta.get('seed'))
                                 changed = True
+                            except Exception:
+                                pass
                         # Normalize stored width/height values. If they are
                         # strings or missing, try to convert or read from the
                         # image file so the UI can rely on accurate dimensions
@@ -123,11 +139,11 @@ def add_to_history(image_paths, settings):
             png_meta = {}
             width, height = None, None
 
+        # Keep the PNG metadata raw so it can be inspected in the
+        # 'All metadata' view. Compute a sanitized seed string for the
+        # top-level display separately so the Details section remains
+        # compact and user-friendly.
         seed_meta = sanitize_seed_for_display(png_meta.get('seed'))
-        try:
-            png_meta['seed'] = sanitize_seed_for_display(png_meta.get('seed'))
-        except Exception:
-            pass
 
         png_prompt = png_meta.get('prompt')
         png_negative = png_meta.get('negative_prompt')

@@ -102,6 +102,9 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 > [!WARNING]
 > **Disclaimer:** On Linux, the fastest way to get started is with the Docker setup below. Windows users often encounter an `EOF` build error when using Docker; if that happens, set up a local virtual environment instead and install SageAttention inside it.
 
+> [!NOTE]
+> You will need to download the [flux vae](https://huggingface.co/black-forest-labs/FLUX.1-schnell/blob/main/ae.safetensors) separately given its gated repo on Huggingface. Drop it in the `/include/vae` folder.
+
 ### Quick Start
 
 1. Download a release or clone this repository.
