@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 import re
 import uuid
+import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -327,15 +328,362 @@ def pipeline(
             else:
                 main_imgs = decoded
 
-            # Per-sample saving with request-aware filename prefixes. If the
-            # caller supplied `per_sample_info` use it; otherwise save using a
-            # generic prefix and include the prompt/seed in the PNG metadata.
+            # Per-sample processing and saving. Advanced features such as
+            # hires_fix and adetailer are executed per-sample so a single
+            # shared forward pass can be used for conditioning while
+            # preserving post-processing differences.
             results_map = {}
+
+            # Ensure we have a per_sample_info structure to reference flags
+            if per_sample_info is None:
+                per_sample_info = [{} for _ in range(total_batch)]
+
+            # Decide if we need to preload heavy modules for adetailer
+            need_hires = any(info.get("hires_fix", False) for info in per_sample_info)
+            need_adetailer = any(info.get("adetailer", False) for info in per_sample_info)
+            logger = logging.getLogger(__name__)
+            logger.debug("Batch needs hires=%s adetailer=%s", need_hires, need_adetailer)
+
+            # Preload adetailer resources once per batch if required
+            if need_adetailer:
+                samloader = SAM.SAMLoader()
+                samloader_87 = samloader.load_model(model_name="sam_vit_b_01ec64.pth", device_mode="AUTO")
+                cliptextencode_124 = cliptextencode.encode(
+                    text="royal, detailed, magnificient, beautiful, seducing",
+                    clip=loraloader_274[1],
+                )
+                ultralyticsdetectorprovider = bbox.UltralyticsDetectorProvider()
+                ultralyticsdetectorprovider_151 = ultralyticsdetectorprovider.doit(
+                    model_name="person_yolov8m-seg.pt"
+                )
+                bboxdetectorsegs = bbox.BboxDetectorForEach()
+                samdetectorcombined = SAM.SAMDetectorCombined()
+                impactsegsandmask = SEGS.SegsBitwiseAndMask()
+                detailerforeachdebug = ADetailer.DetailerForEachTest()
+
+            # main_latent contains the raw latents for the batch which we will
+            # slice for per-sample hires upscaling if needed.
+            main_latent = ksampler_239[0]
+
             for i in range(total_batch):
-                info = (per_sample_info[i] if per_sample_info is not None and i < len(per_sample_info) else {})
+                info = per_sample_info[i] if i < len(per_sample_info) else {}
                 req_id = info.get("request_id", uuid.uuid4().hex[:8])
                 filename_prefix = info.get("filename_prefix", f"LD-REQ-{req_id}")
 
+                # Default final image is the decoded batch image for this sample
+                final_img = main_imgs[i]
+
+                # If hires fix requested for this sample, run per-sample hires
+                if info.get("hires_fix", False):
+                    try:
+                        # Build single-sample latent dict
+                        single_latent = {"samples": main_latent["samples"][i : i + 1]}
+                        # Upscale latent and run extra sampling pass
+                        upscaled_tuple = latent_upscale.upscale(samples=single_latent, width=w * 2, height=h * 2)
+                        upscaled = upscaled_tuple[0]
+
+                        # When running a single-sample hires pass we must ensure
+                        # any conditioning metadata that references the original
+                        # multi-sample batch is remapped to the new single-item
+                        # batch. The encoder earlier attached `batch_index` for
+                        # routing; here we copy the conditioning entry and set
+                        # its batch_index to [0] so downstream indexing never
+                        # attempts to access out-of-range batch rows on the
+                        # upscaled single-sample latent.
+                        def _as_single_sample_entry(entry):
+                            if entry is None:
+                                return None
+                            # Distinguish between a (tensor, meta) pair and a raw
+                            # tensor to avoid treating tensor as a sequence.
+                            if isinstance(entry, (list, tuple)):
+                                cond_tensor = entry[0]
+                                meta = {}
+                                if len(entry) > 1 and isinstance(entry[1], dict):
+                                    try:
+                                        meta = entry[1].copy()
+                                    except Exception:
+                                        meta = dict(entry[1])
+                            else:
+                                # entry is a raw tensor — use it as the condition
+                                cond_tensor = entry
+                                meta = {}
+                            # Explicitly remap to the single sample at index 0
+                            meta["batch_index"] = [0]
+                            return [cond_tensor, meta]
+
+                        # Wrap each single-sample conditioning entry in a list
+                        # so downstream code expecting a list-of-(tensor,meta)
+                        # elements behaves the same as the batched path.
+                        pos_entry = _as_single_sample_entry(positive_entries[i]) if i < len(positive_entries) else None
+                        neg_entry = _as_single_sample_entry(negative_entries[i]) if i < len(negative_entries) else None
+                        pos_i = [pos_entry] if pos_entry is not None else None
+                        neg_i = [neg_entry] if neg_entry is not None else None
+
+                        # Prefer an explicit per-sample seed supplied in
+                        # per_sample_info; otherwise fall back to the
+                        # per-batch computed seed for this slot so results
+                        # are deterministic and reproducible.
+                        hires_seed = info.get("seed", None)
+                        if hires_seed is None:
+                            hires_seed = seeds[i] if ("seeds" in locals() and i < len(seeds)) else random.randint(1, 2**64)
+                        try:
+                            hires_seed = int(hires_seed)
+                        except Exception:
+                            hires_seed = random.randint(1, 2**64)
+
+                        ksampler_253 = ksampler_instance.sample(
+                            seed=hires_seed,
+                            steps=10,
+                            cfg=8,
+                            sampler_name="euler_ancestral_cfgpp",
+                            scheduler="normal",
+                            denoise=0.45,
+                            model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
+                            positive=pos_i,
+                            negative=neg_i,
+                            latent_image=upscaled,
+                            pipeline=True,
+                        )
+
+                        vae_out = vaedecode.decode(samples=ksampler_253[0], vae=checkpointloadersimple_241[2])
+                        decoded_up = vae_out[0]
+                        if autohdr:
+                            _tmp = hdr.apply_hdr2(decoded_up)
+                            hires_imgs = _tmp[0] if isinstance(_tmp, (tuple, list)) else _tmp
+                        else:
+                            hires_imgs = decoded_up
+
+                        # pick the single result
+                        final_img = hires_imgs[0]
+                    except Exception as e:
+                        # keep final_img as the main decoded result if hires fails
+                        try:
+                            logger = logging.getLogger(__name__)
+                            logger.exception("Per-sample hires_fix failed for index %d: %s", i, e)
+                        except Exception:
+                            pass
+
+                # If adetailer requested for this sample, run the adetailer
+                if info.get("adetailer", False):
+                    try:
+                        # Build a single-image batch for the adetailer detectors
+                        single_image = final_img.unsqueeze(0)
+
+                        # Run detection pipelines
+                        bboxdetectorsegs_132 = bboxdetectorsegs.doit(
+                            threshold=0.5,
+                            dilation=10,
+                            crop_factor=2,
+                            drop_size=10,
+                            labels="all",
+                            bbox_detector=ultralyticsdetectorprovider_151[0],
+                            image=single_image,
+                        )
+                        samdetectorcombined_139 = samdetectorcombined.doit(
+                            detection_hint="center-1",
+                            dilation=0,
+                            threshold=0.93,
+                            bbox_expansion=0,
+                            mask_hint_threshold=0.7,
+                            mask_hint_use_negative="False",
+                            sam_model=samloader_87[0],
+                            segs=bboxdetectorsegs_132,
+                            image=single_image,
+                        )
+                        if samdetectorcombined_139 is not None:
+                            impactsegsandmask_152 = impactsegsandmask.doit(
+                                segs=bboxdetectorsegs_132,
+                                mask=samdetectorcombined_139[0],
+                            )
+                            # Resolve a stable integer seed for adetailer.
+                            adetailer_seed = info.get("seed", None)
+                            if adetailer_seed is None:
+                                adetailer_seed = seeds[i] if ("seeds" in locals() and i < len(seeds)) else random.randint(1, 2**64)
+                                logging.getLogger(__name__).debug(
+                                    "adetailer: per-sample seed missing, falling back to per-batch seed/random for idx=%d: %s",
+                                    i,
+                                    str(adetailer_seed),
+                                )
+                            try:
+                                adetailer_seed = int(adetailer_seed)
+                            except Exception:
+                                adetailer_seed = random.randint(1, 2**64)
+
+                            detailerforeachdebug_145 = detailerforeachdebug.doit(
+                                guide_size=512,
+                                guide_size_for=False,
+                                max_size=768,
+                                seed=adetailer_seed,
+                                steps=20,
+                                cfg=6.5,
+                                sampler_name=sampler_name,
+                                scheduler="karras",
+                                denoise=0.5,
+                                feather=5,
+                                noise_mask=True,
+                                force_inpaint=True,
+                                wildcard="",
+                                cycle=1,
+                                inpaint_model=False,
+                                noise_mask_feather=20,
+                                image=single_image,
+                                segs=impactsegsandmask_152[0],
+                                model=applystablefast_158[0],
+                                clip=checkpointloadersimple_241[1],
+                                vae=checkpointloadersimple_241[2],
+                                positive=cliptextencode_124[0],
+                                negative=[negative_entries[i]] if (i < len(negative_entries) and negative_entries[i] is not None) else None,
+                                pipeline=True,
+                            )
+
+                            # Extract a seed for metadata if possible
+                            def _extract_scalar_seed(candidate):
+                                try:
+                                    if isinstance(candidate, int):
+                                        return str(candidate)
+                                    if isinstance(candidate, float) and float(candidate).is_integer():
+                                        return str(int(candidate))
+                                    if isinstance(candidate, str):
+                                        s = candidate.strip()
+                                        if re.fullmatch(r"-?\d+", s):
+                                            return s
+                                        m = re.search(r"\d{4,}", s)
+                                        if m:
+                                            return m.group(0)
+                                        return None
+                                    if isinstance(candidate, np.ndarray):
+                                        if candidate.size == 1:
+                                            return str(int(candidate.item()))
+                                        return None
+                                    if isinstance(candidate, torch.Tensor):
+                                        if candidate.numel() == 1:
+                                            return str(int(candidate.item()))
+                                except Exception:
+                                    return None
+                                return None
+
+                            try:
+                                if isinstance(detailerforeachdebug_145, (list, tuple)) and len(detailerforeachdebug_145) > 1:
+                                    candidate = detailerforeachdebug_145[1]
+                                    extracted = _extract_scalar_seed(candidate)
+                                    detailer_body_seed = extracted if extracted is not None else str(adetailer_seed)
+                                else:
+                                    detailer_body_seed = str(adetailer_seed)
+                            except Exception:
+                                detailer_body_seed = str(adetailer_seed)
+
+                            body_meta = {
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                                "prompt": prompts[i],
+                                "negative_prompt": negatives[i],
+                                "seed": detailer_body_seed,
+                                "sampler": str(sampler_name),
+                                "steps": "20",
+                                "cfg": "6.5",
+                                "scheduler": "karras",
+                                "denoise": "0.5",
+                                "width": str(w),
+                                "height": str(h),
+                                "batch_size": str(1),
+                                "adetailer": "True",
+                            }
+
+                            if autohdr:
+                                _tmp = hdr.apply_hdr2(detailerforeachdebug_145[0])
+                                body_imgs = _tmp[0] if isinstance(_tmp, (tuple, list)) else _tmp
+                            else:
+                                body_imgs = detailerforeachdebug_145[0]
+                            saved_body = saveimage.save_images(
+                                filename_prefix="LD-body",
+                                images=body_imgs,
+                                prompt=prompts[i],
+                                extra_pnginfo=body_meta,
+                            )
+                            # Append adetailer outputs to the per-request map so
+                            # callers receive all generated artifacts.
+                            results_map.setdefault(req_id, [])
+                            try:
+                                results_map[req_id].extend(saved_body.get("ui", {}).get("images", []))
+                            except Exception:
+                                results_map[req_id].append(saved_body)
+
+                            # Second pass to produce head images (original flow)
+                            head_seed = random.randint(1, 2**64)
+                            detailerforeachdebug_145 = detailerforeachdebug.doit(
+                                guide_size=512,
+                                guide_size_for=False,
+                                max_size=768,
+                                seed=head_seed,
+                                steps=20,
+                                cfg=6.5,
+                                sampler_name=sampler_name,
+                                scheduler="karras",
+                                denoise=0.5,
+                                feather=5,
+                                noise_mask=True,
+                                force_inpaint=True,
+                                wildcard="",
+                                cycle=1,
+                                inpaint_model=False,
+                                noise_mask_feather=20,
+                                image=detailerforeachdebug_145[0],
+                                segs=impactsegsandmask_152[0],
+                                model=applystablefast_158[0],
+                                clip=checkpointloadersimple_241[1],
+                                vae=checkpointloadersimple_241[2],
+                                positive=cliptextencode_124[0],
+                                negative=[negative_entries[i]] if (i < len(negative_entries) and negative_entries[i] is not None) else None,
+                                pipeline=True,
+                            )
+                            try:
+                                if isinstance(detailerforeachdebug_145, (list, tuple)) and len(detailerforeachdebug_145) > 1:
+                                    candidate_h = detailerforeachdebug_145[1]
+                                    extracted_h = _extract_scalar_seed(candidate_h)
+                                    detailer_head_seed = extracted_h if extracted_h is not None else str(head_seed)
+                                else:
+                                    detailer_head_seed = str(head_seed)
+                            except Exception:
+                                detailer_head_seed = str(head_seed)
+
+                            head_meta = {
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                                "prompt": prompts[i],
+                                "negative_prompt": negatives[i],
+                                "seed": detailer_head_seed,
+                                "sampler": str(sampler_name),
+                                "steps": "20",
+                                "cfg": "6.5",
+                                "scheduler": "karras",
+                                "denoise": "0.5",
+                                "width": str(w),
+                                "height": str(h),
+                                "batch_size": str(1),
+                                "adetailer": "True",
+                            }
+                            if autohdr:
+                                _tmp = hdr.apply_hdr2(detailerforeachdebug_145[0])
+                                head_imgs = _tmp[0] if isinstance(_tmp, (tuple, list)) else _tmp
+                            else:
+                                head_imgs = detailerforeachdebug_145[0]
+                            saved_head = saveimage.save_images(
+                                filename_prefix="LD-head",
+                                images=head_imgs,
+                                prompt=prompts[i],
+                                extra_pnginfo=head_meta,
+                            )
+                            try:
+                                results_map[req_id].extend(saved_head.get("ui", {}).get("images", []))
+                            except Exception:
+                                results_map[req_id].append(saved_head)
+                            # We don't modify final_img here; adetailer writes extra images
+                    except Exception as e:
+                        try:
+                            logger = logging.getLogger(__name__)
+                            logger.exception("Per-sample adetailer failed for index %d: %s", i, e)
+                        except Exception:
+                            pass
+
+                # Build PNG metadata for the final (main) image for this sample
                 sample_meta = {
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                     "prompt": prompts[i],
@@ -352,19 +700,17 @@ def pipeline(
                     "realistic_model": str(realistic_model),
                 }
 
-                # Save a single image per call so we can tag it uniquely.
+                # Save the final image for this sample
                 saved = saveimage.save_images(
                     filename_prefix=filename_prefix,
-                    images=[main_imgs[i]],
+                    images=[final_img],
                     prompt=prompts[i],
                     extra_pnginfo=sample_meta,
                 )
-                # saved is a dict with ui.images list that contains filename entries
                 results_map.setdefault(req_id, [])
                 try:
                     results_map[req_id].extend(saved.get("ui", {}).get("images", []))
                 except Exception:
-                    # Fallback: store raw saved object if shape differs
                     results_map[req_id].append(saved)
 
             return {"batched_results": results_map}

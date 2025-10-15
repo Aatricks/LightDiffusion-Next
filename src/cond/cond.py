@@ -139,11 +139,25 @@ def convert_cond(cond: list) -> list:
     """
     out = []
     for c in cond:
-        temp = c[1].copy()
+        # Support both the expected (tensor, meta_dict) pair and the
+        # legacy/raw-case where a caller might provide a bare tensor.
+        if isinstance(c, (list, tuple)) and len(c) > 1 and isinstance(c[1], dict):
+            temp = c[1].copy()
+        else:
+            temp = {}
+
         model_conds = temp.get("model_conds", {})
-        if c[0] is not None:
-            model_conds["c_crossattn"] = CONDCrossAttn(c[0])
-            temp["cross_attn"] = c[0]
+
+        # Extract condition tensor whether c is a pair or a bare tensor
+        cond_tensor = c[0] if isinstance(c, (list, tuple)) else c
+        if cond_tensor is not None:
+            try:
+                model_conds["c_crossattn"] = CONDCrossAttn(cond_tensor)
+                temp["cross_attn"] = cond_tensor
+            except Exception:
+                # If cond_tensor is malformed, skip adding cross-attn
+                pass
+
         temp["model_conds"] = model_conds
         out.append(temp)
     return out
@@ -425,12 +439,21 @@ def calc_cond_batch(
                     out_conds[cond_index] += out_part * mult[o]
                     out_counts[cond_index] += mult[o]
                 else:
-                    # Ensure batch_inds is a torch tensor for indexing
-                    idx = (
-                        torch.tensor(batch_inds, dtype=torch.long, device=out_conds[cond_index].device)
-                    )
-                    out_conds[cond_index][idx] += out_part * mult[o]
-                    out_counts[cond_index][idx] += mult[o]
+                    # Ensure batch_inds refer to valid rows for this target
+                    dev = out_conds[cond_index].device
+                    max_batch = out_conds[cond_index].shape[0]
+                    valid_indices = [int(b) for b in batch_inds if (-max_batch) <= int(b) < max_batch]
+                    if not valid_indices:
+                        # Nothing valid to update — log and skip to avoid CUDA asserts
+                        logging.warning(
+                            "cond.calc_cond_batch: no valid batch indices in %s for target with batch dim %d; skipping update",
+                            str(batch_inds),
+                            max_batch,
+                        )
+                        continue
+                    idx = torch.tensor(valid_indices, dtype=torch.long, device=dev)
+                    out_conds[cond_index][idx] += out_part[: idx.shape[0]] * mult[o][: idx.shape[0]]
+                    out_counts[cond_index][idx] += mult[o][: idx.shape[0]]
             else:
                 dims = len(a) // 2
                 # Extract region parameters
@@ -439,12 +462,36 @@ def calc_cond_batch(
                 # For typical 2D case, use slice indexing which is clearer
                 if batch_inds is None:
                     if dims == 2:
-                        y0, x0 = starts[0], starts[1]
-                        h, w = sizes[0], sizes[1]
-                        out_conds[cond_index][:, :, y0 : y0 + h, x0 : x0 + w] += (
-                            out_part * mult[o]
-                        )
-                        out_counts[cond_index][:, :, y0 : y0 + h, x0 : x0 + w] += mult[o]
+                        # Clamp and validate region coordinates to the target tensor
+                        H = out_conds[cond_index].shape[2]
+                        W = out_conds[cond_index].shape[3]
+                        y0, x0 = int(starts[0]), int(starts[1])
+                        h, w = int(sizes[0]), int(sizes[1])
+                        # Normalize negative starts
+                        if y0 < 0:
+                            y0 = 0
+                        if x0 < 0:
+                            x0 = 0
+                        y1 = min(H, y0 + max(0, h))
+                        x1 = min(W, x0 + max(0, w))
+                        region_h = y1 - y0
+                        region_w = x1 - x0
+                        if region_h <= 0 or region_w <= 0:
+                            logging.warning(
+                                "cond.calc_cond_batch: computed zero-sized region y0=%d x0=%d h=%d w=%d on target H=%d W=%d; skipping",
+                                y0,
+                                x0,
+                                h,
+                                w,
+                                H,
+                                W,
+                            )
+                        else:
+                            # Ensure out_part and mult[o] are cropped to the clamped region
+                            out_part_crop = out_part[..., :region_h, :region_w] if (out_part.shape[2] != region_h or out_part.shape[3] != region_w) else out_part
+                            mult_crop = mult[o][..., :region_h, :region_w] if (mult[o].shape[2] != region_h or mult[o].shape[3] != region_w) else mult[o]
+                            out_conds[cond_index][:, :, y0:y1, x0:x1] += out_part_crop * mult_crop
+                            out_counts[cond_index][:, :, y0:y1, x0:x1] += mult_crop
                     else:
                         # Fallback to original narrow-based behaviour for other dims
                         out_c = out_conds[cond_index]
@@ -456,16 +503,45 @@ def calc_cond_batch(
                         out_cts += mult[o]
                 else:
                     # Update only those batch indices inside the spatial region
-                    idx = (
-                        torch.tensor(batch_inds, dtype=torch.long, device=out_conds[cond_index].device)
-                    )
-                    if dims == 2:
-                        y0, x0 = starts[0], starts[1]
-                        h, w = sizes[0], sizes[1]
-                        out_conds[cond_index][idx, :, y0 : y0 + h, x0 : x0 + w] += (
-                            out_part * mult[o]
+                    max_batch = out_conds[cond_index].shape[0]
+                    valid_indices = [int(b) for b in batch_inds if (-max_batch) <= int(b) < max_batch]
+                    if not valid_indices:
+                        logging.warning(
+                            "cond.calc_cond_batch: no valid batch indices in %s for spatial-region update on target with batch dim %d; skipping",
+                            str(batch_inds),
+                            max_batch,
                         )
-                        out_counts[cond_index][idx, :, y0 : y0 + h, x0 : x0 + w] += mult[o]
+                        continue
+                    idx = torch.tensor(valid_indices, dtype=torch.long, device=out_conds[cond_index].device)
+                    if dims == 2:
+                        H = out_conds[cond_index].shape[2]
+                        W = out_conds[cond_index].shape[3]
+                        y0, x0 = int(starts[0]), int(starts[1])
+                        h, w = int(sizes[0]), int(sizes[1])
+                        if y0 < 0:
+                            y0 = 0
+                        if x0 < 0:
+                            x0 = 0
+                        y1 = min(H, y0 + max(0, h))
+                        x1 = min(W, x0 + max(0, w))
+                        region_h = y1 - y0
+                        region_w = x1 - x0
+                        if region_h <= 0 or region_w <= 0:
+                            logging.warning(
+                                "cond.calc_cond_batch: computed zero-sized region for per-index update y0=%d x0=%d h=%d w=%d; skipping",
+                                y0,
+                                x0,
+                                h,
+                                w,
+                            )
+                            continue
+                        out_part_crop = out_part[..., :region_h, :region_w] if (out_part.shape[2] != region_h or out_part.shape[3] != region_w) else out_part
+                        mult_crop = mult[o][..., :region_h, :region_w] if (mult[o].shape[2] != region_h or mult[o].shape[3] != region_w) else mult[o]
+                        # Align batch axis of out_part_crop to indexing tensor length
+                        out_part_crop = out_part_crop[: idx.shape[0]]
+                        mult_crop = mult_crop[: idx.shape[0]]
+                        out_conds[cond_index][idx, :, y0:y1, x0:x1] += out_part_crop * mult_crop
+                        out_counts[cond_index][idx, :, y0:y1, x0:x1] += mult_crop
                     else:
                         # Per-index fallback to narrow update
                         for bi_idx, bi in enumerate(batch_inds):

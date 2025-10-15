@@ -166,8 +166,10 @@ class GenerationBuffer:
             bool(req.stable_fast),
             bool(req.flux_enabled),
             bool(req.img2img_enabled),
-            bool(req.hires_fix),
-            bool(req.adetailer),
+            # Note: hires_fix and adetailer are intentionally NOT part of
+            # the grouping signature so they can be executed per-sample
+            # after a shared forward pass. This enables batching across
+            # requests that differ only by these post-processing flags.
             bool(req.enable_preview),
         )
 
@@ -260,6 +262,8 @@ class GenerationBuffer:
                         "request_id": p.request_id,
                         "filename_prefix": f"LD-REQ-{p.request_id}",
                         "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
+                        "hires_fix": bool(p.req.hires_fix),
+                        "adetailer": bool(p.req.adetailer),
                     }
                 )
 
@@ -271,8 +275,6 @@ class GenerationBuffer:
             h=first_req.height,
             number=len(prompts),
             batch=first_req.batch_size,
-            hires_fix=first_req.hires_fix,
-            adetailer=first_req.adetailer,
             enhance_prompt=first_req.enhance_prompt,
             img2img=first_req.img2img_enabled,
             stable_fast=first_req.stable_fast,
@@ -435,6 +437,7 @@ async def telemetry() -> Dict[str, Any]:
     )
 
     # Model cache telemetry (memory and loaded models)
+    memory_info_error = None
     try:
         model_cache = get_model_cache()
         memory_info = model_cache.get_memory_info()
@@ -448,8 +451,17 @@ async def telemetry() -> Dict[str, Any]:
             loaded_models.append(name)
         loaded_models_count = len(loaded_models)
     except Exception as e:
-        # Don't fail telemetry if model cache query fails
-        logger.exception("Failed to fetch model cache telemetry: %s", e)
+        # Don't fail telemetry if model cache query fails. Capture a short
+        # error string so callers can display a hint without exposing full
+        # stack traces. Device-side CUDA asserts can leave the device in an
+        # unusable state and will cause subsequent CUDA queries to fail; we
+        # surface a concise message here instead of crashing the endpoint.
+        try:
+            # Prefer a succinct message
+            memory_info_error = str(e)
+        except Exception:
+            memory_info_error = "unknown"
+        logger.exception("Failed to fetch model cache telemetry: %s", memory_info_error)
         memory_info = None
         loaded_models = []
         loaded_models_count = 0
