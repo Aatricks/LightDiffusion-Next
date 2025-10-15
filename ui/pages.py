@@ -284,10 +284,17 @@ def render_history_page():
                                 st.text(f"🔁 Batch: {batch}")
                             
                             # Key metadata
-                            seed = entry.get("seed")
-                            sampler = entry.get("sampler")
-                            steps = entry.get("steps")
-                            cfg = entry.get("cfg")
+                            # Prefer top-level values (already sanitized) but
+                            # fall back to the raw PNG metadata when the
+                            # top-level entry is missing or intentionally
+                            # suppressed. This makes the Details panel show
+                            # a friendly value while the All metadata view
+                            # preserves the full JSON blob.
+                            png_meta = entry.get("png_metadata") or {}
+                            seed = entry.get("seed") or png_meta.get("seed")
+                            sampler = entry.get("sampler") or png_meta.get("sampler")
+                            steps = entry.get("steps") or png_meta.get("steps")
+                            cfg = entry.get("cfg") or png_meta.get("cfg")
                             if seed:
                                 st.text(f"🔢 Seed: {seed}")
                             if sampler:
