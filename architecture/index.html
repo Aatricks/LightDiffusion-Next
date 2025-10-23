@@ -36,11 +36,11 @@
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Overview - LightDiffusion-Next</title>
+    <title>Architecture - LightDiffusion-Next</title>
     
 
 
-<title>Overview</title>
+<title>Architecture</title>
 
 
 
@@ -50,18 +50,18 @@
 
 
 
-<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/">
+<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/architecture/">
 
 
 <!-- Open Graph (Facebook, LinkedIn) -->
 
-<meta property="og:title" content="Overview">
+<meta property="og:title" content="Architecture">
 
 
 
 
 
-<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/">
+<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/architecture/">
 
 
 
@@ -70,7 +70,7 @@
 
 <!-- Twitter Card -->
 
-<meta name="twitter:title" content="Overview">
+<meta name="twitter:title" content="Architecture">
 
 
 
@@ -81,35 +81,35 @@
 
 
 
-    <link rel="icon" href="img/favicon.ico">
+    <link rel="icon" href="../img/favicon.ico">
 
-    <link href="css/base.css" rel="stylesheet">
-    <link href="css/geist.css" rel="stylesheet">
+    <link href="../css/base.css" rel="stylesheet">
+    <link href="../css/geist.css" rel="stylesheet">
 
     
     
 
 <link id="pygments-light" rel="stylesheet"
-    href="css/pygments/shadcn-light.css">
+    href="../css/pygments/shadcn-light.css">
 <link id="pygments-dark" rel="stylesheet"
-    href="css/pygments/github-dark.css"
+    href="../css/pygments/github-dark.css"
     media="(prefers-color-scheme: dark)">
 
 
     
-    <link href="assets/_mkdocstrings.css" rel="stylesheet">
+    <link href="../assets/_mkdocstrings.css" rel="stylesheet">
 
     
 
-    <script src="js/callbacks.js"></script>
+    <script src="../js/callbacks.js"></script>
 
     
     <!-- katex -->
-<link rel="stylesheet" href="css/katex.min.css">
+<link rel="stylesheet" href="../css/katex.min.css">
 <!-- The loading of KaTeX is deferred to speed up page rendering -->
-<script defer src="js/katex.min.js"></script>
+<script defer src="../js/katex.min.js"></script>
 <!-- To automatically render math in text elements, include the auto-render extension: -->
-<script defer src="js/auto-render.min.js"
+<script defer src="../js/auto-render.min.js"
     onload='renderMathInElement(document.body, {"macros": {"\\dx": "\\mathrm{d}x"}});'></script>
     
 
@@ -470,7 +470,7 @@
                 
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -585,7 +585,7 @@
             <ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-0.5">
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/architecture/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -687,12 +687,12 @@
         <h1
           class="scroll-m-20 text-4xl font-semibold tracking-tight sm:text-3xl xl:text-4xl"
         >
-          Overview
+          Architecture
         </h1>
 
         <div class="flex items-center gap-2 pt-1.5">
           
-<button onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/index.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))" 
+<button onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/architecture.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))" 
         data-slot="button" 
         class="cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md gap-1.5 px-3 has-[&>svg]:px-2.5 h-8 shadow-none md:h-7 md:text-[0.8rem]">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-copy ">
@@ -700,13 +700,38 @@
 </svg>
 <span class="max-md:hidden">Copy Page</span>
 </button> 
+          
+          <a
+            data-slot="button"
+            id="previous-button"
+            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
+            href="/LightDiffusion-Next/examples/"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="tabler-icon tabler-icon-arrow-left"
+            >
+              <path d="M5 12l14 0"></path>
+              <path d="M5 12l6 6"></path>
+              <path d="M5 12l6 -6"></path>
+            </svg>
+            <span class="sr-only">Previous</span>
+          </a>
            
           
           <a
             data-slot="button"
             id="next-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/installation/"
+            href="/LightDiffusion-Next/api/"
           >
             <span class="sr-only">Next</span>
             <svg
@@ -736,53 +761,96 @@
     </div>
   </div>
   <div class="typography w-full flex-1 *:data-[slot=alert]:first:mt-0">
-    <p>LightDiffusion-Next is a refactored and performance-first Stable Diffusion stack that bundles a modern Streamlit UI, an optional Gradio web app, a batched FastAPI backend and highly tuned inference primitives such as Stable-Fast, SageAttention and WaveSpeed caching.</p>
-<h2 id="why-pick-lightdiffusion-next">Why pick LightDiffusion-Next</h2>
-<p>LightDiffusion-Next is built to handle day-to-day generation workloads on consumer GPUs while still scaling up to multi-user servers.</p>
+    <p>LightDiffusion-Next is split into three cooperating layers: UX surfaces, a FastAPI gateway and a modular inference core. Requests move through these layers, picking up metadata and transformations before image tensors ever touch the GPU. This page decomposes the system and highlights the extension points you are most likely to touch.</p>
+<h2 id="layers-in-detail">Layers in detail</h2>
+<h3 id="ux-layer-streamlit_apppy-apppy-ui">UX layer (<code>streamlit_app.py</code>, <code>app.py</code>, <code>ui/*</code>)</h3>
 <ul>
-<li><strong>Fast by default.</strong> Stable-Fast compilation, SageAttention, SpargeAttn and WaveSpeed caching are wired in so you can hit top-tier it/s without manual patching.</li>
-<li><strong>Multiple front-doors.</strong> Choose between the Streamlit control room, a Gradio web UI (great for Spaces) or the programmable FastAPI queue for integrations.</li>
-<li><strong>Feature complete.</strong> Txt2Img, Img2Img, Flux pipelines, AutoHDR, TAESD previews, prompt enhancement through Ollama, multi-scale diffusion with presets, LoRA mixing and automatic detailing are all available out of the box.</li>
-<li><strong>Operations friendly.</strong> Docker images, GPU-aware batched serving, model caching controls and observability endpoints make it easy to deploy and monitor.</li>
+<li>Streamlit exposes rich controls, preset management and history in <code>ui/settings.py</code> and <code>ui/history.py</code>.</li>
+<li>Gradio powers Spaces deployments (<code>app.py</code>). It streams previews via generators and mirrors the Streamlit control surface.</li>
+<li>Both UIs instantiate a shared <code>AppInstance</code> which holds the pipeline, preview queues and cached settings.</li>
 </ul>
-<h2 id="what-ships-in-the-box">What ships in the box</h2>
+<h3 id="fastapi-gateway-serverpy">FastAPI gateway (<code>server.py</code>)</h3>
 <ul>
-<li>🚀 <strong>Streamlined UI</strong> with live previews, history, presets, interrupt/resume controls and automatic metadata tagging.</li>
-<li>🧠 <strong>Prompt toolkit</strong> including reusable negative embeddings, multi-concept weighting, prompt enhancement and prompt history.</li>
-<li>🧩 <strong>Modular pipeline</strong> that routes SD1.5, SDXL-inspired workflows and quantized Flux models through a single code path with per-sample overrides for HiresFix, ADetailer or Img2Img.</li>
-<li>🛠️ <strong>Production API</strong> powered by FastAPI with smart request coalescing, telemetry endpoints and base64 image responses ready for bots or creative tooling.</li>
-<li>📦 <strong>Deployment artifacts</strong> such as Dockerfiles, docker-compose, run scripts for Windows, configurable GPU architecture flags and optional Ollama/Stable-Fast builds.</li>
+<li>Implements <code>/api/generate</code>, <code>/api/telemetry</code>, <code>/api/interrogate</code> and health probes.</li>
+<li><code>GenerationBuffer</code> batches jobs with compatible shapes, models and LoRA overlays to maximize GPU utilization.</li>
+<li>Telemetry exposes queue lengths, average latency, VRAM usage and cached model fingerprints.</li>
+<li>Server-side logging includes per-request identifiers and request tracebacks in <code>logs/server.log</code>.</li>
 </ul>
-<h2 id="quick-pathways">Quick pathways</h2>
+<h3 id="pipeline-core-srcuserpipelinepy">Pipeline core (<code>src/user/pipeline.py</code>)</h3>
+<p>This module orchestrates conditioning, diffusion, optional refinements and output serialization.</p>
 <ul>
-<li><a href="installation/">Installation</a> — pick Docker, Windows batch or manual Python setup.</li>
-<li><a href="usage/">First run &amp; UI tour</a> — learn the Streamlit layout, generation controls and history tools.</li>
-<li><a href="examples/">Workflow playbook</a> — step through Txt2Img, Flux, Img2Img and API recipes.</li>
-<li><a href="quirks/">Performance tuning</a> — squeeze out extra throughput or reduce VRAM usage.</li>
-<li><a href="architecture/">Architecture</a> — understand how the UI, pipeline and server cooperate.</li>
-<li><a href="api/">REST &amp; automation</a> — integrate Discord bots, automations or other clients.</li>
+<li><strong>Model resolution</strong> — <code>src/FileManaging/Loader</code> locates checkpoints, VAE, CLIP weights and LoRAs. Stable-Fast backends live in <code>src/StableFast</code> and can be toggled in settings.</li>
+<li><strong>Conditioning</strong> — Prompts are tokenized through <code>src/cond/cond.py</code>. Negative prompts, style presets and textual inversion embeddings are applied here.</li>
+<li><strong>Sampling</strong> — <code>src/sample/sampling.KSampler</code> coordinates samplers (<code>ddim</code>, <code>dpmpp</code>, <code>k-diffusion</code>, etc.) with CFG++ and Flux schedulers.</li>
+<li><strong>Enhancements</strong> — Multi-scale diffusion (<code>multiscale_presets.py</code>), AutoDetailer (YOLO detection + inpainting), UltimateSDUpscale and AutoHDR run after the base diffusion loop.</li>
+<li><strong>Outputs</strong> — <code>src/FileManaging/ImageSaver</code> writes PNGs, JSON metadata and optionally sends frames to the preview queues.</li>
 </ul>
-<h2 id="supported-environments-at-a-glance">Supported environments at a glance</h2>
+<h3 id="device-and-cache-srcdevicemodelcachepy">Device and cache (<code>src/Device/ModelCache.py</code>)</h3>
 <ul>
-<li>NVIDIA GPUs with CUDA 12.x drivers. SageAttention and SpargeAttn availability is detected at runtime and depends on installed kernels, drivers and GPU compute capability; some kernels may be disabled on newer CUDA runtimes (for example CUDA 12+). RTX 50xx and newer cards may use SageAttention + Stable-Fast where supported.</li>
-<li>Windows 10/11, Ubuntu 22.04+ and containerized deployments via Docker with NVIDIA Container Toolkit.</li>
-<li>Optional CPU-only mode for experimentation (no Stable-Fast/SageAttention speed-ups).</li>
+<li>Maintains reference-counted handles for UNet, VAE, CLIP and Flux components.</li>
+<li>Handles VRAM telemetry and eviction policies so the UI can show “keep loaded” toggles without manual restarts.</li>
+<li>Tracks whether Stable-Fast kernels, SageAttention or SD1.5 attention patches are initialized.</li>
 </ul>
-<h2 id="where-to-head-next">Where to head next</h2>
+<h3 id="asset-management-srcfilemanagingdownloaderpy">Asset management (<code>src/FileManaging/Downloader.py</code>)</h3>
 <ul>
-<li>Start with <a href="installation/">Installation</a> to get your environment ready.</li>
-<li>Drop into the <a href="usage/">Streamlit UI guide</a> for a tour of generation features and presets.</li>
-<li>Explore <a href="architecture/">Architecture</a> when you are ready to customize or embed LightDiffusion-Next in larger systems.</li>
+<li>Validates required checkpoints, VAE files, LoRAs, embeddings, YOLO detectors and Flux components at startup.</li>
+<li>Supports mirrored download hosts and resumable transfers for large files.</li>
+<li>Exposes helper methods used by the UI to fetch missing assets on demand.</li>
 </ul>
+<h3 id="preview-subsystem-srcuserapp_instancepy">Preview subsystem (<code>src/user/app_instance.py</code>)</h3>
+<ul>
+<li>Provides <code>get_latest_previews()</code> for UI clients, backed by a dedicated thread that consumes preview tensors straight from the pipeline.</li>
+<li>Supports interrupt handling by setting <code>app_instance.interrupt = True</code>, which causes the sampler to exit gracefully.</li>
+</ul>
+<h2 id="request-lifecycle">Request lifecycle</h2>
+<ol>
+<li><strong>Submission</strong> — A UI or REST client creates a job payload containing prompts, dimensions, sampler settings, seed and post-processing flags.</li>
+<li><strong>Queueing &amp; batching</strong> — Jobs are inserted into <code>GenerationBuffer</code>. Depending on <code>LD_BATCH_WAIT_SINGLETONS</code>, single jobs may wait briefly for compatible companions to maximize GPU throughput.</li>
+<li><strong>Model preparation</strong> — The pipeline loads or reuses cached models, applies LoRA deltas, textual inversion embeddings and optional quantization adapters (via <code>src/Quantize</code>).</li>
+<li><strong>Diffusion</strong> — The sampler executes the denoising loop. Flux mode uses <code>src/BlackForest/Flux.py</code> for decoder steps; Stable-Fast kernels speed up SD1.5/SDXL.</li>
+<li><strong>Refinement</strong> — Optional stages (HiRes Fix, AutoDetailer, AutoHDR, UltimateSDUpscale) run sequentially per sample.</li>
+<li><strong>Persistence</strong> — Final images and metadata are written to <code>output/&lt;workflow&gt;/</code>. Streamlit previews receive running frames; REST clients receive base64 PNG payloads plus telemetry.</li>
+</ol>
+<h2 id="filesystem-overview">Filesystem overview</h2>
+<ul>
+<li><code>include/checkpoints</code> — SD checkpoints (1.5, SDXL, Flux, etc.).</li>
+<li><code>include/loras</code>, <code>include/embeddings</code> — LoRA adapters and textual inversion concepts.</li>
+<li><code>include/clip</code> — Tokenizer and encoder configs.</li>
+<li><code>include/yolos</code> — Object detectors for AutoDetailer.</li>
+<li><code>include/ESRGAN</code> — Upscaler models for UltimateSDUpscale.</li>
+<li><code>output/*</code> — Organized galleries (Classic, Flux, Img2Img, Upscale, etc.).</li>
+<li><code>webui_settings.json</code> — Persisted Streamlit configuration.</li>
+</ul>
+<h2 id="extending-lightdiffusion-next">Extending LightDiffusion-Next</h2>
+<ul>
+<li><strong>New samplers</strong> — Implement in <code>src/sample/samplers.py</code> and register with <code>KSampler</code>. Add UI and REST switches via <code>ui/settings.py</code> and <code>GenerateRequest</code>.</li>
+<li><strong>Additional post-processing</strong> — Follow the pattern in <code>UltimateSDUpscale</code> or <code>AutoHDR</code> and register the stage near the end of <code>pipeline()</code>.</li>
+<li><strong>Custom model managers</strong> — Plug alternative download logic into <code>FileManaging/Downloader</code> or mount volumes in Docker deployments.</li>
+<li><strong>Observability</strong> — Add metrics/log statements in <code>GenerationBuffer</code> or extend <code>/api/telemetry</code> to fit orchestrator dashboards.</li>
+</ul>
+<p>Armed with this bird’s-eye view, you can dive into the <a href="../usage/">usage guide</a> for operator workflows or the upcoming <a href="../api/">API reference</a> for automation hooks.</p>
   </div>
 </article>
                                 <div class="mx-auto flex flex-wrap h-16 w-full max-w-2xl items-center gap-2 px-4 md:px-0">
     
+    <a data-slot="button"
+        class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 shadow-none"
+        href="/LightDiffusion-Next/examples/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="tabler-icon tabler-icon-arrow-left ">
+            <path d="M5 12l14 0"></path>
+            <path d="M5 12l6 6"></path>
+            <path d="M5 12l6 -6"></path>
+        </svg>
+        <span class="max-[500px]:hidden">Workflow Playbook</span>
+    </a>
+    
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 ml-auto shadow-none"
-        href="/LightDiffusion-Next/installation/">
-        <span class="max-[500px]:hidden">Installation</span>
+        href="/LightDiffusion-Next/api/">
+        <span class="max-[500px]:hidden">REST API</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-right ">
@@ -809,13 +877,13 @@
                 <div class="text-muted-foreground text-sm font-medium">Menu</div>
                 <div class="flex flex-col gap-3">
                     
-                    <a class="text-2xl font-medium" href=".">
+                    <a class="text-2xl font-medium" href="..">
                         
                         Overview
                         
                     </a>
                     
-                    <a class="text-2xl font-medium" href="contributing/">
+                    <a class="text-2xl font-medium" href="../contributing/">
                         
                         Contributing
                         
@@ -833,19 +901,19 @@
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="installation/">
+                        <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="usage/">
+                        <a class="text-2xl font-medium" href="../usage/">
                             
                             First Run & UI Tour
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="examples/">
+                        <a class="text-2xl font-medium" href="../examples/">
                             
                             Workflow Playbook
                             
@@ -860,13 +928,13 @@
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="architecture/">
+                        <a class="text-2xl font-medium" href="./">
                             
                             Architecture
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="api/">
+                        <a class="text-2xl font-medium" href="../api/">
                             
                             REST API
                             
@@ -881,13 +949,13 @@
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="quirks/">
+                        <a class="text-2xl font-medium" href="../quirks/">
                             
                             Performance & Troubleshooting
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="faq/">
+                        <a class="text-2xl font-medium" href="../faq/">
                             
                             FAQ
                             
@@ -915,42 +983,72 @@
         
         
         
-        <a href="#why-pick-lightdiffusion-next"
+        <a href="#layers-in-detail"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Why pick LightDiffusion-Next
+            Layers in detail
+        </a>
+        
+        
+        <a href="#ux-layer-streamlit_apppy-apppy-ui"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            UX layer (streamlit_app.py, app.py, ui/*)
+        </a>
+        
+        <a href="#fastapi-gateway-serverpy"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            FastAPI gateway (server.py)
+        </a>
+        
+        <a href="#pipeline-core-srcuserpipelinepy"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Pipeline core (src/user/pipeline.py)
+        </a>
+        
+        <a href="#device-and-cache-srcdevicemodelcachepy"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Device and cache (src/Device/ModelCache.py)
+        </a>
+        
+        <a href="#asset-management-srcfilemanagingdownloaderpy"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Asset management (src/FileManaging/Downloader.py)
+        </a>
+        
+        <a href="#preview-subsystem-srcuserapp_instancepy"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Preview subsystem (src/user/app_instance.py)
+        </a>
+        
+        
+
+        
+        <a href="#request-lifecycle"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Request lifecycle
         </a>
         
 
         
-        <a href="#what-ships-in-the-box"
+        <a href="#filesystem-overview"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            What ships in the box
+            Filesystem overview
         </a>
         
 
         
-        <a href="#quick-pathways"
+        <a href="#extending-lightdiffusion-next"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Quick pathways
-        </a>
-        
-
-        
-        <a href="#supported-environments-at-a-glance"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2">
-            Supported environments at a glance
-        </a>
-        
-
-        
-        <a href="#where-to-head-next"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2">
-            Where to head next
+            Extending LightDiffusion-Next
         </a>
         
 
@@ -985,12 +1083,12 @@
     </div>
      
 
-<script src="search/main.js"></script>
+<script src="../search/main.js"></script>
 
 
     
 
-    <script src="js/copy-button.js"></script>
+    <script src="../js/copy-button.js"></script>
     <script>updatePygmentsStylesheet();</script>
     
     <script>fetchStargazers("https://github.com/Aatricks/LightDiffusion-Next");</script>
@@ -1009,7 +1107,7 @@
 </script>
     
     
-    <script src="js/socket.io.min.js"></script>
+    <script src="../js/socket.io.min.js"></script>
 <script>
     function randomString(length = 10) {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

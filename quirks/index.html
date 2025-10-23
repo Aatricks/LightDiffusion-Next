@@ -36,11 +36,11 @@
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Overview - LightDiffusion-Next</title>
+    <title>Performance & Troubleshooting - LightDiffusion-Next</title>
     
 
 
-<title>Overview</title>
+<title>Performance & Troubleshooting</title>
 
 
 
@@ -50,18 +50,18 @@
 
 
 
-<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/">
+<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/quirks/">
 
 
 <!-- Open Graph (Facebook, LinkedIn) -->
 
-<meta property="og:title" content="Overview">
+<meta property="og:title" content="Performance & Troubleshooting">
 
 
 
 
 
-<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/">
+<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/quirks/">
 
 
 
@@ -70,7 +70,7 @@
 
 <!-- Twitter Card -->
 
-<meta name="twitter:title" content="Overview">
+<meta name="twitter:title" content="Performance & Troubleshooting">
 
 
 
@@ -81,35 +81,35 @@
 
 
 
-    <link rel="icon" href="img/favicon.ico">
+    <link rel="icon" href="../img/favicon.ico">
 
-    <link href="css/base.css" rel="stylesheet">
-    <link href="css/geist.css" rel="stylesheet">
+    <link href="../css/base.css" rel="stylesheet">
+    <link href="../css/geist.css" rel="stylesheet">
 
     
     
 
 <link id="pygments-light" rel="stylesheet"
-    href="css/pygments/shadcn-light.css">
+    href="../css/pygments/shadcn-light.css">
 <link id="pygments-dark" rel="stylesheet"
-    href="css/pygments/github-dark.css"
+    href="../css/pygments/github-dark.css"
     media="(prefers-color-scheme: dark)">
 
 
     
-    <link href="assets/_mkdocstrings.css" rel="stylesheet">
+    <link href="../assets/_mkdocstrings.css" rel="stylesheet">
 
     
 
-    <script src="js/callbacks.js"></script>
+    <script src="../js/callbacks.js"></script>
 
     
     <!-- katex -->
-<link rel="stylesheet" href="css/katex.min.css">
+<link rel="stylesheet" href="../css/katex.min.css">
 <!-- The loading of KaTeX is deferred to speed up page rendering -->
-<script defer src="js/katex.min.js"></script>
+<script defer src="../js/katex.min.js"></script>
 <!-- To automatically render math in text elements, include the auto-render extension: -->
-<script defer src="js/auto-render.min.js"
+<script defer src="../js/auto-render.min.js"
     onload='renderMathInElement(document.body, {"macros": {"\\dx": "\\mathrm{d}x"}});'></script>
     
 
@@ -470,7 +470,7 @@
                 
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -632,7 +632,7 @@
             <ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-0.5">
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/quirks/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -687,12 +687,12 @@
         <h1
           class="scroll-m-20 text-4xl font-semibold tracking-tight sm:text-3xl xl:text-4xl"
         >
-          Overview
+          Performance & Troubleshooting
         </h1>
 
         <div class="flex items-center gap-2 pt-1.5">
           
-<button onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/index.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))" 
+<button onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/quirks.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))" 
         data-slot="button" 
         class="cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md gap-1.5 px-3 has-[&>svg]:px-2.5 h-8 shadow-none md:h-7 md:text-[0.8rem]">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-copy ">
@@ -700,13 +700,38 @@
 </svg>
 <span class="max-md:hidden">Copy Page</span>
 </button> 
+          
+          <a
+            data-slot="button"
+            id="previous-button"
+            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
+            href="/LightDiffusion-Next/api/"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="tabler-icon tabler-icon-arrow-left"
+            >
+              <path d="M5 12l14 0"></path>
+              <path d="M5 12l6 6"></path>
+              <path d="M5 12l6 -6"></path>
+            </svg>
+            <span class="sr-only">Previous</span>
+          </a>
            
           
           <a
             data-slot="button"
             id="next-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/installation/"
+            href="/LightDiffusion-Next/faq/"
           >
             <span class="sr-only">Next</span>
             <svg
@@ -736,53 +761,104 @@
     </div>
   </div>
   <div class="typography w-full flex-1 *:data-[slot=alert]:first:mt-0">
-    <p>LightDiffusion-Next is a refactored and performance-first Stable Diffusion stack that bundles a modern Streamlit UI, an optional Gradio web app, a batched FastAPI backend and highly tuned inference primitives such as Stable-Fast, SageAttention and WaveSpeed caching.</p>
-<h2 id="why-pick-lightdiffusion-next">Why pick LightDiffusion-Next</h2>
-<p>LightDiffusion-Next is built to handle day-to-day generation workloads on consumer GPUs while still scaling up to multi-user servers.</p>
+    <p>This playbook highlights the most common operational quirks you may encounter while running LightDiffusion-Next and the quickest ways to resolve them.</p>
+<h2 id="gpu-memory-headaches">GPU memory headaches</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Quick fixes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CUDA out of memory</code> during base diffusion</td>
+<td>Resolution or batch too high</td>
+<td>Drop to 512×512 or smaller, decrease batch to 1, disable HiresFix or AutoDetailer, prefer Euler/Karras samplers in <strong>CFG++</strong> mode</td>
+</tr>
+<tr>
+<td>OOM triggered mid-way through HiRes</td>
+<td>VRAM spikes when loading VAE/second UNet</td>
+<td>Enable <strong>Keep models loaded</strong> (to avoid reloading) or run HiRes on CPU by toggling <em>VAE on CPU</em> in settings</td>
+</tr>
+<tr>
+<td>Flux runs crash immediately</td>
+<td>Missing Flux decoder or running on &lt;16 GB VRAM</td>
+<td>Place Flux weights in <code>include/Flux</code>, disable Flux or use SD1.5 profile on smaller cards</td>
+</tr>
+</tbody>
+</table></div>
+<p>Additional tips:</p>
 <ul>
-<li><strong>Fast by default.</strong> Stable-Fast compilation, SageAttention, SpargeAttn and WaveSpeed caching are wired in so you can hit top-tier it/s without manual patching.</li>
-<li><strong>Multiple front-doors.</strong> Choose between the Streamlit control room, a Gradio web UI (great for Spaces) or the programmable FastAPI queue for integrations.</li>
-<li><strong>Feature complete.</strong> Txt2Img, Img2Img, Flux pipelines, AutoHDR, TAESD previews, prompt enhancement through Ollama, multi-scale diffusion with presets, LoRA mixing and automatic detailing are all available out of the box.</li>
-<li><strong>Operations friendly.</strong> Docker images, GPU-aware batched serving, model caching controls and observability endpoints make it easy to deploy and monitor.</li>
+<li>Enable <strong>VRAM budget</strong> in Streamlit to see live usage (requires <code>LD_SHOW_VRAM=1</code>).</li>
+<li>In Docker, pass <code>--gpus all</code> and ensure <code>NVIDIA_VISIBLE_DEVICES</code> is not empty.</li>
+<li>Clear <code>~/.cache/torch_extensions</code> if Stable-Fast kernels were compiled against an older driver and now fail to load.</li>
 </ul>
-<h2 id="what-ships-in-the-box">What ships in the box</h2>
+<h2 id="slow-first-runs-or-repeated-recompilation">Slow first runs or repeated recompilation</h2>
 <ul>
-<li>🚀 <strong>Streamlined UI</strong> with live previews, history, presets, interrupt/resume controls and automatic metadata tagging.</li>
-<li>🧠 <strong>Prompt toolkit</strong> including reusable negative embeddings, multi-concept weighting, prompt enhancement and prompt history.</li>
-<li>🧩 <strong>Modular pipeline</strong> that routes SD1.5, SDXL-inspired workflows and quantized Flux models through a single code path with per-sample overrides for HiresFix, ADetailer or Img2Img.</li>
-<li>🛠️ <strong>Production API</strong> powered by FastAPI with smart request coalescing, telemetry endpoints and base64 image responses ready for bots or creative tooling.</li>
-<li>📦 <strong>Deployment artifacts</strong> such as Dockerfiles, docker-compose, run scripts for Windows, configurable GPU architecture flags and optional Ollama/Stable-Fast builds.</li>
+<li>Stable-Fast and SageAttention compile custom kernels on first use. This can take several minutes. Once complete, the compiled artifacts live under <code>~/.cache/torch_extensions</code> (host) or <code>/root/.cache/torch_extensions</code> (Docker). Mount this directory as a volume for faster cold starts.</li>
+<li>If Streamlit re-compiles every launch, ensure the container or user has write access to the cache directory and that the system clock is correct.</li>
+<li>Set <code>LD_DISABLE_SAGE_ATTENTION=1</code> to isolate issues related specifically to SageAttention.</li>
 </ul>
-<h2 id="quick-pathways">Quick pathways</h2>
+<h2 id="downloader-complaints-about-missing-assets">Downloader complaints about missing assets</h2>
 <ul>
-<li><a href="installation/">Installation</a> — pick Docker, Windows batch or manual Python setup.</li>
-<li><a href="usage/">First run &amp; UI tour</a> — learn the Streamlit layout, generation controls and history tools.</li>
-<li><a href="examples/">Workflow playbook</a> — step through Txt2Img, Flux, Img2Img and API recipes.</li>
-<li><a href="quirks/">Performance tuning</a> — squeeze out extra throughput or reduce VRAM usage.</li>
-<li><a href="architecture/">Architecture</a> — understand how the UI, pipeline and server cooperate.</li>
-<li><a href="api/">REST &amp; automation</a> — integrate Discord bots, automations or other clients.</li>
+<li>The startup checks look for standard filenames (e.g., <code>yolov8n.pt</code>, <code>taesdxl_decoder.safetensors</code>). Verify these live under the correct subdirectories in <code>include/</code>.</li>
+<li>For offline setups, drop the files manually and create empty <code>.ok</code> sentinels (e.g., <code>include/checkpoints/.downloads-ok</code>) to skip prompts.</li>
+<li>Hugging Face rate limits manifest as HTTP 429. Provide a token via the prompt, set <code>HF_TOKEN</code> in the environment or download manually.</li>
 </ul>
-<h2 id="supported-environments-at-a-glance">Supported environments at a glance</h2>
+<h2 id="streamlit-ui-quirks">Streamlit UI quirks</h2>
 <ul>
-<li>NVIDIA GPUs with CUDA 12.x drivers. SageAttention and SpargeAttn availability is detected at runtime and depends on installed kernels, drivers and GPU compute capability; some kernels may be disabled on newer CUDA runtimes (for example CUDA 12+). RTX 50xx and newer cards may use SageAttention + Stable-Fast where supported.</li>
-<li>Windows 10/11, Ubuntu 22.04+ and containerized deployments via Docker with NVIDIA Container Toolkit.</li>
-<li>Optional CPU-only mode for experimentation (no Stable-Fast/SageAttention speed-ups).</li>
+<li><strong>Preview stuck on “Waiting for GPU”</strong> – Check FastAPI logs; the batching worker may be paused. Restart the Streamlit session or run <code>python server.py</code> to inspect queue telemetry.</li>
+<li><strong>Settings reset on restart</strong> – Ensure the process can write to <code>webui_settings.json</code>. Remove the file to revert to defaults if it becomes corrupted.</li>
+<li><strong>History thumbnails missing</strong> – Delete the entry under <code>ui/history/&lt;timestamp&gt;</code>; the next render will recreate previews.</li>
 </ul>
-<h2 id="where-to-head-next">Where to head next</h2>
+<h2 id="gradio-or-api-automation-issues">Gradio or API automation issues</h2>
 <ul>
-<li>Start with <a href="installation/">Installation</a> to get your environment ready.</li>
-<li>Drop into the <a href="usage/">Streamlit UI guide</a> for a tour of generation features and presets.</li>
-<li>Explore <a href="architecture/">Architecture</a> when you are ready to customize or embed LightDiffusion-Next in larger systems.</li>
+<li><code>/api/generate</code> returns 500 with “No images produced”: inspect server logs for <code>Pipeline import error</code> or missing models. Ensure <code>pipeline.py</code> is importable and the working directory is the repository root.</li>
+<li>Jobs appear stuck: call <code>/api/telemetry</code> to inspect <code>pending_by_signature</code>. Mixed resolutions or toggles prevent batching; if running single job automation, set <code>LD_BATCH_WAIT_SINGLETONS=0</code> to avoid coalescing delays.</li>
+<li>Health checks: <code>/health</code> returns <code>{ "status": "ok" }</code>. If it fails, the FastAPI app likely crashed—restart and inspect <code>logs/server.log</code>.</li>
+</ul>
+<h2 id="docker-specific-notes">Docker-specific notes</h2>
+<ul>
+<li>Always build with the provided <code>Dockerfile</code> to get SageAttention patches precompiled.</li>
+<li>Forward model assets by mounting <code>./include</code> into the container (<code>-v $(pwd)/include:/app/include</code>).</li>
+<li>On Windows + WSL2, ensure the WSL distro has the NVIDIA driver bridge (<code>wsl --status</code>).</li>
+</ul>
+<h2 id="logging-diagnostics">Logging &amp; diagnostics</h2>
+<ul>
+<li>Server logs live under <code>logs/server.log</code> with per-request IDs. Tail them during load testing: <code>tail -f logs/server.log</code>.</li>
+<li>Enable debug logging by exporting <code>LD_SERVER_LOGLEVEL=DEBUG</code> before launching Streamlit/Gradio/uvicorn.</li>
+<li>To inspect queue depth without hitting the API, watch the <code>GenerationBuffer</code> logs; each batch prints signature summaries.</li>
+</ul>
+<h2 id="when-all-else-fails">When all else fails</h2>
+<ul>
+<li>Clear the <code>include/last_seed.txt</code> file if seed reuse behaves unexpectedly.</li>
+<li>Regenerate Stable-Fast kernels by deleting the cache directory and re-running with <code>stable_fast</code> enabled.</li>
+<li>Collect the following before opening an issue: GPU model, driver version, operating system, a copy of <code>logs/server.log</code>, hardware info from <code>/api/telemetry</code>, and reproduction steps.</li>
 </ul>
   </div>
 </article>
                                 <div class="mx-auto flex flex-wrap h-16 w-full max-w-2xl items-center gap-2 px-4 md:px-0">
     
+    <a data-slot="button"
+        class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 shadow-none"
+        href="/LightDiffusion-Next/api/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="tabler-icon tabler-icon-arrow-left ">
+            <path d="M5 12l14 0"></path>
+            <path d="M5 12l6 6"></path>
+            <path d="M5 12l6 -6"></path>
+        </svg>
+        <span class="max-[500px]:hidden">REST API</span>
+    </a>
+    
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 ml-auto shadow-none"
-        href="/LightDiffusion-Next/installation/">
-        <span class="max-[500px]:hidden">Installation</span>
+        href="/LightDiffusion-Next/faq/">
+        <span class="max-[500px]:hidden">FAQ</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-right ">
@@ -809,13 +885,13 @@
                 <div class="text-muted-foreground text-sm font-medium">Menu</div>
                 <div class="flex flex-col gap-3">
                     
-                    <a class="text-2xl font-medium" href=".">
+                    <a class="text-2xl font-medium" href="..">
                         
                         Overview
                         
                     </a>
                     
-                    <a class="text-2xl font-medium" href="contributing/">
+                    <a class="text-2xl font-medium" href="../contributing/">
                         
                         Contributing
                         
@@ -833,19 +909,19 @@
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="installation/">
+                        <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="usage/">
+                        <a class="text-2xl font-medium" href="../usage/">
                             
                             First Run & UI Tour
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="examples/">
+                        <a class="text-2xl font-medium" href="../examples/">
                             
                             Workflow Playbook
                             
@@ -860,13 +936,13 @@
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="architecture/">
+                        <a class="text-2xl font-medium" href="../architecture/">
                             
                             Architecture
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="api/">
+                        <a class="text-2xl font-medium" href="../api/">
                             
                             REST API
                             
@@ -881,13 +957,13 @@
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="quirks/">
+                        <a class="text-2xl font-medium" href="./">
                             
                             Performance & Troubleshooting
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="faq/">
+                        <a class="text-2xl font-medium" href="../faq/">
                             
                             FAQ
                             
@@ -915,42 +991,66 @@
         
         
         
-        <a href="#why-pick-lightdiffusion-next"
+        <a href="#gpu-memory-headaches"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Why pick LightDiffusion-Next
+            GPU memory headaches
         </a>
         
 
         
-        <a href="#what-ships-in-the-box"
+        <a href="#slow-first-runs-or-repeated-recompilation"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            What ships in the box
+            Slow first runs or repeated recompilation
         </a>
         
 
         
-        <a href="#quick-pathways"
+        <a href="#downloader-complaints-about-missing-assets"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Quick pathways
+            Downloader complaints about missing assets
         </a>
         
 
         
-        <a href="#supported-environments-at-a-glance"
+        <a href="#streamlit-ui-quirks"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Supported environments at a glance
+            Streamlit UI quirks
         </a>
         
 
         
-        <a href="#where-to-head-next"
+        <a href="#gradio-or-api-automation-issues"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Where to head next
+            Gradio or API automation issues
+        </a>
+        
+
+        
+        <a href="#docker-specific-notes"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Docker-specific notes
+        </a>
+        
+
+        
+        <a href="#logging-diagnostics"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Logging &amp; diagnostics
+        </a>
+        
+
+        
+        <a href="#when-all-else-fails"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            When all else fails
         </a>
         
 
@@ -985,12 +1085,12 @@
     </div>
      
 
-<script src="search/main.js"></script>
+<script src="../search/main.js"></script>
 
 
     
 
-    <script src="js/copy-button.js"></script>
+    <script src="../js/copy-button.js"></script>
     <script>updatePygmentsStylesheet();</script>
     
     <script>fetchStargazers("https://github.com/Aatricks/LightDiffusion-Next");</script>
@@ -1009,7 +1109,7 @@
 </script>
     
     
-    <script src="js/socket.io.min.js"></script>
+    <script src="../js/socket.io.min.js"></script>
 <script>
     function randomString(length = 10) {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
