@@ -842,8 +842,6 @@
 <li>Use the sidebar menu → <strong>Rerun</strong> if you change source code while developing custom nodes.</li>
 <li>When running on laptops, disable “Keep models in VRAM” before closing the UI to release GPU memory for other applications.</li>
 </ul>
-<p>Ready for real workflows? Jump to the <a href="../examples/">examples and recipes</a> page.
-Ready for real workflows? Jump to the <a href="../examples/">examples and recipes</a> page.</p>
 <h2 id="programmatic-pipeline-usage-python">Programmatic pipeline usage (Python)</h2>
 <p>You can import and call the pipeline directly from Python. The function lives at <code>src.user.pipeline.pipeline</code> and accepts the same runtime flags as the CLI. The example below shows a minimal, synchronous call that runs the pipeline and handles the returned mapping when running in batched mode.</p>
 <div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.user.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">pipeline</span>
@@ -868,50 +866,6 @@ Ready for real workflows? Jump to the <a href="../examples/">examples and recipe
 <span class="k">else</span><span class="p">:</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Pipeline completed; check output/ for generated images&quot;</span><span class="p">)</span>
 </code></pre></div>
-
-<p>```</p>
-<p><strong>Memory management:</strong></p>
-<ul>
-<li>Use small resolutions (128x128 or 256x256) on constrained devices</li>
-<li>Enable CPU offloading flags to reduce native memory pressure</li>
-<li>Always use <code>preferSystemDownloader = true</code> for model downloads</li>
-<li>Monitor with <code>MemoryMetrics</code> to avoid OOM</li>
-</ul>
-<p>See <a href="../examples/#stablediffusionactivity">StableDiffusionActivity example</a> for complete implementation with error recovery and adaptive resolution.</p>
-<h3 id="best-practices">Best Practices</h3>
-<p><strong>Threading:</strong></p>
-<ul>
-<li>Always use background dispatchers (<code>Dispatchers.IO</code> or <code>Dispatchers.Default</code>) for model loading and inference</li>
-<li>Update UI only via <code>withContext(Dispatchers.Main)</code></li>
-<li>Call <code>.close()</code> in <code>onDestroy()</code> to free native memory</li>
-</ul>
-<p><strong>Memory optimization:</strong></p>
-<ul>
-<li>Use quantized models (Q4_K_M, Q5_K_M)</li>
-<li>Reduce <code>contextSize</code> (2048-4096 for constrained devices)</li>
-<li>Cap <code>numThreads</code> to avoid CPU oversubscription</li>
-<li>Monitor with <code>MemoryMetrics.snapshot()</code></li>
-</ul>
-<p><strong>See also:</strong></p>
-<ul>
-<li><a href="../architecture/">Architecture</a> for system design and flow diagrams</li>
-<li><a href="../quirks/">Quirks &amp; Troubleshooting</a> for detailed JNI notes and debugging</li>
-<li><a href="../examples/">Examples</a> for complete working code</li>
-</ul>
-<h3 id="api-reference">API reference</h3>
-<p>Key methods:</p>
-<ul>
-<li><code>SmolLM.load(modelPath: String, params: InferenceParams)</code> — loads a GGUF model from a path</li>
-<li><code>SmolLM.loadFromHuggingFace(...)</code> — downloads and loads a model from Hugging Face</li>
-<li><code>SmolLM.getResponse(query: String): String</code> — runs blocking generation and returns complete text</li>
-<li><code>SmolLM.getResponseAsFlow(query: String): Flow&lt;String&gt;</code> — runs streaming generation</li>
-<li><code>SmolLM.addSystemPrompt(prompt: String)</code> — adds system prompt to chat history</li>
-<li><code>SmolLM.addUserMessage(message: String)</code> — adds user message to chat history</li>
-<li><code>SmolLM.close()</code> — releases native resources</li>
-<li><code>OcrEngine.extractText(image: ImageSource, params: OcrParams): OcrResult</code> — extracts text from image</li>
-<li><code>ImageUnderstanding.process(image: ImageSource, mode: VisionMode, prompt: String?)</code> — processes image with vision/OCR</li>
-</ul>
-<p>Refer to the <code>llmedge-examples</code> activities for complete, working code samples.</p>
   </div>
 </article>
                                 <div class="mx-auto flex flex-wrap h-16 w-full max-w-2xl items-center gap-2 px-4 md:px-0">
@@ -1159,20 +1113,6 @@ Ready for real workflows? Jump to the <a href="../examples/">examples and recipe
             data-active="false" data-depth="2">
             Programmatic pipeline usage (Python)
         </a>
-        
-        
-        <a href="#best-practices"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3">
-            Best Practices
-        </a>
-        
-        <a href="#api-reference"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3">
-            API reference
-        </a>
-        
         
 
         
