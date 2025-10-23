@@ -91,9 +91,6 @@ python -m src.user.pipeline "a futuristic city at dusk" 768 512 2 2 --hires-fix 
 - Use the sidebar menu → **Rerun** if you change source code while developing custom nodes.
 - When running on laptops, disable “Keep models in VRAM” before closing the UI to release GPU memory for other applications.
 
-Ready for real workflows? Jump to the [examples and recipes](examples.md) page.
-Ready for real workflows? Jump to the [examples and recipes](examples.md) page.
-
 ## Programmatic pipeline usage (Python)
 
 You can import and call the pipeline directly from Python. The function lives at `src.user.pipeline.pipeline` and accepts the same runtime flags as the CLI. The example below shows a minimal, synchronous call that runs the pipeline and handles the returned mapping when running in batched mode.
@@ -121,50 +118,3 @@ if isinstance(result, dict) and "batched_results" in result:
 else:
     print("Pipeline completed; check output/ for generated images")
 ```
-```
-
-**Memory management:**
-
-- Use small resolutions (128x128 or 256x256) on constrained devices
-- Enable CPU offloading flags to reduce native memory pressure
-- Always use `preferSystemDownloader = true` for model downloads
-- Monitor with `MemoryMetrics` to avoid OOM
-
-See [StableDiffusionActivity example](examples.md#stablediffusionactivity) for complete implementation with error recovery and adaptive resolution.
-
-### Best Practices
-
-**Threading:**
-
-- Always use background dispatchers (`Dispatchers.IO` or `Dispatchers.Default`) for model loading and inference
-- Update UI only via `withContext(Dispatchers.Main)`
-- Call `.close()` in `onDestroy()` to free native memory
-
-**Memory optimization:**
-
-- Use quantized models (Q4_K_M, Q5_K_M)
-- Reduce `contextSize` (2048-4096 for constrained devices)
-- Cap `numThreads` to avoid CPU oversubscription
-- Monitor with `MemoryMetrics.snapshot()`
-
-**See also:**
-
-- [Architecture](architecture.md) for system design and flow diagrams
-- [Quirks & Troubleshooting](quirks.md) for detailed JNI notes and debugging
-- [Examples](examples.md) for complete working code
-
-### API reference
-
-Key methods:
-
-- `SmolLM.load(modelPath: String, params: InferenceParams)` — loads a GGUF model from a path
-- `SmolLM.loadFromHuggingFace(...)` — downloads and loads a model from Hugging Face
-- `SmolLM.getResponse(query: String): String` — runs blocking generation and returns complete text
-- `SmolLM.getResponseAsFlow(query: String): Flow<String>` — runs streaming generation
-- `SmolLM.addSystemPrompt(prompt: String)` — adds system prompt to chat history
-- `SmolLM.addUserMessage(message: String)` — adds user message to chat history
-- `SmolLM.close()` — releases native resources
-- `OcrEngine.extractText(image: ImageSource, params: OcrParams): OcrResult` — extracts text from image
-- `ImageUnderstanding.process(image: ImageSource, mode: VisionMode, prompt: String?)` — processes image with vision/OCR
-
-Refer to the `llmedge-examples` activities for complete, working code samples.
