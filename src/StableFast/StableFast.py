@@ -220,14 +220,15 @@ def build_lazy_trace_module(config, device, patch_id):
     )
 
 
-def gen_stable_fast_config():
-    # If the optional sfast package failed to import at module load time
-    # then CompilationConfig will be None. In that case we return a
-    # lightweight fallback config object with conservative defaults so
-    # callers can safely continue without the accelerated compilation
-    # features.
+def gen_stable_fast_config(enable_cuda_graph=False):
+    """
+    Generate a StableFast compilation config, enabling or disabling CUDA graph
+    compilation based on the `enable_cuda_graph` parameter.
+    If the optional sfast package is not available, a fallback config is returned.
+    """
     if CompilationConfig is None:
         logger.warning("StableFast: optional 'sfast' dependency not available; using fallback no-op config")
+
         class _FallbackConfig:
             def __init__(self):
                 self.enable_xformers = False
@@ -246,11 +247,9 @@ def gen_stable_fast_config():
     else:
         print("xformers not installed, skip")
 
-    # CUDA Graph is suggested for small batch sizes.
-    # After capturing, the model only accepts one fixed image size.
-    # If you want the model to be dynamic, don't enable it.
-    config.enable_cuda_graph = False
-    # config.enable_jit_freeze = False
+    # CUDA Graph is suggested for small batch sizes and can improve performance.
+    # When enabled, the model is specialized for a fixed image size after capture.
+    config.enable_cuda_graph = enable_cuda_graph
     return config
 
 
@@ -299,7 +298,7 @@ class ApplyStableFastUnet:
             )
             return (model,)
 
-        config = gen_stable_fast_config()
+        config = gen_stable_fast_config(enable_cuda_graph)
 
         if config.memory_format is not None:
             model.model.to(memory_format=config.memory_format)

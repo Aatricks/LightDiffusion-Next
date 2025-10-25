@@ -260,7 +260,7 @@ def pipeline(
 
                     applystablefast = StableFast.ApplyStableFastUnet()
                     applystablefast_158 = applystablefast.apply_stable_fast(
-                        enable_cuda_graph=False, model=loraloader_274[0]
+                        enable_cuda_graph=True, model=loraloader_274[0]
                     )
                 except Exception:
                     logger = logging.getLogger(__name__)
@@ -751,7 +751,7 @@ def pipeline(
 
                         applystablefast = StableFast.ApplyStableFastUnet()
                         applystablefast_158 = applystablefast.apply_stable_fast(
-                            enable_cuda_graph=False,
+                            enable_cuda_graph=True,
                             model=loraloader_274[0],
                         )
                     except Exception:
