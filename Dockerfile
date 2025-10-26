@@ -63,10 +63,6 @@ RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system
 # Install Python dependencies
 RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system -r requirements.txt
 
-# Provide cuDNN/cuBLAS python packages so native builds can discover headers without overriding CUDA libs
-RUN --mount=type=cache,target=/root/.cache/uv python3 -m uv pip install --system \
-    nvidia-cudnn-cu12==9.1.0.70 \
-    nvidia-cublas-cu12==12.5.3.2
 
 # Allow overriding CUDA architectures later in the build without busting earlier layers
 ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
