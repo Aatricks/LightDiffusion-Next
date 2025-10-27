@@ -23,7 +23,7 @@ from src.Quantize import Quantizer
 from src.sample import sampling
 from src.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
 from src.Utilities import Enhancer, Latent, upscale
-from src.WaveSpeed import fbcache_nodes
+from src.WaveSpeed import fbcache_nodes, deepcache_nodes
 from src.AutoHDR import ahdr
 from src.user import app_instance
 
@@ -63,6 +63,12 @@ def pipeline(
     multiscale_fullres_start: int = 3,
     multiscale_fullres_end: int = 8,
     multiscale_intermittent_fullres: bool = False,
+    # DeepCache parameters
+    deepcache_enabled: bool = False,
+    deepcache_interval: int = 3,
+    deepcache_depth: int = 2,
+    deepcache_start_step: int = 0,
+    deepcache_end_step: int = 1000,
     # Path to the input image when running in img2img/upscale mode
     img2img_image: str | None = None,
     # Optional per-sample data used when `prompt` is a list (batched mode).
@@ -92,6 +98,11 @@ def pipeline(
         - `multiscale_fullres_start` (int, optional): Number of first steps at full resolution. Defaults to 3.
         - `multiscale_fullres_end` (int, optional): Number of last steps at full resolution. Defaults to 8.
         - `multiscale_intermittent_fullres` (bool, optional): Enable intermittent full-res rendering in low-res region. Defaults to False.
+        - `deepcache_enabled` (bool, optional): Enable DeepCache acceleration for faster generation. Defaults to False.
+        - `deepcache_interval` (int, optional): Steps between cache updates in DeepCache (higher = faster but lower quality). Defaults to 3.
+        - `deepcache_depth` (int, optional): U-Net depth for caching in DeepCache (0-12, higher = more aggressive). Defaults to 2.
+        - `deepcache_start_step` (int, optional): Start applying DeepCache at this timestep (0-1000). Defaults to 0.
+        - `deepcache_end_step` (int, optional): Stop applying DeepCache at this timestep (0-1000). Defaults to 1000.
     """
     global last_seed
 
@@ -271,6 +282,23 @@ def pipeline(
                     applystablefast_158 = (loraloader_274[0],)
             else:
                 applystablefast_158 = loraloader_274
+
+            # Apply DeepCache if enabled (batch path)
+            if deepcache_enabled:
+                try:
+                    deepcache = deepcache_nodes.ApplyDeepCacheOnModel()
+                    applystablefast_158 = deepcache.patch(
+                        model=applystablefast_158,
+                        object_to_patch="diffusion_model",
+                        cache_interval=deepcache_interval,
+                        cache_depth=deepcache_depth,
+                        start_step=deepcache_start_step,
+                        end_step=deepcache_end_step,
+                    )
+                    print(f"DeepCache enabled: interval={deepcache_interval}, depth={deepcache_depth}")
+                except Exception as e:
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"DeepCache apply failed in batch path: {e}")
 
             # Encode all prompts into a list of condition entries and attach
             # a batch_index so downstream conditioning logic knows which
@@ -761,6 +789,23 @@ def pipeline(
                 else:
                     applystablefast_158 = loraloader_274
 
+                # Apply DeepCache if enabled (img2img path)
+                if deepcache_enabled:
+                    try:
+                        deepcache = deepcache_nodes.ApplyDeepCacheOnModel()
+                        applystablefast_158 = deepcache.patch(
+                            model=applystablefast_158,
+                            object_to_patch="diffusion_model",
+                            cache_interval=deepcache_interval,
+                            cache_depth=deepcache_depth,
+                            start_step=deepcache_start_step,
+                            end_step=deepcache_end_step,
+                        )
+                        print(f"DeepCache enabled (img2img): interval={deepcache_interval}, depth={deepcache_depth}")
+                    except Exception as e:
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"DeepCache apply failed in img2img path: {e}")
+
                 clipsetlastlayer = Clip.CLIPSetLastLayer()
                 clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                     stop_at_clip_layer=-2, clip=loraloader_274[1]
@@ -987,6 +1032,23 @@ def pipeline(
                     # applystablefast_158 = fb_cache.patch(
                     #     applystablefast_158, "diffusion_model", 0.120
                     # )
+
+                # Apply DeepCache if enabled (normal/flux path)
+                if deepcache_enabled and not flux_enabled:
+                    try:
+                        deepcache = deepcache_nodes.ApplyDeepCacheOnModel()
+                        applystablefast_158 = deepcache.patch(
+                            model=applystablefast_158,
+                            object_to_patch="diffusion_model",
+                            cache_interval=deepcache_interval,
+                            cache_depth=deepcache_depth,
+                            start_step=deepcache_start_step,
+                            end_step=deepcache_end_step,
+                        )
+                        print(f"DeepCache enabled: interval={deepcache_interval}, depth={deepcache_depth}")
+                    except Exception as e:
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"DeepCache apply failed: {e}")
 
                 # Create sampler with multi-scale options
                 ksampler_239 = ksampler_instance.sample(
@@ -1426,6 +1488,35 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable intermittent full-res rendering in low-res region.",
     )
+    parser.add_argument(
+        "--deepcache",
+        action="store_true",
+        help="Enable DeepCache acceleration for faster generation.",
+    )
+    parser.add_argument(
+        "--deepcache-interval",
+        type=int,
+        default=3,
+        help="Steps between cache updates in DeepCache (higher = faster but lower quality).",
+    )
+    parser.add_argument(
+        "--deepcache-depth",
+        type=int,
+        default=2,
+        help="U-Net depth for caching in DeepCache (0-12, higher = more aggressive).",
+    )
+    parser.add_argument(
+        "--deepcache-start-step",
+        type=int,
+        default=0,
+        help="Start applying DeepCache at this timestep (0-1000).",
+    )
+    parser.add_argument(
+        "--deepcache-end-step",
+        type=int,
+        default=1000,
+        help="Stop applying DeepCache at this timestep (0-1000).",
+    )
     args = parser.parse_args()
 
     pipeline(
@@ -1450,4 +1541,9 @@ if __name__ == "__main__":
         args.multiscale_fullres_start,
         args.multiscale_fullres_end,
         args.multiscale_intermittent_fullres,
+        deepcache_enabled=args.deepcache,
+        deepcache_interval=args.deepcache_interval,
+        deepcache_depth=args.deepcache_depth,
+        deepcache_start_step=args.deepcache_start_step,
+        deepcache_end_step=args.deepcache_end_step,
     )

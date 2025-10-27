@@ -24,6 +24,11 @@ nav:
   - Deep Dive:
     - Architecture: architecture.md
     - REST API: api.md
+  - Performance Optimizations:
+    - Overview: optimizations.md
+    - SageAttention & SpargeAttn: sageattention.md
+    - Stable-Fast: stablefast.md
+    - WaveSpeed Caching: wavespeed.md
   - Operations:
     - Performance & Troubleshooting: quirks.md
     - FAQ: faq.md
