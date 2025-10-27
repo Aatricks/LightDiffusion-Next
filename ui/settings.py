@@ -50,6 +50,13 @@ def get_default_settings():
         "multiscale_fullres_end": 8,
         "multiscale_intermittent_fullres": False,
 
+        # DeepCache
+        "deepcache_enabled": False,
+        "deepcache_interval": 3,
+        "deepcache_depth": 2,
+        "deepcache_start_step": 0,
+        "deepcache_end_step": 1000,
+
         # UI Settings
         "dark_mode": True,
         "verbose_mode": False,

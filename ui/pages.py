@@ -121,6 +121,20 @@ def render_generate_page():
                 settings["multiscale_custom"] = False
                 settings["multiscale_preset"] = selected_preset
 
+        with st.expander("⚡ DeepCache Acceleration", expanded=False):
+            st.markdown("**DeepCache** speeds up generation by reusing U-Net features (2-3x faster with minimal quality loss)")
+            settings["deepcache_enabled"] = st.checkbox("Enable DeepCache", value=settings.get("deepcache_enabled", False), help="Enable DeepCache acceleration for faster generation", disabled=controls_disabled)
+            
+            if settings["deepcache_enabled"]:
+                settings["deepcache_interval"] = st.slider("Cache Interval", min_value=1, max_value=10, value=settings.get("deepcache_interval", 3), help="Steps between cache updates (higher = faster but lower quality)", disabled=controls_disabled)
+                settings["deepcache_depth"] = st.slider("Cache Depth", min_value=0, max_value=12, value=settings.get("deepcache_depth", 2), help="U-Net depth for caching (higher = more aggressive)", disabled=controls_disabled)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    settings["deepcache_start_step"] = st.number_input("Start Step", min_value=0, max_value=1000, value=settings.get("deepcache_start_step", 0), help="Start applying DeepCache at this step", disabled=controls_disabled)
+                with col2:
+                    settings["deepcache_end_step"] = st.number_input("End Step", min_value=0, max_value=1000, value=settings.get("deepcache_end_step", 1000), help="Stop applying DeepCache at this step", disabled=controls_disabled)
+
         with st.expander("💾 VRAM & Cache", expanded=False):
             settings["keep_models_loaded"] = st.checkbox("Keep Models in VRAM", value=settings["keep_models_loaded"], disabled=controls_disabled)
 

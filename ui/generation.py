@@ -166,6 +166,11 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             autohdr=True,
                             realistic_model=settings.get("realistic_mode", False),
                             img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,
+                            deepcache_enabled=settings.get("deepcache_enabled", False),
+                            deepcache_interval=settings.get("deepcache_interval", 3),
+                            deepcache_depth=settings.get("deepcache_depth", 2),
+                            deepcache_start_step=settings.get("deepcache_start_step", 0),
+                            deepcache_end_step=settings.get("deepcache_end_step", 1000),
                             **multiscale_params,
                         )
 
