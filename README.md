@@ -46,7 +46,7 @@ Advanced users can take advantage of features like **attention syntax**, **Hires
 Here’s what makes LightDiffusion-Next stand out:
 
 - **Speed and Efficiency**:
-  Enjoy industry-leading performance with built-in Xformers, Pytorch, Wavespeed and Stable-Fast optimizations, Multi-scale diffusion, achieving up to 30% faster speeds compared to the rest of the AI image generation backends in SD1.5 and up to 2x for Flux.
+  Enjoy industry-leading performance with built-in Xformers, Pytorch, Wavespeed and Stable-Fast optimizations, Multi-scale diffusion, deepcache, achieving 30% up to 200% faster speeds compared to the rest of the AI image generation backends in SD1.5 and Flux.
 
 - **Automatic Detailing**:
   Effortlessly enhance faces and body details with AI-driven tools based on the [Impact Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack).
