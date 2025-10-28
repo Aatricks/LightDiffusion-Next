@@ -155,8 +155,8 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             w=settings.get("width"),
                             h=settings.get("height"),
                             number=attempt_chunk,
-                            scheduler=settings.get("scheduler", "normal"),
-                            sampler=settings.get("sampler", "euler"),
+                            scheduler=settings.get("scheduler", "ays"),
+                            sampler=settings.get("sampler", "dpmpp_sde_cfgpp"),
                             steps=settings.get("steps", 20),
                             # Honor the configured batch size as an independent
                             # setting. Previously the batch argument was clamped
@@ -173,7 +173,6 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             stable_fast=settings.get("stable_fast", False),
                             reuse_seed=settings.get("reuse_seed", False),
                             flux_enabled=settings.get("flux_mode", False),
-                            prio_speed=settings.get("speed_mode", False),
                             autohdr=True,
                             realistic_model=settings.get("realistic_mode", False),
                             img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,

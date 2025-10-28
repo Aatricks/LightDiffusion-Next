@@ -67,7 +67,6 @@ def render_generate_page():
         with st.expander("🎯 Generation Modes", expanded=False):
             settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"], disabled=controls_disabled)
             settings["realistic_mode"] = st.checkbox("Realistic Mode", value=settings["realistic_mode"], disabled=controls_disabled)
-            settings["speed_mode"] = st.checkbox("Speed Mode", value=settings["speed_mode"], disabled=controls_disabled)
             settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
 
             if settings["img2img_mode"]:
@@ -100,7 +99,7 @@ def render_generate_page():
                 "ays_sdxl": "AYS SDXL - Optimized for SDXL",
                 "ays_flux": "AYS Flux - Optimized for Flux"
             }
-            current_scheduler = settings.get("scheduler", "normal")
+            current_scheduler = settings.get("scheduler", "ays")
             settings["scheduler"] = st.selectbox(
                 "Scheduler",
                 options=list(scheduler_options.keys()),
@@ -118,7 +117,7 @@ def render_generate_page():
                 "dpmpp_2m_cfgpp": "DPM++ 2M CFG++ - Balanced with CFG optimization",
                 "dpmpp_sde_cfgpp": "DPM++ SDE CFG++ - High quality with CFG++"
             }
-            current_sampler = settings.get("sampler", "euler")
+            current_sampler = settings.get("sampler", "dpmpp_sde_cfgpp")
             settings["sampler"] = st.selectbox(
                 "Sampler",
                 options=list(sampler_options.keys()),

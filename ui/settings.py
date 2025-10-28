@@ -26,7 +26,6 @@ def get_default_settings():
         "flux_mode": False,
         "realistic_mode": False,
         "img2img_mode": False,
-        "speed_mode": False,
 
         # Image Input (Img2Img)
         "input_image_path": "",
@@ -58,8 +57,8 @@ def get_default_settings():
         "deepcache_end_step": 1000,
         
         # Scheduler & Sampling
-        "scheduler": "normal",  # Options: normal, karras, simple, beta, ays
-        "sampler": "euler",  # Options: euler, euler_ancestral, dpmpp_2m, etc.
+        "scheduler": "ays",  # Options: normal, karras, simple, beta, ays
+        "sampler": "dpmpp_sde_cfgpp",  # Options: euler, euler_ancestral, dpmpp_2m, etc.
         "steps": 20,
         
         # Optimizations

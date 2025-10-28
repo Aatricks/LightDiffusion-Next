@@ -27,7 +27,7 @@ The Generate tab is designed as a control surface where the left sidebar contain
 - **HiRes Fix** — Upscales the latent and runs an extra sampling pass. Generates output in `output/HiresFix`.
 - **ADetailer** — Uses SAM + YOLO and Impact Pack prompt heads to redraw faces/bodies. Additional artifacts are saved to `output/Adetailer`.
 - **Enhance prompt** — Sends your prompt through the Ollama model specified by `PROMPT_ENHANCER_MODEL` (defaults to `qwen3:0.6b`). The rewritten prompt is shown in the sidebar and in image metadata.
-- **Stable-Fast / Prioritize speed** — Enables UNet compilation (after the first warm-up) and switches the sampler to `dpmpp_2m_cfgpp` for faster iterations.
+- **Stable-Fast** — Enables UNet compilation (after the first warm-up) for faster iterations.
 - **Flux mode** — Routes the job through the quantized Flux pipeline (requires the `ae.safetensors` VAE and quantized GGUF weights downloaded via `CheckAndDownloadFlux`).
 - **Img2Img mode** — Reveals an image uploader. The selected picture is used as the source latent, optionally combined with UltimateSDUpscale.
 - **Keep models in VRAM** — Toggle model caching between jobs to reduce load time at the cost of VRAM retention.
