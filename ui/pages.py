@@ -113,17 +113,10 @@ def render_generate_page():
             sampler_options = {
                 "euler": "Euler - Fast and stable",
                 "euler_ancestral": "Euler Ancestral - More variation",
-                "heun": "Heun - Higher quality, slower",
-                "dpmpp_2m": "DPM++ 2M - Balanced quality/speed",
-                "dpmpp_2m_sde": "DPM++ 2M SDE - High quality",
-                "dpmpp_3m_sde": "DPM++ 3M SDE - Very high quality",
-                "dpmpp_sde": "DPM++ SDE - Creative sampling",
-                "dpm_2": "DPM 2 - Classic DPM",
-                "dpm_2_ancestral": "DPM 2 Ancestral - DPM with variation",
-                "lms": "LMS - Linear multistep",
-                "dpmpp_2m_cfgpp": "DPM++ 2M CFG++ - CFG optimization",
-                "dpmpp_sde_cfgpp": "DPM++ SDE CFG++ - SDE with CFG++",
-                "euler_ancestral_cfgpp": "Euler A CFG++ - Fast with CFG++"
+                "euler_cfgpp": "Euler CFG++ - Fast with CFG optimization",
+                "euler_ancestral_cfgpp": "Euler Ancestral CFG++ - Variation with CFG++",
+                "dpmpp_2m_cfgpp": "DPM++ 2M CFG++ - Balanced with CFG optimization",
+                "dpmpp_sde_cfgpp": "DPM++ SDE CFG++ - High quality with CFG++"
             }
             current_sampler = settings.get("sampler", "euler")
             settings["sampler"] = st.selectbox(
@@ -132,7 +125,7 @@ def render_generate_page():
                 format_func=lambda x: sampler_options[x],
                 index=list(sampler_options.keys()).index(current_sampler) if current_sampler in sampler_options else 0,
                 disabled=controls_disabled,
-                help="Different samplers produce different results. CFG++ variants optimize guidance."
+                help="CFG++ samplers use dynamic guidance rescaling for improved quality"
             )
             
             recommended_steps = 20

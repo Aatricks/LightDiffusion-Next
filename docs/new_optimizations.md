@@ -4,11 +4,10 @@ LightDiffusion-Next has been enhanced with cutting-edge, training-free optimizat
 
 ## 🚀 Overview
 
-Three major optimizations have been added:
+Two major optimizations have been added:
 
-1. **Prompt Attention Caching** - 5-15% speedup
-2. **AYS Scheduler** - 30-50% speedup (fewer steps for same quality)
-3. **KV-Cache for Cross-Attention** - 10-15% speedup (planned)
+1. **Prompt Attention Caching** - 5-15% speedup on repeated prompts
+2. **AYS Scheduler** - Approximately 2x speedup (same quality in half the steps)
 
 All optimizations are:
 - ✅ Training-free
@@ -17,13 +16,6 @@ All optimizations are:
 - ✅ Work alongside current optimizations
 
 ## 📊 Performance Impact
-
-### Combined Speedup
-
-With all optimizations enabled:
-- **Before**: 20 steps @ 2.8 it/s = ~7.1s
-- **After**: 10 steps @ 3.3 it/s = ~3.0s
-- **Total speedup**: ~2.4x faster
 
 ### Individual Optimizations
 
@@ -176,7 +168,7 @@ Other step counts use interpolation (slightly less optimal but still better than
 ```yaml
 scheduler: "ays"
 steps: 10          # instead of 20
-sampler: "euler" or "dpmpp_2m"
+sampler: "euler" or "dpmpp_2m_cfgpp"
 cfg: 7.0
 ```
 
@@ -184,7 +176,7 @@ cfg: 7.0
 ```yaml
 scheduler: "ays_sdxl"
 steps: 12          # instead of 20-25
-sampler: "dpmpp_2m"
+sampler: "dpmpp_2m_cfgpp"
 cfg: 6.0
 ```
 
@@ -275,7 +267,7 @@ A: Yes, they will differ slightly (different paths through noise space). Quality
 A: Works great together! AYS optimizes step distribution, multiscale optimizes spatial resolution.
 
 **Q: Can I use AYS with euler_ancestral?**  
-A: Yes! Works with all samplers (euler, euler_ancestral, dpmpp_2m, etc.)
+A: Yes! Works with all samplers (euler, euler_ancestral, dpmpp_2m_cfgpp, dpmpp_sde_cfgpp, etc.)
 
 **Q: How to verify it's active?**  
 A: Check logs for "Using AYS optimal schedule" message.
@@ -319,50 +311,16 @@ class CachedCrossAttention:
 
 **Quality**: Lossless up to 25% merge ratio
 
-## 📈 Combined Performance Examples
+## 📈 Expected Performance Improvements
 
-### Example 1: SD1.5 Txt2Img (512x512)
+The main speedup comes from the **AYS scheduler**, which achieves equivalent quality in approximately **half the steps**:
 
-**Baseline**:
-```yaml
-scheduler: normal
-steps: 20
-attention: pytorch
-caching: none
-```
-**Time**: 7.1s @ 2.8 it/s
+- **20 normal steps** ≈ **10 AYS steps** (research-validated equivalence)
+- This translates to roughly **2x faster** generation
+- **Prompt cache** adds **5-15%** additional speedup when reusing prompts
+- Combined with existing optimizations (SageAttention, DeepCache, Multi-scale), total speedup can reach **3-4x**
 
-**Optimized**:
-```yaml
-scheduler: ays
-steps: 10
-attention: sageattention
-prompt_cache: enabled
-multiscale: balanced
-```
-**Time**: 2.4s @ 4.2 it/s
-**Speedup**: 2.96x faster
-
-### Example 2: SDXL (1024x1024)
-
-**Baseline**:
-```yaml
-scheduler: normal
-steps: 25
-attention: pytorch
-```
-**Time**: 18.5s @ 1.35 it/s
-
-**Optimized**:
-```yaml
-scheduler: ays_sdxl
-steps: 10
-attention: spargeattn
-prompt_cache: enabled
-deepcache: interval=3
-```
-**Time**: 5.2s @ 1.9 it/s
-**Speedup**: 3.56x faster
+Actual performance depends on your GPU, model, resolution, and configuration.
 
 ## 🎯 Recommended Configurations
 
@@ -378,19 +336,19 @@ deepcache_enabled: true
 deepcache_interval: 3
 prompt_cache_enabled: true
 ```
-**Expected**: ~3-4x faster than baseline
+**Focus**: Fastest generation with good quality
 
 ### Balanced (SDXL)
 ```yaml
 scheduler: ays_sdxl
 steps: 10
-sampler: dpmpp_2m
+sampler: dpmpp_2m_cfgpp
 cfg: 6.0
 attention: sageattention
 multiscale_preset: balanced
 prompt_cache_enabled: true
 ```
-**Expected**: ~2.5x faster, excellent quality
+**Focus**: Excellent balance of speed and quality
 
 ### Quality-First (Flux)
 ```yaml
@@ -402,7 +360,7 @@ attention: sageattention
 fbcache_enabled: true
 prompt_cache_enabled: true
 ```
-**Expected**: ~2x faster, maximum quality
+**Focus**: Best quality while still gaining speedup
 
 ## 🔧 Configuration API
 
@@ -441,34 +399,38 @@ Settings are saved to `webui_settings.json`:
 }
 ```
 
-## 📊 Benchmarking
+## 📊 Testing on Your Hardware
 
-Run benchmarks to measure speedup on your hardware:
+To measure speedup on your specific hardware:
 
 ```python
 import time
 from src.user.pipeline import pipeline
 
-# Baseline
+# Test baseline
 start = time.time()
-result = pipeline.generate(
-    prompt="test",
+result = pipeline(
+    prompt="your test prompt",
+    w=512, h=512,
     scheduler="normal",
-    steps=20
+    steps=20,
+    number=1
 )
 baseline_time = time.time() - start
 
-# Optimized
+# Test with optimizations
 start = time.time()
-result = pipeline.generate(
-    prompt="test",
+result = pipeline(
+    prompt="your test prompt",
+    w=512, h=512,
     scheduler="ays",
-    steps=10
+    steps=10,
+    number=1
 )
 optimized_time = time.time() - start
 
 speedup = baseline_time / optimized_time
-print(f"Speedup: {speedup:.2f}x")
+print(f"Speedup on your hardware: {speedup:.2f}x")
 ```
 
 ## ⚠️ Important Notes

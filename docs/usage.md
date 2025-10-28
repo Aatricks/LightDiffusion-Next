@@ -33,6 +33,21 @@ The Generate tab is designed as a control surface where the left sidebar contain
 - **Keep models in VRAM** — Toggle model caching between jobs to reduce load time at the cost of VRAM retention.
 - **Real-time preview** — Streams TAESD previews into a responsive gallery while sampling is still running. Disable it when running headless to save resources.
 
+### Sampling & Scheduling
+
+The **⚡ Sampling & Scheduling** section provides direct control over the sampling process:
+
+- **Scheduler** — Choose from 8 scheduler options including the new **AYS (Align Your Steps)** schedulers which provide ~2x speedup by using optimized sigma distributions. Options include:
+  - Normal, Karras, Simple, Beta (traditional schedulers)
+  - AYS, AYS SD1.5, AYS SDXL, AYS Flux (optimized schedulers)
+- **Sampler** — Select from 6 available samplers:
+  - Standard: Euler, Euler Ancestral
+  - CFG++ variants: Euler CFG++, Euler Ancestral CFG++, DPM++ 2M CFG++, DPM++ SDE CFG++
+- **Steps** — Adjust sampling steps (1-150). The UI shows recommendations based on your scheduler choice (e.g., 10 steps for AYS vs 20 for normal).
+- **Prompt Cache** — Toggle prompt caching on/off (enabled by default). View cache statistics showing hits/misses and clear the cache when needed.
+
+[→ See the New Optimizations guide](new_optimizations.md) for detailed information on AYS schedulers and prompt caching.
+
 ### Multi-scale diffusion presets
 
 Under the “Multi-Scale Diffusion Settings” accordion you can:
