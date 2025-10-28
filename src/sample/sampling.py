@@ -540,6 +540,12 @@ def ksampler(
     elif sampler_name == "euler_cfgpp":
         sampler_function = samplers.sample_euler_dy_cfg_pp
 
+    elif sampler_name == "euler_ancestral":
+        sampler_function = samplers.sample_euler_ancestral
+
+    elif sampler_name == "euler":
+        sampler_function = samplers.sample_euler
+
     else:
         # Default fallback
         sampler_function = samplers.sample_euler

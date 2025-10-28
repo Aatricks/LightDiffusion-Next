@@ -64,6 +64,9 @@ def get_default_settings():
         "height": 512,
         "num_images": 1,
         "batch_size": 1,
+        "scheduler": "ays",
+        "sampler": "dpmpp_sde_cfgpp",
+        "steps": 20,
         "hires_fix": False,
         "adetailer": False,
         "enhance_prompt": False,
@@ -71,7 +74,6 @@ def get_default_settings():
         "stable_fast": False,
         "reuse_seed": False,
         "flux_enabled": False,
-        "prio_speed": False,
         "realistic_model": False,
         "multiscale_enabled": True,
         "multiscale_intermittent": False,
@@ -317,6 +319,9 @@ def generate_images_with_preview(
     height: int = 512,
     num_images: int = 1,
     batch_size: int = 1,
+    scheduler: str = "ays",
+    sampler: str = "dpmpp_sde_cfgpp",
+    steps: int = 20,
     hires_fix: bool = False,
     adetailer: bool = False,
     enhance_prompt: bool = False,
@@ -325,7 +330,6 @@ def generate_images_with_preview(
     stable_fast: bool = False,
     reuse_seed: bool = False,
     flux_enabled: bool = False,
-    prio_speed: bool = False,
     realistic_model: bool = False,
     multiscale_enabled: bool = True,
     multiscale_intermittent: bool = False,
@@ -356,6 +360,9 @@ def generate_images_with_preview(
             height=height,
             num_images=num_images,
             batch_size=batch_size,
+            scheduler=scheduler,
+            sampler=sampler,
+            steps=steps,
             hires_fix=hires_fix,
             adetailer=adetailer,
             enhance_prompt=enhance_prompt,
@@ -363,7 +370,6 @@ def generate_images_with_preview(
             stable_fast=stable_fast,
             reuse_seed=reuse_seed,
             flux_enabled=flux_enabled,
-            prio_speed=prio_speed,
             realistic_model=realistic_model,
             multiscale_enabled=multiscale_enabled,
             multiscale_intermittent=multiscale_intermittent,
@@ -401,6 +407,9 @@ def generate_images_with_preview(
                 h=height,
                 number=num_images,
                 batch=batch_size,
+                scheduler=scheduler,
+                sampler=sampler,
+                steps=steps,
                 hires_fix=hires_fix,
                 adetailer=adetailer,
                 enhance_prompt=enhance_prompt,
@@ -408,7 +417,6 @@ def generate_images_with_preview(
                 stable_fast=stable_fast,
                 reuse_seed=reuse_seed,
                 flux_enabled=flux_enabled,
-                prio_speed=prio_speed,
                 autohdr=True,
                 realistic_model=realistic_model,
                 enable_multiscale=multiscale_enabled,
@@ -579,6 +587,29 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                             label="Batch Size",
                         )
 
+                    # Sampling Settings
+                    with gr.Row():
+                        scheduler = gr.Dropdown(
+                            label="Scheduler",
+                            choices=["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl", "ays_flux"],
+                            value=saved_settings.get("scheduler", "ays"),
+                            info="Noise schedule for sampling"
+                        )
+                        sampler = gr.Dropdown(
+                            label="Sampler",
+                            choices=["euler", "euler_ancestral", "euler_cfgpp", "euler_ancestral_cfgpp", "dpmpp_2m_cfgpp", "dpmpp_sde_cfgpp"],
+                            value=saved_settings.get("sampler", "dpmpp_sde_cfgpp"),
+                            info="Sampling algorithm"
+                        )
+                        steps = gr.Slider(
+                            minimum=1,
+                            maximum=150,
+                            value=saved_settings.get("steps", 20),
+                            step=1,
+                            label="Steps",
+                            info="Number of sampling steps"
+                        )
+
                     with gr.Row():
                         hires_fix = gr.Checkbox(
                             label="HiRes Fix", value=saved_settings["hires_fix"]
@@ -602,9 +633,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                         )
                         flux_enabled = gr.Checkbox(
                             label="Flux Mode", value=saved_settings["flux_enabled"]
-                        )
-                        prio_speed = gr.Checkbox(
-                            label="Prioritize Speed", value=saved_settings["prio_speed"]
                         )
                         realistic_model = gr.Checkbox(
                             label="Realistic Model",
@@ -806,6 +834,9 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             height,
             num_images,
             batch_size,
+            scheduler,
+            sampler,
+            steps,
             hires_fix,
             adetailer,
             enhance_prompt,
@@ -814,7 +845,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             stable_fast,
             reuse_seed,
             flux_enabled,
-            prio_speed,
             realistic_model,
             multiscale_enabled,
             multiscale_intermittent,
@@ -835,6 +865,9 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         height_val,
         num_images_val,
         batch_size_val,
+        scheduler_val,
+        sampler_val,
+        steps_val,
         hires_fix_val,
         adetailer_val,
         enhance_prompt_val,
@@ -842,7 +875,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         stable_fast_val,
         reuse_seed_val,
         flux_enabled_val,
-        prio_speed_val,
         realistic_model_val,
         multiscale_enabled_val,
         multiscale_intermittent_val,
@@ -860,6 +892,9 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             height=height_val,
             num_images=num_images_val,
             batch_size=batch_size_val,
+            scheduler=scheduler_val,
+            sampler=sampler_val,
+            steps=steps_val,
             hires_fix=hires_fix_val,
             adetailer=adetailer_val,
             enhance_prompt=enhance_prompt_val,
@@ -867,7 +902,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             stable_fast=stable_fast_val,
             reuse_seed=reuse_seed_val,
             flux_enabled=flux_enabled_val,
-            prio_speed=prio_speed_val,
             realistic_model=realistic_model_val,
             multiscale_enabled=multiscale_enabled_val,
             multiscale_intermittent=multiscale_intermittent_val,
@@ -887,6 +921,9 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         height,
         num_images,
         batch_size,
+        scheduler,
+        sampler,
+        steps,
         hires_fix,
         adetailer,
         enhance_prompt,
@@ -894,7 +931,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         stable_fast,
         reuse_seed,
         flux_enabled,
-        prio_speed,
         realistic_model,
         multiscale_enabled,
         multiscale_intermittent,

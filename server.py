@@ -94,6 +94,9 @@ class GenerateRequest(BaseModel):
     height: int = 512
     num_images: int = 1
     batch_size: int = 1
+    scheduler: str = "ays"
+    sampler: str = "dpmpp_sde_cfgpp"
+    steps: int = 20
     hires_fix: bool = False
     adetailer: bool = False
     enhance_prompt: bool = False
@@ -102,7 +105,6 @@ class GenerateRequest(BaseModel):
     stable_fast: bool = False
     reuse_seed: bool = False
     flux_enabled: bool = False
-    prio_speed: bool = False
     realistic_model: bool = False
     multiscale_enabled: bool = True
     multiscale_intermittent: bool = True
@@ -112,7 +114,6 @@ class GenerateRequest(BaseModel):
     keep_models_loaded: bool = True
     enable_preview: bool = False
     # Optional extras (may not be used by the current pipeline but accepted)
-    steps: Optional[int] = None
     guidance_scale: Optional[float] = None
     seed: Optional[int] = None  # If provided >=0 we will reuse it
 
@@ -171,6 +172,9 @@ class GenerationBuffer:
             bool(req.stable_fast),
             bool(req.flux_enabled),
             bool(req.img2img_enabled),
+            str(req.scheduler),
+            str(req.sampler),
+            int(req.steps),
             # Treat multiscale options as batch-level — mixing them may
             # change the sampling schedule and therefore cannot be
             # safely combined into a single forward pass.
@@ -179,9 +183,7 @@ class GenerationBuffer:
             float(req.multiscale_factor),
             int(req.multiscale_fullres_start),
             int(req.multiscale_fullres_end),
-            # Speed/priority and VRAM retention flags are also batch
-            # level: they affect model selection and caching.
-            bool(req.prio_speed),
+            # VRAM retention flags are also batch level
             bool(req.keep_models_loaded),
             # Note: hires_fix and adetailer remain intentionally NOT part
             # of this signature because they are executed per-sample
@@ -313,12 +315,14 @@ class GenerationBuffer:
             h=first_req.height,
             number=len(prompts),
             batch=first_req.batch_size,
+            scheduler=first_req.scheduler,
+            sampler=first_req.sampler,
+            steps=first_req.steps,
             enhance_prompt=first_req.enhance_prompt,
             img2img=first_req.img2img_enabled,
             stable_fast=first_req.stable_fast,
             reuse_seed=first_req.reuse_seed,
             flux_enabled=first_req.flux_enabled,
-            prio_speed=first_req.prio_speed,
             autohdr=True,
             realistic_model=first_req.realistic_model,
             negative_prompt=[p.req.negative_prompt or "" for p in items for _ in range(max(1, p.req.num_images))],
@@ -380,12 +384,14 @@ class GenerationBuffer:
                         h=first_req.height,
                         number=max(1, p.req.num_images),
                         batch=p.req.batch_size,
+                        scheduler=first_req.scheduler,
+                        sampler=first_req.sampler,
+                        steps=first_req.steps,
                         enhance_prompt=p.req.enhance_prompt,
                         img2img=p.req.img2img_enabled,
                         stable_fast=p.req.stable_fast,
                         reuse_seed=p.req.reuse_seed,
                         flux_enabled=True,
-                        prio_speed=first_req.prio_speed,
                         autohdr=True,
                         realistic_model=first_req.realistic_model,
                         negative_prompt=p.req.negative_prompt or "",
@@ -688,11 +694,14 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         return s if len(s) <= n else s[:n] + "…"
 
     log.debug(
-        "Request: w=%s h=%s num_images=%s batch=%s hires_fix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s flux=%s prio_speed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
+        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hires_fix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s flux=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
         req.width,
         req.height,
         req.num_images,
         req.batch_size,
+        req.scheduler,
+        req.sampler,
+        req.steps,
         req.hires_fix,
         req.adetailer,
         req.enhance_prompt,
@@ -700,7 +709,6 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         req.stable_fast,
         reuse_seed,
         req.flux_enabled,
-        req.prio_speed,
         req.realistic_model,
         req.multiscale_enabled,
         req.multiscale_intermittent,

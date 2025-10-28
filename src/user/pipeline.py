@@ -45,6 +45,9 @@ def pipeline(
     h: int,
     number: int = 1,
     batch: int = 1,
+    scheduler: str = "ays",
+    sampler: str = "dpmpp_sde_cfgpp",
+    steps: int = 20,
     hires_fix: bool = False,
     adetailer: bool = False,
     enhance_prompt: bool = False,
@@ -52,7 +55,6 @@ def pipeline(
     stable_fast: bool = False,
     reuse_seed: bool = False,
     flux_enabled: bool = False,
-    prio_speed: bool = False,
     autohdr: bool = True,
     realistic_model: bool = False,
     negative_prompt: str = None,
@@ -80,6 +82,9 @@ def pipeline(
         - `prompt` (str): The prompt for the pipeline.
         - `w` (int): The width of the generated image.
         - `h` (int): The height of the generated image.
+        - `scheduler` (str, optional): The scheduler to use (normal, karras, simple, beta, ays, ays_sd15, ays_sdxl, ays_flux). Defaults to "ays".
+        - `sampler` (str, optional): The sampler to use (euler, euler_ancestral, euler_cfgpp, euler_ancestral_cfgpp, dpmpp_2m_cfgpp, dpmpp_sde_cfgpp). Defaults to "dpmpp_sde_cfgpp".
+        - `steps` (int, optional): Number of sampling steps. Defaults to 20.
         - `hires_fix` (bool, optional): Enable high-resolution fix. Defaults to False.
         - `adetailer` (bool, optional): Enable automatic face and body enhancing. Defaults to False.
         - `enhance_prompt` (bool, optional): Enable Ollama prompt enhancement. Defaults to False.
@@ -88,7 +93,6 @@ def pipeline(
         - `stable_fast` (bool, optional): Enable Stable-Fast speedup offering a 70% speed improvement in return of a compilation time. Defaults to False.
         - `reuse_seed` (bool, optional): Reuse the last used seed, if False the seed will be kept random. Default to False.
         - `flux_enabled` (bool, optional): Enable the flux mode. Defaults to False.
-        - `prio_speed` (bool, optional): Prioritize speed over quality. Defaults to False.
         - `autohdr` (bool, optional): Enable the AutoHDR mode. Defaults to False.
         - `realistic_model` (bool, optional): Use the realistic model. Defaults to False.
         - `negative_prompt` (str, optional): The negative prompt to avoid certain elements. If None, uses default negative prompt. Defaults to None.
@@ -204,7 +208,9 @@ def pipeline(
             pass
         enhancement_applied = prompt != original_prompt
 
-    sampler_name = "dpmpp_sde_cfgpp" if not prio_speed else "dpmpp_2m_cfgpp"
+    # Use the provided sampler (defaults to "dpmpp_sde_cfgpp" from function signature)
+    sampler_name = sampler if sampler and sampler.strip() else "dpmpp_sde_cfgpp"
+    
     ckpt = (
         "./include/checkpoints/Meina V10 - baked VAE.safetensors"
         if not realistic_model
@@ -333,10 +339,10 @@ def pipeline(
             # Run the sampler once for all prompts in the batch
             ksampler_239 = ksampler_instance.sample(
                 seed=None,
-                steps=20,
+                steps=steps if steps > 0 else 20,
                 cfg=7,
                 sampler_name=sampler_name,
-                scheduler="karras",
+                scheduler=scheduler if scheduler else "ays",
                 denoise=1,
                 pipeline=True,
                 model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
@@ -469,10 +475,10 @@ def pipeline(
 
                         ksampler_253 = ksampler_instance.sample(
                             seed=hires_seed,
-                            steps=10,
+                            steps=max(10, int(steps * 0.5)),
                             cfg=8,
-                            sampler_name="euler_ancestral_cfgpp",
-                            scheduler="normal",
+                            sampler_name=sampler_name,
+                            scheduler=scheduler if scheduler else "ays",
                             denoise=0.45,
                             model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
                             positive=pos_i,
@@ -1053,10 +1059,10 @@ def pipeline(
                 # Create sampler with multi-scale options
                 ksampler_239 = ksampler_instance.sample(
                     seed=current_seed,
-                    steps=20,
+                    steps=steps if steps > 0 else 20,
                     cfg=7,
                     sampler_name=sampler_name,
-                    scheduler="karras",
+                    scheduler=scheduler if scheduler else "ays",
                     denoise=1,
                     pipeline=True,
                     model=hidiffoptimizer.go(
@@ -1079,10 +1085,10 @@ def pipeline(
                     )
                     ksampler_253 = ksampler_instance.sample(
                         seed=random.randint(1, 2**64),
-                        steps=10,
+                        steps=max(10, int(steps * 0.5)),
                         cfg=8,
-                        sampler_name="euler_ancestral_cfgpp",
-                        scheduler="normal",
+                        sampler_name=sampler_name,
+                        scheduler=scheduler if scheduler else "ays",
                         denoise=0.45,
                         model=hidiffoptimizer.go(
                             model_type="auto", model=applystablefast_158[0]
@@ -1406,6 +1412,26 @@ if __name__ == "__main__":
         help="The batch size. aka the number of images to generate at once.",
     )
     parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="ays",
+        choices=["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl", "ays_flux"],
+        help="The scheduler to use for sampling.",
+    )
+    parser.add_argument(
+        "--sampler",
+        type=str,
+        default="dpmpp_sde_cfgpp",
+        choices=["euler", "euler_ancestral", "euler_cfgpp", "euler_ancestral_cfgpp", "dpmpp_2m_cfgpp", "dpmpp_sde_cfgpp"],
+        help="The sampler to use for sampling.",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=20,
+        help="The number of sampling steps.",
+    )
+    parser.add_argument(
         "--hires-fix", action="store_true", help="Enable high-resolution fix."
     )
     parser.add_argument(
@@ -1437,11 +1463,6 @@ if __name__ == "__main__":
         "--flux",
         action="store_true",
         help="Enable the flux mode.",
-    )
-    parser.add_argument(
-        "--prio-speed",
-        action="store_true",
-        help="Prioritize speed over quality.",
     )
     parser.add_argument(
         "--autohdr",
@@ -1525,6 +1546,9 @@ if __name__ == "__main__":
         args.height,
         args.number,
         args.batch,
+        args.scheduler,
+        args.sampler,
+        args.steps,
         args.hires_fix,
         args.adetailer,
         args.enhance_prompt,
@@ -1532,7 +1556,6 @@ if __name__ == "__main__":
         args.stable_fast,
         args.reuse_seed,
         args.flux,
-        args.prio_speed,
         args.autohdr,
         args.realistic_model,
         args.multiscale_preset,

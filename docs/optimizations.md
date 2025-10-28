@@ -4,10 +4,12 @@ LightDiffusion-Next achieves its industry-leading inference speed through a laye
 
 ## Optimization Stack Overview
 
-The pipeline orchestrates four primary acceleration paths:
+The pipeline orchestrates six primary acceleration paths:
 
 | Technique | Type | Speedup | Quality Impact | Requirements |
 |-----------|------|---------|----------------|---------------|
+| [AYS Scheduler](#ays-scheduler) | Sampling schedule | ~2x | None/Better | All models |
+| [Prompt Caching](#prompt-caching) | Embedding cache | 5-15% | None | All models |
 | [SageAttention](#sageattention--spargeattn) | Attention kernel | Moderate | None | All CUDA GPUs |
 | [SpargeAttn](#sageattention--spargeattn) | Sparse attention | Significant | Minimal | Compute 8.0-9.0 |
 | [Stable-Fast](#stable-fast) | Graph compilation | Significant* | None | >8GB VRAM, batch jobs |
@@ -18,6 +20,38 @@ The pipeline orchestrates four primary acceleration paths:
 These optimizations **work together** — enabling multiple techniques simultaneously can provide substantial cumulative speedup with tunable quality trade-offs.
 
 ## Quick Comparison
+
+### AYS Scheduler
+
+**What it does:** Uses research-backed optimal timestep distributions that allow equivalent quality in approximately half the steps. Instead of uniform sigma spacing, AYS concentrates samples on noise levels that contribute most to image formation.
+
+**When to use:**
+- Always recommended for SD1.5, SDXL, and Flux models
+- Txt2Img generation
+- Production workflows where speed matters
+- Any scenario where you'd normally use 20+ steps
+
+**Trade-offs:** Images will differ slightly from standard schedulers (different sampling path), but quality is equivalent or better. Not ideal when exact reproduction of old results is required.
+
+[→ Full AYS Scheduler guide](ays-scheduler.md)
+
+---
+
+### Prompt Caching
+
+**What it does:** Caches CLIP text embeddings for prompts that have been encoded before. When generating multiple images with the same or similar prompts, embeddings are retrieved from cache instead of being recomputed.
+
+**When to use:**
+- Batch generation with same prompt
+- Testing different seeds or settings
+- Iterative prompt refinement
+- Any workflow with repeated prompts
+
+**Trade-offs:** None — minimal memory overhead (~50-200MB), negligible CPU cost, automatically enabled by default.
+
+[→ Full Prompt Caching guide](prompt-caching.md)
+
+---
 
 ### SageAttention & SpargeAttn
 
@@ -102,25 +136,31 @@ deepCache:
 
 ### Balanced - Quick Generation (SD1.5, any VRAM)
 ```yaml
-stable_fast: false  # Disabled for normal 20-step generations
+scheduler: ays  # NEW: Use AYS for 2x speedup
+steps: 10  # Reduced from 20 (same quality with AYS)
+stable_fast: false  # Disabled for normal generations
 sageattention: auto
-deepCache:
+prompt_cache_enabled: true  # Enabled by default
+deepcache:
   enabled: true
   interval: 2
   depth: 1
 ```
-**Expected:** Good speedup with minimal quality loss
-**Note:** Enable stable_fast only for batch jobs (50+ images)
+**Expected:** ~2-3x speedup with minimal quality loss
+**Note:** AYS scheduler provides the main speedup; enable stable_fast only for batch jobs (50+ images)
 
 ### Quality-First (Flux)
 ```yaml
+scheduler: ays_flux  # NEW: Optimized for Flux models
+steps: 10  # Reduced from 15 (same quality with AYS)
 stable_fast: false  # not supported
 sageattention: auto
+prompt_cache_enabled: true
 fbcache:
   enabled: true
   residual_threshold: 0.01  # strict caching
 ```
-**Expected:** Moderate speedup, minimal quality impact
+**Expected:** ~2x speedup with minimal quality impact
 
 ### Production API - High Volume (>8GB VRAM)
 ```yaml
@@ -187,7 +227,8 @@ export LD_DISABLE_WAVESPEED=1           # Disables all caching
 ```
 
 ## Further Reading
-
+- [AYS Scheduler Deep Dive](ays-scheduler.md) — Theory, implementation, quality tuning
+- [Prompt Caching Deep Dive](prompt-caching.md) — Implementation details, cache management, performance impact
 - [SageAttention & SpargeAttn Deep Dive](sageattention.md) — Installation, technical details, head dimension handling
 - [Stable-Fast Compilation Guide](stablefast.md) — Configuration, CUDA graphs, troubleshooting
 - [WaveSpeed Caching Strategies](wavespeed.md) — DeepCache vs FBCache, tuning parameters, compatibility matrix

@@ -29,6 +29,8 @@ nav:
     - SageAttention & SpargeAttn: sageattention.md
     - Stable-Fast: stablefast.md
     - WaveSpeed Caching: wavespeed.md
+    - Prompt Caching: prompt-caching.md
+    - Align Your Steps: ays-scheduler.md
   - Operations:
     - Performance & Troubleshooting: quirks.md
     - FAQ: faq.md

@@ -67,7 +67,6 @@ def render_generate_page():
         with st.expander("🎯 Generation Modes", expanded=False):
             settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"], disabled=controls_disabled)
             settings["realistic_mode"] = st.checkbox("Realistic Mode", value=settings["realistic_mode"], disabled=controls_disabled)
-            settings["speed_mode"] = st.checkbox("Speed Mode", value=settings["speed_mode"], disabled=controls_disabled)
             settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
 
             if settings["img2img_mode"]:
@@ -86,6 +85,82 @@ def render_generate_page():
                             f.write(uploaded_file.getbuffer())
                         settings["input_image_path"] = img_path
                         st.image(uploaded_file, caption="Input Image", use_container_width=True)
+
+        with st.expander("⚡ Sampling & Scheduling", expanded=False):
+            st.markdown("**Scheduler & Sampler Settings**")
+            
+            scheduler_options = {
+                "normal": "Normal - Standard linear schedule",
+                "karras": "Karras - Improved noise schedule",
+                "simple": "Simple - Simplified schedule",
+                "beta": "Beta - Alternative schedule",
+                "ays": "AYS - Align Your Steps (SD1.5 auto)",
+                "ays_sd15": "AYS SD1.5 - Optimized for SD1.5",
+                "ays_sdxl": "AYS SDXL - Optimized for SDXL",
+                "ays_flux": "AYS Flux - Optimized for Flux"
+            }
+            current_scheduler = settings.get("scheduler", "ays")
+            settings["scheduler"] = st.selectbox(
+                "Scheduler",
+                options=list(scheduler_options.keys()),
+                format_func=lambda x: scheduler_options[x],
+                index=list(scheduler_options.keys()).index(current_scheduler) if current_scheduler in scheduler_options else 0,
+                disabled=controls_disabled,
+                help="AYS schedulers provide 30-50% speedup by using optimal noise schedules"
+            )
+            
+            sampler_options = {
+                "euler": "Euler - Fast and stable",
+                "euler_ancestral": "Euler Ancestral - More variation",
+                "euler_cfgpp": "Euler CFG++ - Fast with CFG optimization",
+                "euler_ancestral_cfgpp": "Euler Ancestral CFG++ - Variation with CFG++",
+                "dpmpp_2m_cfgpp": "DPM++ 2M CFG++ - Balanced with CFG optimization",
+                "dpmpp_sde_cfgpp": "DPM++ SDE CFG++ - High quality with CFG++"
+            }
+            current_sampler = settings.get("sampler", "dpmpp_sde_cfgpp")
+            settings["sampler"] = st.selectbox(
+                "Sampler",
+                options=list(sampler_options.keys()),
+                format_func=lambda x: sampler_options[x],
+                index=list(sampler_options.keys()).index(current_sampler) if current_sampler in sampler_options else 0,
+                disabled=controls_disabled,
+                help="CFG++ samplers use dynamic guidance rescaling for improved quality"
+            )
+            
+            recommended_steps = 20
+            if settings.get("scheduler", "normal").startswith("ays"):
+                recommended_steps = 10
+                st.info("💡 AYS scheduler recommended: 10 steps (equivalent to 20 normal steps)")
+            
+            settings["steps"] = st.slider(
+                "Sampling Steps",
+                min_value=1,
+                max_value=150,
+                value=settings.get("steps", recommended_steps),
+                step=1,
+                disabled=controls_disabled,
+                help="Number of denoising steps. AYS: 10 steps, Normal: 20 steps typical"
+            )
+            
+            st.markdown("**Optimization Caching**")
+            settings["prompt_cache_enabled"] = st.checkbox(
+                "Enable Prompt Cache",
+                value=settings.get("prompt_cache_enabled", True),
+                disabled=controls_disabled,
+                help="Cache CLIP text embeddings for 5-15% speedup on repeated prompts"
+            )
+            
+            if settings["prompt_cache_enabled"]:
+                try:
+                    from src.Utilities import prompt_cache
+                    stats = prompt_cache.get_cache_stats()
+                    if stats and stats.get('total_requests', 0) > 0:
+                        st.text(f"Cache: {stats['hits']} hits, {stats['misses']} misses ({stats['hit_rate']:.1%})")
+                        if st.button("Clear Prompt Cache", disabled=controls_disabled):
+                            prompt_cache.clear_prompt_cache()
+                            st.success("Prompt cache cleared!")
+                except Exception:
+                    pass
 
         with st.expander("✨ Enhancements", expanded=False):
             settings["hiresfix"] = st.checkbox("HiRes Fix", value=settings["hiresfix"], disabled=controls_disabled)
