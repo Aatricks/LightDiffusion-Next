@@ -33,7 +33,7 @@ These optimizations **work together** — enabling multiple techniques simultane
 
 **Trade-offs:** Images will differ slightly from standard schedulers (different sampling path), but quality is equivalent or better. Not ideal when exact reproduction of old results is required.
 
-[→ Full AYS Scheduler guide](new_optimizations.md#2-ays-align-your-steps-scheduler)
+[→ Full AYS Scheduler guide](ays-scheduler.md)
 
 ---
 
@@ -49,7 +49,7 @@ These optimizations **work together** — enabling multiple techniques simultane
 
 **Trade-offs:** None — minimal memory overhead (~50-200MB), negligible CPU cost, automatically enabled by default.
 
-[→ Full Prompt Caching guide](new_optimizations.md#1-prompt-attention-caching)
+[→ Full Prompt Caching guide](prompt-caching.md)
 
 ---
 
@@ -227,8 +227,8 @@ export LD_DISABLE_WAVESPEED=1           # Disables all caching
 ```
 
 ## Further Reading
-
-- [New Optimizations Guide](new_optimizations.md) — AYS scheduler and prompt caching for immediate 2x speedup
+- [AYS Scheduler Deep Dive](ays-scheduler.md) — Theory, implementation, quality tuning
+- [Prompt Caching Deep Dive](prompt-caching.md) — Implementation details, cache management, performance impact
 - [SageAttention & SpargeAttn Deep Dive](sageattention.md) — Installation, technical details, head dimension handling
 - [Stable-Fast Compilation Guide](stablefast.md) — Configuration, CUDA graphs, troubleshooting
 - [WaveSpeed Caching Strategies](wavespeed.md) — DeepCache vs FBCache, tuning parameters, compatibility matrix

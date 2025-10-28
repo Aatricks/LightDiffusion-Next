@@ -25,7 +25,8 @@ LightDiffusion-Next is built to handle day-to-day generation workloads on consum
 - [First run & UI tour](usage.md) — learn the Streamlit layout, generation controls and history tools.
 - [Workflow playbook](examples.md) — step through Txt2Img, Flux, Img2Img and API recipes.
 - [Performance optimizations](optimizations.md) — understand SageAttention, Stable-Fast, WaveSpeed caching and the new AYS scheduler for 2-5x speedup.
-- [New optimizations](new_optimizations.md) — learn about AYS scheduler and prompt caching for additional speedup.
+- [Align Your Steps](ays-scheduler.md) — learn about AYS scheduler and prompt caching for additional speedup.
+- [Prompt Caching](prompt-caching.md) — deep dive into prompt attention caching mechanics and tuning.
 - [Performance tuning](quirks.md) — squeeze out extra throughput or reduce VRAM usage.
 - [Architecture](architecture.md) — understand how the UI, pipeline and server cooperate.
 - [REST & automation](api.md) — integrate Discord bots, automations or other clients.

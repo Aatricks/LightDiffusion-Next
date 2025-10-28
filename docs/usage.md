@@ -46,7 +46,6 @@ The **⚡ Sampling & Scheduling** section provides direct control over the sampl
 - **Steps** — Adjust sampling steps (1-150). The UI shows recommendations based on your scheduler choice (e.g., 10 steps for AYS vs 20 for normal).
 - **Prompt Cache** — Toggle prompt caching on/off (enabled by default). View cache statistics showing hits/misses and clear the cache when needed.
 
-[→ See the New Optimizations guide](new_optimizations.md) for detailed information on AYS schedulers and prompt caching.
 
 ### Multi-scale diffusion presets
 
