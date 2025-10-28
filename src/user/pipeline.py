@@ -45,6 +45,9 @@ def pipeline(
     h: int,
     number: int = 1,
     batch: int = 1,
+    scheduler: str = "normal",
+    sampler: str = "euler",
+    steps: int = 20,
     hires_fix: bool = False,
     adetailer: bool = False,
     enhance_prompt: bool = False,
@@ -204,7 +207,12 @@ def pipeline(
             pass
         enhancement_applied = prompt != original_prompt
 
-    sampler_name = "dpmpp_sde_cfgpp" if not prio_speed else "dpmpp_2m_cfgpp"
+    # Sampler selection (allow override from UI, fallback to auto-selection)
+    if sampler and sampler.strip():
+        sampler_name = sampler
+    else:
+        # Auto-select based on speed mode for backward compatibility
+        sampler_name = "dpmpp_sde_cfgpp" if not prio_speed else "dpmpp_2m_cfgpp"
     ckpt = (
         "./include/checkpoints/Meina V10 - baked VAE.safetensors"
         if not realistic_model
@@ -333,10 +341,10 @@ def pipeline(
             # Run the sampler once for all prompts in the batch
             ksampler_239 = ksampler_instance.sample(
                 seed=None,
-                steps=20,
+                steps=steps if steps > 0 else 20,
                 cfg=7,
                 sampler_name=sampler_name,
-                scheduler="karras",
+                scheduler=scheduler if scheduler else "normal",
                 denoise=1,
                 pipeline=True,
                 model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
@@ -469,10 +477,10 @@ def pipeline(
 
                         ksampler_253 = ksampler_instance.sample(
                             seed=hires_seed,
-                            steps=10,
+                            steps=max(10, int(steps * 0.5)),
                             cfg=8,
-                            sampler_name="euler_ancestral_cfgpp",
-                            scheduler="normal",
+                            sampler_name=sampler_name,
+                            scheduler=scheduler if scheduler else "normal",
                             denoise=0.45,
                             model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
                             positive=pos_i,
@@ -1053,10 +1061,10 @@ def pipeline(
                 # Create sampler with multi-scale options
                 ksampler_239 = ksampler_instance.sample(
                     seed=current_seed,
-                    steps=20,
+                    steps=steps if steps > 0 else 20,
                     cfg=7,
                     sampler_name=sampler_name,
-                    scheduler="karras",
+                    scheduler=scheduler if scheduler else "normal",
                     denoise=1,
                     pipeline=True,
                     model=hidiffoptimizer.go(
@@ -1079,10 +1087,10 @@ def pipeline(
                     )
                     ksampler_253 = ksampler_instance.sample(
                         seed=random.randint(1, 2**64),
-                        steps=10,
+                        steps=max(10, int(steps * 0.5)),
                         cfg=8,
-                        sampler_name="euler_ancestral_cfgpp",
-                        scheduler="normal",
+                        sampler_name=sampler_name,
+                        scheduler=scheduler if scheduler else "normal",
                         denoise=0.45,
                         model=hidiffoptimizer.go(
                             model_type="auto", model=applystablefast_158[0]

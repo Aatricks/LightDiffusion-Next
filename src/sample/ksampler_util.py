@@ -331,6 +331,19 @@ def calculate_sigmas(
         sigmas = simple_scheduler(model_sampling, steps)
     elif scheduler_name == "beta":
         sigmas = beta_scheduler(model_sampling, steps)
+    elif scheduler_name in ["ays", "ays_sd15", "ays_sdxl", "ays_flux"]:
+        # AYS (Align Your Steps) scheduler for better convergence
+        from src.sample import ays_scheduler as ays
+        
+        # Determine model type from scheduler name or use SD15 as default
+        if scheduler_name == "ays_sdxl":
+            model_type = "SDXL"
+        elif scheduler_name == "ays_flux":
+            model_type = "FLUX"
+        else:
+            model_type = "SD15"  # Default for "ays" and "ays_sd15"
+        
+        sigmas = ays.ays_scheduler(model_sampling, steps, model_type)
     else:
         logging.error("error invalid scheduler {}".format(scheduler_name))
     return sigmas

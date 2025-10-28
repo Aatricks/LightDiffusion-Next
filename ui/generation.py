@@ -41,6 +41,14 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     # Setup generation state
     st.session_state.interrupt_generation = False
     st.session_state.is_generating = True
+    
+    # Configure prompt cache based on settings
+    try:
+        from src.Utilities import prompt_cache
+        prompt_cache.enable_prompt_cache(settings.get("prompt_cache_enabled", True))
+    except Exception:
+        pass
+    
     try:
         app_instance.app.cleanup_all_previews()
     except Exception:
@@ -147,6 +155,9 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             w=settings.get("width"),
                             h=settings.get("height"),
                             number=attempt_chunk,
+                            scheduler=settings.get("scheduler", "normal"),
+                            sampler=settings.get("sampler", "euler"),
+                            steps=settings.get("steps", 20),
                             # Honor the configured batch size as an independent
                             # setting. Previously the batch argument was clamped
                             # to the remaining number of images which made the
