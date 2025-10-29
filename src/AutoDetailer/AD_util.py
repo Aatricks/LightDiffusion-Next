@@ -30,7 +30,7 @@ def inference_bbox(
     model: YOLO,
     image: Image.Image,
     confidence: float = 0.3,
-    device: str = "",
+    device: str = "cpu",
 ) -> List:
     """#### Perform inference on an image and return bounding boxes.
 
