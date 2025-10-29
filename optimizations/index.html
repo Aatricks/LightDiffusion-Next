@@ -699,6 +699,40 @@
     </a>
 </li>
                 
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/prompt-caching/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        Prompt Caching
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/ays-scheduler/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        Align Your Steps
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
             </ul>
         </div>
     </div>
@@ -844,7 +878,7 @@
   <div class="typography w-full flex-1 *:data-[slot=alert]:first:mt-0">
     <p>LightDiffusion-Next achieves its industry-leading inference speed through a layered stack of training-free optimizations that can be selectively enabled based on your hardware and quality requirements. This page provides an overview of each acceleration technique and links to detailed guides.</p>
 <h2 id="optimization-stack-overview">Optimization Stack Overview</h2>
-<p>The pipeline orchestrates four primary acceleration paths:</p>
+<p>The pipeline orchestrates six primary acceleration paths:</p>
 <div class="table-wrapper"><table>
 <thead>
 <tr>
@@ -856,6 +890,20 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><a href="#ays-scheduler">AYS Scheduler</a></td>
+<td>Sampling schedule</td>
+<td>~2x</td>
+<td>None/Better</td>
+<td>All models</td>
+</tr>
+<tr>
+<td><a href="#prompt-caching">Prompt Caching</a></td>
+<td>Embedding cache</td>
+<td>5-15%</td>
+<td>None</td>
+<td>All models</td>
+</tr>
 <tr>
 <td><a href="#sageattention--spargeattn">SageAttention</a></td>
 <td>Attention kernel</td>
@@ -889,6 +937,26 @@
 <p>*Speedup depends heavily on batch size and generation count</p>
 <p>These optimizations <strong>work together</strong> — enabling multiple techniques simultaneously can provide substantial cumulative speedup with tunable quality trade-offs.</p>
 <h2 id="quick-comparison">Quick Comparison</h2>
+<h3 id="ays-scheduler">AYS Scheduler</h3>
+<p><strong>What it does:</strong> Uses research-backed optimal timestep distributions that allow equivalent quality in approximately half the steps. Instead of uniform sigma spacing, AYS concentrates samples on noise levels that contribute most to image formation.</p>
+<p><strong>When to use:</strong>
+- Always recommended for SD1.5, SDXL, and Flux models
+- Txt2Img generation
+- Production workflows where speed matters
+- Any scenario where you'd normally use 20+ steps</p>
+<p><strong>Trade-offs:</strong> Images will differ slightly from standard schedulers (different sampling path), but quality is equivalent or better. Not ideal when exact reproduction of old results is required.</p>
+<p><a href="../ays-scheduler/">→ Full AYS Scheduler guide</a></p>
+<hr />
+<h3 id="prompt-caching">Prompt Caching</h3>
+<p><strong>What it does:</strong> Caches CLIP text embeddings for prompts that have been encoded before. When generating multiple images with the same or similar prompts, embeddings are retrieved from cache instead of being recomputed.</p>
+<p><strong>When to use:</strong>
+- Batch generation with same prompt
+- Testing different seeds or settings
+- Iterative prompt refinement
+- Any workflow with repeated prompts</p>
+<p><strong>Trade-offs:</strong> None — minimal memory overhead (~50-200MB), negligible CPU cost, automatically enabled by default.</p>
+<p><a href="../prompt-caching/">→ Full Prompt Caching guide</a></p>
+<hr />
 <h3 id="sageattention-spargeattn">SageAttention &amp; SpargeAttn</h3>
 <p><strong>What it does:</strong> Replaces PyTorch's default scaled dot-product attention with highly optimized CUDA kernels. SageAttention uses INT8 quantization for key/value tensors while maintaining FP16 query precision. SpargeAttn extends this with dynamic sparsity pruning, skipping redundant attention computations.</p>
 <p><strong>When to use:</strong>
@@ -946,25 +1014,31 @@
 <p><strong>Expected:</strong> Maximum speedup for batch operations, some quality loss
 <strong>Note:</strong> Disable stable_fast for single 20-step generations</p>
 <h3 id="balanced-quick-generation-sd15-any-vram">Balanced - Quick Generation (SD1.5, any VRAM)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># Disabled for normal 20-step generations</span>
+<div class="codehilite"><pre><span></span><code><span class="nt">scheduler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ays</span><span class="w">  </span><span class="c1"># NEW: Use AYS for 2x speedup</span>
+<span class="nt">steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># Reduced from 20 (same quality with AYS)</span>
+<span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># Disabled for normal generations</span>
 <span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">deepCache</span><span class="p">:</span>
+<span class="nt">prompt_cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Enabled by default</span>
+<span class="nt">deepcache</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
 <span class="w">  </span><span class="nt">depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 </code></pre></div>
 
-<p><strong>Expected:</strong> Good speedup with minimal quality loss
-<strong>Note:</strong> Enable stable_fast only for batch jobs (50+ images)</p>
+<p><strong>Expected:</strong> ~2-3x speedup with minimal quality loss
+<strong>Note:</strong> AYS scheduler provides the main speedup; enable stable_fast only for batch jobs (50+ images)</p>
 <h3 id="quality-first-flux">Quality-First (Flux)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># not supported</span>
+<div class="codehilite"><pre><span></span><code><span class="nt">scheduler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ays_flux</span><span class="w">  </span><span class="c1"># NEW: Optimized for Flux models</span>
+<span class="nt">steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># Reduced from 15 (same quality with AYS)</span>
+<span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># not supported</span>
 <span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
+<span class="nt">prompt_cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="nt">fbcache</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">  </span><span class="nt">residual_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.01</span><span class="w">  </span><span class="c1"># strict caching</span>
 </code></pre></div>
 
-<p><strong>Expected:</strong> Moderate speedup, minimal quality impact</p>
+<p><strong>Expected:</strong> ~2x speedup with minimal quality impact</p>
 <h3 id="production-api-high-volume-8gb-vram">Production API - High Volume (&gt;8GB VRAM)</h3>
 <div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Only for sustained high-volume APIs</span>
 <span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
@@ -1026,6 +1100,8 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
 
 <h2 id="further-reading">Further Reading</h2>
 <ul>
+<li><a href="../ays-scheduler/">AYS Scheduler Deep Dive</a> — Theory, implementation, quality tuning</li>
+<li><a href="../prompt-caching/">Prompt Caching Deep Dive</a> — Implementation details, cache management, performance impact</li>
 <li><a href="../sageattention/">SageAttention &amp; SpargeAttn Deep Dive</a> — Installation, technical details, head dimension handling</li>
 <li><a href="../stablefast/">Stable-Fast Compilation Guide</a> — Configuration, CUDA graphs, troubleshooting</li>
 <li><a href="../wavespeed/">WaveSpeed Caching Strategies</a> — DeepCache vs FBCache, tuning parameters, compatibility matrix</li>
@@ -1177,6 +1253,18 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
                             
                         </a>
                         
+                        <a class="text-2xl font-medium" href="../prompt-caching/">
+                            
+                            Prompt Caching
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../ays-scheduler/">
+                            
+                            Align Your Steps
+                            
+                        </a>
+                        
                     </div>
                     
                 </div>
@@ -1234,6 +1322,18 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
             Quick Comparison
         </a>
         
+        
+        <a href="#ays-scheduler"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            AYS Scheduler
+        </a>
+        
+        <a href="#prompt-caching"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Prompt Caching
+        </a>
         
         <a href="#sageattention-spargeattn"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"

@@ -26,6 +26,9 @@ uvicorn server:app --host 0.0.0.0 --port 7861
   "height": 512,
   "num_images": 1,
   "batch_size": 1,
+  "scheduler": "ays",
+  "sampler": "dpmpp_sde_cfgpp",
+  "steps": 20,
   "hires_fix": false,
   "adetailer": false,
   "enhance_prompt": false,
@@ -34,7 +37,6 @@ uvicorn server:app --host 0.0.0.0 --port 7861
   "stable_fast": false,
   "reuse_seed": false,
   "flux_enabled": false,
-  "prio_speed": false,
   "realistic_model": false,
   "multiscale_enabled": true,
   "multiscale_intermittent": true,
@@ -43,7 +45,6 @@ uvicorn server:app --host 0.0.0.0 --port 7861
   "multiscale_fullres_end": 8,
   "keep_models_loaded": true,
   "enable_preview": false,
-  "steps": null,
   "guidance_scale": null,
   "seed": null
 }

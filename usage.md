@@ -27,11 +27,25 @@ The Generate tab is designed as a control surface where the left sidebar contain
 - **HiRes Fix** — Upscales the latent and runs an extra sampling pass. Generates output in `output/HiresFix`.
 - **ADetailer** — Uses SAM + YOLO and Impact Pack prompt heads to redraw faces/bodies. Additional artifacts are saved to `output/Adetailer`.
 - **Enhance prompt** — Sends your prompt through the Ollama model specified by `PROMPT_ENHANCER_MODEL` (defaults to `qwen3:0.6b`). The rewritten prompt is shown in the sidebar and in image metadata.
-- **Stable-Fast / Prioritize speed** — Enables UNet compilation (after the first warm-up) and switches the sampler to `dpmpp_2m_cfgpp` for faster iterations.
+- **Stable-Fast** — Enables UNet compilation (after the first warm-up) for faster iterations.
 - **Flux mode** — Routes the job through the quantized Flux pipeline (requires the `ae.safetensors` VAE and quantized GGUF weights downloaded via `CheckAndDownloadFlux`).
 - **Img2Img mode** — Reveals an image uploader. The selected picture is used as the source latent, optionally combined with UltimateSDUpscale.
 - **Keep models in VRAM** — Toggle model caching between jobs to reduce load time at the cost of VRAM retention.
 - **Real-time preview** — Streams TAESD previews into a responsive gallery while sampling is still running. Disable it when running headless to save resources.
+
+### Sampling & Scheduling
+
+The **⚡ Sampling & Scheduling** section provides direct control over the sampling process:
+
+- **Scheduler** — Choose from 8 scheduler options including the new **AYS (Align Your Steps)** schedulers which provide ~2x speedup by using optimized sigma distributions. Options include:
+  - Normal, Karras, Simple, Beta (traditional schedulers)
+  - AYS, AYS SD1.5, AYS SDXL, AYS Flux (optimized schedulers)
+- **Sampler** — Select from 6 available samplers:
+  - Standard: Euler, Euler Ancestral
+  - CFG++ variants: Euler CFG++, Euler Ancestral CFG++, DPM++ 2M CFG++, DPM++ SDE CFG++
+- **Steps** — Adjust sampling steps (1-150). The UI shows recommendations based on your scheduler choice (e.g., 10 steps for AYS vs 20 for normal).
+- **Prompt Cache** — Toggle prompt caching on/off (enabled by default). View cache statistics showing hits/misses and clear the cache when needed.
+
 
 ### Multi-scale diffusion presets
 
