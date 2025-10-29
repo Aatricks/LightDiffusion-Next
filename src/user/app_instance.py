@@ -60,21 +60,51 @@ class AppInstance:
 
     def clear_preview_files(self):
         """Clear temporary preview files"""
-        for file_path in self.preview_files:
-            try:
-                if os.path.exists(file_path):
+        for file_path in list(self.preview_files):
+            if not os.path.exists(file_path):
+                try:
+                    self.preview_files.remove(file_path)
+                except Exception:
+                    pass
+                continue
+            # Try a few times to remove the file in case an Image handle
+            # is still being closed by another thread/process (common on
+            # Windows). If we cannot remove after retries, skip it.
+            removed = False
+            for attempt in range(3):
+                try:
                     os.remove(file_path)
-            except Exception as e:
-                print(f"Error removing preview file {file_path}: {e}")
-        self.preview_files.clear()
+                    removed = True
+                    break
+                except PermissionError:
+                    time.sleep(0.05)
+                except Exception as e:
+                    print(f"Error removing preview file {file_path}: {e}")
+                    break
+            try:
+                if removed:
+                    self.preview_files.remove(file_path)
+            except Exception:
+                pass
 
     def cleanup_all_previews(self):
         """Cleanup all preview files in the directory"""
+        # Remove all preview files with a short retry on PermissionError to
+        # reduce noisy 'file is used by another process' errors on Windows.
         try:
             for filename in os.listdir(self.preview_dir):
                 if filename.startswith("preview_") and filename.endswith(".png"):
                     file_path = os.path.join(self.preview_dir, filename)
-                    os.remove(file_path)
+                    for attempt in range(3):
+                        try:
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                            break
+                        except PermissionError:
+                            time.sleep(0.05)
+                        except Exception as e:
+                            print(f"Error cleaning up preview file {file_path}: {e}")
+                            break
         except Exception as e:
             print(f"Error cleaning up preview directory: {e}")
 

@@ -23,8 +23,10 @@ def get_default_settings():
         "batch_size": 1,
 
         # Generation Modes
-        "flux_mode": False,
-        "realistic_mode": False,
+        # Model selection
+        "model_path": "",
+        # Flux quantization preference (used when loading GGUF Flux models)
+        "flux_quant": "Q8_0",
         "img2img_mode": False,
 
         # Image Input (Img2Img)

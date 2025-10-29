@@ -26,6 +26,7 @@ from src.Utilities import Enhancer, Latent, upscale
 from src.WaveSpeed import fbcache_nodes, deepcache_nodes
 from src.AutoHDR import ahdr
 from src.user import app_instance
+from src.user.model_loader import load_model_for_pipeline, detect_model_type
 
 with open(os.path.join("./include/", "last_seed.txt"), "r") as f:
     last_seed = int(f.read())
@@ -57,6 +58,8 @@ def pipeline(
     flux_enabled: bool = False,
     autohdr: bool = True,
     realistic_model: bool = False,
+    # new: optionally pass explicit model path to load
+    model_path: str | None = None,
     negative_prompt: str = None,
     # Multi-scale diffusion parameters
     multiscale_preset: str = None,
@@ -211,16 +214,49 @@ def pipeline(
     # Use the provided sampler (defaults to "dpmpp_sde_cfgpp" from function signature)
     sampler_name = sampler if sampler and sampler.strip() else "dpmpp_sde_cfgpp"
     
-    ckpt = (
-        "./include/checkpoints/Meina V10 - baked VAE.safetensors"
-        if not realistic_model
-        else "./include/checkpoints/DreamShaper_8_pruned.safetensors"
-    )
+    # Model selection: automatically detect and load appropriate artifacts
+    model_type = detect_model_type(model_path) if model_path else ("FLUX" if flux_enabled else ("SD15" if not realistic_model else "SD15"))
+    # Guard: if a path explicitly ends with .gguf treat it as FLUX regardless
+    # of other heuristics to avoid trying to load a gguf via torch.load.
+    try:
+        if model_path and str(model_path).lower().endswith(".gguf"):
+            model_type = "FLUX"
+    except Exception:
+        pass
+    # If the detected model is FLUX, ensure the runtime path uses flux flows.
+    # This keeps `flux_enabled` consistent with the chosen model and avoids
+    # running the non-flux path with a Flux-only checkpoint tuple (which
+    # lacks a CLIP entry and will cause NoneType errors later).
+    try:
+        if model_type == "FLUX":
+            flux_enabled = True
+    except Exception:
+        pass
     with torch.inference_mode():
-        if not flux_enabled:
+        # Ensure we always have a checkpointloadersimple_241 tuple available to
+        # downstream code (model, clip, vae). For FLUX models we construct a
+        # compatible tuple using the loaded UNet and a Flux VAE when possible.
+        checkpointloadersimple_241 = (None, None, None)
+        unet_model = None
+        if model_type == "FLUX":
+            # Load Flux GGUF UNet (and attempt to provide a VAE entry)
+            model_type, unet_tuple = load_model_for_pipeline(model_path)
+            unet_model = unet_tuple[0]
+            try:
+                # Try to load a local VAE copy for Flux flows so downstream
+                # code that expects a vae object can function uniformly.
+                vae_loader = VariationalAE.VAELoader()
+                vae_res = vae_loader.load_vae(vae_name="ae.safetensors")
+                vae_obj = vae_res[0] if vae_res else None
+            except Exception:
+                vae_obj = None
+            checkpointloadersimple_241 = (unet_model, None, vae_obj)
+            hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+        else:
+            # SD1.5/SDXL path (CheckpointLoader handles both safetensors and pt)
             checkpointloadersimple = Loader.CheckpointLoaderSimple()
             checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
-                ckpt_name=ckpt
+                ckpt_name=model_path or ("./include/checkpoints/Meina V10 - baked VAE.safetensors")
             )
             hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
         cliptextencode = Clip.CLIPTextEncode()
@@ -257,15 +293,19 @@ def pipeline(
             # forward pass.
             try:
                 loraloader = LoRas.LoraLoader()
-                loraloader_274 = loraloader.load_lora(
-                    lora_name="add_detail.safetensors",
-                    strength_model=0.7,
-                    strength_clip=0.7,
-                    model=checkpointloadersimple_241[0],
-                    clip=checkpointloadersimple_241[1],
-                )
+                if model_type == "FLUX":
+                    # Flux loader expects patched model signature
+                    loraloader_274 = (unet_model, None, None)
+                else:
+                    loraloader_274 = loraloader.load_lora(
+                        lora_name="add_detail.safetensors",
+                        strength_model=0.7,
+                        strength_clip=0.7,
+                        model=checkpointloadersimple_241[0],
+                        clip=checkpointloadersimple_241[1],
+                    )
             except Exception:
-                loraloader_274 = checkpointloadersimple_241
+                loraloader_274 = checkpointloadersimple_241 if 'checkpointloadersimple_241' in locals() else (unet_model, None, None)
 
             clipsetlastlayer = Clip.CLIPSetLastLayer()
             clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
@@ -310,10 +350,10 @@ def pipeline(
             # a batch_index so downstream conditioning logic knows which
             # batch slots each condition maps to.
             positive_entries = cliptextencode.encode(
-                clip=clipsetlastlayer_257[0], text=prompts, flux_enabled=flux_enabled
+                clip=clipsetlastlayer_257[0], text=prompts, flux_enabled=(model_type=="FLUX")
             )[0]
             negative_entries = cliptextencode.encode(
-                clip=clipsetlastlayer_257[0], text=negatives, flux_enabled=flux_enabled
+                clip=clipsetlastlayer_257[0], text=negatives, flux_enabled=(model_type=="FLUX")
             )[0]
 
             # Add routing information into each condition's metadata
@@ -345,7 +385,7 @@ def pipeline(
                 scheduler=scheduler if scheduler else "ays",
                 denoise=1,
                 pipeline=True,
-                model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0],
+                model=hidiffoptimizer.go(model_type="auto", model=applystablefast_158[0])[0] if model_type != "FLUX" else unet_model,
                 positive=positive_entries,
                 negative=negative_entries,
                 latent_image=latent,
@@ -1475,6 +1515,12 @@ if __name__ == "__main__":
         help="Use the realistic model.",
     )
     parser.add_argument(
+        "--model-path",
+        type=str,
+        default="",
+        help="Optional path to a model file (safetensors/.pt/.gguf). If provided, the app will attempt to load this model and detect its type.",
+    )
+    parser.add_argument(
         "--multiscale-preset",
         type=str,
         choices=["quality", "performance", "balanced", "disabled"],
@@ -1558,6 +1604,7 @@ if __name__ == "__main__":
         args.flux,
         args.autohdr,
         args.realistic_model,
+        args.model_path or None,
         args.multiscale_preset,
         args.enable_multiscale,
         args.multiscale_factor,

@@ -157,8 +157,9 @@ def add_to_history(image_paths, settings):
             "width": width,
             "height": height,
             "batch_size": settings.get("batch_size"),
-            "flux_mode": settings.get("flux_mode", False),
-            "realistic_mode": settings.get("realistic_mode", False),
+                # Record model type if available from PNG metadata, otherwise infer from path
+                'model_type': (png_meta.get('model_type') or ( 'FLUX' if 'Flux' in img_path else None )),
+                'model_path': png_meta.get('model_path'),
             "seed": seed_meta,
             "sampler": png_meta.get("sampler"),
             "steps": png_meta.get("steps"),
@@ -259,8 +260,9 @@ def scan_output_folders():
                     'width': width,
                     'height': height,
                     'batch_size': png_meta.get('batch_size'),
-                    'flux_mode': png_meta.get('flux_enabled', False) or ('Flux' in img_path),
-                    'realistic_mode': png_meta.get('realistic_model', False),
+                    # Record model type/path when available in PNG metadata
+                    'model_type': png_meta.get('model_type') or ('FLUX' if 'Flux' in img_path else None),
+                    'model_path': png_meta.get('model_path'),
                     'seed': sanitize_seed_for_display(png_meta.get('seed')),
                     'sampler': png_meta.get('sampler'),
                     'steps': png_meta.get('steps'),

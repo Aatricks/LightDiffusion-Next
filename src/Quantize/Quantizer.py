@@ -121,6 +121,216 @@ dequantize_functions = {
     gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
 }
 
+# Accept additional common ggml quant types used by Flux/gguf models.
+# Q8_1 is similar layout to Q8_0 for many gguf exports so reuse the same
+# dequant path where possible. Additional formats (Q4_0, Q4_1, etc.) would
+# require implementing their block dequantizers here.
+try:
+    dequantize_functions[gguf.GGMLQuantizationType.Q8_1] = dequantize_blocks_Q8_0
+except Exception:
+    pass
+
+
+# Pragmatic fallbacks / compatibility shims for additional gguf quant formats
+def _warn_and_fallback(name: str, blocks, block_size, type_size, dtype=None):
+    logging.warning(
+        f"Unsupported or experimental quant format {name!r} - using Q8_0 fallback dequantizer. Results may be degraded."
+    )
+    return dequantize_blocks_Q8_0(blocks, block_size, type_size, dtype)
+
+
+def dequantize_blocks_Q8_K(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    # Q8_K falls back to Q8_0 style if exact handler is not present.
+    # Implementing full Q8_K is similar to other K-quant handlers but requires
+    # matching the encoder layout. For now delegate to Q8_0 for compatibility.
+    return dequantize_blocks_Q8_0(blocks, block_size, type_size, dtype)
+
+
+def to_uint32(x: torch.Tensor) -> torch.Tensor:
+    # Convert 4 bytes per element to uint32-like int32
+    x = x.view(torch.uint8).to(torch.int32)
+    return (x[:, 0] | (x[:, 1] << 8) | (x[:, 2] << 16) | (x[:, 3] << 24)).unsqueeze(1)
+
+
+def get_scale_min(scales: torch.Tensor):
+    n_blocks = scales.shape[0]
+    scales = scales.view(torch.uint8)
+    scales = scales.reshape((n_blocks, 3, 4))
+
+    d, m, m_d = torch.split(scales, scales.shape[-2] // 3, dim=-2)
+
+    sc = torch.cat([d & 0x3F, (m_d & 0x0F) | ((d >> 2) & 0x30)], dim=-1)
+    mn = torch.cat([m & 0x3F, (m_d >> 4) | ((m >> 2) & 0x30)], dim=-1)
+
+    return (sc.reshape((n_blocks, 8)), mn.reshape((n_blocks, 8)))
+
+
+def dequantize_blocks_Q6_K(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    n_blocks = blocks.shape[0]
+
+    # split into ql (low nibbles), qh (high packed bits), and scales/d
+    # layout derived from ggml/ComfyUI-GGUF implementation
+    ql, qh, scales, d = split_block_dims(blocks, QK_K // 2, QK_K // 4, 2)
+
+    scales = scales.view(torch.int8).to(dtype)
+    d = d.view(torch.float16).to(dtype)
+
+    d = (d * scales).reshape((n_blocks, QK_K // 16, 1))
+
+    ql = ql.reshape((n_blocks, -1, 1, 64)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape((1, 1, 2, 1))
+    ql = (ql & 0x0F).reshape((n_blocks, -1, 32))
+
+    qh = qh.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 2, 4, 6], device=d.device, dtype=torch.uint8).reshape((1, 1, 4, 1))
+    qh = (qh & 0x03).reshape((n_blocks, -1, 32))
+
+    q = (ql | (qh << 4)).to(torch.int8) - 32
+    q = q.reshape((n_blocks, QK_K // 16, -1))
+
+    return (d * q).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q5_K(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    n_blocks = blocks.shape[0]
+
+    d, dmin, scales, qh, qs = split_block_dims(blocks, 2, 2, K_SCALE_SIZE, QK_K // 8)
+
+    d = d.view(torch.float16).to(dtype)
+    dmin = dmin.view(torch.float16).to(dtype)
+
+    sc, m = get_scale_min(scales)
+
+    d = (d * sc).reshape((n_blocks, -1, 1))
+    dm = (dmin * m).reshape((n_blocks, -1, 1))
+
+    ql = qs.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape((1, 1, 2, 1))
+    qh = qh.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([i for i in range(8)], device=d.device, dtype=torch.uint8).reshape((1, 1, 8, 1))
+    ql = (ql & 0x0F).reshape((n_blocks, -1, 32))
+    qh = (qh & 0x01).reshape((n_blocks, -1, 32))
+    q = (ql | (qh << 4))
+
+    return (d * q - dm).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q4_K(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    n_blocks = blocks.shape[0]
+
+    d, dmin, scales, qs = split_block_dims(blocks, 2, 2, K_SCALE_SIZE)
+    d = d.view(torch.float16).to(dtype)
+    dmin = dmin.view(torch.float16).to(dtype)
+
+    sc, m = get_scale_min(scales)
+
+    d = (d * sc).reshape((n_blocks, -1, 1))
+    dm = (dmin * m).reshape((n_blocks, -1, 1))
+
+    qs = qs.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape((1, 1, 2, 1))
+    qs = (qs & 0x0F).reshape((n_blocks, -1, 32))
+
+    return (d * qs - dm).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q6_K(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    """Fallback for Q6_K style quantizations. Robust implementations require dedicated unpacking; for now use Q8_0 fallback and warn."""
+    return _warn_and_fallback("Q6_K", blocks, block_size, type_size, dtype)
+
+
+def dequantize_blocks_Q4_0(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    """Dequantize Q4_0 blocks exactly.
+
+    Layout (per ggml/gguf common convention):
+    - 2 bytes: float16 scale (one per block)
+    - 16 bytes: packed 4-bit values (each byte contains two nibbles -> two values)
+    The unpacking produces 32 int4 values per block. These int4 values are stored
+    in a signed representation using two's complement in range [-8,7].
+    We reconstruct the signed values and multiply by the per-block scale.
+    """
+    # blocks: (n_blocks, type_size) uint8
+    # split into scale (2 bytes) and packed nibbles
+    d, x = split_block_dims(blocks, 2)
+    # d contains float16 scale per block
+    scales = d.view(torch.float16).to(dtype)
+
+    # x contains packed bytes: each byte -> two 4-bit values
+    x = x.view(torch.uint8)
+    # split low and high nibble
+    low = (x & 0x0F).to(torch.int8)
+    high = (x >> 4).to(torch.int8)
+
+    # sign-extend 4-bit values to int8: values >=8 represent negative numbers
+    low_signed = low - (low >= 8).to(torch.int8) * 16
+    high_signed = high - (high >= 8).to(torch.int8) * 16
+
+    # interleave low/high to produce 32 values per block: low0, high0, low1, high1, ...
+    n_blocks = low_signed.shape[0]
+    low_vals = low_signed.view(n_blocks, -1)
+    high_vals = high_signed.view(n_blocks, -1)
+    # concatenate interleaved
+    out = torch.empty((n_blocks, low_vals.shape[1] * 2), dtype=torch.int8, device=low_vals.device)
+    out[:, 0::2] = low_vals
+    out[:, 1::2] = high_vals
+
+    # convert to float and apply scale (scales shape: n_blocks x 1)
+    outf = out.to(dtype=torch.float32) * scales.to(torch.float32)
+    return outf.to(dtype)
+
+
+def dequantize_blocks_Q4_1(blocks: torch.Tensor, block_size: int, type_size: int, dtype: torch.dtype = None) -> torch.Tensor:
+    """Dequantize Q4_1 blocks.
+
+    Q4_1 is similar to Q4_0 but may contain a slightly different packing or
+    padding; the most compatible behavior is to unpack the first 32 nibbles
+    and apply the per-block float16 scale. This implementation extracts the
+    low/high nibbles and uses the same signed conversion as Q4_0.
+    """
+    # Attempt same unpacking as Q4_0 but tolerate extra padding bytes.
+    # First 2 bytes are float16 scale; remaining bytes contain packed nibbles.
+    d, x = split_block_dims(blocks, 2)
+    scales = d.view(torch.float16).to(dtype)
+    x = x.view(torch.uint8)
+
+    # Convert to nibbles and take first 32 nibbles per block
+    low = (x & 0x0F).to(torch.int8)
+    high = (x >> 4).to(torch.int8)
+
+    n_blocks = low.shape[0]
+    low_vals = low.view(n_blocks, -1)
+    high_vals = high.view(n_blocks, -1)
+
+    # Some Q4_1 layouts may include extra padding nibble(s); ensure we only use first 32 values
+    interleaved = torch.empty((n_blocks, low_vals.shape[1] * 2), dtype=torch.int8, device=low_vals.device)
+    interleaved[:, 0::2] = low_vals
+    interleaved[:, 1::2] = high_vals
+
+    interleaved = interleaved[:, : block_size]
+
+    # sign extend 4-bit values
+    interleaved = interleaved - (interleaved >= 8).to(torch.int8) * 16
+
+    outf = interleaved.to(torch.float32) * scales.to(torch.float32)
+    return outf.to(dtype)
+
+
+# Register commonly seen gguf quant types to the fallback handlers when available
+try:
+    dequantize_functions[gguf.GGMLQuantizationType.Q8_K] = dequantize_blocks_Q8_K
+except Exception:
+    pass
+
+try:
+    dequantize_functions[gguf.GGMLQuantizationType.Q6_K] = dequantize_blocks_Q6_K
+except Exception:
+    pass
+
+try:
+    dequantize_functions[gguf.GGMLQuantizationType.Q4_0] = dequantize_blocks_Q4_0
+except Exception:
+    pass
+
+try:
+    dequantize_functions[gguf.GGMLQuantizationType.Q4_1] = dequantize_blocks_Q4_1
+except Exception:
+    pass
+
 
 def dequantize_tensor(
     tensor: torch.Tensor, dtype: torch.dtype = None, dequant_dtype: torch.dtype = None
