@@ -122,7 +122,8 @@ def pipeline(
     enhancement_applied = False
 
     # Apply multiscale preset if specified (overrides individual parameters)
-    if multiscale_preset is not None:
+    print(f"multiscale_preset: {multiscale_preset}, type: {type(multiscale_preset)}")
+    if multiscale_preset is not None and isinstance(multiscale_preset, str):
         from src.sample.multiscale_presets import get_preset_parameters
 
         preset_params = get_preset_parameters(multiscale_preset)
