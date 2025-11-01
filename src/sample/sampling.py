@@ -572,6 +572,13 @@ def sample(
     flux: bool = False,
     cfg_free_enabled: bool = False,
     cfg_free_start_percent: float = 70.0,
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95,
+    dynamic_cfg_target_scale: float = 1.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
 ) -> torch.Tensor:
     """#### Sample using the given parameters.
 
@@ -597,7 +604,20 @@ def sample(
     #### Returns:
         - `torch.Tensor`: The sampled tensor.
     """
-    cfg_guider = CFG.CFGGuider(model, flux=flux)
+    # Configure model options for batched CFG
+    model_options = model_options.copy()
+    model_options["batched_cfg"] = batched_cfg
+    
+    cfg_guider = CFG.CFGGuider(
+        model, 
+        flux=flux,
+        dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+        dynamic_cfg_method=dynamic_cfg_method,
+        dynamic_cfg_percentile=dynamic_cfg_percentile,
+        dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+        adaptive_noise_enabled=adaptive_noise_enabled,
+        adaptive_noise_method=adaptive_noise_method
+    )
     cfg_guider.set_conds(positive, negative)
     cfg_guider.set_cfg(cfg)
     cfg_guider.set_cfg_free_params(cfg_free_enabled, cfg_free_start_percent)
@@ -830,6 +850,14 @@ class KSampler:
         # CFG-free sampling parameters
         cfg_free_enabled: bool = False,
         cfg_free_start_percent: float = 70.0,
+        # Advanced CFG optimization parameters
+        batched_cfg: bool = True,
+        dynamic_cfg_rescaling: bool = False,
+        dynamic_cfg_method: str = "variance",
+        dynamic_cfg_percentile: float = 95.0,
+        dynamic_cfg_target_scale: float = 7.0,
+        adaptive_noise_enabled: bool = False,
+        adaptive_noise_method: str = "complexity",
     ) -> tuple:
         """Unified sampling interface that works both as direct sampling and through the common_ksampler.
 
@@ -923,6 +951,13 @@ class KSampler:
                 multiscale_intermittent_fullres,
                 cfg_free_enabled,
                 cfg_free_start_percent,
+                batched_cfg,
+                dynamic_cfg_rescaling,
+                dynamic_cfg_method,
+                dynamic_cfg_percentile,
+                dynamic_cfg_target_scale,
+                adaptive_noise_enabled,
+                adaptive_noise_method,
             )
 
 
@@ -958,6 +993,14 @@ def sample1(
     # CFG-free sampling parameters
     cfg_free_enabled: bool = False,
     cfg_free_start_percent: float = 70.0,
+    # Advanced CFG optimizations
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95,
+    dynamic_cfg_target_scale: float = 1.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
 ) -> torch.Tensor:
     """Sample using the given parameters with the unified KSampler.
 
@@ -1056,6 +1099,13 @@ def sample1(
             flux=flux,
             cfg_free_enabled=cfg_free_enabled,
             cfg_free_start_percent=cfg_free_start_percent,
+            batched_cfg=batched_cfg,
+            dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+            dynamic_cfg_method=dynamic_cfg_method,
+            dynamic_cfg_percentile=dynamic_cfg_percentile,
+            dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+            adaptive_noise_enabled=adaptive_noise_enabled,
+            adaptive_noise_method=adaptive_noise_method,
         )
     else:
         # Use the standard KSampler for other samplers
@@ -1209,6 +1259,14 @@ def common_ksampler(
     # CFG-free sampling parameters
     cfg_free_enabled: bool = False,
     cfg_free_start_percent: float = 70.0,
+    # Advanced CFG optimizations
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95.0,
+    dynamic_cfg_target_scale: float = 7.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
 ) -> tuple:
     """Common ksampler function.
 
@@ -1277,6 +1335,13 @@ def common_ksampler(
         multiscale_intermittent_fullres=multiscale_intermittent_fullres,
         cfg_free_enabled=cfg_free_enabled,
         cfg_free_start_percent=cfg_free_start_percent,
+        batched_cfg=batched_cfg,
+        dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+        dynamic_cfg_method=dynamic_cfg_method,
+        dynamic_cfg_percentile=dynamic_cfg_percentile,
+        dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+        adaptive_noise_enabled=adaptive_noise_enabled,
+        adaptive_noise_method=adaptive_noise_method,
     )
     out = latent.copy()
     out["samples"] = samples

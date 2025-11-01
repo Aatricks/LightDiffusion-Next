@@ -196,6 +196,14 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             tome_enabled=settings.get("tome_enabled", False),
                             tome_ratio=settings.get("tome_ratio", 0.5),
                             tome_max_downsample=settings.get("tome_max_downsample", 1),
+                            # Advanced CFG optimizations (batched_cfg always True)
+                            batched_cfg=True,
+                            dynamic_cfg_rescaling=settings.get("dynamic_cfg_rescaling", False),
+                            dynamic_cfg_method=settings.get("dynamic_cfg_method", "variance"),
+                            dynamic_cfg_percentile=settings.get("dynamic_cfg_percentile", 95.0),
+                            dynamic_cfg_target_scale=settings.get("dynamic_cfg_target_scale", 7.0),
+                            adaptive_noise_enabled=settings.get("adaptive_noise_enabled", False),
+                            adaptive_noise_method=settings.get("adaptive_noise_method", "complexity"),
                             **multiscale_params,
                         )
 

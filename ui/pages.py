@@ -398,6 +398,64 @@ def render_generate_page():
 
                 st.info(f"💡 ToMe will merge ~{settings['tome_ratio']*100:.0f}% of similar tokens for speedup")
 
+        with st.expander("⚡ Advanced CFG Optimizations", expanded=False):
+            st.caption("Note: Batched CFG (8% speedup) is always enabled by default")
+            
+            settings["dynamic_cfg_rescaling"] = st.checkbox(
+                "Enable Dynamic CFG Rescaling",
+                value=settings.get("dynamic_cfg_rescaling", False),
+                help="Dynamically adjusts CFG scale based on guidance statistics to prevent over-saturation. Experimental feature.",
+                disabled=controls_disabled
+            )
+            
+            if settings["dynamic_cfg_rescaling"]:
+                col1, col2 = st.columns(2)
+                with col1:
+                    settings["dynamic_cfg_method"] = st.selectbox(
+                        "Rescaling Method",
+                        options=["variance", "range"],
+                        index=0 if settings.get("dynamic_cfg_method", "variance") == "variance" else 1,
+                        help="Variance: uses spatial variance of guidance. Range: uses percentile-based range.",
+                        disabled=controls_disabled
+                    )
+                with col2:
+                    settings["dynamic_cfg_percentile"] = st.slider(
+                        "Percentile (Range method)",
+                        min_value=80.0,
+                        max_value=99.0,
+                        value=settings.get("dynamic_cfg_percentile", 95.0),
+                        step=1.0,
+                        help="Percentile threshold for range-based rescaling.",
+                        disabled=controls_disabled
+                    )
+                settings["dynamic_cfg_target_scale"] = st.slider(
+                    "Target CFG Scale",
+                    min_value=1.0,
+                    max_value=15.0,
+                    value=settings.get("dynamic_cfg_target_scale", 7.0),
+                    step=0.5,
+                    help="Target CFG scale when rescaling is applied.",
+                    disabled=controls_disabled
+                )
+                st.info("💡 Dynamic CFG can improve quality by preventing over-saturation")
+            
+            settings["adaptive_noise_enabled"] = st.checkbox(
+                "Enable Adaptive Noise Scheduling",
+                value=settings.get("adaptive_noise_enabled", False),
+                help="Dynamically adjusts noise schedule based on image complexity. Experimental feature.",
+                disabled=controls_disabled
+            )
+            
+            if settings["adaptive_noise_enabled"]:
+                settings["adaptive_noise_method"] = st.selectbox(
+                    "Noise Scheduling Method",
+                    options=["complexity", "attention"],
+                    index=0 if settings.get("adaptive_noise_method", "complexity") == "complexity" else 1,
+                    help="Complexity: uses spatial variance. Attention: uses gradient magnitude.",
+                    disabled=controls_disabled
+                )
+                st.info("💡 Adaptive noise can optimize step allocation based on image complexity")
+
         with st.expander("💾 VRAM & Cache", expanded=False):
             settings["keep_models_loaded"] = st.checkbox("Keep Models in VRAM", value=settings["keep_models_loaded"], disabled=controls_disabled)
 

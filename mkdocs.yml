@@ -33,6 +33,7 @@ nav:
     - WaveSpeed Caching: wavespeed.md
     - Prompt Caching: prompt-caching.md
     - Align Your Steps: ays-scheduler.md
+    - Advanced CFG Optimizations: advanced-cfg-optimizations.md
   - Operations:
     - Performance & Troubleshooting: quirks.md
     - FAQ: faq.md

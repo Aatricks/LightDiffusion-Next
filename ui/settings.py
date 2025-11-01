@@ -70,6 +70,14 @@ def get_default_settings():
         "tome_ratio": 0.5,
         "tome_max_downsample": 1,
 
+        # Advanced CFG optimizations (batched_cfg always enabled, not in UI)
+        "dynamic_cfg_rescaling": False,
+        "dynamic_cfg_method": "variance",
+        "dynamic_cfg_percentile": 95.0,
+        "dynamic_cfg_target_scale": 7.0,
+        "adaptive_noise_enabled": False,
+        "adaptive_noise_method": "complexity",
+
         # Scheduler & Sampling
         "scheduler": "ays",  # Options: normal, karras, simple, beta, ays
         "sampler": "dpmpp_sde_cfgpp",  # Options: euler, euler_ancestral, dpmpp_2m, etc.

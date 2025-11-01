@@ -1,4 +1,5 @@
 import math
+import logging
 
 import torch
 
@@ -32,6 +33,12 @@ def cfg_function(
     #### Returns:
         - `torch.Tensor`: The CFG result.
     """
+    # Apply dynamic CFG rescaling if enabled
+    if "cfg_guider" in model_options:
+        cfg_guider = model_options["cfg_guider"]
+        if hasattr(cfg_guider, "dynamic_cfg_rescaling") and cfg_guider.dynamic_cfg_rescaling:
+            cond_scale = cfg_guider._apply_dynamic_cfg_rescaling(cond_pred, uncond_pred, cond_scale)
+    
     # Check for custom sampler CFG function first
     if "sampler_cfg_function" in model_options:
         # Precompute differences to avoid redundant operations
@@ -120,10 +127,9 @@ def sampling_function(
         else uncond
     )
 
-    # Create conditions list once
+    # Batched CFG is enabled by default for performance
+    # Both conditional and unconditional are computed in a single forward pass
     conds = [condo, uncond_]
-
-    # Get model predictions for both conditions
     cond_outputs = cond.calc_cond_batch(model, conds, x, timestep, model_options)
 
     # Apply pre-CFG functions if any
@@ -166,11 +172,28 @@ def sampling_function(
 class CFGGuider:
     """#### Class for guiding the sampling process with CFG."""
 
-    def __init__(self, model_patcher, flux=False):
+    def __init__(
+        self, 
+        model_patcher, 
+        flux=False,
+        dynamic_cfg_rescaling=False,
+        dynamic_cfg_method="variance",
+        dynamic_cfg_percentile=95.0,
+        dynamic_cfg_target_scale=7.0,
+        adaptive_noise_enabled=False,
+        adaptive_noise_method="complexity"
+    ):
         """#### Initialize the CFGGuider.
 
         #### Args:
             - `model_patcher` (object): The model patcher.
+            - `flux` (bool): Whether using Flux model.
+            - `dynamic_cfg_rescaling` (bool): Enable dynamic CFG rescaling.
+            - `dynamic_cfg_method` (str): Method for dynamic CFG ('variance' or 'range').
+            - `dynamic_cfg_percentile` (float): Percentile for range method.
+            - `dynamic_cfg_target_scale` (float): Target CFG scale.
+            - `adaptive_noise_enabled` (bool): Enable adaptive noise scheduling.
+            - `adaptive_noise_method` (str): Method for adaptive noise ('complexity' or 'attention').
         """
         self.model_patcher = model_patcher
         self.model_options = model_patcher.model_options
@@ -182,6 +205,18 @@ class CFGGuider:
         self.cfg_free_start_percent = 70.0
         self.original_cfg = 1.0
         self.sigmas = None
+        
+        # Dynamic CFG rescaling parameters
+        self.dynamic_cfg_rescaling = dynamic_cfg_rescaling
+        self.dynamic_cfg_method = dynamic_cfg_method
+        self.dynamic_cfg_percentile = dynamic_cfg_percentile
+        self.dynamic_cfg_target_scale = dynamic_cfg_target_scale
+        
+        # Adaptive noise scheduling parameters
+        self.adaptive_noise_enabled = adaptive_noise_enabled
+        self.adaptive_noise_method = adaptive_noise_method
+        self.complexity_history = []
+        self.base_sigmas = None
 
     def set_conds(self, positive, negative):
         """#### Set the conditions for CFG.
@@ -212,7 +247,6 @@ class CFGGuider:
         self.cfg_free_start_percent = max(0.0, min(100.0, start_percent))
         
         if enabled:
-            import logging
             logging.info(f"CFG-Free sampling ENABLED: will reduce CFG from {self.original_cfg} to 0 starting at {start_percent}% of steps")
             print(f"✓ CFG-Free sampling ACTIVE: CFG will gradually reduce to 0 starting at {start_percent:.0f}% of steps")
 
@@ -254,13 +288,100 @@ class CFGGuider:
                     
                     # Debug logging every 10% to confirm CFG-free is working
                     if current_step % max(1, total_steps // 10) == 0:
-                        import logging
                         logging.info(f"CFG-Free: step {current_step}/{total_steps} ({progress_percent:.1f}%), CFG: {self.cfg:.2f} -> {new_cfg:.2f}")
                     
                     self.cfg = new_cfg
             else:
                 # Before CFG-free region, use original CFG
                 self.cfg = self.original_cfg
+
+    def _apply_dynamic_cfg_rescaling(self, cond_pred, uncond_pred, cond_scale):
+        """#### Apply dynamic CFG rescaling based on prediction statistics.
+        
+        #### Args:
+            - `cond_pred` (torch.Tensor): Conditional prediction.
+            - `uncond_pred` (torch.Tensor): Unconditional prediction.
+            - `cond_scale` (float): Current CFG scale.
+            
+        #### Returns:
+            - `float`: Adjusted CFG scale.
+        """
+        if not self.dynamic_cfg_rescaling:
+            return cond_scale
+            
+        # Calculate the difference between conditional and unconditional predictions
+        diff = cond_pred - uncond_pred
+        
+        if self.dynamic_cfg_method == "variance":
+            # Variance-based rescaling: adjust CFG inversely to variance
+            variance = torch.var(diff).item()
+            
+            # Normalize variance to a reasonable range (empirically tuned)
+            # Higher variance = lower CFG to prevent oversaturation
+            # Lower variance = higher CFG to boost the effect
+            variance_normalized = min(variance / 0.1, 10.0)  # Clamp to reasonable range
+            scale_adjustment = 1.0 / (1.0 + variance_normalized * 0.1)
+            
+            adjusted_scale = cond_scale * scale_adjustment
+            logging.debug(f"Dynamic CFG (variance): {cond_scale:.2f} -> {adjusted_scale:.2f} (var={variance:.4f})")
+            
+        elif self.dynamic_cfg_method == "range":
+            # Range-based rescaling: adjust CFG based on percentile range
+            diff_flat = diff.flatten()
+            
+            # Calculate percentile range
+            percentile_val = self.dynamic_cfg_percentile
+            low = torch.quantile(diff_flat, (100 - percentile_val) / 100).item()
+            high = torch.quantile(diff_flat, percentile_val / 100).item()
+            range_val = high - low
+            
+            # Rescale to target CFG scale
+            # If range is large, reduce CFG; if range is small, increase CFG
+            target_range = 1.0  # Target normalized range
+            scale_adjustment = target_range / max(range_val, 0.01)
+            
+            adjusted_scale = min(cond_scale * scale_adjustment, self.dynamic_cfg_target_scale)
+            logging.debug(f"Dynamic CFG (range): {cond_scale:.2f} -> {adjusted_scale:.2f} (range={range_val:.4f})")
+        else:
+            adjusted_scale = cond_scale
+            
+        # Clamp to reasonable bounds
+        adjusted_scale = max(1.0, min(adjusted_scale, 20.0))
+        
+        return adjusted_scale
+    
+    def _calculate_complexity_metric(self, prediction):
+        """#### Calculate complexity metric for adaptive noise scheduling.
+        
+        #### Args:
+            - `prediction` (torch.Tensor): Model prediction.
+            
+        #### Returns:
+            - `float`: Complexity metric.
+        """
+        if not self.adaptive_noise_enabled:
+            return 0.0
+            
+        if self.adaptive_noise_method == "complexity":
+            # Measure complexity via gradient magnitude (edge detection proxy)
+            # Higher gradients = more detail = higher complexity
+            dx = prediction[:, :, :, 1:] - prediction[:, :, :, :-1]
+            dy = prediction[:, :, 1:, :] - prediction[:, :, :-1, :]
+            
+            # Take the smaller spatial dimensions to match both gradients
+            min_h = min(dx.shape[2], dy.shape[2])
+            min_w = min(dx.shape[3], dy.shape[3])
+            
+            gradient_magnitude = (dx[:, :, :min_h, :min_w].abs() + dy[:, :, :min_h, :min_w].abs()).mean().item()
+            return gradient_magnitude
+            
+        elif self.adaptive_noise_method == "attention":
+            # Measure variance across spatial dimensions (attention proxy)
+            # Higher variance = more focused attention = higher complexity
+            spatial_variance = prediction.var(dim=[2, 3]).mean().item()
+            return spatial_variance
+        else:
+            return 0.0
 
     def inner_set_conds(self, conds):
         """#### Set the internal conditions.
@@ -294,17 +415,28 @@ class CFGGuider:
         # Update CFG based on current sigma position if CFG-free is enabled
         if self.cfg_free_enabled:
             self._update_cfg_for_sigma(timestep)
+        
+        # Pass cfg_guider reference for dynamic rescaling
+        model_options_with_guider = model_options.copy()
+        model_options_with_guider["cfg_guider"] = self
 
-        return sampling_function(
+        result = sampling_function(
             self.inner_model,
             x,
             timestep,
             self.conds.get("negative", None),
             self.conds.get("positive", None),
             self.cfg,
-            model_options=model_options,
+            model_options=model_options_with_guider,
             seed=seed,
         )
+        
+        # Calculate complexity metric for adaptive noise scheduling
+        if self.adaptive_noise_enabled:
+            complexity = self._calculate_complexity_metric(result)
+            self.complexity_history.append(complexity)
+            
+        return result
 
     def inner_sample(
         self,
@@ -351,8 +483,29 @@ class CFGGuider:
             seed,
         )
 
-        # Store sigmas for CFG-free sampling
+        # Store sigmas for CFG-free sampling and adaptive noise scheduling
         self.sigmas = sigmas
+        
+        # Apply adaptive noise scheduling if enabled
+        if self.adaptive_noise_enabled:
+            # Store base sigmas on first run
+            if self.base_sigmas is None:
+                self.base_sigmas = sigmas.clone()
+            
+            # Modify sigmas based on complexity history
+            if len(self.complexity_history) > 0:
+                # Calculate average complexity
+                avg_complexity = sum(self.complexity_history) / len(self.complexity_history)
+                
+                # Adjust sigma schedule based on complexity
+                # Higher complexity = steeper noise schedule (more denoising power)
+                # Lower complexity = gentler noise schedule (preserve details)
+                complexity_factor = avg_complexity / max(0.01, avg_complexity + 0.1)
+                
+                # Apply exponential scaling to sigmas
+                sigmas = self.base_sigmas * (1.0 + complexity_factor * 0.5)
+                
+                logging.debug(f"Adaptive noise: complexity={avg_complexity:.4f}, factor={complexity_factor:.4f}")
 
         extra_args = {"model_options": self.model_options, "seed": seed}
 

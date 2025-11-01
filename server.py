@@ -123,6 +123,14 @@ class GenerateRequest(BaseModel):
     tome_enabled: bool = False
     tome_ratio: float = 0.5
     tome_max_downsample: int = 1
+    # Advanced CFG optimization parameters (batched_cfg enabled by default for 8% speedup)
+    batched_cfg: bool = True
+    dynamic_cfg_rescaling: bool = False
+    dynamic_cfg_method: str = "variance"
+    dynamic_cfg_percentile: float = 95.0
+    dynamic_cfg_target_scale: float = 7.0
+    adaptive_noise_enabled: bool = False
+    adaptive_noise_method: str = "complexity"
     # Optional extras (may not be used by the current pipeline but accepted)
     guidance_scale: Optional[float] = None
     seed: Optional[int] = None  # If provided >=0 we will reuse it
@@ -349,6 +357,14 @@ class GenerationBuffer:
             tome_enabled=first_req.tome_enabled,
             tome_ratio=first_req.tome_ratio,
             tome_max_downsample=first_req.tome_max_downsample,
+            # Advanced CFG optimizations (batched_cfg always enabled)
+            batched_cfg=first_req.batched_cfg,
+            dynamic_cfg_rescaling=first_req.dynamic_cfg_rescaling,
+            dynamic_cfg_method=first_req.dynamic_cfg_method,
+            dynamic_cfg_percentile=first_req.dynamic_cfg_percentile,
+            dynamic_cfg_target_scale=first_req.dynamic_cfg_target_scale,
+            adaptive_noise_enabled=first_req.adaptive_noise_enabled,
+            adaptive_noise_method=first_req.adaptive_noise_method,
         )
 
         # Toggle preview state for the duration of the pipeline call
@@ -423,6 +439,14 @@ class GenerationBuffer:
                         tome_enabled=p.req.tome_enabled,
                         tome_ratio=p.req.tome_ratio,
                         tome_max_downsample=p.req.tome_max_downsample,
+                        # Advanced CFG optimizations
+                        batched_cfg=p.req.batched_cfg,
+                        dynamic_cfg_rescaling=p.req.dynamic_cfg_rescaling,
+                        dynamic_cfg_method=p.req.dynamic_cfg_method,
+                        dynamic_cfg_percentile=p.req.dynamic_cfg_percentile,
+                        dynamic_cfg_target_scale=p.req.dynamic_cfg_target_scale,
+                        adaptive_noise_enabled=p.req.adaptive_noise_enabled,
+                        adaptive_noise_method=p.req.adaptive_noise_method,
                     )
 
                     try:

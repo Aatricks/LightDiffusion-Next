@@ -81,6 +81,14 @@ def pipeline(
     tome_enabled: bool = False,
     tome_ratio: float = 0.5,
     tome_max_downsample: int = 1,
+    # Advanced CFG optimization parameters
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95.0,
+    dynamic_cfg_target_scale: float = 7.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
     # Path to the input image when running in img2img/upscale mode
     img2img_image: str | None = None,
     # Optional per-sample data used when `prompt` is a list (batched mode).
@@ -122,6 +130,13 @@ def pipeline(
         - `tome_enabled` (bool, optional): Enable Token Merging for speedup by merging similar tokens. Defaults to False.
         - `tome_ratio` (float, optional): Percentage of tokens to merge (0.0-1.0). Higher = more aggressive. Defaults to 0.5.
         - `tome_max_downsample` (int, optional): Only apply ToMe to layers with downsampling <= this value. Defaults to 1.
+        - `batched_cfg` (bool, optional): Enable batched CFG computation for 8% speedup (always enabled). Defaults to True.
+        - `dynamic_cfg_rescaling` (bool, optional): Enable dynamic CFG rescaling to prevent over-saturation. Defaults to False.
+        - `dynamic_cfg_method` (str, optional): Rescaling method ('variance' or 'range'). Defaults to 'variance'.
+        - `dynamic_cfg_percentile` (float, optional): Percentile threshold for range-based rescaling. Defaults to 95.0.
+        - `dynamic_cfg_target_scale` (float, optional): Target CFG scale when rescaling. Defaults to 7.0.
+        - `adaptive_noise_enabled` (bool, optional): Enable adaptive noise scheduling based on complexity. Defaults to False.
+        - `adaptive_noise_method` (str, optional): Noise scheduling method ('complexity' or 'attention'). Defaults to 'complexity'.
     """
     global last_seed
 
@@ -424,6 +439,13 @@ def pipeline(
                 multiscale_intermittent_fullres=multiscale_intermittent_fullres,
                 cfg_free_enabled=cfg_free_enabled,
                 cfg_free_start_percent=cfg_free_start_percent,
+                batched_cfg=batched_cfg,
+                dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+                dynamic_cfg_method=dynamic_cfg_method,
+                dynamic_cfg_percentile=dynamic_cfg_percentile,
+                dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+                adaptive_noise_enabled=adaptive_noise_enabled,
+                adaptive_noise_method=adaptive_noise_method,
             )
 
             # Decode and save each resulting image individually so that we
