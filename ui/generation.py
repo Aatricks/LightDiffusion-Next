@@ -152,6 +152,10 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
 
                 while attempt_chunk > 0 and not stop_event.is_set():
                     try:
+                        # Determine if we're using Flux based on selected model
+                        sel_model = settings.get("model_path")
+                        is_flux = detect_model_type(sel_model) == "FLUX" if sel_model else False
+                        
                         result = pipeline(
                             prompt=settings.get("prompt", ""),
                             negative_prompt=settings.get("negative_prompt", ""),
@@ -170,6 +174,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             # use it for internal grouping.
                             batch=configured_batch,
                             model_path=settings.get("model_path", None),
+                            flux_enabled=is_flux,
                             hires_fix=settings.get("hiresfix", False),
                             adetailer=settings.get("adetailer", False),
                             enhance_prompt=settings.get("enhance_prompt", False),
@@ -351,8 +356,19 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     generated_image_paths = []
 
     # choose primary output folder based on selected model type
+    # Mirror the logic from pipeline.py line 219:
+    # model_type = detect_model_type(model_path) if model_path else ("FLUX" if flux_enabled else ("SD15" if not realistic_model else "SD15"))
     sel_model = settings.get("model_path")
-    model_type = detect_model_type(sel_model) if sel_model else None
+    if sel_model:
+        model_type = detect_model_type(sel_model)
+    else:
+        # When no model is selected (Auto mode), check if we're using Flux
+        # This happens when the user selects a Flux model in the dropdown but then switches to Auto
+        # or when Flux is enabled through other means
+        model_type = None
+    
+    # Determine primary output directories to search
+    # Note: If model detection is uncertain, we may need to check multiple folders
     if model_type == "FLUX":
         primary_dirs = ["./output/Flux"]
     elif settings["img2img_mode"]:
@@ -362,7 +378,9 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     elif settings["hiresfix"]:
         primary_dirs = ["./output/HiresFix"]
     else:
-        primary_dirs = ["./output/Classic"]
+        # For Classic/unknown, also check Flux folder as fallback
+        # This handles the case where Flux was used but model_type wasn't detected
+        primary_dirs = ["./output/Classic", "./output/Flux"]
 
     all_outputs = []
     for output_dir in primary_dirs:

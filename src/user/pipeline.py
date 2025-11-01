@@ -974,10 +974,10 @@ def pipeline(
                 )
                 ksampler_3 = ksampler.sample(
                     seed=current_seed,
-                    steps=20,
-                    cfg=1,
-                    sampler_name="euler_cfgpp",
-                    scheduler="beta",
+                    steps=steps,
+                    cfg=1,  # Flux works best with cfg=1
+                    sampler_name=sampler,
+                    scheduler=scheduler,
                     denoise=1,
                     model=unetloadergguf_10[0],
                     positive=cliptextencodeflux_15[0],
@@ -1000,10 +1000,10 @@ def pipeline(
                     "prompt": prompt,
                     "negative_prompt": negative_prompt,
                     "seed": str(current_seed),
-                    "sampler": "euler_cfgpp",
-                    "steps": "20",
+                    "sampler": sampler,
+                    "steps": str(steps),
                     "cfg": "1",
-                    "scheduler": "beta",
+                    "scheduler": scheduler,
                     "denoise": "1",
                     "width": str(w),
                     "height": str(h),
