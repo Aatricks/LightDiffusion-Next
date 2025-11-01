@@ -475,7 +475,11 @@ class UNetModel1(nn.Module):
                 ch = mult * model_channels
                 num_transformers = transformer_depth.pop(0)
                 if num_transformers > 0:
-                    dim_head = ch // num_heads
+                    if num_head_channels == -1:
+                        dim_head = ch // num_heads
+                    else:
+                        num_heads = ch // num_head_channels
+                        dim_head = num_head_channels
                     disabled_sa = False
 
                     if (
@@ -533,7 +537,12 @@ class UNetModel1(nn.Module):
                 ds *= 2
                 self._feature_size += ch
 
-        dim_head = ch // num_heads
+        if num_head_channels == -1:
+            dim_head = ch // num_heads
+        else:
+            num_heads = ch // num_head_channels
+            dim_head = num_head_channels
+        
         mid_block = [
             get_resblock(
                 merge_factor=merge_factor,
@@ -608,7 +617,11 @@ class UNetModel1(nn.Module):
                 ch = model_channels * mult
                 num_transformers = transformer_depth_output.pop()
                 if num_transformers > 0:
-                    dim_head = ch // num_heads
+                    if num_head_channels == -1:
+                        dim_head = ch // num_heads
+                    else:
+                        num_heads = ch // num_head_channels
+                        dim_head = num_head_channels
                     disabled_sa = False
 
                     if (
