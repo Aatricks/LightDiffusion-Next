@@ -36,11 +36,11 @@
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Prompt Caching - LightDiffusion-Next</title>
+    <title>Token Merging (ToMe) - LightDiffusion-Next</title>
     
 
 
-<title>Prompt Caching</title>
+<title>Token Merging (ToMe)</title>
 
 
 
@@ -50,18 +50,18 @@
 
 
 
-<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/prompt-caching/">
+<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/tome/">
 
 
 <!-- Open Graph (Facebook, LinkedIn) -->
 
-<meta property="og:title" content="Prompt Caching">
+<meta property="og:title" content="Token Merging (ToMe)">
 
 
 
 
 
-<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/prompt-caching/">
+<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/tome/">
 
 
 
@@ -70,7 +70,7 @@
 
 <!-- Twitter Card -->
 
-<meta name="twitter:title" content="Prompt Caching">
+<meta name="twitter:title" content="Token Merging (ToMe)">
 
 
 
@@ -650,6 +650,40 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/cfg-free-sampling/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        CFG-Free Sampling
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/tome/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        Token Merging (ToMe)
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/sageattention/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -689,23 +723,6 @@
 
         
         WaveSpeed Caching
-        
-
-        
-
-        
-
-        
-    </a>
-</li>
-                
-                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
-        data-size="default" href="/LightDiffusion-Next/prompt-caching/"
-        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
-
-        
-        Prompt Caching
         
 
         
@@ -802,12 +819,12 @@
         <h1
           class="scroll-m-20 text-4xl font-semibold tracking-tight sm:text-3xl xl:text-4xl"
         >
-          Prompt Caching
+          Token Merging (ToMe)
         </h1>
 
         <div class="flex items-center gap-2 pt-1.5">
           
-<button onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/prompt-caching.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))" 
+<button onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/tome.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))" 
         data-slot="button" 
         class="cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md gap-1.5 px-3 has-[&>svg]:px-2.5 h-8 shadow-none md:h-7 md:text-[0.8rem]">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-copy ">
@@ -820,7 +837,7 @@
             data-slot="button"
             id="previous-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/wavespeed/"
+            href="/LightDiffusion-Next/cfg-free-sampling/"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -846,7 +863,7 @@
             data-slot="button"
             id="next-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/ays-scheduler/"
+            href="/LightDiffusion-Next/sageattention/"
           >
             <span class="sr-only">Next</span>
             <svg
@@ -876,68 +893,340 @@
     </div>
   </div>
   <div class="typography w-full flex-1 *:data-[slot=alert]:first:mt-0">
-    <h2 id="1-prompt-attention-caching">1. Prompt Attention Caching</h2>
-<h3 id="what-it-does">What It Does</h3>
-<p>Caches CLIP text embeddings for prompts you've already encoded. When you reuse a prompt (or parts of it), the embedding is retrieved from cache instead of being recomputed.</p>
-<h3 id="when-it-helps-most">When It Helps Most</h3>
-<ul>
-<li>Batch generation with same prompt</li>
-<li>Testing different seeds</li>
-<li>Incremental prompt refinement</li>
-<li>Generation sessions with repeated themes</li>
-</ul>
-<h3 id="configuration">Configuration</h3>
-<p><strong>Enable/Disable</strong> (default: enabled):</p>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.Utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">prompt_cache</span>
-
-<span class="c1"># Enable (default)</span>
-<span class="n">prompt_cache</span><span class="o">.</span><span class="n">enable_prompt_cache</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
-
-<span class="c1"># Disable</span>
-<span class="n">prompt_cache</span><span class="o">.</span><span class="n">enable_prompt_cache</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
-
-<span class="c1"># Check status</span>
-<span class="n">stats</span> <span class="o">=</span> <span class="n">prompt_cache</span><span class="o">.</span><span class="n">get_cache_stats</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hit rate: </span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="s1">&#39;hit_rate&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <h2 id="overview">Overview</h2>
+<p>Token Merging (ToMe) is a <strong>performance optimization</strong> that accelerates diffusion models by intelligently merging similar tokens in the attention mechanism. By identifying and combining redundant computations, ToMe achieves <strong>20-60% speedup</strong> with minimal quality impact.</p>
+<p>Unlike feature caching (DeepCache, WaveSpeed), ToMe reduces the computational graph itself — fewer tokens means fewer attention operations, less memory bandwidth, and faster generation.</p>
+<p>This is a <strong>training-free</strong>, <strong>drop-in optimization</strong> that works with all Stable Diffusion models (SD1.5, SDXL) and can be combined with other speedup techniques.</p>
+<h2 id="how-it-works">How It Works</h2>
+<h3 id="the-token-redundancy-problem">The Token Redundancy Problem</h3>
+<p>Diffusion models process images as sequences of tokens (patches):</p>
+<div class="codehilite"><pre><span></span><code>Input Image (512×512) → Tokenize → 4096 tokens (64×64 grid of 8×8 patches)
 </code></pre></div>
 
-<p><strong>Cache Settings</strong>:
-- Maximum entries: 128 prompts
-- Memory usage: ~50-200MB
-- Cache cleared on: restart or manual clear
-- Automatic pruning: removes oldest 25% when full</p>
-<h3 id="viewing-cache-stats">Viewing Cache Stats</h3>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.Utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">prompt_cache</span>
+<p>At each attention layer, <strong>every token attends to every other token</strong>:</p>
+<div class="arithmatex">\[
+\text{Attention Cost} = O(N^2 \cdot D)
+\]</div>
+<p>Where:
+- <span class="arithmatex">\(N\)</span> = number of tokens (e.g., 4096 for 512×512)
+- <span class="arithmatex">\(D\)</span> = embedding dimension (e.g., 768 or 1024)</p>
+<p><strong>Key insight:</strong> Many tokens are highly similar (e.g., sky regions, uniform backgrounds, smooth gradients). Computing attention between nearly-identical tokens is redundant.</p>
+<h3 id="the-tome-solution">The ToMe Solution</h3>
+<p>Token Merging reduces redundancy through <strong>bipartite matching</strong>:</p>
+<div class="codehilite"><pre><span></span><code>Step 1: Split tokens into two sets
+┌─────────────────────┬─────────────────────┐
+│ Destination Set (dst)│ Source Set (src)    │
+│ [Token 1, 3, 5, ...] │ [Token 2, 4, 6, ...] │
+└─────────────────────┴─────────────────────┘
 
-<span class="c1"># Print statistics</span>
-<span class="n">prompt_cache</span><span class="o">.</span><span class="n">print_cache_stats</span><span class="p">()</span>
+Step 2: Compute similarity (cosine distance)
+   dst[0] ↔ src[0]: 0.92  (highly similar!)
+   dst[0] ↔ src[1]: 0.34
+   dst[0] ↔ src[2]: 0.18
+   ...
 
-<span class="c1"># Output:</span>
-<span class="c1"># ============================================================</span>
-<span class="c1"># Prompt Cache Statistics</span>
-<span class="c1"># ============================================================</span>
-<span class="c1">#   Status: Enabled</span>
-<span class="c1">#   Entries: 42</span>
-<span class="c1">#   Size: ~85.3 MB</span>
-<span class="c1">#   Requests: 150 (hits: 108, misses: 42)</span>
-<span class="c1">#   Hit Rate: 72.0%</span>
-<span class="c1"># ============================================================</span>
+Step 3: Merge most similar pairs
+   merged_token[0] = (dst[0] + src[0]) / 2
+
+Step 4: Continue with fewer tokens
+   4096 tokens → 2048 tokens (50% merge ratio)
+   Attention cost reduced by ~4x
 </code></pre></div>
 
-<h3 id="best-practices">Best Practices</h3>
+<p>This happens <strong>per attention layer</strong>, with merge ratio dynamically adjusting based on layer depth.</p>
+<h2 id="configuration">Configuration</h2>
+<h3 id="parameters">Parameters</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Range</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tome_enabled</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>-</td>
+<td>Enable Token Merging</td>
+</tr>
+<tr>
+<td><code>tome_ratio</code></td>
+<td>float</td>
+<td><code>0.5</code></td>
+<td>0.0-0.9</td>
+<td>Percentage of tokens to merge (higher = faster, lower quality)</td>
+</tr>
+<tr>
+<td><code>tome_max_downsample</code></td>
+<td>int</td>
+<td><code>1</code></td>
+<td>1, 2, 4, 8</td>
+<td>Apply ToMe to layers with downsampling ≤ this value</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="choosing-tome_max_downsample">Choosing <code>tome_max_downsample</code></h3>
+<p>Controls which UNet layers apply ToMe:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Layers Affected</th>
+<th>Speed vs Quality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1</strong></td>
+<td>Only full-resolution layers (4/15)</td>
+<td>Conservative, minimal quality impact</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>Half-resolution layers (8/15)</td>
+<td>Balanced (recommended)</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>Quarter-resolution layers (12/15)</td>
+<td>Aggressive</td>
+</tr>
+<tr>
+<td><strong>8</strong></td>
+<td>All layers (15/15)</td>
+<td>Maximum speedup, noticeable quality loss</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Recommendation:</strong> Start with <code>max_downsample=1</code>. Only increase if you need more speedup and can tolerate quality reduction.</p>
+<h2 id="usage">Usage</h2>
+<h3 id="streamlit-ui">Streamlit UI</h3>
+<p>Enable in the <strong>🔀 Token Merging (ToMe)</strong> expander:</p>
 <ol>
-<li><strong>Leave it enabled</strong> - negligible overhead, significant gains</li>
-<li><strong>Monitor hit rate</strong> - should be &gt;50% in typical workflows</li>
-<li><strong>Clear cache</strong> when switching models or major prompt changes</li>
-<li><strong>Batch similar prompts</strong> to maximize cache hits</li>
+<li>Check <strong>Enable Token Merging</strong></li>
+<li>Select a preset:</li>
+<li><strong>Conservative</strong> — 30% merge, max_downsample=2 (minimal impact)</li>
+<li><strong>Balanced</strong> — 50% merge, max_downsample=1 (recommended)</li>
+<li><strong>Aggressive</strong> — 70% merge, max_downsample=1 (maximum speed)</li>
+<li><strong>Custom</strong> — Manual slider control</li>
+<li>Generate images — console confirms activation</li>
 </ol>
+<p><strong>Visual feedback:</strong></p>
+<div class="codehilite"><pre><span></span><code>✓ Token Merging ACTIVE: 50% merge ratio, max_downsample=1
+</code></pre></div>
+
+<h3 id="rest-api">REST API</h3>
+<p>Include in your generation request:</p>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:7861/api/generate<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">        &quot;prompt&quot;: &quot;a cyberpunk cityscape at night, neon lights&quot;,</span>
+<span class="s1">        &quot;width&quot;: 1024,</span>
+<span class="s1">        &quot;height&quot;: 512,</span>
+<span class="s1">        &quot;steps&quot;: 25,</span>
+<span class="s1">        &quot;tome_enabled&quot;: true,</span>
+<span class="s1">        &quot;tome_ratio&quot;: 0.5,</span>
+<span class="s1">        &quot;tome_max_downsample&quot;: 1</span>
+<span class="s1">      }&#39;</span>
+</code></pre></div>
+
+<h3 id="python-api">Python API</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.user.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">pipeline</span>
+
+<span class="n">pipeline</span><span class="p">(</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;a detailed fantasy castle on a cliff&quot;</span><span class="p">,</span>
+    <span class="n">w</span><span class="o">=</span><span class="mi">768</span><span class="p">,</span>
+    <span class="n">h</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="s2">&quot;dpmpp_sde_cfgpp&quot;</span><span class="p">,</span>
+    <span class="n">scheduler</span><span class="o">=</span><span class="s2">&quot;ays&quot;</span><span class="p">,</span>
+    <span class="n">tome_enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">tome_ratio</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+    <span class="n">tome_max_downsample</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">number</span><span class="o">=</span><span class="mi">4</span>  <span class="c1"># Generate multiple images faster</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="no-speedup-detected">"No speedup detected"</h3>
+<p><strong>Possible causes:</strong>
+1. <strong>tomesd not installed</strong> — Install with <code>pip install tomesd</code>
+2. <strong>Other bottlenecks</strong> — Enable only ToMe for isolated testing
+3. <strong>Very low resolution</strong> — ToMe benefits are minimal below 512px</p>
+<p><strong>Solutions:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Check installation</span>
+python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import tomesd; print(&#39;ToMe available&#39;)&quot;</span>
+
+<span class="c1"># Test in isolation at 1024×512 (ideal resolution for ToMe)</span>
+python<span class="w"> </span>quick_tome_test.py
+</code></pre></div>
+
+<h3 id="images-look-blurry-or-soft">"Images look blurry or soft"</h3>
+<p><strong>Cause:</strong> <code>tome_ratio</code> too high (&gt;0.6) or <code>max_downsample</code> too aggressive (&gt;2).</p>
+<p><strong>Solutions:</strong>
+- Reduce <code>tome_ratio</code> to 0.4-0.5
+- Lower <code>max_downsample</code> to 1
+- Increase <code>steps</code> to 30-35 for better convergence
+- Disable ToMe for final high-quality renders</p>
+<h3 id="minimal-speedup-despite-70-merge">"Minimal speedup despite 70% merge"</h3>
+<p><strong>Cause:</strong> Other optimizations (DeepCache, Multi-Scale) already bottlenecked elsewhere (VAE decode, sampling overhead).</p>
+<p><strong>Solutions:</strong>
+- Profile with isolated tests (disable all other optimizations)
+- Ensure GPU isn't memory-bound (reduce batch size)
+- Check system monitoring for CPU/disk bottlenecks</p>
+<h3 id="model-fails-to-load-tomesd-errors">"Model fails to load / tomesd errors"</h3>
+<p><strong>Cause:</strong> Outdated tomesd version or incompatible model architecture.</p>
+<p><strong>Solutions:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Update tomesd</span>
+pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>tomesd
+
+<span class="c1"># Check compatibility (ToMe only works with UNet-based models)</span>
+<span class="c1"># Flux/Transformer models require different ToMe variant (not yet supported)</span>
+</code></pre></div>
+
+<h2 id="technical-details">Technical Details</h2>
+<h3 id="implementation">Implementation</h3>
+<p>ToMe is applied via the <code>ModelPatcher</code> class (<code>src/Model/ModelPatcher.py</code>):</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">apply_tome</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ratio</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">max_downsample</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply Token Merging to the diffusion model.&quot;&quot;&quot;</span>
+    <span class="c1"># Remove any existing patch (handles cached models)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">tomesd</span><span class="o">.</span><span class="n">remove_patch</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="c1"># Apply ToMe patch</span>
+    <span class="n">tomesd</span><span class="o">.</span><span class="n">apply_patch</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>  <span class="c1"># ModelPatcher with .model.diffusion_model structure</span>
+        <span class="n">ratio</span><span class="o">=</span><span class="n">ratio</span><span class="p">,</span>
+        <span class="n">max_downsample</span><span class="o">=</span><span class="n">max_downsample</span>
+    <span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">tome_enabled</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">True</span>
+</code></pre></div>
+
+<p><strong>Cache handling:</strong> ToMe patches are removed after each generation and re-applied as needed, ensuring correct behavior with model caching.</p>
+<h3 id="bipartite-matching-algorithm">Bipartite Matching Algorithm</h3>
+<p>ToMe uses <strong>proportional attention-based matching</strong>:</p>
+<ol>
+<li>
+<p><strong>Partition tokens:</strong>
+   $$
+   T_{\text{dst}}, T_{\text{src}} = \text{partition}(T, \text{stride}=(2,2))
+   $$</p>
+</li>
+<li>
+<p><strong>Compute similarity matrix:</strong>
+   $$
+   S_{ij} = \frac{T_{\text{dst}}[i] \cdot T_{\text{src}}[j]}{||T_{\text{dst}}[i]|| \cdot ||T_{\text{src}}[j]||}
+   $$</p>
+</li>
+<li>
+<p><strong>Find top-k matches:</strong>
+   $$
+   k = \lfloor \text{ratio} \times |T_{\text{src}}| \rfloor
+   $$</p>
+</li>
+<li>
+<p><strong>Merge tokens:</strong>
+   $$
+   T'[i] = \frac{T_{\text{dst}}[i] + T_{\text{src}}[\text{match}(i)]}{2}
+   $$</p>
+</li>
+</ol>
+<h2 id="compatibility">Compatibility</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Compatible?</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SD1.5 models</strong></td>
+<td>✓</td>
+<td>Full support, tested extensively</td>
+</tr>
+<tr>
+<td><strong>SDXL models</strong></td>
+<td>✓</td>
+<td>Full support, larger speedup</td>
+</tr>
+<tr>
+<td><strong>Flux models</strong></td>
+<td>✗</td>
+<td>UNet-specific, Transformer variant TBD</td>
+</tr>
+<tr>
+<td><strong>All samplers</strong></td>
+<td>✓</td>
+<td>ToMe patches attention, agnostic to sampler</td>
+</tr>
+<tr>
+<td><strong>CFG-Free</strong></td>
+<td>✓</td>
+<td>No interaction, both apply independently</td>
+</tr>
+<tr>
+<td><strong>DeepCache</strong></td>
+<td>✓</td>
+<td>Excellent combination, speedups multiply</td>
+</tr>
+<tr>
+<td><strong>Multi-Scale</strong></td>
+<td>✓</td>
+<td>Compatible, benefits stack</td>
+</tr>
+<tr>
+<td><strong>HiRes Fix</strong></td>
+<td>✓</td>
+<td>Applied to all upscaling passes</td>
+</tr>
+<tr>
+<td><strong>ADetailer</strong></td>
+<td>✓</td>
+<td>Applied to detail-enhancement passes</td>
+</tr>
+<tr>
+<td><strong>Stable-Fast</strong></td>
+<td>✓</td>
+<td>Can combine for maximum speedup</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="limitations">Limitations</h2>
+<ol>
+<li><strong>UNet-only:</strong> Transformer architectures (Flux) use different attention patterns — dedicated Transformer-ToMe needed</li>
+<li><strong>Detail sensitivity:</strong> High-frequency textures (fabric weave, individual hairs) see most quality impact</li>
+<li><strong>Diminishing returns:</strong> Beyond 60% merge, quality degrades faster than speed improves</li>
+<li><strong>One-time patch:</strong> Doesn't adapt merge ratio dynamically during generation</li>
+</ol>
+<h2 id="related-optimizations">Related Optimizations</h2>
+<ul>
+<li><strong><a href="../wavespeed/#deepcache">DeepCache</a></strong>: Feature caching — complements ToMe, speedups multiply (~2.8x combined)</li>
+<li><strong><a href="../optimizations/#multi-scale">Multi-Scale Diffusion</a></strong>: Resolution-based optimization — also reduces token count</li>
+<li><strong><a href="../stablefast/">Stable-Fast</a></strong>: Compilation-based speedup — can combine for maximum performance</li>
+</ul>
+<h2 id="references-further-reading">References &amp; Further Reading</h2>
+<ul>
+<li><strong>Original Paper:</strong> <a href="https://arxiv.org/abs/2303.17604">Token Merging for Fast Stable Diffusion</a> (Bolya &amp; Hoffman, 2023)</li>
+<li><strong>tomesd Library:</strong> https://github.com/dbolya/tomesd</li>
+<li><strong>ToMe for Vision Transformers:</strong> https://github.com/facebookresearch/ToMe</li>
+</ul>
   </div>
 </article>
                                 <div class="mx-auto flex flex-wrap h-16 w-full max-w-2xl items-center gap-2 px-4 md:px-0">
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 shadow-none"
-        href="/LightDiffusion-Next/wavespeed/">
+        href="/LightDiffusion-Next/cfg-free-sampling/">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-left ">
@@ -945,14 +1234,14 @@
             <path d="M5 12l6 6"></path>
             <path d="M5 12l6 -6"></path>
         </svg>
-        <span class="max-[500px]:hidden">WaveSpeed Caching</span>
+        <span class="max-[500px]:hidden">CFG-Free Sampling</span>
     </a>
     
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 ml-auto shadow-none"
-        href="/LightDiffusion-Next/ays-scheduler/">
-        <span class="max-[500px]:hidden">Align Your Steps</span>
+        href="/LightDiffusion-Next/sageattention/">
+        <span class="max-[500px]:hidden">SageAttention & SpargeAttn</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-right ">
@@ -1057,6 +1346,18 @@
                             
                         </a>
                         
+                        <a class="text-2xl font-medium" href="../cfg-free-sampling/">
+                            
+                            CFG-Free Sampling
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="./">
+                            
+                            Token Merging (ToMe)
+                            
+                        </a>
+                        
                         <a class="text-2xl font-medium" href="../sageattention/">
                             
                             SageAttention & SpargeAttn
@@ -1072,12 +1373,6 @@
                         <a class="text-2xl font-medium" href="../wavespeed/">
                             
                             WaveSpeed Caching
-                            
-                        </a>
-                        
-                        <a class="text-2xl font-medium" href="./">
-                            
-                            Prompt Caching
                             
                         </a>
                         
@@ -1130,19 +1425,33 @@
         
         
         
-        <a href="#what-it-does"
+        <a href="#overview"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            What It Does
+            Overview
         </a>
         
 
         
-        <a href="#when-it-helps-most"
+        <a href="#how-it-works"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            When It Helps Most
+            How It Works
         </a>
+        
+        
+        <a href="#the-token-redundancy-problem"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            The Token Redundancy Problem
+        </a>
+        
+        <a href="#the-tome-solution"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            The ToMe Solution
+        </a>
+        
         
 
         
@@ -1152,20 +1461,134 @@
             Configuration
         </a>
         
+        
+        <a href="#parameters"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Parameters
+        </a>
+        
+        <a href="#choosing-tome_max_downsample"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Choosing tome_max_downsample
+        </a>
+        
+        
 
         
-        <a href="#viewing-cache-stats"
+        <a href="#usage"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Viewing Cache Stats
+            Usage
+        </a>
+        
+        
+        <a href="#streamlit-ui"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Streamlit UI
+        </a>
+        
+        <a href="#rest-api"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            REST API
+        </a>
+        
+        <a href="#python-api"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Python API
+        </a>
+        
+        
+
+        
+        <a href="#troubleshooting"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Troubleshooting
+        </a>
+        
+        
+        <a href="#no-speedup-detected"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            "No speedup detected"
+        </a>
+        
+        <a href="#images-look-blurry-or-soft"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            "Images look blurry or soft"
+        </a>
+        
+        <a href="#minimal-speedup-despite-70-merge"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            "Minimal speedup despite 70% merge"
+        </a>
+        
+        <a href="#model-fails-to-load-tomesd-errors"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            "Model fails to load / tomesd errors"
+        </a>
+        
+        
+
+        
+        <a href="#technical-details"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Technical Details
+        </a>
+        
+        
+        <a href="#implementation"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Implementation
+        </a>
+        
+        <a href="#bipartite-matching-algorithm"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Bipartite Matching Algorithm
+        </a>
+        
+        
+
+        
+        <a href="#compatibility"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Compatibility
         </a>
         
 
         
-        <a href="#best-practices"
+        <a href="#limitations"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="2">
-            Best Practices
+            Limitations
+        </a>
+        
+
+        
+        <a href="#related-optimizations"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            Related Optimizations
+        </a>
+        
+
+        
+        <a href="#references-further-reading"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2">
+            References &amp; Further Reading
         </a>
         
 
