@@ -1,5 +1,7 @@
 import math
+
 import torch
+
 from src.cond import cond, cond_util
 
 
@@ -175,6 +177,11 @@ class CFGGuider:
         self.original_conds = {}
         self.cfg = 1.0
         self.flux = flux
+        # CFG-free sampling parameters
+        self.cfg_free_enabled = False
+        self.cfg_free_start_percent = 70.0
+        self.original_cfg = 1.0
+        self.sigmas = None
 
     def set_conds(self, positive, negative):
         """#### Set the conditions for CFG.
@@ -192,6 +199,68 @@ class CFGGuider:
             - `cfg` (float): The CFG scale.
         """
         self.cfg = cfg
+        self.original_cfg = cfg
+
+    def set_cfg_free_params(self, enabled=False, start_percent=70.0):
+        """#### Set CFG-free sampling parameters.
+
+        #### Args:
+            - `enabled` (bool): Whether to enable CFG-free sampling.
+            - `start_percent` (float): Percentage (0-100) at which to start reducing CFG to 0.
+        """
+        self.cfg_free_enabled = enabled
+        self.cfg_free_start_percent = max(0.0, min(100.0, start_percent))
+        
+        if enabled:
+            import logging
+            logging.info(f"CFG-Free sampling ENABLED: will reduce CFG from {self.original_cfg} to 0 starting at {start_percent}% of steps")
+            print(f"✓ CFG-Free sampling ACTIVE: CFG will gradually reduce to 0 starting at {start_percent:.0f}% of steps")
+
+    def _update_cfg_for_sigma(self, sigma):
+        """#### Update CFG value based on current sigma and CFG-free parameters.
+
+        #### Args:
+            - `sigma` (float): Current sigma/timestep value.
+        """
+        if not self.cfg_free_enabled or self.sigmas is None or len(self.sigmas) <= 1:
+            return
+
+        # Find the position of current sigma in the schedule
+        # Sigmas go from high to low, so we need to find where we are
+        total_steps = len(self.sigmas) - 1
+
+        # Find closest sigma index
+        current_step = 0
+        min_diff = float('inf')
+        for i, s in enumerate(self.sigmas):
+            diff = abs(float(s) - float(sigma))
+            if diff < min_diff:
+                min_diff = diff
+                current_step = i
+
+        # Calculate current progress percentage
+        if total_steps > 0:
+            progress_percent = (current_step / total_steps) * 100.0
+
+            if progress_percent >= self.cfg_free_start_percent:
+                # Calculate how far we are into the CFG-free region
+                remaining_percent = 100.0 - self.cfg_free_start_percent
+                if remaining_percent > 0:
+                    # Linear interpolation from original_cfg to 0
+                    cfg_free_progress = (progress_percent - self.cfg_free_start_percent) / remaining_percent
+                    new_cfg = self.original_cfg * (1.0 - cfg_free_progress)
+                    # Ensure we don't go below 0
+                    new_cfg = max(0.0, new_cfg)
+                    
+                    # Debug logging every 10% to confirm CFG-free is working
+                    if current_step % max(1, total_steps // 10) == 0:
+                        import logging
+                        logging.info(f"CFG-Free: step {current_step}/{total_steps} ({progress_percent:.1f}%), CFG: {self.cfg:.2f} -> {new_cfg:.2f}")
+                    
+                    self.cfg = new_cfg
+            else:
+                # Before CFG-free region, use original CFG
+                self.cfg = self.original_cfg
 
     def inner_set_conds(self, conds):
         """#### Set the internal conditions.
@@ -222,6 +291,10 @@ class CFGGuider:
         #### Returns:
             - `torch.Tensor`: The predicted noise.
         """
+        # Update CFG based on current sigma position if CFG-free is enabled
+        if self.cfg_free_enabled:
+            self._update_cfg_for_sigma(timestep)
+
         return sampling_function(
             self.inner_model,
             x,
@@ -277,6 +350,9 @@ class CFGGuider:
             denoise_mask,
             seed,
         )
+
+        # Store sigmas for CFG-free sampling
+        self.sigmas = sigmas
 
         extra_args = {"model_options": self.model_options, "seed": seed}
 

@@ -4,26 +4,29 @@ This module contains the long-running generation logic so the main
 Streamlit entrypoint stays focused on layout. The implementation is a
 direct port of the original logic but lives in a separate module.
 """
-import os
+import gc
 import glob
+import os
 import threading
 import time
-import gc
+
 import streamlit as st
 from PIL import Image
 
-from ui.helpers import compute_display_size, render_responsive_image
-from ui.history import add_to_history
-# pipeline takes model_path now
-from src.user.pipeline import pipeline
-from src.user.model_loader import detect_model_type
+from src.Device.ModelCache import (
+    clear_model_cache,
+    get_memory_info,
+    set_keep_models_loaded,
+)
+
 # model selection handled via model_path passed into pipeline
 from src.user import app_instance
-from src.Device.ModelCache import (
-    set_keep_models_loaded,
-    get_memory_info,
-    clear_model_cache,
-)
+from src.user.model_loader import detect_model_type
+
+# pipeline takes model_path now
+from src.user.pipeline import pipeline
+from ui.helpers import compute_display_size, render_responsive_image
+from ui.history import add_to_history
 
 
 def generate_images(settings, status_placeholder, gallery_placeholder, status_bar=None):
@@ -44,14 +47,14 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     # Setup generation state
     st.session_state.interrupt_generation = False
     st.session_state.is_generating = True
-    
+
     # Configure prompt cache based on settings
     try:
         from src.Utilities import prompt_cache
         prompt_cache.enable_prompt_cache(settings.get("prompt_cache_enabled", True))
     except Exception:
         pass
-    
+
     try:
         app_instance.app.cleanup_all_previews()
     except Exception:
@@ -155,7 +158,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                         # Determine if we're using Flux based on selected model
                         sel_model = settings.get("model_path")
                         is_flux = detect_model_type(sel_model) == "FLUX" if sel_model else False
-                        
+
                         result = pipeline(
                             prompt=settings.get("prompt", ""),
                             negative_prompt=settings.get("negative_prompt", ""),
@@ -188,6 +191,11 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             deepcache_depth=settings.get("deepcache_depth", 2),
                             deepcache_start_step=settings.get("deepcache_start_step", 0),
                             deepcache_end_step=settings.get("deepcache_end_step", 1000),
+                            cfg_free_enabled=settings.get("cfg_free_enabled", False),
+                            cfg_free_start_percent=settings.get("cfg_free_start_percent", 70.0),
+                            tome_enabled=settings.get("tome_enabled", False),
+                            tome_ratio=settings.get("tome_ratio", 0.5),
+                            tome_max_downsample=settings.get("tome_max_downsample", 1),
                             **multiscale_params,
                         )
 
@@ -366,7 +374,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
         # This happens when the user selects a Flux model in the dropdown but then switches to Auto
         # or when Flux is enabled through other means
         model_type = None
-    
+
     # Determine primary output directories to search
     # Note: If model detection is uncertain, we may need to check multiple folders
     if model_type == "FLUX":

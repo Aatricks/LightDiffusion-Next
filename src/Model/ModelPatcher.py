@@ -4,9 +4,18 @@ import uuid
 
 import torch
 
+from src.Device import Device
 from src.NeuralNetwork import unet
 from src.Utilities import util
-from src.Device import Device
+
+# Try to import tomesd for Token Merging support
+try:
+    import tomesd
+    TOMESD_AVAILABLE = True
+except ImportError:
+    TOMESD_AVAILABLE = False
+    tomesd = None
+
 
 def wipe_lowvram_weight(m):
     if hasattr(m, "prev_comfy_cast_weights"):
@@ -63,6 +72,27 @@ class ModelPatcher:
 
         if not hasattr(self.model, "lowvram_patch_counter"):
             self.model.lowvram_patch_counter = 0
+
+        # Token Merging (ToMe) state
+        self.tome_enabled = False
+        self.tome_ratio = 0.5
+        self.tome_info = {}
+
+    def named_modules(self):
+        """#### Compatibility method for tomesd.
+        
+        tomesd's remove_patch() calls model.named_modules() directly,
+        but apply_patch() extracts .model.diffusion_model first.
+        This creates an inconsistency - we add this method to make
+        ModelPatcher compatible with both.
+        
+        #### Yields:
+            - Tuples of (name, module) from the underlying diffusion_model
+        """
+        if hasattr(self.model, 'diffusion_model'):
+            yield from self.model.diffusion_model.named_modules()
+        else:
+            return iter([])
 
     def loaded_size(self) -> int:
         """#### Get the loaded size
@@ -697,6 +727,87 @@ class ModelPatcher:
 
     def add_object_patch(self, name, obj):
             self.object_patches[name] = obj
+
+    def apply_tome(self, ratio: float = 0.5, max_downsample: int = 1) -> bool:
+        """#### Apply Token Merging (ToMe) to the model.
+
+        #### Args:
+            - `ratio` (float): Percentage of tokens to merge (0.0-1.0). Defaults to 0.5.
+            - `max_downsample` (int): Only apply to layers with downsampling <= this. Defaults to 1.
+
+        #### Returns:
+            - `bool`: True if ToMe was applied successfully, False otherwise.
+        """
+        if not TOMESD_AVAILABLE:
+            logging.warning("Token Merging (tomesd) not available. Install with: pip install tomesd")
+            return False
+
+        # IMPORTANT: Always try to remove any existing patch first to handle cached models
+        # This ensures we start from a clean state, especially when models are reused from cache
+        try:
+            # Try to remove any existing patch (silently ignore if none exists)
+            try:
+                tomesd.remove_patch(self)  # Pass ModelPatcher
+            except:
+                pass  # No patch to remove, that's fine
+        except:
+            pass
+
+        # Reset the state flag
+        self.tome_enabled = False
+        self.tome_ratio = 0.5
+
+        # Try to apply ToMe to the diffusion model
+        try:
+            # tomesd expects the wrapper object with .model.diffusion_model structure
+            # It will extract the diffusion_model internally
+            if hasattr(self.model, 'diffusion_model'):
+                tomesd.apply_patch(
+                    self,  # Pass ModelPatcher, tomesd will extract .model.diffusion_model
+                    ratio=ratio,
+                    max_downsample=max_downsample
+                )
+                self.tome_enabled = True
+                self.tome_ratio = ratio
+                logging.info(f"Applied Token Merging with ratio={ratio}, max_downsample={max_downsample}")
+                print(f"✓ Token Merging ACTIVE: {ratio*100:.0f}% merge ratio, max_downsample={max_downsample}")
+                return True
+            else:
+                logging.warning("Model does not have 'diffusion_model' attribute, cannot apply ToMe")
+                print("✗ Token Merging FAILED: Model structure incompatible")
+                return False
+        except Exception as e:
+            logging.error(f"Failed to apply Token Merging: {e}")
+            print(f"✗ Token Merging FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def remove_tome(self) -> bool:
+        """#### Remove Token Merging (ToMe) from the model.
+
+        #### Returns:
+            - `bool`: True if ToMe was removed successfully, False otherwise.
+        """
+        if not TOMESD_AVAILABLE:
+            return False
+
+        if not self.tome_enabled:
+            # Silently skip if not enabled (not an error condition)
+            return False
+
+        try:
+            # tomesd.remove_patch expects the same wrapper object
+            tomesd.remove_patch(self)
+            self.tome_enabled = False
+            self.tome_ratio = 0.5
+            self.tome_info = {}
+            logging.info("Removed Token Merging patch")
+            print("✓ Token Merging removed")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to remove Token Merging: {e}")
+            return False
 
 def unet_prefix_from_state_dict(state_dict: dict) -> str:
     """#### Get the UNet prefix from the state dictionary.

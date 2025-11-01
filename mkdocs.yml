@@ -26,6 +26,8 @@ nav:
     - REST API: api.md
   - Performance Optimizations:
     - Overview: optimizations.md
+    - CFG-Free Sampling: cfg-free-sampling.md
+    - Token Merging (ToMe): tome.md
     - SageAttention & SpargeAttn: sageattention.md
     - Stable-Fast: stablefast.md
     - WaveSpeed Caching: wavespeed.md

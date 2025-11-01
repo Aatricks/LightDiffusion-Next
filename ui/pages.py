@@ -4,16 +4,22 @@ This module contains page-level render functions that can be imported
 by the main app entrypoint. Breaking pages out makes the main file
 shorter and easier to navigate.
 """
-import os
 import hashlib
+import os
+
 import streamlit as st
 from PIL import Image
 
-from ui.history import load_history, scan_output_folders, clear_history, delete_history_entry
+from src.Device.ModelCache import clear_model_cache, get_memory_info
 from ui import settings as ui_settings
-from ui.generation import generate_images, stop_generation, prepare_generation
-from ui.helpers import render_responsive_image, compute_display_size
-from src.Device.ModelCache import get_memory_info, clear_model_cache
+from ui.generation import generate_images, prepare_generation, stop_generation
+from ui.helpers import compute_display_size, render_responsive_image
+from ui.history import (
+    clear_history,
+    delete_history_entry,
+    load_history,
+    scan_output_folders,
+)
 
 
 def render_generate_page():
@@ -51,10 +57,10 @@ def render_generate_page():
             settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=1000, value=settings["num_images"], key="num_images_input", disabled=controls_disabled)
 
             preset = st.selectbox("Presets", [
-                "Custom", 
-                "512x512 (SD1.5)", 
-                "768x768 (SD1.5)", 
-                "512x768 (SD1.5 Portrait)", 
+                "Custom",
+                "512x512 (SD1.5)",
+                "768x768 (SD1.5)",
+                "512x768 (SD1.5 Portrait)",
                 "768x512 (SD1.5 Landscape)",
                 "--- SDXL (1.0 MP) ---",
                 "1024x1024 (SDXL 1:1)",
@@ -182,7 +188,7 @@ def render_generate_page():
 
         with st.expander("⚡ Sampling & Scheduling", expanded=False):
             st.markdown("**Scheduler & Sampler Settings**")
-            
+
             scheduler_options = {
                 "normal": "Normal - Standard linear schedule",
                 "karras": "Karras - Improved noise schedule",
@@ -202,7 +208,7 @@ def render_generate_page():
                 disabled=controls_disabled,
                 help="AYS schedulers provide 30-50% speedup by using optimal noise schedules"
             )
-            
+
             sampler_options = {
                 "euler": "Euler - Fast and stable",
                 "euler_ancestral": "Euler Ancestral - More variation",
@@ -220,12 +226,12 @@ def render_generate_page():
                 disabled=controls_disabled,
                 help="CFG++ samplers use dynamic guidance rescaling for improved quality"
             )
-            
+
             recommended_steps = 20
             if settings.get("scheduler", "normal").startswith("ays"):
                 recommended_steps = 10
                 st.info("💡 AYS scheduler recommended: 10 steps (equivalent to 20 normal steps)")
-            
+
             settings["steps"] = st.slider(
                 "Sampling Steps",
                 min_value=1,
@@ -235,7 +241,7 @@ def render_generate_page():
                 disabled=controls_disabled,
                 help="Number of denoising steps. AYS: 10 steps, Normal: 20 steps typical"
             )
-            
+
             st.markdown("**Optimization Caching**")
             settings["prompt_cache_enabled"] = st.checkbox(
                 "Enable Prompt Cache",
@@ -243,7 +249,7 @@ def render_generate_page():
                 disabled=controls_disabled,
                 help="Cache CLIP text embeddings for 5-15% speedup on repeated prompts"
             )
-            
+
             if settings["prompt_cache_enabled"]:
                 try:
                     from src.Utilities import prompt_cache
@@ -293,16 +299,104 @@ def render_generate_page():
         with st.expander("⚡ DeepCache Acceleration", expanded=False):
             st.markdown("**DeepCache** speeds up generation by reusing U-Net features (2-3x faster with minimal quality loss)")
             settings["deepcache_enabled"] = st.checkbox("Enable DeepCache", value=settings.get("deepcache_enabled", False), help="Enable DeepCache acceleration for faster generation", disabled=controls_disabled)
-            
+
             if settings["deepcache_enabled"]:
                 settings["deepcache_interval"] = st.slider("Cache Interval", min_value=1, max_value=10, value=settings.get("deepcache_interval", 3), help="Steps between cache updates (higher = faster but lower quality)", disabled=controls_disabled)
                 settings["deepcache_depth"] = st.slider("Cache Depth", min_value=0, max_value=12, value=settings.get("deepcache_depth", 2), help="U-Net depth for caching (higher = more aggressive)", disabled=controls_disabled)
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     settings["deepcache_start_step"] = st.number_input("Start Step", min_value=0, max_value=1000, value=settings.get("deepcache_start_step", 0), help="Start applying DeepCache at this step", disabled=controls_disabled)
                 with col2:
                     settings["deepcache_end_step"] = st.number_input("End Step", min_value=0, max_value=1000, value=settings.get("deepcache_end_step", 1000), help="Stop applying DeepCache at this step", disabled=controls_disabled)
+
+        with st.expander("🎯 CFG-Free Sampling", expanded=False):
+            st.markdown("**CFG-Free Sampling** gradually reduces CFG to 0 in later steps for faster generation with minimal quality impact")
+            settings["cfg_free_enabled"] = st.checkbox(
+                "Enable CFG-Free Sampling",
+                value=settings.get("cfg_free_enabled", False),
+                help="Gradually reduce CFG guidance to 0 after a certain percentage of steps",
+                disabled=controls_disabled
+            )
+
+            if settings["cfg_free_enabled"]:
+                settings["cfg_free_start_percent"] = st.slider(
+                    "Start Reducing CFG at (%)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=settings.get("cfg_free_start_percent", 70.0),
+                    step=5.0,
+                    help="Percentage of steps after which CFG will gradually reduce to 0 (recommended: 60-80%)",
+                    disabled=controls_disabled
+                )
+                st.info(f"💡 CFG will remain at full strength until {settings['cfg_free_start_percent']:.0f}% of steps, then gradually reduce to 0")
+
+        with st.expander("🔀 Token Merging (ToMe)", expanded=False):
+            st.markdown("**Token Merging** reduces computation by merging similar tokens (20-60% speedup)")
+            settings["tome_enabled"] = st.checkbox(
+                "Enable Token Merging",
+                value=settings.get("tome_enabled", False),
+                help="Merge similar tokens to reduce computation with minimal quality loss",
+                disabled=controls_disabled
+            )
+
+            if settings["tome_enabled"]:
+                tome_presets = {
+                    "conservative": "Conservative - 30% merge (minimal quality impact)",
+                    "balanced": "Balanced - 50% merge (recommended)",
+                    "aggressive": "Aggressive - 70% merge (max speed)",
+                    "custom": "Custom - Manual configuration"
+                }
+
+                if settings.get("tome_custom", False):
+                    current_preset = "custom"
+                else:
+                    current_preset = settings.get("tome_preset", "balanced")
+
+                selected_preset = st.selectbox(
+                    "ToMe Preset",
+                    options=list(tome_presets.keys()),
+                    format_func=lambda x: tome_presets[x],
+                    index=list(tome_presets.keys()).index(current_preset) if current_preset in tome_presets else 1,
+                    disabled=controls_disabled
+                )
+
+                if selected_preset == "conservative":
+                    settings["tome_custom"] = False
+                    settings["tome_preset"] = "conservative"
+                    settings["tome_ratio"] = 0.3
+                    settings["tome_max_downsample"] = 2
+                elif selected_preset == "balanced":
+                    settings["tome_custom"] = False
+                    settings["tome_preset"] = "balanced"
+                    settings["tome_ratio"] = 0.5
+                    settings["tome_max_downsample"] = 1
+                elif selected_preset == "aggressive":
+                    settings["tome_custom"] = False
+                    settings["tome_preset"] = "aggressive"
+                    settings["tome_ratio"] = 0.7
+                    settings["tome_max_downsample"] = 1
+                else:  # custom
+                    settings["tome_custom"] = True
+                    settings["tome_ratio"] = st.slider(
+                        "Merge Ratio",
+                        min_value=0.0,
+                        max_value=0.9,
+                        value=settings.get("tome_ratio", 0.5),
+                        step=0.05,
+                        help="Percentage of tokens to merge (higher = faster but may impact quality)",
+                        disabled=controls_disabled
+                    )
+                    settings["tome_max_downsample"] = st.slider(
+                        "Max Downsample Level",
+                        min_value=1,
+                        max_value=8,
+                        value=settings.get("tome_max_downsample", 1),
+                        help="Apply only to layers with downsampling <= this value",
+                        disabled=controls_disabled
+                    )
+
+                st.info(f"💡 ToMe will merge ~{settings['tome_ratio']*100:.0f}% of similar tokens for speedup")
 
         with st.expander("💾 VRAM & Cache", expanded=False):
             settings["keep_models_loaded"] = st.checkbox("Keep Models in VRAM", value=settings["keep_models_loaded"], disabled=controls_disabled)
@@ -442,22 +536,22 @@ def render_history_page():
     cols_per_row = 3
     for idx in range(0, len(history), cols_per_row):
         cols = st.columns(cols_per_row)
-        
+
         for col_idx, col in enumerate(cols):
             entry_idx = idx + col_idx
             if entry_idx >= len(history):
                 break
-            
+
             entry = history[entry_idx]
             img_path = entry["image_path"]
-            
+
             with col:
                 # Check if image still exists
                 if os.path.exists(img_path):
                     try:
                         img = Image.open(img_path)
                         st.image(img, use_container_width=True)
-                        
+
                         # Compact info
                         with st.expander("ℹ️ Details", expanded=False):
                             st.text(f"🕒 {entry.get('timestamp')}")
@@ -465,7 +559,7 @@ def render_history_page():
                             batch = entry.get("batch_size")
                             if batch is not None:
                                 st.text(f"🔁 Batch: {batch}")
-                            
+
                             # Key metadata
                             # Prefer top-level values (already sanitized) but
                             # fall back to the raw PNG metadata when the
@@ -497,11 +591,11 @@ def render_history_page():
                                     st.text(f"⚡ Avg iters/s: {float(avg_it):.2f}")
                                 except Exception:
                                     st.text(f"⚡ Avg iters/s: {avg_it}")
-                            
+
                             model_type = entry.get('model_type') or (entry.get('png_metadata', {}).get('model_type'))
                             if model_type:
                                 st.text(f"Model: {model_type}")
-                            
+
                             st.text_area(
                                 "Prompt",
                                 value=entry.get("prompt", ""),
@@ -509,7 +603,7 @@ def render_history_page():
                                 disabled=True,
                                 key=f"prompt_{entry_idx}"
                             )
-                            
+
                             # Action buttons
                             col_dl, col_del = st.columns(2)
                             with col_dl:

@@ -3,23 +3,26 @@ from __future__ import annotations
 import base64
 import glob
 import os
+
+# Ensure we can import pipeline from this repo
+import sys
 import time
 from typing import Any, Dict, List, Optional
-from src.Device.ModelCache import get_model_cache
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# Ensure we can import pipeline from this repo
-import sys
+from src.Device.ModelCache import get_model_cache
+
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # Logging setup
-import logging
-from logging.handlers import RotatingFileHandler
-import uuid
 import asyncio
 import functools
+import logging
+import uuid
+from logging.handlers import RotatingFileHandler
+
 
 # Create a module-level logger with rotating file handler and request-id support
 class _RequestIdFilter(logging.Filter):
@@ -74,9 +77,9 @@ logger.debug("server module loaded; cwd=%s", os.getcwd())
 SERVER_START_TS = time.time()
 
 try:
-    from src.user.pipeline import pipeline
     # Import app_instance to control preview behavior during generation
     from src.user import app_instance as _app_instance
+    from src.user.pipeline import pipeline
 except Exception as e:
     # Defer import error to runtime response for clarity
     pipeline = None  # type: ignore
@@ -113,6 +116,13 @@ class GenerateRequest(BaseModel):
     multiscale_fullres_end: int = 8
     keep_models_loaded: bool = True
     enable_preview: bool = False
+    # CFG-free sampling parameters
+    cfg_free_enabled: bool = False
+    cfg_free_start_percent: float = 70.0
+    # Token Merging parameters
+    tome_enabled: bool = False
+    tome_ratio: float = 0.5
+    tome_max_downsample: int = 1
     # Optional extras (may not be used by the current pipeline but accepted)
     guidance_scale: Optional[float] = None
     seed: Optional[int] = None  # If provided >=0 we will reuse it
@@ -334,6 +344,11 @@ class GenerationBuffer:
             multiscale_intermittent_fullres=first_req.multiscale_intermittent,
             img2img_image=first_req.img2img_image,
             per_sample_info=per_sample_info,
+            cfg_free_enabled=first_req.cfg_free_enabled,
+            cfg_free_start_percent=first_req.cfg_free_start_percent,
+            tome_enabled=first_req.tome_enabled,
+            tome_ratio=first_req.tome_ratio,
+            tome_max_downsample=first_req.tome_max_downsample,
         )
 
         # Toggle preview state for the duration of the pipeline call
@@ -403,6 +418,11 @@ class GenerationBuffer:
                         multiscale_intermittent_fullres=first_req.multiscale_intermittent,
                         img2img_image=p.req.img2img_image,
                         per_sample_info=per_single_info,
+                        cfg_free_enabled=p.req.cfg_free_enabled,
+                        cfg_free_start_percent=p.req.cfg_free_start_percent,
+                        tome_enabled=p.req.tome_enabled,
+                        tome_ratio=p.req.tome_ratio,
+                        tome_max_downsample=p.req.tome_max_downsample,
                     )
 
                     try:

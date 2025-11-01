@@ -1,20 +1,21 @@
 import argparse
+import logging
 import os
 import random
-import time
+import re
 import sys
+import time
+import uuid
 
 import numpy as np
 import torch
 from PIL import Image
-import re
-import uuid
-import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.AutoDetailer import SAM, SEGS, ADetailer, bbox
 from src.AutoEncoders import VariationalAE
+from src.AutoHDR import ahdr
 from src.clip import Clip
 from src.FileManaging import Downloader, ImageSaver, Loader
 from src.hidiffusion import msw_msa_attention
@@ -22,11 +23,10 @@ from src.Model import LoRas
 from src.Quantize import Quantizer
 from src.sample import sampling
 from src.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
-from src.Utilities import Enhancer, Latent, upscale
-from src.WaveSpeed import fbcache_nodes, deepcache_nodes
-from src.AutoHDR import ahdr
 from src.user import app_instance
-from src.user.model_loader import load_model_for_pipeline, detect_model_type
+from src.user.model_loader import detect_model_type, load_model_for_pipeline
+from src.Utilities import Enhancer, Latent, upscale
+from src.WaveSpeed import deepcache_nodes, fbcache_nodes
 
 with open(os.path.join("./include/", "last_seed.txt"), "r") as f:
     last_seed = int(f.read())
@@ -74,6 +74,13 @@ def pipeline(
     deepcache_depth: int = 2,
     deepcache_start_step: int = 0,
     deepcache_end_step: int = 1000,
+    # CFG-free sampling parameters
+    cfg_free_enabled: bool = False,
+    cfg_free_start_percent: float = 70.0,
+    # Token Merging parameters
+    tome_enabled: bool = False,
+    tome_ratio: float = 0.5,
+    tome_max_downsample: int = 1,
     # Path to the input image when running in img2img/upscale mode
     img2img_image: str | None = None,
     # Optional per-sample data used when `prompt` is a list (batched mode).
@@ -110,6 +117,11 @@ def pipeline(
         - `deepcache_depth` (int, optional): U-Net depth for caching in DeepCache (0-12, higher = more aggressive). Defaults to 2.
         - `deepcache_start_step` (int, optional): Start applying DeepCache at this timestep (0-1000). Defaults to 0.
         - `deepcache_end_step` (int, optional): Stop applying DeepCache at this timestep (0-1000). Defaults to 1000.
+        - `cfg_free_enabled` (bool, optional): Enable CFG-free sampling where CFG is gradually reduced to 0. Defaults to False.
+        - `cfg_free_start_percent` (float, optional): Percentage of steps (0-100) at which to start reducing CFG to 0. Defaults to 70.0.
+        - `tome_enabled` (bool, optional): Enable Token Merging for speedup by merging similar tokens. Defaults to False.
+        - `tome_ratio` (float, optional): Percentage of tokens to merge (0.0-1.0). Higher = more aggressive. Defaults to 0.5.
+        - `tome_max_downsample` (int, optional): Only apply ToMe to layers with downsampling <= this value. Defaults to 1.
     """
     global last_seed
 
@@ -214,7 +226,7 @@ def pipeline(
 
     # Use the provided sampler (defaults to "dpmpp_sde_cfgpp" from function signature)
     sampler_name = sampler if sampler and sampler.strip() else "dpmpp_sde_cfgpp"
-    
+
     # Model selection: automatically detect and load appropriate artifacts
     model_type = detect_model_type(model_path) if model_path else ("FLUX" if flux_enabled else ("SD15" if not realistic_model else "SD15"))
     # Guard: if a path explicitly ends with .gguf treat it as FLUX regardless
@@ -347,6 +359,21 @@ def pipeline(
                     logger = logging.getLogger(__name__)
                     logger.warning(f"DeepCache apply failed in batch path: {e}")
 
+            # Apply Token Merging if enabled (batch path)
+            if tome_enabled:
+                try:
+                    if isinstance(applystablefast_158, tuple) and len(applystablefast_158) > 0:
+                        model_to_patch = applystablefast_158[0]
+                        if hasattr(model_to_patch, 'apply_tome'):
+                            success = model_to_patch.apply_tome(ratio=tome_ratio, max_downsample=tome_max_downsample)
+                            if success:
+                                print(f"Token Merging enabled: ratio={tome_ratio}, max_downsample={tome_max_downsample}")
+                        else:
+                            logging.warning("Model does not support Token Merging")
+                except Exception as e:
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Token Merging apply failed in batch path: {e}")
+
             # Encode all prompts into a list of condition entries and attach
             # a batch_index so downstream conditioning logic knows which
             # batch slots each condition maps to.
@@ -395,6 +422,8 @@ def pipeline(
                 multiscale_fullres_start=multiscale_fullres_start,
                 multiscale_fullres_end=multiscale_fullres_end,
                 multiscale_intermittent_fullres=multiscale_intermittent_fullres,
+                cfg_free_enabled=cfg_free_enabled,
+                cfg_free_start_percent=cfg_free_start_percent,
             )
 
             # Decode and save each resulting image individually so that we
@@ -526,7 +555,13 @@ def pipeline(
                             negative=neg_i,
                             latent_image=upscaled,
                             pipeline=True,
+                            cfg_free_enabled=cfg_free_enabled,
+                            cfg_free_start_percent=cfg_free_start_percent,
                         )
+
+                        # Remove ToMe after generation if enabled
+                        if tome_enabled and hasattr(applystablefast_158[0], 'remove_tome'):
+                            applystablefast_158[0].remove_tome()
 
                         vae_out = vaedecode.decode(samples=ksampler_253[0], vae=checkpointloadersimple_241[2])
                         decoded_up = vae_out[0]
@@ -853,6 +888,21 @@ def pipeline(
                         logger = logging.getLogger(__name__)
                         logger.warning(f"DeepCache apply failed in img2img path: {e}")
 
+                # Apply Token Merging if enabled (img2img path)
+                if tome_enabled:
+                    try:
+                        if isinstance(applystablefast_158, tuple) and len(applystablefast_158) > 0:
+                            model_to_patch = applystablefast_158[0]
+                            if hasattr(model_to_patch, 'apply_tome'):
+                                success = model_to_patch.apply_tome(ratio=tome_ratio, max_downsample=tome_max_downsample)
+                                if success:
+                                    print(f"Token Merging enabled (img2img): ratio={tome_ratio}, max_downsample={tome_max_downsample}")
+                            else:
+                                logging.warning("Model does not support Token Merging")
+                    except Exception as e:
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Token Merging apply failed in img2img path: {e}")
+
                 clipsetlastlayer = Clip.CLIPSetLastLayer()
                 clipsetlastlayer_257 = clipsetlastlayer.set_last_layer(
                     stop_at_clip_layer=-2, clip=loraloader_274[1]
@@ -984,8 +1034,13 @@ def pipeline(
                     negative=conditioningzeroout_16[0],
                     latent_image=emptylatentimage_5[0],
                     pipeline=True,
-                    flux=True,
+                    cfg_free_enabled=cfg_free_enabled,
+                    cfg_free_start_percent=cfg_free_start_percent,
                 )
+
+                # Remove ToMe after generation if enabled (Flux path)
+                if tome_enabled and hasattr(unet_model, 'remove_tome'):
+                    unet_model.remove_tome()
 
                 vaedecode_8 = vaedecode.decode(
                     samples=ksampler_3[0],
@@ -1117,6 +1172,8 @@ def pipeline(
                     multiscale_fullres_start=multiscale_fullres_start,
                     multiscale_fullres_end=multiscale_fullres_end,
                     multiscale_intermittent_fullres=multiscale_intermittent_fullres,
+                    cfg_free_enabled=cfg_free_enabled,
+                    cfg_free_start_percent=cfg_free_start_percent,
                 )
                 if hires_fix:
                     latentupscale_254 = latent_upscale.upscale(
@@ -1138,9 +1195,15 @@ def pipeline(
                         negative=cliptextencode_243[0],
                         latent_image=latentupscale_254[0],
                         pipeline=True,
+                        cfg_free_enabled=cfg_free_enabled,
+                        cfg_free_start_percent=cfg_free_start_percent,
                     )
                 else:
                     ksampler_253 = ksampler_239
+
+                # Remove ToMe after generation if enabled
+                if tome_enabled and hasattr(applystablefast_158[0], 'remove_tome'):
+                    applystablefast_158[0].remove_tome()
 
                 _check_interruption()
                 vaedecode_240 = vaedecode.decode(
