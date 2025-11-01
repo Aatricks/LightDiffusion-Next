@@ -1,14 +1,13 @@
-from enum import Enum
+import math
 import threading
+from enum import Enum
+
+import torch
 import torch.nn as nn
 
-import math
-import torch
-
-from src.Utilities import Latent
 from src.Device import Device
-from src.sample import ksampler_util, samplers, sampling_util
-from src.sample import CFG
+from src.sample import CFG, ksampler_util, samplers, sampling_util
+from src.Utilities import Latent
 
 
 class TimestepBlock1(nn.Module):
@@ -571,6 +570,15 @@ def sample(
     seed: int = None,
     pipeline: bool = False,
     flux: bool = False,
+    cfg_free_enabled: bool = False,
+    cfg_free_start_percent: float = 70.0,
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95,
+    dynamic_cfg_target_scale: float = 1.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
 ) -> torch.Tensor:
     """#### Sample using the given parameters.
 
@@ -590,13 +598,29 @@ def sample(
         - `disable_pbar` (bool, optional): Whether to disable the progress bar. Defaults to False.
         - `seed` (int, optional): The seed value. Defaults to None.
         - `pipeline` (bool, optional): Whether to use the pipeline. Defaults to False.
+        - `cfg_free_enabled` (bool, optional): Enable CFG-free sampling. Defaults to False.
+        - `cfg_free_start_percent` (float, optional): Percentage at which to start reducing CFG to 0. Defaults to 70.0.
 
     #### Returns:
         - `torch.Tensor`: The sampled tensor.
     """
-    cfg_guider = CFG.CFGGuider(model, flux=flux)
+    # Configure model options for batched CFG
+    model_options = model_options.copy()
+    model_options["batched_cfg"] = batched_cfg
+    
+    cfg_guider = CFG.CFGGuider(
+        model, 
+        flux=flux,
+        dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+        dynamic_cfg_method=dynamic_cfg_method,
+        dynamic_cfg_percentile=dynamic_cfg_percentile,
+        dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+        adaptive_noise_enabled=adaptive_noise_enabled,
+        adaptive_noise_method=adaptive_noise_method
+    )
     cfg_guider.set_conds(positive, negative)
     cfg_guider.set_cfg(cfg)
+    cfg_guider.set_cfg_free_params(cfg_free_enabled, cfg_free_start_percent)
     return cfg_guider.sample(
         noise,
         latent_image,
@@ -732,7 +756,9 @@ class KSampler:
         disable_pbar: bool = False,
         seed: int = None,
         flux: bool = False,
-    ) -> torch.Tensor:
+        cfg_free_enabled: bool = False,
+        cfg_free_start_percent: float = 70.0,
+) -> torch.Tensor:
         """Sample directly with the initialized model and parameters.
 
         Args:
@@ -750,6 +776,8 @@ class KSampler:
             disable_pbar (bool, optional): Whether to disable the progress bar. Defaults to False.
             seed (int, optional): The seed value. Defaults to None.
             flux (bool, optional): Whether to use flux mode. Defaults to False.
+            cfg_free_enabled (bool, optional): Enable CFG-free sampling. Defaults to False.
+            cfg_free_start_percent (float, optional): Percentage at which to start reducing CFG to 0. Defaults to 70.0.
 
         Returns:
             torch.Tensor: The sampled tensor.
@@ -788,6 +816,8 @@ class KSampler:
             seed=seed,
             pipeline=self.pipeline,
             flux=flux,
+            cfg_free_enabled=cfg_free_enabled,
+            cfg_free_start_percent=cfg_free_start_percent,
         )
 
     def sample(
@@ -817,6 +847,17 @@ class KSampler:
         multiscale_fullres_start: int = 3,
         multiscale_fullres_end: int = 8,
         multiscale_intermittent_fullres: bool = False,
+        # CFG-free sampling parameters
+        cfg_free_enabled: bool = False,
+        cfg_free_start_percent: float = 70.0,
+        # Advanced CFG optimization parameters
+        batched_cfg: bool = True,
+        dynamic_cfg_rescaling: bool = False,
+        dynamic_cfg_method: str = "variance",
+        dynamic_cfg_percentile: float = 95.0,
+        dynamic_cfg_target_scale: float = 7.0,
+        adaptive_noise_enabled: bool = False,
+        adaptive_noise_method: str = "complexity",
     ) -> tuple:
         """Unified sampling interface that works both as direct sampling and through the common_ksampler.
 
@@ -844,6 +885,8 @@ class KSampler:
             disable_noise (bool, optional): Whether to disable noise. Defaults to False.
             pipeline (bool, optional): Whether to use the pipeline. Defaults to False.
             flux (bool, optional): Whether to use flux mode. Defaults to False.
+            cfg_free_enabled (bool, optional): Enable CFG-free sampling. Defaults to False.
+            cfg_free_start_percent (float, optional): Percentage at which to start reducing CFG to 0. Defaults to 70.0.
 
         Returns:
             tuple: The output tuple containing either (latent_dict,) or the sampled tensor.
@@ -871,6 +914,8 @@ class KSampler:
                     disable_pbar,
                     seed,
                     flux,
+                    cfg_free_enabled,
+                    cfg_free_start_percent,
                 ),
             )
 
@@ -904,6 +949,15 @@ class KSampler:
                 multiscale_fullres_start,
                 multiscale_fullres_end,
                 multiscale_intermittent_fullres,
+                cfg_free_enabled,
+                cfg_free_start_percent,
+                batched_cfg,
+                dynamic_cfg_rescaling,
+                dynamic_cfg_method,
+                dynamic_cfg_percentile,
+                dynamic_cfg_target_scale,
+                adaptive_noise_enabled,
+                adaptive_noise_method,
             )
 
 
@@ -936,6 +990,17 @@ def sample1(
     multiscale_fullres_start: int = 3,
     multiscale_fullres_end: int = 8,
     multiscale_intermittent_fullres: bool = False,
+    # CFG-free sampling parameters
+    cfg_free_enabled: bool = False,
+    cfg_free_start_percent: float = 70.0,
+    # Advanced CFG optimizations
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95,
+    dynamic_cfg_target_scale: float = 1.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
 ) -> torch.Tensor:
     """Sample using the given parameters with the unified KSampler.
 
@@ -1032,6 +1097,15 @@ def sample1(
             seed=seed,
             pipeline=pipeline,
             flux=flux,
+            cfg_free_enabled=cfg_free_enabled,
+            cfg_free_start_percent=cfg_free_start_percent,
+            batched_cfg=batched_cfg,
+            dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+            dynamic_cfg_method=dynamic_cfg_method,
+            dynamic_cfg_percentile=dynamic_cfg_percentile,
+            dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+            adaptive_noise_enabled=adaptive_noise_enabled,
+            adaptive_noise_method=adaptive_noise_method,
         )
     else:
         # Use the standard KSampler for other samplers
@@ -1182,6 +1256,17 @@ def common_ksampler(
     multiscale_fullres_start: int = 3,
     multiscale_fullres_end: int = 8,
     multiscale_intermittent_fullres: bool = False,
+    # CFG-free sampling parameters
+    cfg_free_enabled: bool = False,
+    cfg_free_start_percent: float = 70.0,
+    # Advanced CFG optimizations
+    batched_cfg: bool = True,
+    dynamic_cfg_rescaling: bool = False,
+    dynamic_cfg_method: str = "variance",
+    dynamic_cfg_percentile: float = 95.0,
+    dynamic_cfg_target_scale: float = 7.0,
+    adaptive_noise_enabled: bool = False,
+    adaptive_noise_method: str = "complexity",
 ) -> tuple:
     """Common ksampler function.
 
@@ -1248,6 +1333,15 @@ def common_ksampler(
         multiscale_fullres_start=multiscale_fullres_start,
         multiscale_fullres_end=multiscale_fullres_end,
         multiscale_intermittent_fullres=multiscale_intermittent_fullres,
+        cfg_free_enabled=cfg_free_enabled,
+        cfg_free_start_percent=cfg_free_start_percent,
+        batched_cfg=batched_cfg,
+        dynamic_cfg_rescaling=dynamic_cfg_rescaling,
+        dynamic_cfg_method=dynamic_cfg_method,
+        dynamic_cfg_percentile=dynamic_cfg_percentile,
+        dynamic_cfg_target_scale=dynamic_cfg_target_scale,
+        adaptive_noise_enabled=adaptive_noise_enabled,
+        adaptive_noise_method=adaptive_noise_method,
     )
     out = latent.copy()
     out["samples"] = samples

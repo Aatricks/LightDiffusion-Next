@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 import streamlit as st
 
 SETTINGS_FILE = "./webui_settings.json"
@@ -57,12 +58,31 @@ def get_default_settings():
         "deepcache_depth": 2,
         "deepcache_start_step": 0,
         "deepcache_end_step": 1000,
-        
+
+        # CFG-free Sampling
+        "cfg_free_enabled": False,
+        "cfg_free_start_percent": 70.0,
+
+        # Token Merging
+        "tome_enabled": False,
+        "tome_preset": "balanced",
+        "tome_custom": False,
+        "tome_ratio": 0.5,
+        "tome_max_downsample": 1,
+
+        # Advanced CFG optimizations (batched_cfg always enabled, not in UI)
+        "dynamic_cfg_rescaling": False,
+        "dynamic_cfg_method": "variance",
+        "dynamic_cfg_percentile": 95.0,
+        "dynamic_cfg_target_scale": 7.0,
+        "adaptive_noise_enabled": False,
+        "adaptive_noise_method": "complexity",
+
         # Scheduler & Sampling
         "scheduler": "ays",  # Options: normal, karras, simple, beta, ays
         "sampler": "dpmpp_sde_cfgpp",  # Options: euler, euler_ancestral, dpmpp_2m, etc.
         "steps": 20,
-        
+
         # Optimizations
         "prompt_cache_enabled": True,  # Cache CLIP embeddings (5-15% speedup)
 
