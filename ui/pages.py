@@ -50,17 +50,85 @@ def render_generate_page():
 
             settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=1000, value=settings["num_images"], key="num_images_input", disabled=controls_disabled)
 
-            preset = st.selectbox("Presets", ["Custom", "512x512", "768x768", "1024x1024", "512x768 (Portrait)", "768x512 (Landscape)"], disabled=controls_disabled)
-            if preset == "512x512":
+            preset = st.selectbox("Presets", [
+                "Custom", 
+                "512x512 (SD1.5)", 
+                "768x768 (SD1.5)", 
+                "512x768 (SD1.5 Portrait)", 
+                "768x512 (SD1.5 Landscape)",
+                "--- SDXL (1.0 MP) ---",
+                "1024x1024 (SDXL 1:1)",
+                "1152x896 (SDXL 4:3)",
+                "896x1152 (SDXL 3:4)",
+                "1216x832 (SDXL 3:2)",
+                "832x1216 (SDXL 2:3)",
+                "1344x768 (SDXL 16:9)",
+                "768x1344 (SDXL 9:16)",
+                "--- Flux (1.0 MP) ---",
+                "1024x1024 (Flux 1:1)",
+                "1152x896 (Flux 4:3)",
+                "896x1152 (Flux 3:4)",
+                "1216x832 (Flux 3:2)",
+                "832x1216 (Flux 2:3)",
+                "1344x768 (Flux 16:9)",
+                "768x1344 (Flux 9:16)",
+                "--- Flux (2.0 MP Max) ---",
+                "1408x1408 (Flux 1:1)",
+                "1664x1216 (Flux 4:3)",
+                "1728x1152 (Flux 3:2)",
+                "1920x1088 (Flux 16:9)",
+                "2176x960 (Flux 21:9)"
+            ], disabled=controls_disabled)
+            # SD1.5 presets
+            if preset == "512x512 (SD1.5)":
                 settings["width"], settings["height"] = 512, 512
-            elif preset == "768x768":
+            elif preset == "768x768 (SD1.5)":
                 settings["width"], settings["height"] = 768, 768
-            elif preset == "1024x1024":
-                settings["width"], settings["height"] = 1024, 1024
-            elif preset == "512x768 (Portrait)":
+            elif preset == "512x768 (SD1.5 Portrait)":
                 settings["width"], settings["height"] = 512, 768
-            elif preset == "768x512 (Landscape)":
+            elif preset == "768x512 (SD1.5 Landscape)":
                 settings["width"], settings["height"] = 768, 512
+            # SDXL presets (1.0 MP)
+            elif preset == "1024x1024 (SDXL 1:1)":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "1152x896 (SDXL 4:3)":
+                settings["width"], settings["height"] = 1152, 896
+            elif preset == "896x1152 (SDXL 3:4)":
+                settings["width"], settings["height"] = 896, 1152
+            elif preset == "1216x832 (SDXL 3:2)":
+                settings["width"], settings["height"] = 1216, 832
+            elif preset == "832x1216 (SDXL 2:3)":
+                settings["width"], settings["height"] = 832, 1216
+            elif preset == "1344x768 (SDXL 16:9)":
+                settings["width"], settings["height"] = 1344, 768
+            elif preset == "768x1344 (SDXL 9:16)":
+                settings["width"], settings["height"] = 768, 1344
+            # Flux presets (1.0 MP - same as SDXL recommended)
+            elif preset == "1024x1024 (Flux 1:1)":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "1152x896 (Flux 4:3)":
+                settings["width"], settings["height"] = 1152, 896
+            elif preset == "896x1152 (Flux 3:4)":
+                settings["width"], settings["height"] = 896, 1152
+            elif preset == "1216x832 (Flux 3:2)":
+                settings["width"], settings["height"] = 1216, 832
+            elif preset == "832x1216 (Flux 2:3)":
+                settings["width"], settings["height"] = 832, 1216
+            elif preset == "1344x768 (Flux 16:9)":
+                settings["width"], settings["height"] = 1344, 768
+            elif preset == "768x1344 (Flux 9:16)":
+                settings["width"], settings["height"] = 768, 1344
+            # Flux presets (2.0 MP - Flux maximum)
+            elif preset == "1408x1408 (Flux 1:1)":
+                settings["width"], settings["height"] = 1408, 1408
+            elif preset == "1664x1216 (Flux 4:3)":
+                settings["width"], settings["height"] = 1664, 1216
+            elif preset == "1728x1152 (Flux 3:2)":
+                settings["width"], settings["height"] = 1728, 1152
+            elif preset == "1920x1088 (Flux 16:9)":
+                settings["width"], settings["height"] = 1920, 1088
+            elif preset == "2176x960 (Flux 21:9)":
+                settings["width"], settings["height"] = 2176, 960
 
             settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster. This setting is honored independently of 'Number of Images' (the pipeline may use internal batching even when you request fewer images).")
 
