@@ -59,10 +59,20 @@ def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> d
                     "Warning torch.load doesn't support weights_only on this pytorch version, loading unsafely."
                 )
                 safe_load = False
+        # Newer PyTorch versions changed default weights_only behavior; when
+        # we intentionally want the full pickled object (legacy checkpoints)
+        # call torch.load with weights_only=False if available. When the
+        # caller requested safe_load we pass weights_only=True to avoid
+        # executing arbitrary code.
         if safe_load:
             pl_sd = torch.load(ckpt, map_location=device, weights_only=True)
         else:
-            pl_sd = torch.load(ckpt, map_location=device)
+            if "weights_only" in torch.load.__code__.co_varnames:
+                # Explicitly ask for full load (unsafe) to support legacy
+                # checkpoint formats which don't work with weights_only=True.
+                pl_sd = torch.load(ckpt, map_location=device, weights_only=False)
+            else:
+                pl_sd = torch.load(ckpt, map_location=device)
         if "global_step" in pl_sd:
             logging.debug(f"Global Step: {pl_sd['global_step']}")
         if "state_dict" in pl_sd:
@@ -639,3 +649,91 @@ def tiled_scale(
         output_device=output_device,
         pbar=pbar,
     )
+
+
+def transformers_convert(
+    sd: dict, prefix_from: str, prefix_to: str, number: int
+) -> dict:
+    """Convert transformers state dict from one prefix to another.
+
+    Args:
+        sd: State dictionary
+        prefix_from: Source prefix
+        prefix_to: Destination prefix
+        number: Number of transformer blocks
+
+    Returns:
+        Converted state dictionary
+    """
+    keys_to_replace = {
+        "{}positional_embedding": "{}embeddings.position_embedding.weight",
+        "{}token_embedding.weight": "{}embeddings.token_embedding.weight",
+        "{}ln_final.weight": "{}final_layer_norm.weight",
+        "{}ln_final.bias": "{}final_layer_norm.bias",
+    }
+
+    for k in keys_to_replace:
+        x = k.format(prefix_from)
+        if x in sd:
+            sd[keys_to_replace[k].format(prefix_to)] = sd.pop(x)
+
+    resblock_to_replace = {
+        "ln_1": "layer_norm1",
+        "ln_2": "layer_norm2",
+        "mlp.c_fc": "mlp.fc1",
+        "mlp.c_proj": "mlp.fc2",
+        "attn.out_proj": "self_attn.out_proj",
+    }
+
+    for resblock in range(number):
+        for x in resblock_to_replace:
+            for y in ["weight", "bias"]:
+                k = "{}transformer.resblocks.{}.{}.{}".format(
+                    prefix_from, resblock, x, y
+                )
+                k_to = "{}encoder.layers.{}.{}.{}".format(
+                    prefix_to, resblock, resblock_to_replace[x], y
+                )
+                if k in sd:
+                    sd[k_to] = sd.pop(k)
+
+        for y in ["weight", "bias"]:
+            k_from = "{}transformer.resblocks.{}.attn.in_proj_{}".format(
+                prefix_from, resblock, y
+            )
+            if k_from in sd:
+                weights = sd.pop(k_from)
+                shape_from = weights.shape[0] // 3
+                for x in range(3):
+                    p = ["self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj"]
+                    k_to = "{}encoder.layers.{}.{}.{}".format(prefix_to, resblock, p[x], y)
+                    sd[k_to] = weights[shape_from * x : shape_from * (x + 1)]
+
+    return sd
+
+
+def clip_text_transformers_convert(
+    sd: dict, prefix_from: str, prefix_to: str
+) -> dict:
+    """Convert CLIP text transformers state dict.
+
+    Args:
+        sd: State dictionary
+        prefix_from: Source prefix
+        prefix_to: Destination prefix
+
+    Returns:
+        Converted state dictionary
+    """
+    sd = transformers_convert(sd, prefix_from, "{}text_model.".format(prefix_to), 32)
+
+    tp = "{}text_projection.weight".format(prefix_from)
+    if tp in sd:
+        sd["{}text_projection.weight".format(prefix_to)] = sd.pop(tp)
+
+    tp = "{}text_projection".format(prefix_from)
+    if tp in sd:
+        sd["{}text_projection.weight".format(prefix_to)] = (
+            sd.pop(tp).transpose(0, 1).contiguous()
+        )
+    return sd

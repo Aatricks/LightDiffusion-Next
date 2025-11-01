@@ -370,3 +370,216 @@ class BASE:
         """
         self.unet_config["dtype"] = dtype
         self.manual_cast_dtype = manual_cast_dtype
+
+
+class Timestep(torch.nn.Module):
+    """Timestep embedding layer for SDXL models."""
+
+    def __init__(self, dim: int):
+        """Initialize Timestep embedding.
+
+        Args:
+            dim: Embedding dimension
+        """
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
+        """Forward pass - convert timestep to embedding.
+
+        Args:
+            t: Timestep tensor
+
+        Returns:
+            Timestep embedding
+        """
+        return self._timestep_embedding(t, self.dim)
+
+    @staticmethod
+    def _timestep_embedding(timesteps: torch.Tensor, dim: int, max_period: int = 10000) -> torch.Tensor:
+        """Create sinusoidal timestep embeddings.
+
+        Args:
+            timesteps: 1-D tensor of N indices, one per batch element
+            dim: Dimension of the output
+            max_period: Controls the minimum frequency of embeddings
+
+        Returns:
+            An [N x dim] Tensor of positional embeddings
+        """
+        half = dim // 2
+        freqs = torch.exp(
+            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
+        ).to(device=timesteps.device)
+        args = timesteps[:, None].float() * freqs[None]
+        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        if dim % 2:
+            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+        return embedding
+
+
+class CLIPEmbeddingNoiseAugmentation(torch.nn.Module):
+    """CLIP embedding noise augmentation for SDXL."""
+
+    def __init__(self, timestep_dim: int = 1280, max_noise_level: int = 1000):
+        """Initialize noise augmentation.
+
+        Args:
+            timestep_dim: Dimension for timestep embedding
+            max_noise_level: Maximum noise level
+        """
+        super().__init__()
+        self.max_noise_level = max_noise_level
+        self.time_embed = Timestep(timestep_dim)
+        # Initialize with standard normal (mean=0, std=1)
+        self.register_buffer("data_mean", torch.zeros(1, timestep_dim), persistent=False)
+        self.register_buffer("data_std", torch.ones(1, timestep_dim), persistent=False)
+
+    def scale(self, x: torch.Tensor) -> torch.Tensor:
+        """Scale input to centered mean and unit variance."""
+        return (x - self.data_mean.to(x.device)) / self.data_std.to(x.device)
+
+    def unscale(self, x: torch.Tensor) -> torch.Tensor:
+        """Unscale to original data stats."""
+        return (x * self.data_std.to(x.device)) + self.data_mean.to(x.device)
+
+    def q_sample(self, x: torch.Tensor, noise_level: torch.Tensor, seed: int = None) -> torch.Tensor:
+        """Add noise to input based on noise level."""
+        # Simple noise addition - can be made more sophisticated
+        if seed is not None:
+            generator = torch.Generator(device=x.device).manual_seed(seed)
+        else:
+            generator = None
+        noise = torch.randn_like(x, generator=generator)
+        # Scale noise by noise level (normalized to 0-1)
+        noise_scale = noise_level.float() / self.max_noise_level
+        return x + noise * noise_scale[:, None]
+
+    def forward(self, x: torch.Tensor, noise_level: torch.Tensor = None, seed: int = None) -> tuple:
+        """Apply noise augmentation.
+
+        Args:
+            x: Input tensor
+            noise_level: Noise level tensor
+            seed: Random seed
+
+        Returns:
+            Tuple of (augmented tensor, noise level embedding)
+        """
+        if noise_level is None:
+            noise_level = torch.randint(0, self.max_noise_level, (x.shape[0],), device=x.device).long()
+        x = self.scale(x)
+        z = self.q_sample(x, noise_level, seed=seed)
+        z = self.unscale(z)
+        noise_level_emb = self.time_embed(noise_level)
+        return z, noise_level_emb
+
+
+def sdxl_pooled(args: dict, noise_augmentor: CLIPEmbeddingNoiseAugmentation) -> torch.Tensor:
+    """Extract pooled output for SDXL conditioning.
+
+    Args:
+        args: Arguments dict with pooled_output or unclip_conditioning
+        noise_augmentor: Noise augmentation module
+
+    Returns:
+        Pooled CLIP embedding
+    """
+    if "unclip_conditioning" in args:
+        # Apply noise augmentation for unclip
+        unclip_cond = args.get("unclip_conditioning", None)
+        device = args["device"]
+        seed = args.get("seed", 0) - 10
+        augmented, _ = noise_augmentor(unclip_cond.to(device), seed=seed)
+        return augmented[:, :1280]
+    else:
+        return args["pooled_output"]
+
+
+class SDXLRefiner(BaseModel):
+    """SDXL Refiner model with aesthetic score conditioning."""
+
+    def __init__(self, model_config: object, model_type: sampling.ModelType = sampling.ModelType.EPS, device: torch.device = None):
+        """Initialize SDXL Refiner model.
+
+        Args:
+            model_config: Model configuration
+            model_type: Type of model (EPS, V_PREDICTION, etc.)
+            device: Device to load model on
+        """
+        super().__init__(model_config, model_type, device=device)
+        self.embedder = Timestep(256)
+        self.noise_augmentor = CLIPEmbeddingNoiseAugmentation(timestep_dim=1280)
+
+    def encode_adm(self, **kwargs) -> torch.Tensor:
+        """Encode ADM conditioning for SDXL Refiner.
+
+        Args:
+            **kwargs: Conditioning arguments (width, height, crop_w, crop_h, aesthetic_score, pooled_output, etc.)
+
+        Returns:
+            Encoded ADM tensor
+        """
+        clip_pooled = sdxl_pooled(kwargs, self.noise_augmentor)
+        width = kwargs.get("width", 768)
+        height = kwargs.get("height", 768)
+        crop_w = kwargs.get("crop_w", 0)
+        crop_h = kwargs.get("crop_h", 0)
+
+        # Use different aesthetic scores for negative vs positive prompts
+        if kwargs.get("prompt_type", "") == "negative":
+            aesthetic_score = kwargs.get("aesthetic_score", 2.5)
+        else:
+            aesthetic_score = kwargs.get("aesthetic_score", 6)
+
+        out = []
+        out.append(self.embedder(torch.Tensor([height])))
+        out.append(self.embedder(torch.Tensor([width])))
+        out.append(self.embedder(torch.Tensor([crop_h])))
+        out.append(self.embedder(torch.Tensor([crop_w])))
+        out.append(self.embedder(torch.Tensor([aesthetic_score])))
+        flat = torch.flatten(torch.cat(out)).unsqueeze(dim=0).repeat(clip_pooled.shape[0], 1)
+        return torch.cat((clip_pooled.to(flat.device), flat), dim=1)
+
+
+class SDXL(BaseModel):
+    """SDXL model with size and crop conditioning."""
+
+    def __init__(self, model_config: object, model_type: sampling.ModelType = sampling.ModelType.EPS, device: torch.device = None):
+        """Initialize SDXL model.
+
+        Args:
+            model_config: Model configuration
+            model_type: Type of model (EPS, V_PREDICTION, etc.)
+            device: Device to load model on
+        """
+        super().__init__(model_config, model_type, device=device)
+        self.embedder = Timestep(256)
+        self.noise_augmentor = CLIPEmbeddingNoiseAugmentation(timestep_dim=1280)
+
+    def encode_adm(self, **kwargs) -> torch.Tensor:
+        """Encode ADM conditioning for SDXL.
+
+        Args:
+            **kwargs: Conditioning arguments (width, height, crop_w, crop_h, target_width, target_height, pooled_output, etc.)
+
+        Returns:
+            Encoded ADM tensor
+        """
+        clip_pooled = sdxl_pooled(kwargs, self.noise_augmentor)
+        width = kwargs.get("width", 768)
+        height = kwargs.get("height", 768)
+        crop_w = kwargs.get("crop_w", 0)
+        crop_h = kwargs.get("crop_h", 0)
+        target_width = kwargs.get("target_width", width)
+        target_height = kwargs.get("target_height", height)
+
+        out = []
+        out.append(self.embedder(torch.Tensor([height])))
+        out.append(self.embedder(torch.Tensor([width])))
+        out.append(self.embedder(torch.Tensor([crop_h])))
+        out.append(self.embedder(torch.Tensor([crop_w])))
+        out.append(self.embedder(torch.Tensor([target_height])))
+        out.append(self.embedder(torch.Tensor([target_width])))
+        flat = torch.flatten(torch.cat(out)).unsqueeze(dim=0).repeat(clip_pooled.shape[0], 1)
+        return torch.cat((clip_pooled.to(flat.device), flat), dim=1)

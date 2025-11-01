@@ -226,8 +226,20 @@ def guess_model_type(model: object) -> ModelType | None:
         - `Optional[ModelType]`: The guessed model type.
     """
     latent_format = model.get_model_object("latent_format")
-    if isinstance(latent_format, Latent.SD15):
+    # Prefer explicit type checks when available
+    try:
+        if isinstance(latent_format, Latent.SD15):
+            return ModelType.SD15
+    except Exception:
+        pass
+    # Fall back to heuristic on latent channel count: 4 channels -> SD1.5 style,
+    # larger channel counts (e.g. 16) indicate SDXL/Flux-style latents.
+    ch = getattr(latent_format, "latent_channels", None)
+    if ch == 4:
         return ModelType.SD15
+    if ch is not None and ch >= 8:
+        # Treat larger latent channel formats as SDXL for patch selection.
+        return ModelType.SDXL
     return None
 
 

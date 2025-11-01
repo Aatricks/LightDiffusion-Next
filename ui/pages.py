@@ -50,23 +50,117 @@ def render_generate_page():
 
             settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=1000, value=settings["num_images"], key="num_images_input", disabled=controls_disabled)
 
-            preset = st.selectbox("Presets", ["Custom", "512x512", "768x768", "1024x1024", "512x768 (Portrait)", "768x512 (Landscape)"], disabled=controls_disabled)
-            if preset == "512x512":
+            preset = st.selectbox("Presets", [
+                "Custom", 
+                "512x512 (SD1.5)", 
+                "768x768 (SD1.5)", 
+                "512x768 (SD1.5 Portrait)", 
+                "768x512 (SD1.5 Landscape)",
+                "--- SDXL (1.0 MP) ---",
+                "1024x1024 (SDXL 1:1)",
+                "1152x896 (SDXL 4:3)",
+                "896x1152 (SDXL 3:4)",
+                "1216x832 (SDXL 3:2)",
+                "832x1216 (SDXL 2:3)",
+                "1344x768 (SDXL 16:9)",
+                "768x1344 (SDXL 9:16)",
+                "--- Flux (1.0 MP) ---",
+                "1024x1024 (Flux 1:1)",
+                "1152x896 (Flux 4:3)",
+                "896x1152 (Flux 3:4)",
+                "1216x832 (Flux 3:2)",
+                "832x1216 (Flux 2:3)",
+                "1344x768 (Flux 16:9)",
+                "768x1344 (Flux 9:16)",
+                "--- Flux (2.0 MP Max) ---",
+                "1408x1408 (Flux 1:1)",
+                "1664x1216 (Flux 4:3)",
+                "1728x1152 (Flux 3:2)",
+                "1920x1088 (Flux 16:9)",
+                "2176x960 (Flux 21:9)"
+            ], disabled=controls_disabled)
+            # SD1.5 presets
+            if preset == "512x512 (SD1.5)":
                 settings["width"], settings["height"] = 512, 512
-            elif preset == "768x768":
+            elif preset == "768x768 (SD1.5)":
                 settings["width"], settings["height"] = 768, 768
-            elif preset == "1024x1024":
-                settings["width"], settings["height"] = 1024, 1024
-            elif preset == "512x768 (Portrait)":
+            elif preset == "512x768 (SD1.5 Portrait)":
                 settings["width"], settings["height"] = 512, 768
-            elif preset == "768x512 (Landscape)":
+            elif preset == "768x512 (SD1.5 Landscape)":
                 settings["width"], settings["height"] = 768, 512
+            # SDXL presets (1.0 MP)
+            elif preset == "1024x1024 (SDXL 1:1)":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "1152x896 (SDXL 4:3)":
+                settings["width"], settings["height"] = 1152, 896
+            elif preset == "896x1152 (SDXL 3:4)":
+                settings["width"], settings["height"] = 896, 1152
+            elif preset == "1216x832 (SDXL 3:2)":
+                settings["width"], settings["height"] = 1216, 832
+            elif preset == "832x1216 (SDXL 2:3)":
+                settings["width"], settings["height"] = 832, 1216
+            elif preset == "1344x768 (SDXL 16:9)":
+                settings["width"], settings["height"] = 1344, 768
+            elif preset == "768x1344 (SDXL 9:16)":
+                settings["width"], settings["height"] = 768, 1344
+            # Flux presets (1.0 MP - same as SDXL recommended)
+            elif preset == "1024x1024 (Flux 1:1)":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "1152x896 (Flux 4:3)":
+                settings["width"], settings["height"] = 1152, 896
+            elif preset == "896x1152 (Flux 3:4)":
+                settings["width"], settings["height"] = 896, 1152
+            elif preset == "1216x832 (Flux 3:2)":
+                settings["width"], settings["height"] = 1216, 832
+            elif preset == "832x1216 (Flux 2:3)":
+                settings["width"], settings["height"] = 832, 1216
+            elif preset == "1344x768 (Flux 16:9)":
+                settings["width"], settings["height"] = 1344, 768
+            elif preset == "768x1344 (Flux 9:16)":
+                settings["width"], settings["height"] = 768, 1344
+            # Flux presets (2.0 MP - Flux maximum)
+            elif preset == "1408x1408 (Flux 1:1)":
+                settings["width"], settings["height"] = 1408, 1408
+            elif preset == "1664x1216 (Flux 4:3)":
+                settings["width"], settings["height"] = 1664, 1216
+            elif preset == "1728x1152 (Flux 3:2)":
+                settings["width"], settings["height"] = 1728, 1152
+            elif preset == "1920x1088 (Flux 16:9)":
+                settings["width"], settings["height"] = 1920, 1088
+            elif preset == "2176x960 (Flux 21:9)":
+                settings["width"], settings["height"] = 2176, 960
 
             settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster. This setting is honored independently of 'Number of Images' (the pipeline may use internal batching even when you request fewer images).")
 
-        with st.expander("🎯 Generation Modes", expanded=False):
-            settings["flux_mode"] = st.checkbox("Flux Mode", value=settings["flux_mode"], disabled=controls_disabled)
-            settings["realistic_mode"] = st.checkbox("Realistic Mode", value=settings["realistic_mode"], disabled=controls_disabled)
+        with st.expander("🎯 Model Selection", expanded=False):
+            # Allow the user to pick a model file or use Auto (default checkpoints)
+            try:
+                from src.user.model_loader import list_available_models
+
+                available_map = list_available_models(return_mapping=True)
+            except Exception:
+                available_map = []
+
+            # available_map is list of (display_name, full_path)
+            display_names = [d for d, _ in available_map]
+            mapping = {d: p for d, p in available_map}
+
+            model_options = ["Auto (use default)"] + display_names
+            # For current selection, show the basename so it matches the dropdown
+            current_full = settings.get("model_path", "")
+            current = os.path.basename(current_full) if current_full else "Auto (use default)"
+            try:
+                idx = model_options.index(current)
+            except Exception:
+                idx = 0
+
+            sel = st.selectbox("Model", options=model_options, index=idx, disabled=controls_disabled)
+            if sel == "Auto (use default)":
+                settings["model_path"] = ""
+            else:
+                # map display name back to full path; if mapping missing, fall back
+                settings["model_path"] = mapping.get(sel, sel)
+
             settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
 
             if settings["img2img_mode"]:
@@ -404,10 +498,9 @@ def render_history_page():
                                 except Exception:
                                     st.text(f"⚡ Avg iters/s: {avg_it}")
                             
-                            if entry.get('flux_mode'):
-                                st.text("⚡ Flux Mode")
-                            if entry.get('realistic_mode'):
-                                st.text("📸 Realistic")
+                            model_type = entry.get('model_type') or (entry.get('png_metadata', {}).get('model_type'))
+                            if model_type:
+                                st.text(f"Model: {model_type}")
                             
                             st.text_area(
                                 "Prompt",

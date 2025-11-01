@@ -60,6 +60,77 @@ class SD15(LatentFormat):
             [-0.2120, -0.2616, -0.7177],
         ]
         self.taesd_decoder_name = "taesd_decoder"
+
+
+class SDXL(LatentFormat):
+    """SDXL latent format with specific scale factor and RGB factors."""
+
+    latent_channels: int = 4
+    scale_factor = 0.13025
+
+    def __init__(self):
+        """Initialize the SDXL latent format."""
+        self.latent_rgb_factors = [
+            #   R        G        B
+            [0.3651, 0.4232, 0.4341],
+            [-0.2533, -0.0042, 0.1068],
+            [0.1076, 0.1111, -0.0362],
+            [-0.3165, -0.2492, -0.2188],
+        ]
+        self.latent_rgb_factors_bias = [0.1084, -0.0175, -0.0011]
+        self.taesd_decoder_name = "taesdxl_decoder"
+
+
+class SDXL_Playground_2_5(LatentFormat):
+    """SDXL Playground 2.5 latent format with mean/std normalization."""
+
+    latent_channels: int = 4
+
+    def __init__(self):
+        """Initialize the SDXL Playground 2.5 latent format."""
+        self.scale_factor = 0.5
+        self.latents_mean = torch.tensor([-1.6574, 1.886, -1.383, 2.5155]).view(
+            1, 4, 1, 1
+        )
+        self.latents_std = torch.tensor([8.4927, 5.9022, 6.5498, 5.2299]).view(
+            1, 4, 1, 1
+        )
+
+        self.latent_rgb_factors = [
+            #   R        G        B
+            [0.3920, 0.4054, 0.4549],
+            [-0.2634, -0.0196, 0.0653],
+            [0.0568, 0.1687, -0.0755],
+            [-0.3112, -0.2359, -0.2076],
+        ]
+        self.taesd_decoder_name = "taesdxl_decoder"
+
+    def process_in(self, latent: torch.Tensor) -> torch.Tensor:
+        """Process the latent input with mean/std normalization.
+
+        Args:
+            latent: The latent tensor
+
+        Returns:
+            Processed latent tensor
+        """
+        latents_mean = self.latents_mean.to(latent.device, latent.dtype)
+        latents_std = self.latents_std.to(latent.device, latent.dtype)
+        return (latent - latents_mean) * self.scale_factor / latents_std
+
+    def process_out(self, latent: torch.Tensor) -> torch.Tensor:
+        """Process the latent output with mean/std denormalization.
+
+        Args:
+            latent: The latent tensor
+
+        Returns:
+            Processed latent tensor
+        """
+        latents_mean = self.latents_mean.to(latent.device, latent.dtype)
+        latents_std = self.latents_std.to(latent.device, latent.dtype)
+        return latent * latents_std / self.scale_factor + latents_mean
+
         
 class SD3(LatentFormat):
     latent_channels = 16

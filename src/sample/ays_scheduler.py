@@ -37,6 +37,8 @@ AYS_OPTIMAL_SCHEDULES = {
         12: [14.6146, 11.5222, 8.6124, 6.4254, 4.7084, 3.4034, 2.4252, 1.7028, 1.1721, 0.7930, 0.5182, 0.2782, 0.0],
         15: [14.6146, 12.4748, 10.0985, 8.0432, 6.3548, 4.9664, 3.8444, 2.9488, 2.2453, 1.6962, 1.2714, 0.9442, 0.6920, 0.4962, 0.3410, 0.0],
         20: [14.6146, 13.4772, 11.6548, 9.9908, 8.4577, 7.0347, 5.7062, 4.4602, 3.2880, 2.1832, 1.1412, 0.1594, 0.0],
+        # Note: The 20-step schedule above is optimized to 12 actual steps for efficiency.
+        # If you want true 20 steps, the scheduler will interpolate from this schedule.
     },
     # Flux schedules (experimental - adapted from SDXL)
     "FLUX": {

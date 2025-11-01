@@ -14,7 +14,10 @@ from PIL import Image
 
 from ui.helpers import compute_display_size, render_responsive_image
 from ui.history import add_to_history
+# pipeline takes model_path now
 from src.user.pipeline import pipeline
+from src.user.model_loader import detect_model_type
+# model selection handled via model_path passed into pipeline
 from src.user import app_instance
 from src.Device.ModelCache import (
     set_keep_models_loaded,
@@ -149,6 +152,10 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
 
                 while attempt_chunk > 0 and not stop_event.is_set():
                     try:
+                        # Determine if we're using Flux based on selected model
+                        sel_model = settings.get("model_path")
+                        is_flux = detect_model_type(sel_model) == "FLUX" if sel_model else False
+                        
                         result = pipeline(
                             prompt=settings.get("prompt", ""),
                             negative_prompt=settings.get("negative_prompt", ""),
@@ -166,15 +173,15 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             # configured_batch explicitly so the pipeline can
                             # use it for internal grouping.
                             batch=configured_batch,
+                            model_path=settings.get("model_path", None),
+                            flux_enabled=is_flux,
                             hires_fix=settings.get("hiresfix", False),
                             adetailer=settings.get("adetailer", False),
                             enhance_prompt=settings.get("enhance_prompt", False),
                             img2img=settings.get("img2img_mode", False),
                             stable_fast=settings.get("stable_fast", False),
                             reuse_seed=settings.get("reuse_seed", False),
-                            flux_enabled=settings.get("flux_mode", False),
                             autohdr=True,
-                            realistic_model=settings.get("realistic_mode", False),
                             img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,
                             deepcache_enabled=settings.get("deepcache_enabled", False),
                             deepcache_interval=settings.get("deepcache_interval", 3),
@@ -348,7 +355,21 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
 
     generated_image_paths = []
 
-    if settings["flux_mode"]:
+    # choose primary output folder based on selected model type
+    # Mirror the logic from pipeline.py line 219:
+    # model_type = detect_model_type(model_path) if model_path else ("FLUX" if flux_enabled else ("SD15" if not realistic_model else "SD15"))
+    sel_model = settings.get("model_path")
+    if sel_model:
+        model_type = detect_model_type(sel_model)
+    else:
+        # When no model is selected (Auto mode), check if we're using Flux
+        # This happens when the user selects a Flux model in the dropdown but then switches to Auto
+        # or when Flux is enabled through other means
+        model_type = None
+    
+    # Determine primary output directories to search
+    # Note: If model detection is uncertain, we may need to check multiple folders
+    if model_type == "FLUX":
         primary_dirs = ["./output/Flux"]
     elif settings["img2img_mode"]:
         primary_dirs = ["./output/Img2Img"]
@@ -357,7 +378,9 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     elif settings["hiresfix"]:
         primary_dirs = ["./output/HiresFix"]
     else:
-        primary_dirs = ["./output/Classic"]
+        # For Classic/unknown, also check Flux folder as fallback
+        # This handles the case where Flux was used but model_type wasn't detected
+        primary_dirs = ["./output/Classic", "./output/Flux"]
 
     all_outputs = []
     for output_dir in primary_dirs:

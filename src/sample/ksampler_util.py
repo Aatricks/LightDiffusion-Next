@@ -335,13 +335,31 @@ def calculate_sigmas(
         # AYS (Align Your Steps) scheduler for better convergence
         from src.sample import ays_scheduler as ays
         
-        # Determine model type from scheduler name or use SD15 as default
+        # Determine model type from scheduler name or auto-detect from model
         if scheduler_name == "ays_sdxl":
             model_type = "SDXL"
         elif scheduler_name == "ays_flux":
             model_type = "FLUX"
+        elif scheduler_name == "ays_sd15":
+            model_type = "SD15"
         else:
-            model_type = "SD15"  # Default for "ays" and "ays_sd15"
+            # Auto-detect for generic "ays" scheduler
+            try:
+                # Try to detect from model config
+                unet_config = getattr(model_sampling, 'model_config', None)
+                if unet_config:
+                    config = getattr(unet_config, 'unet_config', {})
+                    # SDXL has context_dim=2048, SD1.5 has 768
+                    context_dim = config.get('context_dim', 768)
+                    if context_dim == 2048:
+                        model_type = "SDXL"
+                        logging.debug("Auto-detected SDXL from context_dim=2048")
+                    else:
+                        model_type = "SD15"
+                else:
+                    model_type = "SD15"
+            except Exception:
+                model_type = "SD15"  # Safe fallback
         
         sigmas = ays.ays_scheduler(model_sampling, steps, model_type)
     else:

@@ -244,8 +244,8 @@ def attention_pytorch(
 
     #### Args:
         - `q` (torch.Tensor): The query tensor.
-        - `k` (torch.Tensor): The key tensor, must have the same shape as `q.
-        - `v` (torch.Tensor): The value tensor, must have the same shape as `q.
+        - `k` (torch.Tensor): The key tensor, must have the same last dimension as q.
+        - `v` (torch.Tensor): The value tensor, must have the same shape as k.
         - `heads` (int): The number of heads, must be a divisor of the hidden dimension.
         - `mask` (torch.Tensor, optional): The mask tensor. Defaults to `None`.
 
@@ -253,17 +253,28 @@ def attention_pytorch(
         - `torch.Tensor`: The output tensor.
     """
     if not flux:
-        b, _, dim_head = q.shape
-        dim_head //= heads
-        q, k, v = map(
-            lambda t: t.view(b, -1, heads, dim_head).transpose(1, 2),
-            (q, k, v),
-        )
+        b, seq_len_q, total_dim = q.shape
+        _, seq_len_kv, _ = k.shape
+        dim_head = total_dim // heads
+        
+        # Check if dimension is divisible
+        if total_dim % heads != 0:
+            import logging
+            logging.error(f"ERROR: total_dim({total_dim}) not divisible by heads({heads})")
+            raise RuntimeError(f"total_dim({total_dim}) must be divisible by heads({heads})")
+        
+        # Reshape q, k, v to separate heads
+        # q: [b, seq_len_q, heads, dim_head] -> [b, heads, seq_len_q, dim_head]
+        # k, v: [b, seq_len_kv, heads, dim_head] -> [b, heads, seq_len_kv, dim_head]
+        q = q.view(b, seq_len_q, heads, dim_head).transpose(1, 2)
+        k = k.view(b, seq_len_kv, heads, dim_head).transpose(1, 2)
+        v = v.view(b, seq_len_kv, heads, dim_head).transpose(1, 2)
 
         out = torch.nn.functional.scaled_dot_product_attention(
             q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False
         )
-        out = out.transpose(1, 2).reshape(b, -1, heads * dim_head)
+        # out: [b, heads, seq_len_q, dim_head] -> [b, seq_len_q, heads, dim_head] -> [b, seq_len_q, total_dim]
+        out = out.transpose(1, 2).reshape(b, seq_len_q, total_dim)
         return out
     else:
         if skip_reshape:
