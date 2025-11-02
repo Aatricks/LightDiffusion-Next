@@ -1,16 +1,11 @@
 import glob
+
 from huggingface_hub import hf_hub_download
 
 
 def CheckAndDownload():
     """#### Check and download all the necessary safetensors and checkpoints models"""
     if glob.glob("./include/checkpoints/*.safetensors") == []:
-
-        hf_hub_download(
-            repo_id="Meina/MeinaMix",
-            filename="Meina V10 - baked VAE.safetensors",
-            local_dir="./include/checkpoints/",
-        )
         hf_hub_download(
             repo_id="Lykon/DreamShaper",
             filename="DreamShaper_8_pruned.safetensors",

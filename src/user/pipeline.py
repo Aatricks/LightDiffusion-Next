@@ -60,9 +60,9 @@ def pipeline(
     realistic_model: bool = False,
     # new: optionally pass explicit model path to load
     model_path: str | None = None,
-    negative_prompt: str = None,
+    negative_prompt: str = "",
     # Multi-scale diffusion parameters
-    multiscale_preset: str = None,
+    multiscale_preset: str = "quality",
     enable_multiscale: bool = True,
     multiscale_factor: float = 0.5,
     multiscale_fullres_start: int = 3,
@@ -149,7 +149,7 @@ def pipeline(
     enhancement_applied = False
 
     # Apply multiscale preset if specified (overrides individual parameters)
-    print(f"multiscale_preset: {multiscale_preset}, type: {type(multiscale_preset)}")
+    print(f"multiscale_preset: {multiscale_preset}")
     if multiscale_preset is not None and isinstance(multiscale_preset, str):
         from src.sample.multiscale_presets import get_preset_parameters
 
@@ -284,7 +284,7 @@ def pipeline(
             # SD1.5/SDXL path (CheckpointLoader handles both safetensors and pt)
             checkpointloadersimple = Loader.CheckpointLoaderSimple()
             checkpointloadersimple_241 = checkpointloadersimple.load_checkpoint(
-                ckpt_name=model_path or ("./include/checkpoints/Meina V10 - baked VAE.safetensors")
+                ckpt_name=model_path or ("./include/checkpoints/DreamShaper_8_pruned.safetensors")
             )
             hidiffoptimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
         cliptextencode = Clip.CLIPTextEncode()
