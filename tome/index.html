@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -934,8 +951,8 @@
 <h2 id="how-it-works">How It Works</h2>
 <h3 id="the-token-redundancy-problem">The Token Redundancy Problem</h3>
 <p>Diffusion models process images as sequences of tokens (patches):</p>
-<div class="codehilite"><pre><span></span><code>Input Image (512×512) → Tokenize → 4096 tokens (64×64 grid of 8×8 patches)
-</code></pre></div>
+<pre class="codehilite"><code>Input Image (512×512) → Tokenize → 4096 tokens (64×64 grid of 8×8 patches)
+</code></pre>
 
 <p>At each attention layer, <strong>every token attends to every other token</strong>:</p>
 <div class="arithmatex">\[
@@ -947,7 +964,7 @@
 <p><strong>Key insight:</strong> Many tokens are highly similar (e.g., sky regions, uniform backgrounds, smooth gradients). Computing attention between nearly-identical tokens is redundant.</p>
 <h3 id="the-tome-solution">The ToMe Solution</h3>
 <p>Token Merging reduces redundancy through <strong>bipartite matching</strong>:</p>
-<div class="codehilite"><pre><span></span><code>Step 1: Split tokens into two sets
+<pre class="codehilite"><code>Step 1: Split tokens into two sets
 ┌─────────────────────┬─────────────────────┐
 │ Destination Set (dst)│ Source Set (src)    │
 │ [Token 1, 3, 5, ...] │ [Token 2, 4, 6, ...] │
@@ -965,7 +982,7 @@ Step 3: Merge most similar pairs
 Step 4: Continue with fewer tokens
    4096 tokens → 2048 tokens (50% merge ratio)
    Attention cost reduced by ~4x
-</code></pre></div>
+</code></pre>
 
 <p>This happens <strong>per attention layer</strong>, with merge ratio dynamically adjusting based on layer depth.</p>
 <h2 id="configuration">Configuration</h2>
@@ -1051,40 +1068,40 @@ Step 4: Continue with fewer tokens
 <li>Generate images — console confirms activation</li>
 </ol>
 <p><strong>Visual feedback:</strong></p>
-<div class="codehilite"><pre><span></span><code>✓ Token Merging ACTIVE: 50% merge ratio, max_downsample=1
-</code></pre></div>
+<pre class="codehilite"><code>✓ Token Merging ACTIVE: 50% merge ratio, max_downsample=1
+</code></pre>
 
 <h3 id="rest-api">REST API</h3>
 <p>Include in your generation request:</p>
-<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:7861/api/generate<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
-<span class="s1">        &quot;prompt&quot;: &quot;a cyberpunk cityscape at night, neon lights&quot;,</span>
-<span class="s1">        &quot;width&quot;: 1024,</span>
-<span class="s1">        &quot;height&quot;: 512,</span>
-<span class="s1">        &quot;steps&quot;: 25,</span>
-<span class="s1">        &quot;tome_enabled&quot;: true,</span>
-<span class="s1">        &quot;tome_ratio&quot;: 0.5,</span>
-<span class="s1">        &quot;tome_max_downsample&quot;: 1</span>
-<span class="s1">      }&#39;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">curl -X POST http://localhost:7861/api/generate \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+        &quot;prompt&quot;: &quot;a cyberpunk cityscape at night, neon lights&quot;,
+        &quot;width&quot;: 1024,
+        &quot;height&quot;: 512,
+        &quot;steps&quot;: 25,
+        &quot;tome_enabled&quot;: true,
+        &quot;tome_ratio&quot;: 0.5,
+        &quot;tome_max_downsample&quot;: 1
+      }'
+</code></pre>
 
 <h3 id="python-api">Python API</h3>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.user.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">pipeline</span>
+<pre class="codehilite"><code class="language-python">from src.user.pipeline import pipeline
 
-<span class="n">pipeline</span><span class="p">(</span>
-    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;a detailed fantasy castle on a cliff&quot;</span><span class="p">,</span>
-    <span class="n">w</span><span class="o">=</span><span class="mi">768</span><span class="p">,</span>
-    <span class="n">h</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
-    <span class="n">steps</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="s2">&quot;dpmpp_sde_cfgpp&quot;</span><span class="p">,</span>
-    <span class="n">scheduler</span><span class="o">=</span><span class="s2">&quot;ays&quot;</span><span class="p">,</span>
-    <span class="n">tome_enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-    <span class="n">tome_ratio</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
-    <span class="n">tome_max_downsample</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-    <span class="n">number</span><span class="o">=</span><span class="mi">4</span>  <span class="c1"># Generate multiple images faster</span>
-<span class="p">)</span>
-</code></pre></div>
+pipeline(
+    prompt=&quot;a detailed fantasy castle on a cliff&quot;,
+    w=768,
+    h=1024,
+    steps=30,
+    sampler=&quot;dpmpp_sde_cfgpp&quot;,
+    scheduler=&quot;ays&quot;,
+    tome_enabled=True,
+    tome_ratio=0.5,
+    tome_max_downsample=1,
+    number=4  # Generate multiple images faster
+)
+</code></pre>
 
 <h2 id="troubleshooting">Troubleshooting</h2>
 <h3 id="no-speedup-detected">"No speedup detected"</h3>
@@ -1093,12 +1110,12 @@ Step 4: Continue with fewer tokens
 2. <strong>Other bottlenecks</strong> — Enable only ToMe for isolated testing
 3. <strong>Very low resolution</strong> — ToMe benefits are minimal below 512px</p>
 <p><strong>Solutions:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Check installation</span>
-python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import tomesd; print(&#39;ToMe available&#39;)&quot;</span>
+<pre class="codehilite"><code class="language-bash"># Check installation
+python -c &quot;import tomesd; print('ToMe available')&quot;
 
-<span class="c1"># Test in isolation at 1024×512 (ideal resolution for ToMe)</span>
-python<span class="w"> </span>quick_tome_test.py
-</code></pre></div>
+# Test in isolation at 1024×512 (ideal resolution for ToMe)
+python quick_tome_test.py
+</code></pre>
 
 <h3 id="images-look-blurry-or-soft">"Images look blurry or soft"</h3>
 <p><strong>Cause:</strong> <code>tome_ratio</code> too high (&gt;0.6) or <code>max_downsample</code> too aggressive (&gt;2).</p>
@@ -1116,33 +1133,33 @@ python<span class="w"> </span>quick_tome_test.py
 <h3 id="model-fails-to-load-tomesd-errors">"Model fails to load / tomesd errors"</h3>
 <p><strong>Cause:</strong> Outdated tomesd version or incompatible model architecture.</p>
 <p><strong>Solutions:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Update tomesd</span>
-pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>tomesd
+<pre class="codehilite"><code class="language-bash"># Update tomesd
+pip install --upgrade tomesd
 
-<span class="c1"># Check compatibility (ToMe only works with UNet-based models)</span>
-<span class="c1"># Flux/Transformer models require different ToMe variant (not yet supported)</span>
-</code></pre></div>
+# Check compatibility (ToMe only works with UNet-based models)
+# Flux/Transformer models require different ToMe variant (not yet supported)
+</code></pre>
 
 <h2 id="technical-details">Technical Details</h2>
 <h3 id="implementation">Implementation</h3>
 <p>ToMe is applied via the <code>ModelPatcher</code> class (<code>src/Model/ModelPatcher.py</code>):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">apply_tome</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ratio</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">max_downsample</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply Token Merging to the diffusion model.&quot;&quot;&quot;</span>
-    <span class="c1"># Remove any existing patch (handles cached models)</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">tomesd</span><span class="o">.</span><span class="n">remove_patch</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
-    <span class="k">except</span><span class="p">:</span>
-        <span class="k">pass</span>
+<pre class="codehilite"><code class="language-python">def apply_tome(self, ratio: float = 0.5, max_downsample: int = 1) -&gt; bool:
+    &quot;&quot;&quot;Apply Token Merging to the diffusion model.&quot;&quot;&quot;
+    # Remove any existing patch (handles cached models)
+    try:
+        tomesd.remove_patch(self)
+    except:
+        pass
 
-    <span class="c1"># Apply ToMe patch</span>
-    <span class="n">tomesd</span><span class="o">.</span><span class="n">apply_patch</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span>  <span class="c1"># ModelPatcher with .model.diffusion_model structure</span>
-        <span class="n">ratio</span><span class="o">=</span><span class="n">ratio</span><span class="p">,</span>
-        <span class="n">max_downsample</span><span class="o">=</span><span class="n">max_downsample</span>
-    <span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">tome_enabled</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="k">return</span> <span class="kc">True</span>
-</code></pre></div>
+    # Apply ToMe patch
+    tomesd.apply_patch(
+        self,  # ModelPatcher with .model.diffusion_model structure
+        ratio=ratio,
+        max_downsample=max_downsample
+    )
+    self.tome_enabled = True
+    return True
+</code></pre>
 
 <p><strong>Cache handling:</strong> ToMe patches are removed after each generation and re-applied as needed, ensuring correct behavior with model caching.</p>
 <h3 id="bipartite-matching-algorithm">Bipartite Matching Algorithm</h3>
@@ -1329,6 +1346,12 @@ pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="
                         <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         

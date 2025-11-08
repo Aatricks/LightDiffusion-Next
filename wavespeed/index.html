@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -943,16 +960,16 @@
 <li><strong>Low-level features</strong> (fine details, textures) require frequent updates</li>
 </ul>
 <p>WaveSpeed caches the expensive high-level computations and reuses them for several steps, only updating low-level details cheaply.</p>
-<h3 id="deepcache-unet-models">DeepCache (UNet Models)</h3>
+<h3 id="deepcache">DeepCache (UNet Models)</h3>
 <p>DeepCache targets the middle and output blocks of the UNet architecture:</p>
-<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────┐
+<pre class="codehilite"><code>┌─────────────────────────────────────────┐
 │ Input Blocks (always computed)          │
 ├─────────────────────────────────────────┤
 │ Middle Blocks (cached every N steps)    │ ← DeepCache caching zone
 ├─────────────────────────────────────────┤
 │ Output Blocks (cached every N steps)    │ ← DeepCache caching zone
 └─────────────────────────────────────────┘
-</code></pre></div>
+</code></pre>
 
 <p><strong>Cache step (every N steps):</strong>
 1. Run full forward pass through all UNet blocks
@@ -964,12 +981,12 @@
 <p><strong>Speedup:</strong> ~50-70% time saved per reuse step → 2-3x total speedup with <code>interval=3</code></p>
 <h3 id="first-block-cache-flux-models">First Block Cache (Flux Models)</h3>
 <p>Flux uses Transformer blocks instead of UNet convolutions. FBCache applies a similar principle:</p>
-<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────┐
-│<span class="w"> </span><span class="nv">First</span><span class="w"> </span><span class="nv">Transformer</span><span class="w"> </span><span class="nv">Block</span><span class="w"> </span><span class="ss">(</span><span class="nv">always</span><span class="w"> </span><span class="nv">run</span><span class="ss">)</span><span class="w">    </span>│<span class="w"> </span>←<span class="w"> </span><span class="nv">Computes</span><span class="w"> </span><span class="nv">initial</span><span class="w"> </span><span class="nv">features</span>
+<pre class="codehilite"><code>┌─────────────────────────────────────────┐
+│ First Transformer Block (always run)    │ ← Computes initial features
 ├─────────────────────────────────────────┤
-│<span class="w"> </span><span class="nv">Remaining</span><span class="w"> </span><span class="nv">Blocks</span><span class="w"> </span><span class="ss">(</span><span class="nv">cached</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nv">similar</span><span class="ss">)</span><span class="w">    </span>│<span class="w"> </span>←<span class="w"> </span><span class="nv">FBCache</span><span class="w"> </span><span class="nv">caching</span><span class="w"> </span><span class="nv">zone</span>
+│ Remaining Blocks (cached if similar)    │ ← FBCache caching zone
 └─────────────────────────────────────────┘
-</code></pre></div>
+</code></pre>
 
 <p><strong>Cache decision logic:</strong>
 1. Run first Transformer block
@@ -1026,25 +1043,25 @@
 <li>Generate images — caching applies transparently</li>
 </ol>
 <h3 id="rest-api">REST API</h3>
-<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:7861/api/generate<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
-<span class="s1">        &quot;prompt&quot;: &quot;a misty forest at twilight&quot;,</span>
-<span class="s1">        &quot;width&quot;: 768,</span>
-<span class="s1">        &quot;height&quot;: 512,</span>
-<span class="s1">        &quot;deepcache_enabled&quot;: true,</span>
-<span class="s1">        &quot;deepcache_interval&quot;: 3,</span>
-<span class="s1">        &quot;deepcache_depth&quot;: 2</span>
-<span class="s1">      }&#39;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">curl -X POST http://localhost:7861/api/generate \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+        &quot;prompt&quot;: &quot;a misty forest at twilight&quot;,
+        &quot;width&quot;: 768,
+        &quot;height&quot;: 512,
+        &quot;deepcache_enabled&quot;: true,
+        &quot;deepcache_interval&quot;: 3,
+        &quot;deepcache_depth&quot;: 2
+      }'
+</code></pre>
 
 <h3 id="recommended-presets">Recommended Presets</h3>
 <h4 id="balanced-default">Balanced (Default)</h4>
-<div class="codehilite"><pre><span></span><code><span class="nt">cache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="nt">cache_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="nt">start_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
-<span class="nt">end_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">cache_interval: 3
+cache_depth: 2
+start_step: 0
+end_step: 1000
+</code></pre>
 
 <ul>
 <li><strong>Speedup:</strong> 2-2.3x</li>
@@ -1052,11 +1069,11 @@
 <li><strong>Use case:</strong> Everyday generation</li>
 </ul>
 <h4 id="maximum-speed">Maximum Speed</h4>
-<div class="codehilite"><pre><span></span><code><span class="nt">cache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
-<span class="nt">cache_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="nt">start_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
-<span class="nt">end_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">cache_interval: 5
+cache_depth: 3
+start_step: 0
+end_step: 1000
+</code></pre>
 
 <ul>
 <li><strong>Speedup:</strong> 2.5-3x</li>
@@ -1064,11 +1081,11 @@
 <li><strong>Use case:</strong> Rapid prototyping, batch jobs</li>
 </ul>
 <h4 id="maximum-quality">Maximum Quality</h4>
-<div class="codehilite"><pre><span></span><code><span class="nt">cache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="nt">cache_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<span class="nt">start_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
-<span class="nt">end_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">cache_interval: 2
+cache_depth: 1
+start_step: 0
+end_step: 1000
+</code></pre>
 
 <ul>
 <li><strong>Speedup:</strong> 1.5-2x</li>
@@ -1076,11 +1093,11 @@
 <li><strong>Use case:</strong> Final renders, client work</li>
 </ul>
 <h4 id="partial-caching-critical-steps-only">Partial Caching (Critical Steps Only)</h4>
-<div class="codehilite"><pre><span></span><code><span class="nt">cache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="nt">cache_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="nt">start_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span>
-<span class="nt">end_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">800</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">cache_interval: 3
+cache_depth: 2
+start_step: 200
+end_step: 800
+</code></pre>
 
 <ul>
 <li><strong>Speedup:</strong> 1.8-2.2x</li>
@@ -1109,20 +1126,20 @@
 </table></div>
 <h3 id="usage">Usage</h3>
 <p>FBCache is applied automatically when generating Flux images. No UI controls yet — configured via pipeline code:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># In src/user/pipeline.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">src.WaveSpeed</span><span class="w"> </span><span class="kn">import</span> <span class="n">fbcache_nodes</span>
+<pre class="codehilite"><code class="language-python"># In src/user/pipeline.py
+from src.WaveSpeed import fbcache_nodes
 
-<span class="c1"># Create cache context</span>
-<span class="n">cache_context</span> <span class="o">=</span> <span class="n">fbcache_nodes</span><span class="o">.</span><span class="n">create_cache_context</span><span class="p">()</span>
+# Create cache context
+cache_context = fbcache_nodes.create_cache_context()
 
-<span class="c1"># Apply caching to Flux model</span>
-<span class="k">with</span> <span class="n">fbcache_nodes</span><span class="o">.</span><span class="n">cache_context</span><span class="p">(</span><span class="n">cache_context</span><span class="p">):</span>
-    <span class="n">patched_model</span> <span class="o">=</span> <span class="n">fbcache_nodes</span><span class="o">.</span><span class="n">create_patch_flux_forward_orig</span><span class="p">(</span>
-        <span class="n">flux_model</span><span class="p">,</span>
-        <span class="n">residual_diff_threshold</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>  <span class="c1"># Lower = stricter caching</span>
-    <span class="p">)</span>
-    <span class="c1"># Generate images...</span>
-</code></pre></div>
+# Apply caching to Flux model
+with fbcache_nodes.cache_context(cache_context):
+    patched_model = fbcache_nodes.create_patch_flux_forward_orig(
+        flux_model,
+        residual_diff_threshold=0.05,  # Lower = stricter caching
+    )
+    # Generate images...
+</code></pre>
 
 <h3 id="tuning-threshold">Tuning Threshold</h3>
 <ul>
@@ -1210,25 +1227,25 @@
 <h2 id="stacking-with-other-optimizations">Stacking with Other Optimizations</h2>
 <p>WaveSpeed is <strong>fully compatible</strong> with SageAttention, SpargeAttn and Stable-Fast:</p>
 <h3 id="deepcache-sageattention">DeepCache + SageAttention</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">deepcache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="nt">deepcache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="c1"># SageAttention auto-detected</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">deepcache_enabled: true
+deepcache_interval: 3
+# SageAttention auto-detected
+</code></pre>
 
 <p><strong>Result:</strong> 2.2x (DeepCache) × 1.15 (SageAttention) = <strong>~2.5x total speedup</strong></p>
 <h3 id="deepcache-spargeattn">DeepCache + SpargeAttn</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">deepcache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="nt">deepcache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="c1"># SpargeAttn auto-detected</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">deepcache_enabled: true
+deepcache_interval: 3
+# SpargeAttn auto-detected
+</code></pre>
 
 <p><strong>Result:</strong> Enhanced speedup from caching and sparse attention</p>
 <h3 id="deepcache-stable-fast-spargeattn">DeepCache + Stable-Fast + SpargeAttn</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="nt">deepcache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="nt">deepcache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="c1"># SpargeAttn auto-detected</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">stable_fast: true
+deepcache_enabled: true
+deepcache_interval: 3
+# SpargeAttn auto-detected
+</code></pre>
 
 <p><strong>Result:</strong> Maximum combined speedup (all optimizations active, batch operations only)</p>
 <h2 id="compatibility">Compatibility</h2>
@@ -1269,16 +1286,16 @@
 2. Cache interval too low (interval=1 provides no caching)
 3. Model loaded incorrectly</p>
 <p><strong>Fixes:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Check logs for DeepCache activation</span>
-cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;deepcache\|cache&quot;</span>
+<pre class="codehilite"><code class="language-bash"># Check logs for DeepCache activation
+cat logs/server.log | grep -i &quot;deepcache\|cache&quot;
 
-<span class="c1"># Verify UI toggle is enabled</span>
-<span class="c1"># Streamlit: Check &quot;Enable DeepCache&quot; checkbox</span>
-<span class="c1"># API: Ensure &quot;deepcache_enabled&quot;: true in payload</span>
+# Verify UI toggle is enabled
+# Streamlit: Check &quot;Enable DeepCache&quot; checkbox
+# API: Ensure &quot;deepcache_enabled&quot;: true in payload
 
-<span class="c1"># Try higher interval</span>
-deepcache_interval:<span class="w"> </span><span class="m">3</span><span class="w">  </span><span class="c1"># Instead of 1 or 2</span>
-</code></pre></div>
+# Try higher interval
+deepcache_interval: 3  # Instead of 1 or 2
+</code></pre>
 
 <h3 id="quality-degradation">Quality Degradation</h3>
 <p><strong>Symptoms:</strong>
@@ -1290,23 +1307,23 @@ deepcache_interval:<span class="w"> </span><span class="m">3</span><span class="
 2. Cache depth too aggressive
 3. Wrong model type (Flux using DeepCache)</p>
 <p><strong>Fixes:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Reduce cache interval</span>
-<span class="nt">deepcache_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w">  </span><span class="c1"># Down from 5</span>
+<pre class="codehilite"><code class="language-yaml"># Reduce cache interval
+deepcache_interval: 2  # Down from 5
 
-<span class="c1"># Reduce cache depth</span>
-<span class="nt">deepcache_depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">  </span><span class="c1"># Down from 3</span>
+# Reduce cache depth
+deepcache_depth: 1  # Down from 3
 
-<span class="c1"># Disable caching for critical phases</span>
-<span class="nt">deepcache_start_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span><span class="w">  </span><span class="c1"># Skip early structure formation</span>
-<span class="nt">deepcache_end_step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">800</span><span class="w">    </span><span class="c1"># Skip late detail refinement</span>
-</code></pre></div>
+# Disable caching for critical phases
+deepcache_start_step: 200  # Skip early structure formation
+deepcache_end_step: 800    # Skip late detail refinement
+</code></pre>
 
 <h3 id="artifacts-in-img2img">Artifacts in Img2Img</h3>
 <p><strong>Symptom:</strong> Visible seams, inconsistent styles when using DeepCache with Img2Img.</p>
 <p><strong>Cause:</strong> Img2Img starts from a noisy input image, which violates DeepCache's assumptions about feature consistency.</p>
 <p><strong>Fix:</strong> Disable DeepCache for Img2Img:</p>
-<div class="codehilite"><pre><span></span><code><span class="nt">deepcache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># When img2img_enabled: true</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">deepcache_enabled: false  # When img2img_enabled: true
+</code></pre>
 
 <h3 id="vram-increase">VRAM Increase</h3>
 <p><strong>Symptom:</strong> OOM errors after enabling DeepCache.</p>
@@ -1322,17 +1339,17 @@ deepcache_interval:<span class="w"> </span><span class="m">3</span><span class="
 <p><strong>Symptom:</strong> No speedup with Flux generation.</p>
 <p><strong>Cause:</strong> FBCache implementation is more subtle — check logs for cache hit rate.</p>
 <p><strong>Debugging:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Enable debug logging</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">LD_SERVER_LOGLEVEL</span><span class="o">=</span>DEBUG
+<pre class="codehilite"><code class="language-bash"># Enable debug logging
+export LD_SERVER_LOGLEVEL=DEBUG
 
-<span class="c1"># Check cache statistics</span>
-cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;cache&quot;</span>
-</code></pre></div>
+# Check cache statistics
+cat logs/server.log | grep &quot;cache&quot;
+</code></pre>
 
 <p>If no cache hits, try adjusting threshold:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># In pipeline.py</span>
-<span class="n">residual_diff_threshold</span><span class="o">=</span><span class="mf">0.1</span>  <span class="c1"># Increase from 0.05 for more cache reuse</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-python"># In pipeline.py
+residual_diff_threshold=0.1  # Increase from 0.05 for more cache reuse
+</code></pre>
 
 <h2 id="quality-comparison">Quality Comparison</h2>
 <p>Visual impact of different cache intervals:</p>
@@ -1376,48 +1393,48 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
 <h2 id="technical-details">Technical Details</h2>
 <h3 id="deepcache-implementation">DeepCache Implementation</h3>
 <p>Simplified pseudocode:</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">DeepCacheWrapper</span><span class="p">:</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">interval</span><span class="p">,</span> <span class="n">depth</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">interval</span> <span class="o">=</span> <span class="n">interval</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">cached_output</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_step</span> <span class="o">=</span> <span class="mi">0</span>
+<pre class="codehilite"><code class="language-python">class DeepCacheWrapper:
+    def __init__(self, model, interval, depth):
+        self.model = model
+        self.interval = interval
+        self.cached_output = None
+        self.current_step = 0
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">timestep</span><span class="p">):</span>
-        <span class="n">is_cache_step</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">current_step</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">interval</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    def forward(self, x, timestep):
+        is_cache_step = (self.current_step % self.interval == 0)
 
-        <span class="k">if</span> <span class="n">is_cache_step</span><span class="p">:</span>
-            <span class="c1"># Run full model, cache output</span>
-            <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">timestep</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">cached_output</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># Reuse cached output (skip expensive computation)</span>
-            <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cached_output</span>
+        if is_cache_step:
+            # Run full model, cache output
+            output = self.model(x, timestep)
+            self.cached_output = output.clone()
+        else:
+            # Reuse cached output (skip expensive computation)
+            output = self.cached_output
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">current_step</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="k">return</span> <span class="n">output</span>
-</code></pre></div>
+        self.current_step += 1
+        return output
+</code></pre>
 
 <p>Actual implementation in <code>src/WaveSpeed/deepcache_nodes.py</code> includes:
 - Proper timestep tracking
 - Cache invalidation on batch changes
 - Error handling and fallback to full forward</p>
 <h3 id="fbcache-residual-comparison">FBCache Residual Comparison</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Compute first block output</span>
-<span class="n">first_output</span> <span class="o">=</span> <span class="n">first_transformer_block</span><span class="p">(</span><span class="n">hidden_states</span><span class="p">)</span>
+<pre class="codehilite"><code class="language-python"># Compute first block output
+first_output = first_transformer_block(hidden_states)
 
-<span class="c1"># Compare to previous step</span>
-<span class="n">residual</span> <span class="o">=</span> <span class="n">first_output</span> <span class="o">-</span> <span class="n">previous_first_output</span>
-<span class="n">residual_norm</span> <span class="o">=</span> <span class="n">residual</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="o">/</span> <span class="n">first_output</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+# Compare to previous step
+residual = first_output - previous_first_output
+residual_norm = residual.abs().mean() / first_output.abs().mean()
 
-<span class="k">if</span> <span class="n">residual_norm</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">:</span>
-    <span class="c1"># Feature change is small — reuse cached blocks</span>
-    <span class="n">hidden_states</span> <span class="o">=</span> <span class="n">apply_cached_residual</span><span class="p">(</span><span class="n">first_output</span><span class="p">)</span>
-<span class="k">else</span><span class="p">:</span>
-    <span class="c1"># Feature change is large — recompute all blocks</span>
-    <span class="n">hidden_states</span> <span class="o">=</span> <span class="n">run_remaining_blocks</span><span class="p">(</span><span class="n">first_output</span><span class="p">)</span>
-    <span class="n">cache_residual</span><span class="p">(</span><span class="n">hidden_states</span><span class="p">)</span>
-</code></pre></div>
+if residual_norm &lt; threshold:
+    # Feature change is small — reuse cached blocks
+    hidden_states = apply_cached_residual(first_output)
+else:
+    # Feature change is large — recompute all blocks
+    hidden_states = run_remaining_blocks(first_output)
+    cache_residual(hidden_states)
+</code></pre>
 
 <h2 id="best-practices">Best Practices</h2>
 <h3 id="for-everyday-use">For Everyday Use</h3>
@@ -1440,13 +1457,13 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
 </ol>
 <h2 id="citation">Citation</h2>
 <p>If you use WaveSpeed/DeepCache in your work:</p>
-<div class="codehilite"><pre><span></span><code><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">ma2023deepcache</span><span class="p">,</span>
-<span class="w">  </span><span class="na">title</span><span class="p">=</span><span class="s">{DeepCache: Accelerating Diffusion Models for Free}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">author</span><span class="p">=</span><span class="s">{Ma, Xinyin and Fang, Gongfan and Wang, Xinchao}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{CVPR}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">year</span><span class="p">=</span><span class="s">{2024}</span>
-<span class="p">}</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bibtex">@inproceedings{ma2023deepcache,
+  title={DeepCache: Accelerating Diffusion Models for Free},
+  author={Ma, Xinyin and Fang, Gongfan and Wang, Xinchao},
+  booktitle={CVPR},
+  year={2024}
+}
+</code></pre>
 
 <h2 id="resources">Resources</h2>
 <ul>
@@ -1530,6 +1547,12 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
                         <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         
@@ -1693,7 +1716,7 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
             Core Insight
         </a>
         
-        <a href="#deepcache-unet-models"
+        <a href="#deepcache"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="3">
             DeepCache (UNet Models)

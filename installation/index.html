@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -897,7 +914,7 @@
             data-slot="button"
             id="next-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/usage/"
+            href="/LightDiffusion-Next/rocm-metal-support/"
           >
             <span class="sr-only">Next</span>
             <svg
@@ -929,11 +946,14 @@
   <div class="typography w-full flex-1 *:data-[slot=alert]:first:mt-0">
     <p>LightDiffusion-Next can run locally on Windows or Linux, inside Docker, or on cloud GPUs. This page walks you through the supported installation paths and the assets you must download before your first generation.</p>
 <h2 id="hardware-software-requirements">Hardware &amp; software requirements</h2>
-<p>The project is tuned for NVIDIA GPUs and CUDA 12.x drivers, but it can also operate on CPU for experimentation.</p>
+<p>The project is tuned for NVIDIA GPUs and CUDA 12.x drivers, but it also supports AMD GPUs with ROCm and Apple Silicon with Metal Performance Shaders (MPS). See <a href="../rocm-metal-support/">ROCm and Metal/MPS Support</a> for platform-specific installation instructions.</p>
 <ul>
-<li><strong>Operating system:</strong> Windows 10/11, Ubuntu 22.04+, or any distro supported by NVIDIA Container Toolkit.</li>
+<li><strong>Operating system:</strong> Windows 10/11, Ubuntu 22.04+, macOS 12.3+ (for Apple Silicon), or any distro supported by NVIDIA Container Toolkit.</li>
 <li><strong>Python:</strong> 3.10.x. The run scripts create a virtual environment automatically.</li>
-<li><strong>GPU:</strong> NVIDIA card with at least compute capability 8.0 (Ampere) for SageAttention/SpargeAttn. RTX 50 series (compute 12.0) runs with SageAttention + Stable-Fast; SpargeAttn is skipped automatically.</li>
+<li><strong>GPU:</strong> </li>
+<li><strong>NVIDIA:</strong> Card with at least compute capability 8.0 (Ampere) for SageAttention/SpargeAttn. RTX 50 series (compute 12.0) runs with SageAttention + Stable-Fast.</li>
+<li><strong>AMD:</strong> RDNA 2+ or CDNA architectures with ROCm 5.0+. See <a href="../rocm-metal-support/#rocm-support-amd-gpus">ROCm Support</a>.</li>
+<li><strong>Apple Silicon:</strong> M1/M2/M3 series with macOS 12.3+. See <a href="../rocm-metal-support/#metalmps-support-apple-silicon">Metal/MPS Support</a>.</li>
 <li><strong>VRAM:</strong> 6 GB minimum (12 GB recommended) for SD1.5 workflows. Flux quantized pipelines require 16 GB+ for comfortable batching.</li>
 <li><strong>Disk space:</strong> ~15 GB for dependencies plus your checkpoints, LoRAs and flux assets.</li>
 </ul>
@@ -1094,8 +1114,8 @@ curl http://localhost:7861/api/telemetry</code></p>
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 ml-auto shadow-none"
-        href="/LightDiffusion-Next/usage/">
-        <span class="max-[500px]:hidden">First Run & UI Tour</span>
+        href="/LightDiffusion-Next/rocm-metal-support/">
+        <span class="max-[500px]:hidden">ROCm and MPS Setup</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-right ">
@@ -1149,6 +1169,12 @@ curl http://localhost:7861/api/telemetry</code></p>
                         <a class="text-2xl font-medium" href="./">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         

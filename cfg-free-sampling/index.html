@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -955,7 +972,7 @@
 - Potential anatomical distortions</p>
 <h3 id="the-cfg-free-solution">The CFG-Free Solution</h3>
 <p>Research shows that CFG importance varies by denoising stage:</p>
-<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────┐
+<pre class="codehilite"><code>┌─────────────────────────────────────────────────────────┐
 │ Early Steps (0-70%)                                     │
 │ High CFG is crucial:                                    │
 │   • Establishes composition                             │
@@ -974,7 +991,7 @@
 │                                                         │
 │ CFG = 7.0 → 0.0 (linear reduction)                      │
 └─────────────────────────────────────────────────────────┘
-</code></pre></div>
+</code></pre>
 
 <p>CFG-Free gradually reduces guidance from your configured value (e.g., 7.0) to 0.0 over the final portion of generation. This preserves strong prompt adherence while allowing the model to naturally refine details without over-guidance.</p>
 <h2 id="configuration">Configuration</h2>
@@ -1050,41 +1067,41 @@
 <li>Generate images — you'll see console logging confirming activation</li>
 </ol>
 <p><strong>Visual feedback:</strong></p>
-<div class="codehilite"><pre><span></span><code>✓ CFG-Free sampling ACTIVE: CFG will gradually reduce to 0 starting at 70% of steps
-</code></pre></div>
+<pre class="codehilite"><code>✓ CFG-Free sampling ACTIVE: CFG will gradually reduce to 0 starting at 70% of steps
+</code></pre>
 
 <h3 id="rest-api">REST API</h3>
 <p>Include in your generation request:</p>
-<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:7861/api/generate<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
-<span class="s1">        &quot;prompt&quot;: &quot;a portrait of a woman with flowing hair, soft lighting&quot;,</span>
-<span class="s1">        &quot;negative_prompt&quot;: &quot;blurry, low quality&quot;,</span>
-<span class="s1">        &quot;width&quot;: 768,</span>
-<span class="s1">        &quot;height&quot;: 1024,</span>
-<span class="s1">        &quot;steps&quot;: 25,</span>
-<span class="s1">        &quot;cfg_scale&quot;: 7.5,</span>
-<span class="s1">        &quot;cfg_free_enabled&quot;: true,</span>
-<span class="s1">        &quot;cfg_free_start_percent&quot;: 70.0</span>
-<span class="s1">      }&#39;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">curl -X POST http://localhost:7861/api/generate \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+        &quot;prompt&quot;: &quot;a portrait of a woman with flowing hair, soft lighting&quot;,
+        &quot;negative_prompt&quot;: &quot;blurry, low quality&quot;,
+        &quot;width&quot;: 768,
+        &quot;height&quot;: 1024,
+        &quot;steps&quot;: 25,
+        &quot;cfg_scale&quot;: 7.5,
+        &quot;cfg_free_enabled&quot;: true,
+        &quot;cfg_free_start_percent&quot;: 70.0
+      }'
+</code></pre>
 
 <h3 id="python-api">Python API</h3>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.user.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">pipeline</span>
+<pre class="codehilite"><code class="language-python">from src.user.pipeline import pipeline
 
-<span class="n">pipeline</span><span class="p">(</span>
-    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;a serene mountain landscape at sunset&quot;</span><span class="p">,</span>
-    <span class="n">negative_prompt</span><span class="o">=</span><span class="s2">&quot;blurry, distorted&quot;</span><span class="p">,</span>
-    <span class="n">w</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span>
-    <span class="n">h</span><span class="o">=</span><span class="mi">768</span><span class="p">,</span>
-    <span class="n">steps</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="s2">&quot;dpmpp_sde_cfgpp&quot;</span><span class="p">,</span>
-    <span class="n">scheduler</span><span class="o">=</span><span class="s2">&quot;ays&quot;</span><span class="p">,</span>
-    <span class="n">cfg_free_enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-    <span class="n">cfg_free_start_percent</span><span class="o">=</span><span class="mf">70.0</span><span class="p">,</span>
-    <span class="n">number</span><span class="o">=</span><span class="mi">1</span>
-<span class="p">)</span>
-</code></pre></div>
+pipeline(
+    prompt=&quot;a serene mountain landscape at sunset&quot;,
+    negative_prompt=&quot;blurry, distorted&quot;,
+    w=1024,
+    h=768,
+    steps=30,
+    sampler=&quot;dpmpp_sde_cfgpp&quot;,
+    scheduler=&quot;ays&quot;,
+    cfg_free_enabled=True,
+    cfg_free_start_percent=70.0,
+    number=1
+)
+</code></pre>
 
 <h2 id="quality-impact-analysis">Quality Impact Analysis</h2>
 <h3 id="visual-improvements">Visual Improvements</h3>
@@ -1127,28 +1144,28 @@
 <h2 id="technical-details">Technical Details</h2>
 <h3 id="implementation">Implementation</h3>
 <p>CFG-Free is implemented in the <code>CFGGuider</code> class (<code>src/sample/CFG.py</code>):</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">_update_cfg_for_sigma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update CFG value based on current sigma and CFG-free parameters.&quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg_free_enabled</span><span class="p">:</span>
-        <span class="k">return</span>
+<pre class="codehilite"><code class="language-python">def _update_cfg_for_sigma(self, sigma):
+    &quot;&quot;&quot;Update CFG value based on current sigma and CFG-free parameters.&quot;&quot;&quot;
+    if not self.cfg_free_enabled:
+        return
 
-    <span class="c1"># Find current step position in schedule</span>
-    <span class="n">current_step</span> <span class="o">=</span> <span class="n">find_closest_sigma_index</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigmas</span><span class="p">)</span>
-    <span class="n">total_steps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sigmas</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-    <span class="n">progress_percent</span> <span class="o">=</span> <span class="p">(</span><span class="n">current_step</span> <span class="o">/</span> <span class="n">total_steps</span><span class="p">)</span> <span class="o">*</span> <span class="mf">100.0</span>
+    # Find current step position in schedule
+    current_step = find_closest_sigma_index(sigma, self.sigmas)
+    total_steps = len(self.sigmas) - 1
+    progress_percent = (current_step / total_steps) * 100.0
 
-    <span class="k">if</span> <span class="n">progress_percent</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg_free_start_percent</span><span class="p">:</span>
-        <span class="c1"># Linear interpolation from original CFG to 0</span>
-        <span class="n">cfg_free_progress</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="p">(</span><span class="n">progress_percent</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg_free_start_percent</span><span class="p">)</span> <span class="o">/</span>
-            <span class="p">(</span><span class="mf">100.0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg_free_start_percent</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">original_cfg</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">cfg_free_progress</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">)</span>  <span class="c1"># Clamp to [0, original_cfg]</span>
-</code></pre></div>
+    if progress_percent &gt;= self.cfg_free_start_percent:
+        # Linear interpolation from original CFG to 0
+        cfg_free_progress = (
+            (progress_percent - self.cfg_free_start_percent) /
+            (100.0 - self.cfg_free_start_percent)
+        )
+        self.cfg = self.original_cfg * (1.0 - cfg_free_progress)
+        self.cfg = max(0.0, self.cfg)  # Clamp to [0, original_cfg]
+</code></pre>
 
 <p><strong>Schedule visualization:</strong></p>
-<div class="codehilite"><pre><span></span><code>CFG Scaling Over Time (start_percent=70%, original_cfg=7.5)
+<pre class="codehilite"><code>CFG Scaling Over Time (start_percent=70%, original_cfg=7.5)
 
 Step:  0    5    10   15   20   25   30   35   40   45   50
        ┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┐
@@ -1156,7 +1173,7 @@ CFG:   7.5  7.5  7.5  7.5  7.5  7.5  7.5  5.6  3.8  1.9  0.0
        │■■■■■■■■■■■■■■■■■■■■■■■■│▓▓▓▓▓▓▓▓▓▓│░░░░│    │    │
        └────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
        ←──── Full CFG ────────→←─── Gradual Reduction ───→
-</code></pre></div>
+</code></pre>
 
 <h3 id="mathematical-formulation">Mathematical Formulation</h3>
 <p>Standard CFG at every step:</p>
@@ -1261,6 +1278,12 @@ CFG:   7.5  7.5  7.5  7.5  7.5  7.5  7.5  5.6  3.8  1.9  0.0
                         <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         

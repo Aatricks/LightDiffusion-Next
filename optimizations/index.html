@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -1008,7 +1025,7 @@
 <p><strong>Trade-offs:</strong> None — minimal memory overhead (~50-200MB), negligible CPU cost, automatically enabled by default.</p>
 <p><a href="../prompt-caching/">→ Full Prompt Caching guide</a></p>
 <hr />
-<h3 id="sageattention-spargeattn">SageAttention &amp; SpargeAttn</h3>
+<h3 id="sageattention--spargeattn">SageAttention &amp; SpargeAttn</h3>
 <p><strong>What it does:</strong> Replaces PyTorch's default scaled dot-product attention with highly optimized CUDA kernels. SageAttention uses INT8 quantization for key/value tensors while maintaining FP16 query precision. SpargeAttn extends this with dynamic sparsity pruning, skipping redundant attention computations.</p>
 <p><strong>When to use:</strong>
 - Always enable SageAttention if available (no quality loss, pure speed gain)
@@ -1016,6 +1033,18 @@
 - Both work seamlessly with all samplers, LoRAs and post-processing stages</p>
 <p><strong>Trade-offs:</strong> None for SageAttention. SpargeAttn may introduce subtle texture variations at very high sparsity thresholds (default is conservative).</p>
 <p><a href="../sageattention/">→ Full SageAttention/SpargeAttn guide</a></p>
+<hr />
+<h3 id="cfg-samplers">CFG Samplers</h3>
+<p>CFG++ Samplers are advanced sampling algorithms that incorporate Classifier-Free Guidance directly into the sampling process, providing better quality and stability compared to standard CFG.</p>
+<hr />
+<h3 id="multi-scale">Multi-Scale Diffusion</h3>
+<p>Multi-Scale Diffusion optimizes performance by processing images at multiple resolutions during generation, reducing computation for high-resolution areas.</p>
+<p><strong>When to use:</strong>
+- High-resolution generation (&gt;1024px)
+- When memory is limited
+- For faster previews</p>
+<p><strong>Trade-offs:</strong> May reduce detail in fine areas.</p>
+<p><strong>Note:</strong> In most cases, Multi-Scale Diffusion in quality mode gives better results than standard diffusion while giving a small speedup (this is explained by the upsampling process).</p>
 <hr />
 <h3 id="stable-fast">Stable-Fast</h3>
 <p><strong>What it does:</strong> JIT-compiles the UNet diffusion model into optimized TorchScript with optional CUDA graphs. The first forward pass traces execution, caches kernel launches and fuses operators for reduced overhead.</p>
@@ -1047,56 +1076,56 @@
 <hr />
 <h2 id="priority-fallback-system">Priority &amp; Fallback System</h2>
 <p>LightDiffusion-Next automatically selects the best available attention backend at runtime:</p>
-<div class="codehilite"><pre><span></span><code>SpargeAttn &gt; SageAttention &gt; xformers &gt; PyTorch SDPA
-</code></pre></div>
+<pre class="codehilite"><code>SpargeAttn &gt; SageAttention &gt; xformers &gt; PyTorch SDPA
+</code></pre>
 
 <p>If a kernel fails (e.g., unsupported head dimension), the system gracefully falls back to the next option. You can force PyTorch SDPA by setting <code>LD_DISABLE_SAGE_ATTENTION=1</code> for debugging.</p>
 <p>Stable-Fast and WaveSpeed are opt-in toggles controlled via the UI or REST API.</p>
 <h2 id="recommended-configurations">Recommended Configurations</h2>
 <h3 id="maximum-speed-batch-jobs-sd15-8gb-vram-50-images">Maximum Speed - Batch Jobs (SD1.5, &gt;8GB VRAM, 50+ images)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Only for batch operations</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span><span class="w">  </span><span class="c1"># or spargeattn if available</span>
-<span class="nt">deepCache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="w">  </span><span class="nt">depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">stable_fast: true  # Only for batch operations
+sageattention: auto  # or spargeattn if available
+deepCache:
+  enabled: true
+  interval: 3
+  depth: 2
+</code></pre>
 
 <p><strong>Expected:</strong> Maximum speedup for batch operations, some quality loss
 <strong>Note:</strong> Disable stable_fast for single 20-step generations</p>
 <h3 id="balanced-quick-generation-sd15-any-vram">Balanced - Quick Generation (SD1.5, any VRAM)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">scheduler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ays</span><span class="w">  </span><span class="c1"># NEW: Use AYS for 2x speedup</span>
-<span class="nt">steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># Reduced from 20 (same quality with AYS)</span>
-<span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># Disabled for normal generations</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">prompt_cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Enabled by default</span>
-<span class="nt">deepcache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="w">  </span><span class="nt">depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">scheduler: ays  # NEW: Use AYS for 2x speedup
+steps: 10  # Reduced from 20 (same quality with AYS)
+stable_fast: false  # Disabled for normal generations
+sageattention: auto
+prompt_cache_enabled: true  # Enabled by default
+deepcache:
+  enabled: true
+  interval: 2
+  depth: 1
+</code></pre>
 
 <p><strong>Expected:</strong> ~2-3x speedup with minimal quality loss
 <strong>Note:</strong> AYS scheduler provides the main speedup; enable stable_fast only for batch jobs (50+ images)</p>
 <h3 id="quality-first-flux">Quality-First (Flux)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">scheduler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ays_flux</span><span class="w">  </span><span class="c1"># NEW: Optimized for Flux models</span>
-<span class="nt">steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># Reduced from 15 (same quality with AYS)</span>
-<span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># not supported</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">prompt_cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="nt">fbcache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">residual_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.01</span><span class="w">  </span><span class="c1"># strict caching</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">scheduler: ays_flux  # NEW: Optimized for Flux models
+steps: 10  # Reduced from 15 (same quality with AYS)
+stable_fast: false  # not supported
+sageattention: auto
+prompt_cache_enabled: true
+fbcache:
+  enabled: true
+  residual_threshold: 0.01  # strict caching
+</code></pre>
 
 <p><strong>Expected:</strong> ~2x speedup with minimal quality impact</p>
 <h3 id="production-api-high-volume-8gb-vram">Production API - High Volume (&gt;8GB VRAM)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Only for sustained high-volume APIs</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">deepCache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># avoid variability across batch sizes</span>
-<span class="nt">keep_models_loaded</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-yaml">stable_fast: true  # Only for sustained high-volume APIs
+sageattention: auto
+deepCache:
+  enabled: false  # avoid variability across batch sizes
+keep_models_loaded: true
+</code></pre>
 
 <p><strong>Expected:</strong> Consistent latency for repeated identical requests
 <strong>Note:</strong> For low-volume or single-shot APIs, use <code>stable_fast: false</code></p>
@@ -1129,25 +1158,25 @@
 </ul>
 <h2 id="debugging-profiling">Debugging &amp; Profiling</h2>
 <p>Check which optimizations are active:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># View startup logs</span>
-cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;using\|enabled&quot;</span>
+<pre class="codehilite"><code class="language-bash"># View startup logs
+cat logs/server.log | grep -i &quot;using\|enabled&quot;
 
-<span class="c1"># Sample output:</span>
-<span class="c1"># Using SpargeAttn (Sparse + SageAttention) cross attention</span>
-<span class="c1"># Using SpargeAttn (Sparse + SageAttention) in VAE</span>
-<span class="c1"># Stable-Fast compilation enabled</span>
-<span class="c1"># DeepCache active: interval=3, depth=2</span>
-</code></pre></div>
+# Sample output:
+# Using SpargeAttn (Sparse + SageAttention) cross attention
+# Using SpargeAttn (Sparse + SageAttention) in VAE
+# Stable-Fast compilation enabled
+# DeepCache active: interval=3, depth=2
+</code></pre>
 
 <p>Monitor telemetry:</p>
-<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>http://localhost:7861/api/telemetry<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.vram_usage_mb, .average_latency_ms&#39;</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">curl http://localhost:7861/api/telemetry | jq '.vram_usage_mb, .average_latency_ms'
+</code></pre>
 
 <p>Disable individual optimizations to isolate issues:</p>
-<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_SAGE_ATTENTION</span><span class="o">=</span><span class="m">1</span><span class="w">      </span><span class="c1"># Forces PyTorch SDPA</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_STABLE_FAST</span><span class="o">=</span><span class="m">1</span><span class="w">         </span><span class="c1"># Skips compilation</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_WAVESPEED</span><span class="o">=</span><span class="m">1</span><span class="w">           </span><span class="c1"># Disables all caching</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">export LD_DISABLE_SAGE_ATTENTION=1      # Forces PyTorch SDPA
+export LD_DISABLE_STABLE_FAST=1         # Skips compilation
+export LD_DISABLE_WAVESPEED=1           # Disables all caching
+</code></pre>
 
 <h2 id="further-reading">Further Reading</h2>
 <ul>
@@ -1235,6 +1264,12 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
                         <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         
@@ -1404,10 +1439,22 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
             Prompt Caching
         </a>
         
-        <a href="#sageattention-spargeattn"
+        <a href="#sageattention--spargeattn"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="3">
             SageAttention &amp; SpargeAttn
+        </a>
+        
+        <a href="#cfg-samplers"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            CFG Samplers
+        </a>
+        
+        <a href="#multi-scale"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3">
+            Multi-Scale Diffusion
         </a>
         
         <a href="#stable-fast"

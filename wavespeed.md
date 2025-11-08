@@ -22,7 +22,7 @@ Diffusion models denoise images iteratively over 20-50 steps. Researchers observ
 
 WaveSpeed caches the expensive high-level computations and reuses them for several steps, only updating low-level details cheaply.
 
-### DeepCache (UNet Models)
+### DeepCache (UNet Models) {#deepcache}
 
 DeepCache targets the middle and output blocks of the UNet architecture:
 

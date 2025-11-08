@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -939,18 +956,18 @@
 </ul>
 <h3 id="configuration">Configuration</h3>
 <p><strong>Enable/Disable</strong> (default: enabled):</p>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.Utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">prompt_cache</span>
+<pre class="codehilite"><code class="language-python">from src.Utilities import prompt_cache
 
-<span class="c1"># Enable (default)</span>
-<span class="n">prompt_cache</span><span class="o">.</span><span class="n">enable_prompt_cache</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+# Enable (default)
+prompt_cache.enable_prompt_cache(True)
 
-<span class="c1"># Disable</span>
-<span class="n">prompt_cache</span><span class="o">.</span><span class="n">enable_prompt_cache</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+# Disable
+prompt_cache.enable_prompt_cache(False)
 
-<span class="c1"># Check status</span>
-<span class="n">stats</span> <span class="o">=</span> <span class="n">prompt_cache</span><span class="o">.</span><span class="n">get_cache_stats</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hit rate: </span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="s1">&#39;hit_rate&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</code></pre></div>
+# Check status
+stats = prompt_cache.get_cache_stats()
+print(f&quot;Hit rate: {stats['hit_rate']:.1%}&quot;)
+</code></pre>
 
 <p><strong>Cache Settings</strong>:
 - Maximum entries: 128 prompts
@@ -958,22 +975,22 @@
 - Cache cleared on: restart or manual clear
 - Automatic pruning: removes oldest 25% when full</p>
 <h3 id="viewing-cache-stats">Viewing Cache Stats</h3>
-<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">src.Utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">prompt_cache</span>
+<pre class="codehilite"><code class="language-python">from src.Utilities import prompt_cache
 
-<span class="c1"># Print statistics</span>
-<span class="n">prompt_cache</span><span class="o">.</span><span class="n">print_cache_stats</span><span class="p">()</span>
+# Print statistics
+prompt_cache.print_cache_stats()
 
-<span class="c1"># Output:</span>
-<span class="c1"># ============================================================</span>
-<span class="c1"># Prompt Cache Statistics</span>
-<span class="c1"># ============================================================</span>
-<span class="c1">#   Status: Enabled</span>
-<span class="c1">#   Entries: 42</span>
-<span class="c1">#   Size: ~85.3 MB</span>
-<span class="c1">#   Requests: 150 (hits: 108, misses: 42)</span>
-<span class="c1">#   Hit Rate: 72.0%</span>
-<span class="c1"># ============================================================</span>
-</code></pre></div>
+# Output:
+# ============================================================
+# Prompt Cache Statistics
+# ============================================================
+#   Status: Enabled
+#   Entries: 42
+#   Size: ~85.3 MB
+#   Requests: 150 (hits: 108, misses: 42)
+#   Hit Rate: 72.0%
+# ============================================================
+</code></pre>
 
 <h3 id="best-practices">Best Practices</h3>
 <ol>
@@ -1057,6 +1074,12 @@
                         <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         

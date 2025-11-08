@@ -539,6 +539,23 @@
                 
                 <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
     <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+        data-size="default" href="/LightDiffusion-Next/rocm-metal-support/"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
+
+        
+        ROCm and MPS Setup
+        
+
+        
+
+        
+
+        
+    </a>
+</li>
+                
+                <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/usage/"
         class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer/menu-button flex items-center gap-2 rounded-md p-2 text-left outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 data-[active=true]:bg-accent data-[active=true]:border-accent 3xl:fixed:w-full 3xl:fixed:max-w-48 relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md">
 
@@ -964,16 +981,16 @@
 - Python 3.8+
 - PyTorch with CUDA support</p>
 <p><strong>Install:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Clone repository</span>
-git<span class="w"> </span>clone<span class="w"> </span>https://github.com/thu-ml/SageAttention
-<span class="nb">cd</span><span class="w"> </span>SageAttention
+<pre class="codehilite"><code class="language-bash"># Clone repository
+git clone https://github.com/thu-ml/SageAttention
+cd SageAttention
 
-<span class="c1"># Install from source (no build isolation to respect existing CUDA setup)</span>
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
+# Install from source (no build isolation to respect existing CUDA setup)
+pip install -e . --no-build-isolation
 
-<span class="c1"># Verify installation</span>
-python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import sageattention; print(&#39;SageAttention installed successfully&#39;)&quot;</span>
-</code></pre></div>
+# Verify installation
+python -c &quot;import sageattention; print('SageAttention installed successfully')&quot;
+</code></pre>
 
 <h3 id="spargeattn-linuxwsl2-only">SpargeAttn (Linux/WSL2 Only)</h3>
 <p><strong>Prerequisites:</strong>
@@ -981,19 +998,19 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 - Linux or WSL2 environment (Windows native builds fail due to linker path limits)
 - GPU with compute capability 8.0-9.0 (RTX 30xx, 40xx, A100, H100)</p>
 <p><strong>Install:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Clone repository</span>
-git<span class="w"> </span>clone<span class="w"> </span>https://github.com/thu-ml/SparseAttention
-<span class="nb">cd</span><span class="w"> </span>SpargeAttn
+<pre class="codehilite"><code class="language-bash"># Clone repository
+git clone https://github.com/thu-ml/SparseAttention
+cd SpargeAttn
 
-<span class="c1"># Set GPU architecture (critical for performance)</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">TORCH_CUDA_ARCH_LIST</span><span class="o">=</span><span class="s2">&quot;9.0&quot;</span><span class="w">  </span><span class="c1"># Or your GPU: 8.0, 8.6, 8.9, 9.0</span>
+# Set GPU architecture (critical for performance)
+export TORCH_CUDA_ARCH_LIST=&quot;9.0&quot;  # Or your GPU: 8.0, 8.6, 8.9, 9.0
 
-<span class="c1"># Install from source</span>
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
+# Install from source
+pip install -e . --no-build-isolation
 
-<span class="c1"># Verify installation</span>
-python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import spas_sage_attn; print(&#39;SpargeAttn installed successfully&#39;)&quot;</span>
-</code></pre></div>
+# Verify installation
+python -c &quot;import spas_sage_attn; print('SpargeAttn installed successfully')&quot;
+</code></pre>
 
 <p><strong>GPU Architecture Reference:</strong></p>
 <div class="table-wrapper"><table>
@@ -1034,52 +1051,52 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </table></div>
 <h3 id="docker-installation">Docker Installation</h3>
 <p>Both kernels are automatically built during the Docker image creation if the architecture is supported:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Build with SpargeAttn (compute 8.0-9.0)</span>
-docker-compose<span class="w"> </span>build<span class="w"> </span>--build-arg<span class="w"> </span><span class="nv">TORCH_CUDA_ARCH_LIST</span><span class="o">=</span><span class="s2">&quot;8.9&quot;</span>
+<pre class="codehilite"><code class="language-bash"># Build with SpargeAttn (compute 8.0-9.0)
+docker-compose build --build-arg TORCH_CUDA_ARCH_LIST=&quot;8.9&quot;
 
-<span class="c1"># RTX 50xx builds (SageAttention only, no SpargeAttn yet)</span>
-docker-compose<span class="w"> </span>build<span class="w"> </span>--build-arg<span class="w"> </span><span class="nv">TORCH_CUDA_ARCH_LIST</span><span class="o">=</span><span class="s2">&quot;12.0&quot;</span>
-</code></pre></div>
+# RTX 50xx builds (SageAttention only, no SpargeAttn yet)
+docker-compose build --build-arg TORCH_CUDA_ARCH_LIST=&quot;12.0&quot;
+</code></pre>
 
 <h2 id="usage">Usage</h2>
 <h3 id="automatic-detection">Automatic Detection</h3>
 <p>LightDiffusion-Next automatically detects and enables the best available attention backend at startup:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Priority order (highest to lowest):</span>
-<span class="n">SpargeAttn</span> <span class="o">&gt;</span> <span class="n">SageAttention</span> <span class="o">&gt;</span> <span class="n">xformers</span> <span class="o">&gt;</span> <span class="n">PyTorch</span> <span class="n">SDPA</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-python"># Priority order (highest to lowest):
+SpargeAttn &gt; SageAttention &gt; xformers &gt; PyTorch SDPA
+</code></pre>
 
 <p>Check which backend is active in the server logs:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># SpargeAttn enabled</span>
-cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;attention&quot;</span>
-<span class="c1"># Output: Using SpargeAttn (Sparse + SageAttention) cross attention</span>
+<pre class="codehilite"><code class="language-bash"># SpargeAttn enabled
+cat logs/server.log | grep &quot;attention&quot;
+# Output: Using SpargeAttn (Sparse + SageAttention) cross attention
 
-<span class="c1"># SageAttention enabled</span>
-<span class="c1"># Output: Using SageAttention cross attention</span>
+# SageAttention enabled
+# Output: Using SageAttention cross attention
 
-<span class="c1"># Fallback</span>
-<span class="c1"># Output: Using pytorch cross attention</span>
-</code></pre></div>
+# Fallback
+# Output: Using pytorch cross attention
+</code></pre>
 
 <h3 id="streamlit-ui">Streamlit UI</h3>
 <p>No configuration needed — SageAttention/SpargeAttn are always active if installed.</p>
 <h3 id="rest-api">REST API</h3>
 <p>Same as UI — the backend selection is transparent:</p>
-<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:7861/api/generate<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
-<span class="s1">        &quot;prompt&quot;: &quot;a serene mountain lake at dawn&quot;,</span>
-<span class="s1">        &quot;width&quot;: 768,</span>
-<span class="s1">        &quot;height&quot;: 512,</span>
-<span class="s1">        &quot;num_images&quot;: 1</span>
-<span class="s1">      }&#39;</span>
-<span class="c1"># Automatically uses SpargeAttn if available</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">curl -X POST http://localhost:7861/api/generate \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+        &quot;prompt&quot;: &quot;a serene mountain lake at dawn&quot;,
+        &quot;width&quot;: 768,
+        &quot;height&quot;: 512,
+        &quot;num_images&quot;: 1
+      }'
+# Automatically uses SpargeAttn if available
+</code></pre>
 
 <h3 id="manual-disable">Manual Disable</h3>
 <p>Force PyTorch SDPA for debugging:</p>
-<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_SAGE_ATTENTION</span><span class="o">=</span><span class="m">1</span>
-python<span class="w"> </span>streamlit_app.py
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">export LD_DISABLE_SAGE_ATTENTION=1
+python streamlit_app.py
+</code></pre>
 
 <h2 id="performance">Performance</h2>
 <p>Both SageAttention and SpargeAttn provide measurable speedup over PyTorch SDPA baseline:</p>
@@ -1103,24 +1120,24 @@ python<span class="w"> </span>streamlit_app.py
 <p>LightDiffusion-Next handles padding/slicing automatically.</p>
 <h3 id="tensor-layout">Tensor Layout</h3>
 <p>SageAttention expects tensors in <code>(batch_size, num_heads, seq_len, head_dim)</code> format. The pipeline reshapes inputs transparently:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Internal reshaping (handled automatically)</span>
-<span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span>
-    <span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">heads</span><span class="p">,</span> <span class="n">dim_head</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
-    <span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">),</span>
-<span class="p">)</span>
-<span class="n">out</span> <span class="o">=</span> <span class="n">sageattention</span><span class="o">.</span><span class="n">sageattn</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">tensor_layout</span><span class="o">=</span><span class="s2">&quot;HND&quot;</span><span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-python"># Internal reshaping (handled automatically)
+q, k, v = map(
+    lambda t: t.reshape(b, -1, heads, dim_head).transpose(1, 2),
+    (q, k, v),
+)
+out = sageattention.sageattn(q, k, v, tensor_layout=&quot;HND&quot;)
+</code></pre>
 
 <h3 id="spargeattn-thresholds">SpargeAttn Thresholds</h3>
 <p>Default pruning parameters (tuned for quality/speed balance):</p>
-<div class="codehilite"><pre><span></span><code><span class="n">out</span> <span class="o">=</span> <span class="n">spas_sage_attn</span><span class="o">.</span><span class="n">spas_sage2_attn_meansim_cuda</span><span class="p">(</span>
-    <span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span>
-    <span class="n">simthreshd1</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>      <span class="c1"># Similarity threshold (60%)</span>
-    <span class="n">cdfthreshd</span><span class="o">=</span><span class="mf">0.97</span><span class="p">,</span>      <span class="c1"># Keep top 97% of attention scores</span>
-    <span class="n">pvthreshd</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>         <span class="c1"># Partial vector threshold</span>
-    <span class="n">is_causal</span><span class="o">=</span><span class="kc">False</span>
-<span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-python">out = spas_sage_attn.spas_sage2_attn_meansim_cuda(
+    q, k, v,
+    simthreshd1=0.6,      # Similarity threshold (60%)
+    cdfthreshd=0.97,      # Keep top 97% of attention scores
+    pvthreshd=15,         # Partial vector threshold
+    is_causal=False
+)
+</code></pre>
 
 <p>Adjust <code>simthreshd1</code> for different trade-offs:
 - <code>0.5</code>: More aggressive pruning, higher speedup, slight quality loss
@@ -1150,13 +1167,13 @@ python<span class="w"> </span>streamlit_app.py
 <h3 id="import-error-no-module-named-sageattention">Import Error: <code>No module named 'sageattention'</code></h3>
 <p><strong>Cause:</strong> Not installed or installation failed.</p>
 <p><strong>Fix:</strong></p>
-<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>SageAttention
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">cd SageAttention
+pip install -e . --no-build-isolation
+</code></pre>
 
 <p>Verify CUDA toolkit is accessible:</p>
-<div class="codehilite"><pre><span></span><code>nvcc<span class="w"> </span>--version<span class="w">  </span><span class="c1"># Should match PyTorch CUDA version</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash">nvcc --version  # Should match PyTorch CUDA version
+</code></pre>
 
 <h3 id="compilation-error-nvcc-fatal-error">Compilation Error: <code>nvcc fatal error</code></h3>
 <p><strong>Cause:</strong> CUDA toolkit not found or version mismatch.</p>
@@ -1170,11 +1187,11 @@ pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </s
 <h3 id="spargeattn-build-fails-on-windows">SpargeAttn Build Fails on Windows</h3>
 <p><strong>Cause:</strong> Windows linker has path length limitations.</p>
 <p><strong>Fix:</strong> Use WSL2 or native Linux:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># In WSL2</span>
-<span class="nb">cd</span><span class="w"> </span>SpargeAttn
-<span class="nb">export</span><span class="w"> </span><span class="nv">TORCH_CUDA_ARCH_LIST</span><span class="o">=</span><span class="s2">&quot;8.9&quot;</span>
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w"> </span>--no-build-isolation
-</code></pre></div>
+<pre class="codehilite"><code class="language-bash"># In WSL2
+cd SpargeAttn
+export TORCH_CUDA_ARCH_LIST=&quot;8.9&quot;
+pip install -e . --no-build-isolation
+</code></pre>
 
 <h3 id="slower-than-expected">Slower Than Expected</h3>
 <p><strong>Cause:</strong> Wrong GPU architecture compiled or kernel fallback.</p>
@@ -1187,32 +1204,32 @@ pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </s
 <h3 id="quality-degradation-with-spargeattn">Quality Degradation with SpargeAttn</h3>
 <p><strong>Cause:</strong> Pruning thresholds too aggressive.</p>
 <p><strong>Fix:</strong> Currently not user-configurable in the UI, but you can modify <code>src/Attention/AttentionMethods.py</code>:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Line ~290</span>
-<span class="n">out</span> <span class="o">=</span> <span class="n">spas_sage_attn</span><span class="o">.</span><span class="n">spas_sage2_attn_meansim_cuda</span><span class="p">(</span>
-    <span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span>
-    <span class="n">simthreshd1</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>      <span class="c1"># Increase from 0.6 for better quality</span>
-    <span class="n">cdfthreshd</span><span class="o">=</span><span class="mf">0.98</span><span class="p">,</span>      <span class="c1"># Increase from 0.97</span>
-    <span class="n">pvthreshd</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
-    <span class="n">is_causal</span><span class="o">=</span><span class="kc">False</span>
-<span class="p">)</span>
-</code></pre></div>
+<pre class="codehilite"><code class="language-python"># Line ~290
+out = spas_sage_attn.spas_sage2_attn_meansim_cuda(
+    q, k, v,
+    simthreshd1=0.7,      # Increase from 0.6 for better quality
+    cdfthreshd=0.98,      # Increase from 0.97
+    pvthreshd=15,
+    is_causal=False
+)
+</code></pre>
 
 <h2 id="citation">Citation</h2>
 <p>If you use SageAttention or SpargeAttn in your work:</p>
-<div class="codehilite"><pre><span></span><code><span class="nc">@article</span><span class="p">{</span><span class="nl">sageattention2024</span><span class="p">,</span>
-<span class="w">  </span><span class="na">title</span><span class="p">=</span><span class="s">{SageAttention: Accurate 8-Bit Attention for Plug-and-play Inference Acceleration}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">author</span><span class="p">=</span><span class="s">{Zhang, Jintao and Zhang, Jia and Zhai, Pengle and others}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">journal</span><span class="p">=</span><span class="s">{arXiv preprint arXiv:2410.02367}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">year</span><span class="p">=</span><span class="s">{2024}</span>
-<span class="p">}</span>
+<pre class="codehilite"><code class="language-bibtex">@article{sageattention2024,
+  title={SageAttention: Accurate 8-Bit Attention for Plug-and-play Inference Acceleration},
+  author={Zhang, Jintao and Zhang, Jia and Zhai, Pengle and others},
+  journal={arXiv preprint arXiv:2410.02367},
+  year={2024}
+}
 
-<span class="nc">@article</span><span class="p">{</span><span class="nl">spargeattn2024</span><span class="p">,</span>
-<span class="w">  </span><span class="na">title</span><span class="p">=</span><span class="s">{SpargeAttn: Sparsity-Aware Efficient Attention for Long Context LLMs}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">author</span><span class="p">=</span><span class="s">{Zhang, Jintao and others}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">journal</span><span class="p">=</span><span class="s">{arXiv preprint}</span><span class="p">,</span>
-<span class="w">  </span><span class="na">year</span><span class="p">=</span><span class="s">{2024}</span>
-<span class="p">}</span>
-</code></pre></div>
+@article{spargeattn2024,
+  title={SpargeAttn: Sparsity-Aware Efficient Attention for Long Context LLMs},
+  author={Zhang, Jintao and others},
+  journal={arXiv preprint},
+  year={2024}
+}
+</code></pre>
 
 <h2 id="resources">Resources</h2>
 <ul>
@@ -1296,6 +1313,12 @@ pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </s
                         <a class="text-2xl font-medium" href="../installation/">
                             
                             Installation
+                            
+                        </a>
+                        
+                        <a class="text-2xl font-medium" href="../rocm-metal-support/">
+                            
+                            ROCm and MPS Setup
                             
                         </a>
                         
