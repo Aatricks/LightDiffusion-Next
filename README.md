@@ -4,6 +4,10 @@
 
 [![demo platform](https://img.shields.io/badge/Play%20with%20LightDiffusion%21-LightDiffusion%20demo%20platform-lightblue)](https://huggingface.co/spaces/Aatricks/LightDiffusion-Next)&nbsp;
 
+![Clone Count](https://raw.githubusercontent.com/Aatricks/LightDiffusion-Next/main/.github/badges/clones.svg)
+
+![View Count](https://raw.githubusercontent.com/Aatricks/LightDiffusion-Next/main/.github/badges/views.svg)
+
 **LightDiffusion-Next**  is the fastest AI-powered image generation WebUI, combining speed, precision, and flexibility in one cohesive tool.
 </br>
 </br>
