@@ -4,11 +4,14 @@ LightDiffusion-Next can run locally on Windows or Linux, inside Docker, or on cl
 
 ## Hardware & software requirements
 
-The project is tuned for NVIDIA GPUs and CUDA 12.x drivers, but it can also operate on CPU for experimentation.
+The project is tuned for NVIDIA GPUs and CUDA 12.x drivers, but it also supports AMD GPUs with ROCm and Apple Silicon with Metal Performance Shaders (MPS). See [ROCm and Metal/MPS Support](rocm-metal-support.md) for platform-specific installation instructions.
 
-- **Operating system:** Windows 10/11, Ubuntu 22.04+, or any distro supported by NVIDIA Container Toolkit.
+- **Operating system:** Windows 10/11, Ubuntu 22.04+, macOS 12.3+ (for Apple Silicon), or any distro supported by NVIDIA Container Toolkit.
 - **Python:** 3.10.x. The run scripts create a virtual environment automatically.
-- **GPU:** NVIDIA card with at least compute capability 8.0 (Ampere) for SageAttention/SpargeAttn. RTX 50 series (compute 12.0) runs with SageAttention + Stable-Fast; SpargeAttn is skipped automatically.
+- **GPU:** 
+  - **NVIDIA:** Card with at least compute capability 8.0 (Ampere) for SageAttention/SpargeAttn. RTX 50 series (compute 12.0) runs with SageAttention + Stable-Fast.
+  - **AMD:** RDNA 2+ or CDNA architectures with ROCm 5.0+. See [ROCm Support](rocm-metal-support.md#rocm-support-amd-gpus).
+  - **Apple Silicon:** M1/M2/M3 series with macOS 12.3+. See [Metal/MPS Support](rocm-metal-support.md#metalmps-support-apple-silicon).
 - **VRAM:** 6 GB minimum (12 GB recommended) for SD1.5 workflows. Flux quantized pipelines require 16 GB+ for comfortable batching.
 - **Disk space:** ~15 GB for dependencies plus your checkpoints, LoRAs and flux assets.
 
