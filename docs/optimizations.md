@@ -53,7 +53,7 @@ These optimizations **work together** — enabling multiple techniques simultane
 
 ---
 
-### SageAttention & SpargeAttn
+### SageAttention & SpargeAttn {#sageattention--spargeattn}
 
 **What it does:** Replaces PyTorch's default scaled dot-product attention with highly optimized CUDA kernels. SageAttention uses INT8 quantization for key/value tensors while maintaining FP16 query precision. SpargeAttn extends this with dynamic sparsity pruning, skipping redundant attention computations.
 
@@ -65,6 +65,27 @@ These optimizations **work together** — enabling multiple techniques simultane
 **Trade-offs:** None for SageAttention. SpargeAttn may introduce subtle texture variations at very high sparsity thresholds (default is conservative).
 
 [→ Full SageAttention/SpargeAttn guide](sageattention.md)
+
+---
+
+### CFG Samplers {#cfg-samplers}
+
+CFG++ Samplers are advanced sampling algorithms that incorporate Classifier-Free Guidance directly into the sampling process, providing better quality and stability compared to standard CFG.
+
+---
+
+### Multi-Scale Diffusion {#multi-scale}
+
+Multi-Scale Diffusion optimizes performance by processing images at multiple resolutions during generation, reducing computation for high-resolution areas.
+
+**When to use:**
+- High-resolution generation (>1024px)
+- When memory is limited
+- For faster previews
+
+**Trade-offs:** May reduce detail in fine areas.
+
+**Note:** In most cases, Multi-Scale Diffusion in quality mode gives better results than standard diffusion while giving a small speedup (this is explained by the upsampling process).
 
 ---
 
