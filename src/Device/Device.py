@@ -214,6 +214,19 @@ def is_nvidia() -> bool:
     return False
 
 
+def is_rocm() -> bool:
+    """#### Checks if user has an AMD GPU with ROCm
+
+    #### Returns
+        - `bool`: Whether the GPU is AMD with ROCm
+    """
+    global cpu_state
+    if cpu_state == CPUState.GPU:
+        if torch.version.hip:
+            return True
+    return False
+
+
 ENABLE_PYTORCH_ATTENTION = False
 
 VAE_DTYPE = torch.float32
@@ -230,6 +243,15 @@ try:
                 >= 8
             ):
                 VAE_DTYPE = torch.bfloat16
+    elif is_rocm():
+        # ROCm supports PyTorch attention on modern AMD GPUs
+        torch_version = torch.version.__version__
+        if int(torch_version[0]) >= 2:
+            if ENABLE_PYTORCH_ATTENTION is False:
+                ENABLE_PYTORCH_ATTENTION = True
+        # Most modern AMD GPUs (RDNA 2+, CDNA) support bfloat16
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+            VAE_DTYPE = torch.bfloat16
 except:
     pass
 
@@ -237,9 +259,11 @@ if is_intel_xpu():
     VAE_DTYPE = torch.bfloat16
 
 if ENABLE_PYTORCH_ATTENTION:
-    torch.backends.cuda.enable_math_sdp(True)
-    torch.backends.cuda.enable_flash_sdp(True)
-    torch.backends.cuda.enable_mem_efficient_sdp(True)
+    # Enable SDP backends for CUDA and ROCm (both use torch.backends.cuda)
+    if torch.cuda.is_available():
+        torch.backends.cuda.enable_math_sdp(True)
+        torch.backends.cuda.enable_flash_sdp(True)
+        torch.backends.cuda.enable_mem_efficient_sdp(True)
 
 
 FORCE_FP32 = False
@@ -278,9 +302,11 @@ def get_torch_device_name(device: torch.device) -> str:
                 allocator_backend = torch.cuda.get_allocator_backend()
             except:
                 allocator_backend = ""
-            return "{} {} : {}".format(
-                device, torch.cuda.get_device_name(device), allocator_backend
-            )
+            device_name = torch.cuda.get_device_name(device)
+            if is_rocm():
+                return "{} {} (ROCm) : {}".format(device, device_name, allocator_backend)
+            else:
+                return "{} {} : {}".format(device, device_name, allocator_backend)
         else:
             return "{}".format(device.type)
     elif is_intel_xpu():
@@ -1287,6 +1313,9 @@ def sageattention_enabled() -> bool:
         return False
     if directml_enabled:
         return False
+    if is_rocm():
+        # SageAttention is CUDA-only, not compatible with ROCm
+        return False
     if torch.cuda.is_available():
         try:
             major, _ = torch.cuda.get_device_capability()
@@ -1324,6 +1353,9 @@ def spargeattn_enabled() -> bool:
     if is_intel_xpu():
         return False
     if directml_enabled:
+        return False
+    if is_rocm():
+        # SpargeAttn is CUDA-only, not compatible with ROCm
         return False
     if torch.cuda.is_available():
         try:
@@ -1363,6 +1395,7 @@ def xformers_enabled() -> bool:
         return False
     if directml_enabled:
         return False
+    # xformers works on both CUDA and ROCm
     return XFORMERS_IS_AVAILABLE
 
 
@@ -1396,8 +1429,17 @@ def pytorch_attention_flash_attention() -> bool:
     """
     global ENABLE_PYTORCH_ATTENTION
     if ENABLE_PYTORCH_ATTENTION:
-        if is_nvidia():  # pytorch flash attention only works on Nvidia
+        if is_nvidia():
+            # PyTorch flash attention works well on Nvidia GPUs
             return True
+        if is_rocm():
+            # PyTorch SDPA supports ROCm with flash attention on modern AMD GPUs
+            # RDNA 3 and CDNA 2+ architectures
+            try:
+                # Check if flash attention backend is available
+                return True
+            except:
+                pass
     return False
 
 
@@ -1559,7 +1601,8 @@ def should_use_fp16(
     if is_intel_xpu():
         return True
 
-    if torch.version.hip:
+    if is_rocm():
+        # ROCm GPUs support FP16 - all RDNA and CDNA architectures
         return True
 
     if torch.cuda.is_available():
@@ -1658,6 +1701,18 @@ def should_use_bf16(
     if is_intel_xpu():
         return True
 
+    if is_rocm():
+        # ROCm: Check if bfloat16 is supported (CDNA2+ and RDNA3+ architectures)
+        try:
+            bf16_works = torch.cuda.is_bf16_supported()
+            if bf16_works or manual_cast:
+                free_model_memory = get_free_memory() * 0.9 - minimum_inference_memory()
+                if (not prioritize_performance) or model_params * 4 > free_model_memory:
+                    return True
+        except:
+            pass
+        return False
+
     if device is None:
         device = torch.device("cuda")
 
@@ -1687,11 +1742,14 @@ def soft_empty_cache(force: bool = False) -> None:
     elif is_intel_xpu():
         torch.xpu.empty_cache()
     elif torch.cuda.is_available():
-        if (
-            force or is_nvidia()
-        ):  # This seems to make things worse on ROCm so I only do it for cuda
+        if force or is_nvidia():
+            # NVIDIA: Always empty cache when forced or by default
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
+        elif is_rocm() and force:
+            # ROCm: Only empty cache when explicitly forced
+            # ROCm's memory allocator can be sensitive to frequent cache clearing
+            torch.cuda.empty_cache()
 
 
 def unload_all_models() -> None:

@@ -19,6 +19,7 @@ nav:
   - Overview: index.md
   - Getting Started:
     - Installation: installation.md
+    - ROCm and MPS Setup: rocm-metal-support.md
     - First Run & UI Tour: usage.md
     - Workflow Playbook: examples.md
   - Deep Dive:
