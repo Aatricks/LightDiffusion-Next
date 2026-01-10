@@ -20,6 +20,28 @@ class ModelCache:
         self._last_checkpoint_path: Optional[str] = None
         self._keep_models_loaded: bool = True
         self._loaded_models_list: List[Any] = []
+        
+        # Prefetching support
+        self._prefetched_state_dict: Optional[dict] = None
+        self._prefetched_path: Optional[str] = None
+
+    def set_prefetched_model(self, path: str, state_dict: dict) -> None:
+        """Store a prefetched state dict in CPU RAM"""
+        self._prefetched_path = path
+        self._prefetched_state_dict = state_dict
+        logging.info(f"ModelCache: Stored prefetched model: {path}")
+
+    def get_prefetched_model(self, path: str) -> Optional[dict]:
+        """Get prefetched state dict if path matches"""
+        if self._prefetched_path == path:
+            logging.info(f"ModelCache: Using prefetched state dict for {path}")
+            return self._prefetched_state_dict
+        return None
+
+    def clear_prefetch(self) -> None:
+        """Clear prefetched data from RAM"""
+        self._prefetched_state_dict = None
+        self._prefetched_path = None
 
     def set_keep_models_loaded(self, keep_loaded: bool) -> None:
         """Enable or disable keeping models loaded in VRAM"""

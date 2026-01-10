@@ -46,7 +46,7 @@
   "prompt_cache_enabled": true,
   "dark_mode": true,
   "verbose_mode": true,
-  "ui_scale": 2.0,
+  "ui_scale": 1.0,
   "sidebar_collapsed_by_default": false,
   "flux_mode": false,
   "realistic_mode": true,

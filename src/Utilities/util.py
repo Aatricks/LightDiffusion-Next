@@ -48,6 +48,15 @@ def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> d
     #### Returns:
         - `dict`: The loaded checkpoint.
     """
+    # Optimization: Check for prefetched state dict first
+    from src.Device.ModelCache import get_model_cache
+    cache = get_model_cache()
+    prefetched = cache.get_prefetched_model(ckpt)
+    if prefetched is not None:
+        # Clear the prefetch entry once used to free CPU RAM
+        cache.clear_prefetch()
+        return prefetched
+
     if device is None:
         device = torch.device("cpu")
     

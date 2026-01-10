@@ -162,24 +162,74 @@ class GenerationBuffer:
         self._pending: List[PendingRequest] = []
         self._lock = asyncio.Lock()
         self._new_request = asyncio.Event()
-        self._worker_task: Optional[asyncio.Task] = None
-        # Telemetry counters
-        self._batches_processed = 0
+        
+        # Prefetching state
+        self._prefetch_lock = asyncio.Lock()
+        self._prefetch_task: Optional[asyncio.Task] = None
+        self._current_prefetch_path: Optional[str] = None
+
+        # Statistics
         self._items_processed = 0
-        self._last_batch_ts: Optional[float] = None
-        # Additional telemetry for average queue wait time
+        self._batches_processed = 0
         self._requests_processed = 0
         self._cumulative_wait_time = 0.0
+        self._last_batch_ts = 0.0
 
-    async def start(self):
-        if self._worker_task is None:
-            self._worker_task = asyncio.create_task(self._worker())
-
-    async def enqueue(self, pending: PendingRequest):
+    async def _look_ahead_and_prefetch(self, current_batch_signature: tuple):
+        """Analyze remaining queue and pre-load the next model if different."""
+        from src.user.pipeline import resolve_checkpoint_path
+        
         async with self._lock:
-            self._pending.append(pending)
-            self._new_request.set()
-        return await pending.future
+            if not self._pending:
+                return
+
+            # Find the next group that has a different signature
+            next_req = None
+            for p in self._pending:
+                sig = self._signature_for(p.req)
+                if sig != current_batch_signature:
+                    next_req = p.req
+                    break
+            
+            if not next_req:
+                return
+
+            # Resolve the path for the next model
+            target_path = resolve_checkpoint_path(
+                flux_enabled=next_req.flux_enabled,
+                realistic_model=next_req.realistic_model
+            )
+            
+        # Perform prefetch outside the queue lock
+        async with self._prefetch_lock:
+            # Skip if already prefetched or currently prefetching the same path
+            if target_path == self._current_prefetch_path:
+                return
+            
+            # Cancel existing prefetch if it's for a different model
+            if self._prefetch_task and not self._prefetch_task.done():
+                self._prefetch_task.cancel()
+                try:
+                    await self._prefetch_task
+                except asyncio.CancelledError:
+                    pass
+
+            self._current_prefetch_path = target_path
+            
+            async def prefetch_task():
+                try:
+                    logger.info("Prefetcher: Starting background load of %s", target_path)
+                    # Load to CPU RAM using the optimized util
+                    sd = await asyncio.to_thread(util.load_torch_file, target_path)
+                    # Store in cache
+                    get_model_cache().set_prefetched_model(target_path, sd)
+                    logger.info("Prefetcher: Successfully pre-loaded %s into RAM", target_path)
+                except Exception as e:
+                    logger.warning("Prefetcher: Failed to pre-load %s: %s", target_path, e)
+                finally:
+                    self._current_prefetch_path = None
+
+            self._prefetch_task = asyncio.create_task(prefetch_task())
 
     def _signature_for(self, req: GenerateRequest) -> tuple:
         # Grouping signature - requests must match these to be batched
@@ -277,6 +327,9 @@ class GenerationBuffer:
                         pass
                 if not self._pending:
                     self._new_request.clear()
+
+            # Trigger prefetching for the NEXT group while we process this one
+            await self._look_ahead_and_prefetch(chosen_sig)
 
             # Process the selected group outside the lock
             try:

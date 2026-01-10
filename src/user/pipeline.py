@@ -40,6 +40,16 @@ def _check_interruption():
         raise InterruptedError("Generation interrupted")
 
 
+def resolve_checkpoint_path(model_path: str = None, flux_enabled: bool = False, realistic_model: bool = False) -> str:
+    """Determine the actual checkpoint path based on priority and flags."""
+    if model_path:
+        return model_path
+    if flux_enabled:
+        return "./include/checkpoints/flux1-dev-f16.safetensors" # Or appropriate default
+    if realistic_model:
+        return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
+    return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
+
 def pipeline(
     prompt: str | list,
     w: int,

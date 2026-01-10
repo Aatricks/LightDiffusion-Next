@@ -286,7 +286,7 @@ class Modulation(nn.Module):
 
 # Define the double stream block class
 class DoubleStreamBlock(nn.Module):
-    def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False, dtype=None, device=None, operations=None):
+    def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False, dtype=None, device=None, operations=None, block_index: int = 0):
         """#### Initialize the DoubleStreamBlock class.
 
         #### Args:
@@ -297,8 +297,11 @@ class DoubleStreamBlock(nn.Module):
             - `dtype` (optional): The data type.
             - `device` (optional): The device.
             - `operations` (optional): The operations module.
+            - `block_index` (int, optional): The index of this block in the model.
         """
         super().__init__()
+        self.block_index = block_index
+        self._txt_proj_cache = {}
 
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
         self.num_heads = num_heads
@@ -346,9 +349,25 @@ class DoubleStreamBlock(nn.Module):
         img_q, img_k = self.img_attn.norm(img_q, img_k, img_v)
 
         # prepare txt for attention
-        txt_modulated = self.txt_norm1(txt)
-        txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
-        txt_qkv = self.txt_attn.qkv(txt_modulated)
+        # Optimization: for the first block, `txt` is constant (prompt embeddings).
+        # We can precompute the projection of the normalized txt to save compute.
+        if self.block_index == 0:
+            cache_key = id(txt)
+            if cache_key in self._txt_proj_cache:
+                txt_proj_base = self._txt_proj_cache[cache_key]
+            else:
+                txt_proj_base = self.txt_attn.qkv(self.txt_norm1(txt))
+                if len(self._txt_proj_cache) > 2:
+                    self._txt_proj_cache.clear()
+                self._txt_proj_cache[cache_key] = txt_proj_base
+            
+            # Linear property: qkv( (1+scale)*norm(txt) + shift ) = (1+scale)*qkv(norm(txt)) + qkv(shift)
+            # Since shift is broadcasted, qkv(shift) is fast.
+            txt_qkv = (1 + txt_mod1.scale) * txt_proj_base + self.txt_attn.qkv(txt_mod1.shift)
+        else:
+            txt_modulated = self.txt_norm1(txt)
+            txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
+            txt_qkv = self.txt_attn.qkv(txt_modulated)
         txt_q, txt_k, txt_v = txt_qkv.view(txt_qkv.shape[0], txt_qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         txt_q, txt_k = self.txt_attn.norm(txt_q, txt_k, txt_v)
 
@@ -654,8 +673,9 @@ class Flux3(nn.Module):
                     dtype=dtype,
                     device=device,
                     operations=operations,
+                    block_index=i,
                 )
-                for _ in range(params.depth)
+                for i in range(params.depth)
             ]
         )
 
