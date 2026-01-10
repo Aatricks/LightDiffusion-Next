@@ -1,0 +1,133 @@
+[project]
+name = "lightdiffusion-next"
+version = "0.1.0"
+description = "The fastest AI-powered image generation WebUI, combining speed, precision, and flexibility."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "torchvision",
+    "xformers",
+    "numpy<2.0.0",
+    "aiohappyeyeballs",
+    "aiohttp",
+    "aiosignal",
+    "annotated-types",
+    "anyio",
+    "async-timeout",
+    "attrs",
+    "certifi",
+    "chardet",
+    "charset-normalizer",
+    "colorama",
+    "contourpy",
+    "cycler",
+    "darkdetect",
+    "dill",
+    "einops",
+    "exceptiongroup",
+    "ffmpeg-python",
+    "filelock",
+    "fonttools",
+    "frozenlist",
+    "fsspec",
+    "future",
+    "gitdb",
+    "GitPython",
+    "h11",
+    "httpcore",
+    "httpx",
+    "huggingface-hub",
+    "idna",
+    "imageio",
+    "imageio-ffmpeg",
+    "intel-cmplr-lib-ur",
+    "intel-openmp",
+    "Jinja2",
+    "kanren",
+    "kiwisolver",
+    "lazy_loader",
+    "MarkupSafe",
+    "matplotlib",
+    "mkl",
+    "mpmath",
+    "multidict",
+    "multipledispatch",
+    "networkx",
+    "ollama",
+    "opencv-python",
+    "opencv-python-headless",
+    "packaging",
+    "pandas",
+    "piexif",
+    "pillow",
+    "propcache",
+    "psutil",
+    "py-cpuinfo",
+    "pydantic",
+    "pydantic_core",
+    "pyparsing",
+    "python-dateutil",
+    "python-dotenv",
+    "pytz",
+    "PyYAML",
+    "regex",
+    "requests",
+    "safetensors",
+    "scikit-image",
+    "scipy",
+    "seaborn",
+    "segment-anything",
+    "six",
+    "smmap",
+    "sniffio",
+    "sympy",
+    "tbb",
+    "tcmlib",
+    "tifffile",
+    "tokenizers",
+    "toolz",
+    "torchsde>=0.2.6",
+    "tqdm",
+    "trampoline",
+    "transformers",
+    "typing_extensions",
+    "tzdata",
+    "ultralytics",
+    "ultralytics-thop",
+    "umf",
+    "unification",
+    "urllib3",
+    "yarl",
+    "gguf",
+    "gradio>=3.50.2",
+    "spaces",
+    "fastapi",
+    "uvicorn",
+    "hf_xet",
+    "streamlit",
+    "triton-windows; sys_platform == 'win32'",
+    "tomesd",
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+]
+
+[tool.uv]
+managed = true
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
