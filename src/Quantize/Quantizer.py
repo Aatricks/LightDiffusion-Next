@@ -902,7 +902,14 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
                 if len(patches) > 0:
                     p.patches = []
         self.object_patches = {}
-        # TODO: Find another way to not unload after patches
+
+        if device_to == self.offload_device:
+            if not any(
+                x.model is self
+                for x in getattr(Device, "current_loaded_models", [])
+            ):
+                device_to = None
+
         return super().unpatch_model(
             device_to=device_to, unpatch_weights=unpatch_weights
         )
