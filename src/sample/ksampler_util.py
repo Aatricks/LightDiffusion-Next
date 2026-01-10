@@ -301,13 +301,15 @@ def beta_scheduler(model_sampling, steps, alpha=0.6, beta=0.6):
     unique_ts, indices = np.unique(ts_indices, return_index=True)
     ordered_unique_ts = unique_ts[np.argsort(indices)]
 
-    # Map indices to sigma values efficiently
-    sigs = [float(model_sigmas[idx]) for idx in ordered_unique_ts]
+    # Map indices to sigma values efficiently using vectorized indexing
+    # to avoid multiple host-device synchronizations.
+    ts_indices_tensor = torch.from_numpy(ordered_unique_ts).to(
+        device=model_sigmas.device, dtype=torch.long
+    )
+    sigs = model_sigmas[ts_indices_tensor]
 
-    # Add final sigma value of 0.0
-    sigs.append(0.0)
-
-    return torch.FloatTensor(sigs)
+    # Concatenate with 0.0 and move to CPU in one go
+    return torch.cat([sigs, sigs.new_zeros([1])]).cpu().float()
 
 
 def calculate_sigmas(

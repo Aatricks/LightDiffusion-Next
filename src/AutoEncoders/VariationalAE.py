@@ -1,4 +1,6 @@
 import logging
+import math
+import itertools
 from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import torch
@@ -697,6 +699,13 @@ class VAE:
             - `torch.Tensor`: The decoded pixel samples.
         """
         memory_used = self.memory_used_decode(samples_in.shape, self.vae_dtype)
+        
+        # Check if tiling is needed (heuristically if memory_used > 80% of free VRAM)
+        free_memory = Device.get_free_memory(self.device)
+        if memory_used > free_memory * 0.8:
+            logging.info("VRAM constraint detected, using tiled VAE decoding")
+            return self.decode_tiled(samples_in, flux=flux)
+
         Device.load_models_gpu([self.patcher], memory_required=memory_used)
         free_memory = Device.get_free_memory(self.device)
         batch_number = int(free_memory / memory_used)
@@ -721,6 +730,38 @@ class VAE:
         pixel_samples = pixel_samples.to(self.output_device).movedim(1, -1)
         return pixel_samples
 
+    def decode_tiled(
+        self,
+        samples: torch.Tensor,
+        tile_x: int = 64,
+        tile_y: int = 64,
+        overlap: int = 16,
+        flux: bool = False,
+    ) -> torch.Tensor:
+        """Decode latents in tiles to save VRAM."""
+        output_device = self.output_device
+        
+        def decode_fn(s):
+            return self.first_stage_model.decode(
+                s.to(self.device).to(self.vae_dtype), flux=flux
+            ).float()
+
+        # Load model once
+        Device.load_models_gpu([self.patcher])
+        
+        # Utilize utility for tiled processing
+        decoded = util.tiled_scale(
+            samples,
+            decode_fn,
+            tile_x=tile_x,
+            tile_y=tile_y,
+            overlap=overlap,
+            upscale_amount=self.upscale_ratio,
+            out_channels=3,
+            output_device=output_device,
+        )
+        
+        return self.process_output(decoded).movedim(1, -1)
 
     def encode(self, pixel_samples: torch.Tensor, flux:bool = False) -> torch.Tensor:
         """#### Encode the pixel samples to latent samples.
@@ -734,6 +775,13 @@ class VAE:
         pixel_samples = self.vae_encode_crop_pixels(pixel_samples)
         pixel_samples = pixel_samples.movedim(-1, 1)
         memory_used = self.memory_used_encode(pixel_samples.shape, self.vae_dtype)
+        
+        # Check if tiling is needed for encoding
+        free_memory = Device.get_free_memory(self.device)
+        if memory_used > free_memory * 0.8:
+            logging.info("VRAM constraint detected, using tiled VAE encoding")
+            return self.encode_tiled(pixel_samples, flux=flux)
+
         Device.load_models_gpu([self.patcher], memory_required=memory_used)
         free_memory = Device.get_free_memory(self.device)
         batch_number = int(free_memory / memory_used)
@@ -758,6 +806,38 @@ class VAE:
             )
 
         return samples
+
+    def encode_tiled(
+        self,
+        pixel_samples: torch.Tensor,
+        tile_x: int = 512,
+        tile_y: int = 512,
+        overlap: int = 64,
+        flux: bool = False,
+    ) -> torch.Tensor:
+        """Encode pixels in tiles to save VRAM."""
+        output_device = self.output_device
+        
+        def encode_fn(s):
+            s_in = self.process_input(s).to(self.device).to(self.vae_dtype)
+            return self.first_stage_model.encode(s_in, flux=flux).float()
+
+        # Load model once
+        Device.load_models_gpu([self.patcher])
+        
+        # Utilize utility for tiled processing
+        encoded = util.tiled_scale(
+            pixel_samples,
+            encode_fn,
+            tile_x=tile_x,
+            tile_y=tile_y,
+            overlap=overlap,
+            upscale_amount=1.0 / self.downscale_ratio,
+            out_channels=self.latent_channels,
+            output_device=output_device,
+        )
+        
+        return encoded
 
     def get_sd(self):
         """#### Get the state dictionary.

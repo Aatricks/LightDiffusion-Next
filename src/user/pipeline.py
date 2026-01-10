@@ -1512,7 +1512,7 @@ def pipeline(
                     main_imgs = _tmp[0] if isinstance(_tmp, (tuple, list)) else _tmp
                 else:
                     main_imgs = vaedecode_240[0]
-                saveimage.save_images(
+                saveimage.save_images_async(
                     filename_prefix="LD-HF" if hires_fix else "LD",
                     images=main_imgs,
                     prompt=prompt,

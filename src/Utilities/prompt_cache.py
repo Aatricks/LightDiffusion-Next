@@ -82,8 +82,11 @@ class PromptCacheEntry:
             cond (torch.Tensor): Conditional embedding tensor.
             pooled (torch.Tensor): Pooled output tensor.
         """
-        self.cond = cond.clone() if cond is not None else None
-        self.pooled = pooled.clone() if pooled is not None else None
+        # We don't clone here because these tensors are treated as read-only
+        # by consumers, and the producer (CLIP) creates fresh tensors
+        # for each encoding. This reduces memory pressure and latency.
+        self.cond = cond if cond is not None else None
+        self.pooled = pooled if pooled is not None else None
         self.hits = 0
     
     def get(self) -> tuple:
@@ -93,8 +96,7 @@ class PromptCacheEntry:
             tuple: (cond, pooled) tensors.
         """
         self.hits += 1
-        # No clone here: __init__ already clones to protect the cache,
-        # and consumers treat these as read-only.
+        # Returns direct references. Tensors are assumed to be read-only.
         return (self.cond, self.pooled)
 
 

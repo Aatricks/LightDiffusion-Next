@@ -98,15 +98,8 @@ def ays_scheduler(
             logging.debug(f"Using AYS {use_steps}-step schedule (requested {steps} steps)")
             base_sigmas = torch.FloatTensor(schedules[use_steps])
             
-            # Interpolate to desired number of steps
-            indices = torch.linspace(0, len(base_sigmas) - 1, steps + 1)
-            sigmas = torch.zeros(steps + 1)
-            for i in range(steps + 1):
-                idx = indices[i]
-                low_idx = int(torch.floor(idx))
-                high_idx = min(low_idx + 1, len(base_sigmas) - 1)
-                weight = idx - low_idx
-                sigmas[i] = base_sigmas[low_idx] * (1 - weight) + base_sigmas[high_idx] * weight
+            # Vectorized interpolation to desired number of steps
+            sigmas = resample_sigmas(base_sigmas, steps + 1)
         else:
             # Interpolate between two neighboring schedules
             lower_steps = max([s for s in available_steps if s <= steps])
@@ -152,17 +145,13 @@ def resample_sigmas(sigmas: torch.Tensor, target_steps: int) -> torch.Tensor:
     if len(sigmas) == target_steps:
         return sigmas
     
-    indices = torch.linspace(0, len(sigmas) - 1, target_steps)
-    resampled = torch.zeros(target_steps)
-    
-    for i in range(target_steps):
-        idx = indices[i]
-        low_idx = int(torch.floor(idx))
-        high_idx = min(low_idx + 1, len(sigmas) - 1)
-        weight = idx - low_idx
-        resampled[i] = sigmas[low_idx] * (1 - weight) + sigmas[high_idx] * weight
-    
-    return resampled
+    # Vectorized interpolation using PyTorch's native interpolate
+    # This avoids manual loops and host-device synchronizations on GPU
+    sigmas_reshaped = sigmas.unsqueeze(0).unsqueeze(0)
+    resampled = torch.nn.functional.interpolate(
+        sigmas_reshaped, size=(target_steps,), mode='linear', align_corners=True
+    )
+    return resampled.squeeze()
 
 
 def apply_denoise_factor(sigmas: torch.Tensor, denoise: float) -> torch.Tensor:

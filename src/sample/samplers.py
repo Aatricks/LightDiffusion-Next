@@ -108,6 +108,9 @@ def sample_euler_ancestral(
 
         return False
 
+    # Pre-calculate resolution schedule for all steps
+    resolution_schedule = [should_use_fullres(step) for step in range(n_steps)]
+
     # Pre-allocate tensors and init noise sampler
     s_in = torch.ones((x.shape[0],), device=device)
     noise_sampler = (
@@ -116,7 +119,7 @@ def sample_euler_ancestral(
         else noise_sampler
     )
 
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in trange(n_steps, disable=disable):
         # Allow interruption even when running as part of the pipeline.
         # Previously the check was gated by `not pipeline`, which prevented
         # UI-driven interrupts from taking effect during pipeline mode.
@@ -124,10 +127,10 @@ def sample_euler_ancestral(
             return x
 
         if not pipeline:
-            app_instance.app.progress.set(i / (len(sigmas) - 1))
+            app_instance.app.progress.set(i / n_steps)
 
-        # Determine resolution for this step
-        use_fullres = should_use_fullres(i)
+        # Use pre-calculated resolution for this step
+        use_fullres = resolution_schedule[i]
 
         # Scale input for processing
         if use_fullres:
@@ -149,7 +152,9 @@ def sample_euler_ancestral(
         )
 
         # Fused update step
-        x = x + util.to_d(x, sigmas[i], denoised) * (sigma_down - sigmas[i])
+        d = util.to_d(x, sigmas[i], denoised)
+        x = x + d * (sigma_down - sigmas[i])
+        
         if sigmas[i + 1] > 0:
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
 
@@ -261,20 +266,23 @@ def sample_euler(
 
         return False
 
+    # Pre-calculate resolution schedule for all steps
+    resolution_schedule = [should_use_fullres(step) for step in range(n_steps)]
+
     # Pre-allocate tensors and cache parameters
     s_in = torch.ones((x.shape[0],), device=device)
-    gamma_max = min(s_churn / (len(sigmas) - 1), 2**0.5 - 1) if s_churn > 0 else 0
+    gamma_max = min(s_churn / n_steps, 2**0.5 - 1) if s_churn > 0 else 0
 
-    for i in trange(len(sigmas) - 1, disable=disable):
+    for i in trange(n_steps, disable=disable):
         # Check for external interrupt request regardless of pipeline flag
         if hasattr(app_instance.app, "interrupt_flag") and app_instance.app.interrupt_flag:
             return x
 
         if not pipeline:
-            app_instance.app.progress.set(i / (len(sigmas) - 1))
+            app_instance.app.progress.set(i / n_steps)
 
-        # Determine resolution for this step
-        use_fullres = should_use_fullres(i)
+        # Use pre-calculated resolution for this step
+        use_fullres = resolution_schedule[i]
 
         # Combined sigma calculation and update
         sigma_hat = (

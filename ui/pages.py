@@ -174,7 +174,7 @@ def render_generate_page():
                     st.info("Image upload is disabled while generation is running. Stop the job to change the input image.")
                     if settings.get("input_image_path") and os.path.exists(settings.get("input_image_path")):
                         try:
-                            st.image(settings.get("input_image_path"), caption="Current Input Image", use_column_width=True)
+                            st.image(settings.get("input_image_path"), caption="Current Input Image", width='stretch')
                         except Exception:
                             pass
                 else:
@@ -184,7 +184,7 @@ def render_generate_page():
                         with open(img_path, "wb") as f:
                             f.write(uploaded_file.getbuffer())
                         settings["input_image_path"] = img_path
-                        st.image(uploaded_file, caption="Input Image", use_container_width=True)
+                        st.image(uploaded_file, caption="Input Image", width='stretch')
 
         with st.expander("⚡ Sampling & Scheduling", expanded=False):
             st.markdown("**Scheduler & Sampler Settings**")
@@ -486,9 +486,9 @@ def render_generate_page():
 
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.button("🎨 Generate", use_container_width=True, disabled=st.session_state.is_generating, type="primary", on_click=prepare_generation)
+        st.button("🎨 Generate", width='stretch', disabled=st.session_state.is_generating, type="primary", on_click=prepare_generation)
     with col2:
-        stop_clicked = st.button("⏹️ Stop", use_container_width=True, disabled=not st.session_state.is_generating)
+        stop_clicked = st.button("⏹️ Stop", width='stretch', disabled=not st.session_state.is_generating)
 
     if stop_clicked:
         stop_generation()
@@ -608,7 +608,7 @@ def render_history_page():
                 if os.path.exists(img_path):
                     try:
                         img = Image.open(img_path)
-                        st.image(img, use_container_width=True)
+                        st.image(img, width='stretch')
 
                         # Compact info
                         with st.expander("ℹ️ Details", expanded=False):
@@ -673,10 +673,10 @@ def render_history_page():
                                             file_name=os.path.basename(img_path),
                                             mime="image/png",
                                             key=f"download_history_{entry_idx}_{hist_key}",
-                                            use_container_width=True
+                                            width='stretch'
                                         )
                             with col_del:
-                                if st.button("🗑️", key=f"delete_{entry_idx}", use_container_width=True):
+                                if st.button("🗑️", key=f"delete_{entry_idx}", width='stretch'):
                                     if delete_history_entry(entry_idx):
                                         st.rerun()
                             # All metadata expander (minimalistic)

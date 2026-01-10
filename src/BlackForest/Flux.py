@@ -32,6 +32,8 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
     x = Attention.optimized_attention(q, k, v, heads, skip_reshape=True, flux=True)
     return x
 
+_omega_cache = {}
+
 # Define the rotary positional encoding (RoPE)
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     """#### Compute the rotary positional encoding.
@@ -50,15 +52,27 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     else:
         device = pos.device
 
-    scale = torch.linspace(
-        0, (dim - 2) / dim, steps=dim // 2, dtype=torch.float64, device=device
-    )
-    omega = 1.0 / (theta**scale)
+    # Optimization: Cache omega to avoid recomputing it every step.
+    # It only depends on dim, theta, and device.
+    cache_key = (dim, theta, device)
+    if cache_key in _omega_cache:
+        omega = _omega_cache[cache_key]
+    else:
+        scale = torch.linspace(
+            0, (dim - 2) / dim, steps=dim // 2, dtype=torch.float64, device=device
+        )
+        omega = 1.0 / (theta**scale)
+        _omega_cache[cache_key] = omega
+
     out = torch.einsum(
         "...n,d->...nd", pos.to(dtype=torch.float32, device=device), omega
     )
+    
+    # Optimization: Compute cos/sin once instead of twice.
+    cos_out = torch.cos(out)
+    sin_out = torch.sin(out)
     out = torch.stack(
-        [torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1
+        [cos_out, -sin_out, sin_out, cos_out], dim=-1
     )
     out = rearrange(out, "b n d (i j) -> b n d i j", i=2, j=2)
     return out.to(dtype=torch.float32, device=pos.device)
@@ -95,6 +109,7 @@ class EmbedND(nn.Module):
         self.dim = dim
         self.theta = theta
         self.axes_dim = axes_dim
+        self._cache = {}
 
     def forward(self, ids: torch.Tensor) -> torch.Tensor:
         """#### Forward pass for the EmbedND class.
@@ -105,12 +120,25 @@ class EmbedND(nn.Module):
         #### Returns:
             - `Tensor`: The embedded tensor.
         """
+        # Optimization: Cache the entire positional encoding.
+        # It only depends on the IDs values, which are usually constant for a session.
+        # We use a tuple of (shape, device, dtype, first_id, last_id) as a fast proxy for equality.
+        cache_key = (ids.shape, ids.device, ids.dtype, ids[0, 0, 0].item(), ids[0, -1, -1].item())
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         n_axes = ids.shape[-1]
         emb = torch.cat(
             [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
             dim=-3,
         )
-        return emb.unsqueeze(1)
+        res = emb.unsqueeze(1)
+        
+        # Keep cache small (usually only 1-2 entries needed)
+        if len(self._cache) > 4:
+            self._cache.clear()
+        self._cache[cache_key] = res
+        return res
 
 # Define the MLP embedder class
 class MLPEmbedder(nn.Module):
@@ -654,6 +682,9 @@ class Flux3(nn.Module):
                 device=device,
                 operations=operations,
             )
+        
+        # Optimization: Cache for img_ids and txt_ids to avoid recomputation
+        self._ids_cache = {}
 
     def forward_orig(
         self,
@@ -754,22 +785,34 @@ class Flux3(nn.Module):
 
         h_len = (h + (patch_size // 2)) // patch_size
         w_len = (w + (patch_size // 2)) // patch_size
-        img_ids = torch.zeros((h_len, w_len, 3), device=x.device, dtype=x.dtype)
-        img_ids[..., 1] = (
-            img_ids[..., 1]
-            + torch.linspace(0, h_len - 1, steps=h_len, device=x.device, dtype=x.dtype)[
-                :, None
-            ]
-        )
-        img_ids[..., 2] = (
-            img_ids[..., 2]
-            + torch.linspace(0, w_len - 1, steps=w_len, device=x.device, dtype=x.dtype)[
-                None, :
-            ]
-        )
-        img_ids = repeat(img_ids, "h w c -> b (h w) c", b=bs)
+        context_len = context.shape[1]
+        
+        # Optimization: Use cached IDs if available for this configuration
+        cache_key = (bs, h_len, w_len, context_len, x.device, x.dtype)
+        if cache_key in self._ids_cache:
+            img_ids, txt_ids = self._ids_cache[cache_key]
+        else:
+            img_ids = torch.zeros((h_len, w_len, 3), device=x.device, dtype=x.dtype)
+            img_ids[..., 1] = (
+                img_ids[..., 1]
+                + torch.linspace(0, h_len - 1, steps=h_len, device=x.device, dtype=x.dtype)[
+                    :, None
+                ]
+            )
+            img_ids[..., 2] = (
+                img_ids[..., 2]
+                + torch.linspace(0, w_len - 1, steps=w_len, device=x.device, dtype=x.dtype)[
+                    None, :
+                ]
+            )
+            img_ids = repeat(img_ids, "h w c -> b (h w) c", b=bs)
+            txt_ids = torch.zeros((bs, context_len, 3), device=x.device, dtype=x.dtype)
+            
+            # Keep cache small
+            if len(self._ids_cache) > 4:
+                self._ids_cache.clear()
+            self._ids_cache[cache_key] = (img_ids, txt_ids)
 
-        txt_ids = torch.zeros((bs, context.shape[1], 3), device=x.device, dtype=x.dtype)
         out = self.forward_orig(
             img, img_ids, context, txt_ids, timestep, y, guidance, control
         )

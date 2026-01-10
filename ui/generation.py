@@ -539,7 +539,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                                 cols[idx % cols_count].caption(f"Image {idx+1}")
                             except Exception:
                                 with cols[idx % cols_count]:
-                                    st.image(img, caption=f"Image {idx+1}", use_container_width=True)
+                                    st.image(img, caption=f"Image {idx+1}", width='stretch')
                     except Exception:
                         if settings.get("verbose_mode"):
                             status_placeholder.warning(f"Error rendering {path}")

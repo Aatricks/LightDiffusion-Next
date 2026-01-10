@@ -1,4 +1,6 @@
 import os
+import threading
+import queue
 import numpy as np
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
@@ -252,3 +254,25 @@ class SaveImage:
             counter += 1
 
         return {"ui": {"images": results}}
+
+    def save_images_async(
+        self,
+        images: list,
+        filename_prefix: str = "LD",
+        prompt: str = None,
+        extra_pnginfo: dict = None,
+    ) -> threading.Thread:
+        """#### Save images asynchronously in a background thread.
+        
+        #### Returns:
+            - `threading.Thread`: The background thread handling the save.
+        """
+        # Create copies of tensors on CPU to free GPU memory immediately
+        cpu_images = [img.detach().cpu().clone() for img in images]
+        
+        thread = threading.Thread(
+            target=self.save_images,
+            args=(cpu_images, filename_prefix, prompt, extra_pnginfo)
+        )
+        thread.start()
+        return thread
