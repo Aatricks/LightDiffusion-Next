@@ -45,7 +45,7 @@ def resolve_checkpoint_path(model_path: str = None, flux_enabled: bool = False, 
     if model_path:
         return model_path
     if flux_enabled:
-        return "./include/checkpoints/flux1-dev-f16.safetensors" # Or appropriate default
+        return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
     if realistic_model:
         return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
     return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
@@ -253,6 +253,9 @@ def pipeline(
     sampler_name = sampler if sampler and sampler.strip() else "dpmpp_sde_cfgpp"
 
     # Model selection: automatically detect and load appropriate artifacts
+    if model_path is None:
+        model_path = resolve_checkpoint_path(model_path, flux_enabled, realistic_model)
+    
     model_type = detect_model_type(model_path) if model_path else ("FLUX" if flux_enabled else ("SD15" if not realistic_model else "SD15"))
     # Guard: if a path explicitly ends with .gguf treat it as FLUX regardless
     # of other heuristics to avoid trying to load a gguf via torch.load.

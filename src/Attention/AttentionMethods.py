@@ -174,7 +174,16 @@ def attention_xformers(
             (q, k, v),
         )
 
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=mask)
+        try:
+            out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=mask)
+        except (NotImplementedError, RuntimeError):
+            # Fallback for unsupported architectures
+            out = torch.nn.functional.scaled_dot_product_attention(
+                q.unsqueeze(0).reshape(b, heads, -1, dim_head),
+                k.unsqueeze(0).reshape(b, heads, -1, dim_head),
+                v.unsqueeze(0).reshape(b, heads, -1, dim_head),
+                attn_mask=mask, dropout_p=0.0, is_causal=False
+            ).reshape(b * heads, -1, dim_head)
 
         out = (
             out.unsqueeze(0)
