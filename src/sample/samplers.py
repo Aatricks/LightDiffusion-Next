@@ -852,6 +852,9 @@ def sample_dpmpp_2m_cfgpp(
 
         return False
 
+    # Pre-calculate resolution schedule
+    resolution_schedule = [should_use_fullres(step) for step in range(n_steps)]
+
     # Pre-calculate all needed values in one go
     sigma_steps = torch.exp(-t_steps)  # Fused calculation
     ratios = sigma_steps[1:] / sigma_steps[:-1]
@@ -860,6 +863,10 @@ def sample_dpmpp_2m_cfgpp(
     # Pre-calculate CFG schedule for the entire sampling process
     steps = torch.arange(n_steps, device=device)
     cfg_values = cfg_scale + (cfg_min - cfg_scale) * (steps / n_steps)
+
+    # Optimization: Use CPU sigmas for scalars/loop and keep GPU sigmas for tensors
+    sigmas_gpu = sigmas.to(device)
+    sigmas = sigmas.cpu()
 
     old_denoised = None
     old_uncond_denoised = None
@@ -883,8 +890,8 @@ def sample_dpmpp_2m_cfgpp(
         if not pipeline:
             app_instance.app.progress.set(i / n_steps)
 
-        # Determine resolution for this step
-        use_fullres = should_use_fullres(i)
+        # Determine resolution for this step from schedule
+        use_fullres = resolution_schedule[i]
 
         # Scale input for processing
         if use_fullres:
@@ -898,7 +905,8 @@ def sample_dpmpp_2m_cfgpp(
         current_cfg = cfg_values[i]
 
         # Model inference at appropriate resolution
-        denoised = model(x_process, sigmas[i] * s_in_process, **extra_args)
+        # Use GPU sigma
+        denoised = model(x_process, sigmas_gpu[i] * s_in_process, **extra_args)
         uncond_denoised = extra_args.get("model_options", {}).get(
             "sampler_post_cfg_function", []
         )[-1]({"denoised": denoised, "uncond_denoised": None})
@@ -983,6 +991,11 @@ def sample_dpmpp_sde_cfgpp(
     """DPM-Solver++ (SDE) with CFG++ optimizations and multi-scale diffusion"""
     # Pre-calculate common values
     device = x.device
+    
+    # Optimization: Use CPU sigmas for scalars/loop and keep GPU sigmas for tensors
+    sigmas_gpu = sigmas.to(device)
+    sigmas = sigmas.cpu()
+    
     global disable_gui
     disable_gui = pipeline
 
@@ -1062,8 +1075,12 @@ def sample_dpmpp_sde_cfgpp(
                 # Use full-res every 2nd step (0, 2, 4, ...)
                 return relative_step % 2 == 0
 
-        return False  # Pre-allocate tensors and values
+        return False
 
+    # Pre-calculate resolution schedule
+    resolution_schedule = [should_use_fullres(step) for step in range(n_steps)]
+
+    # Pre-allocate tensors and values
     s_in = torch.ones((x.shape[0],), device=device)
     extra_args = {} if extra_args is None else extra_args
 
@@ -1121,7 +1138,8 @@ def sample_dpmpp_sde_cfgpp(
         current_cfg = get_cfg_scale(i)
 
         # Model inference at appropriate resolution
-        denoised = model(x_process, sigmas[i] * s_in_process, **extra_args)
+        # Use GPU sigma for model input to avoid syncs
+        denoised = model(x_process, sigmas_gpu[i] * s_in_process, **extra_args)
         uncond_denoised = extra_args.get("model_options", {}).get(
             "sampler_post_cfg_function", []
         )[-1]({"denoised": denoised, "uncond_denoised": None})
@@ -1145,7 +1163,7 @@ def sample_dpmpp_sde_cfgpp(
         if sigmas[i + 1] == 0:
             # Final step - regular CFG
             cfg_denoised = uncond_denoised + (denoised - uncond_denoised) * current_cfg
-            x = x + util.to_d(x, sigmas[i], cfg_denoised) * (sigmas[i + 1] - sigmas[i])
+            x = x + util.to_d(x, sigmas_gpu[i], cfg_denoised) * (sigmas_gpu[i + 1] - sigmas_gpu[i])
         else:
             # Two-step update with CFG++
             t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
@@ -1175,7 +1193,8 @@ def sample_dpmpp_sde_cfgpp(
                 cfg_denoised = uncond_momentum + (momentum - uncond_momentum) * x0_coeff
 
             # Calculate x_2 for step 2
-            noise_step1 = noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
+            # Optimization: move noise to GPU
+            noise_step1 = noise_sampler(sigma_fn(t), sigma_fn(s)).to(device) * s_noise * su
             x_2 = (
                 (sigma_fn(s_) / sigma_fn(t)) * x
                 - (t - s_).expm1() * cfg_denoised
@@ -1183,7 +1202,7 @@ def sample_dpmpp_sde_cfgpp(
             )
 
             # Step 2 inference - determine resolution
-            use_fullres_step2 = should_use_fullres(i) if multiscale_active else True
+            use_fullres_step2 = resolution_schedule[i] if multiscale_active else True
 
             if use_fullres_step2:
                 x_2_process = x_2
@@ -1193,7 +1212,8 @@ def sample_dpmpp_sde_cfgpp(
                 s_in_process_2 = torch.ones((x_2_process.shape[0],), device=device)
 
             # Step 2 inference
-            denoised_2 = model(x_2_process, sigma_fn(s) * s_in_process_2, **extra_args)
+            # Use GPU sigma
+            denoised_2 = model(x_2_process, sigma_fn(s).to(device) * s_in_process_2, **extra_args)
             uncond_denoised_2 = extra_args.get("model_options", {}).get(
                 "sampler_post_cfg_function", []
             )[-1]({"denoised": denoised_2, "uncond_denoised": None})
@@ -1224,7 +1244,8 @@ def sample_dpmpp_sde_cfgpp(
             t_next_ = t_fn(sd)
 
             # Combined update with both predictions
-            noise_final = noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
+            # Optimization: move noise to GPU
+            noise_final = noise_sampler(sigma_fn(t), sigma_fn(t_next)).to(device) * s_noise * su
             x = (
                 (sigma_fn(t_next_) / sigma_fn(t)) * x
                 - (t - t_next_).expm1()

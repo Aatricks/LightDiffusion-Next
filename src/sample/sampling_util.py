@@ -151,20 +151,29 @@ def get_ancestral_step(sigma_from, sigma_to, eta=1.0):
     in the context of diffusion models to determine the next step in the process.
 
     #### Parameters:
-        - `sigma_from` (float): The starting value of sigma.
-        - `sigma_to` (float): The target value of sigma.
+        - `sigma_from` (float or torch.Tensor): The starting value of sigma.
+        - `sigma_to` (float or torch.Tensor): The target value of sigma.
         - `eta` (float, optional): A scaling factor for the step size. Default is 1.0.
 
     #### Returns:
     - `tuple`: A tuple containing `sigma_down` and `sigma_up`:
-        - `sigma_down` (float): The computed value of sigma for the downward step.
-        - `sigma_up` (float): The computed value of sigma for the upward step.
+        - `sigma_down` (float or torch.Tensor): The computed value of sigma for the downward step.
+        - `sigma_up` (float or torch.Tensor): The computed value of sigma for the upward step.
     """
-    sigma_up = min(
-        sigma_to,
-        eta * (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5,
-    )
-    sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
+    if not torch.is_tensor(sigma_to):
+        sigma_up = min(
+            sigma_to,
+            eta * (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5,
+        )
+        sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
+    else:
+        # Vectorized version for tensors to avoid host-device syncs
+        sigma_up = torch.min(
+            sigma_to,
+            eta * (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5,
+        )
+        sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
+        
     return sigma_down, sigma_up
 
 
@@ -243,10 +252,16 @@ class BatchedBrownianTree:
         #### Returns:
             - `torch.Tensor`: The Brownian tree values.
         """
-        t0, t1, sign = self.sort(t0, t1)
+        # torchsde requires CPU scalars for time points.
+        t0_val = t0.item() if torch.is_tensor(t0) else float(t0)
+        t1_val = t1.item() if torch.is_tensor(t1) else float(t1)
+        
+        t_min, t_max, sign = self.sort(t0_val, t1_val)
+        
+        # Call trees with sorted CPU scalars
         w = torch.stack(
             [
-                tree(t0.cpu().float(), t1.cpu().float()).to(t0.dtype).to(t0.device)
+                tree(t_min, t_max).to(device=t0.device if torch.is_tensor(t0) else None)
                 for tree in self.trees
             ]
         ) * (self.sign * sign)

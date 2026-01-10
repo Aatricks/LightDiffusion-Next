@@ -714,9 +714,9 @@ class UNetModel1(nn.Module):
             "must specify y if and only if the model is class-conditional"
         )
 
-        # Time embedding - optimize by computing with target dtype directly
+        # Time embedding - optimize by computing with target device/dtype directly
         t_emb = sampling_util.timestep_embedding(timesteps, self.model_channels).to(
-            x.dtype
+            device=x.device, dtype=x.dtype
         )
         emb = self.time_embed(t_emb)
 

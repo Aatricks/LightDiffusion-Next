@@ -356,6 +356,19 @@ class LoadedModel:
         self.weights_loaded = False
         self.real_model = None
 
+    def __eq__(self, other):
+        """#### Check if two loaded models are equal
+        
+        #### Args:
+            - `other`: The other loaded model
+        
+        #### Returns:
+            - `bool`: Whether the two loaded models are equal
+        """
+        if not isinstance(other, LoadedModel):
+            return False
+        return self.model == other.model
+
     def model_memory(self):
         """#### Get the model memory
         
