@@ -1,9 +1,7 @@
 import logging
 import math
-import threading
 import torch
 import torchsde
-from torch import nn
 
 from src.Utilities import util
 
@@ -100,11 +98,19 @@ def timestep_embedding_flux(t: torch.Tensor, dim, max_period=10000, time_factor:
     """
     t = time_factor * t
     half = dim // 2
-    freqs = torch.exp(
-        -math.log(max_period)
-        * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device)
-        / half
-    )
+    
+    # Optimization: Cache freqs to avoid recomputing it every step.
+    # The cache is keyed by dim, max_period, and device.
+    cache_key = (half, max_period, t.device)
+    if cache_key in _freqs_cache:
+        freqs = _freqs_cache[cache_key]
+    else:
+        freqs = torch.exp(
+            -math.log(max_period)
+            * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device)
+            / half
+        )
+        _freqs_cache[cache_key] = freqs
 
     args = t[:, None].float() * freqs[None]
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)

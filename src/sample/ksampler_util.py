@@ -232,14 +232,12 @@ def normal_scheduler(
     start = s.timestep(s.sigma_max)
     end = s.timestep(s.sigma_min)
 
-    timesteps = torch.linspace(start, end, steps)
-
-    sigs = []
-    for x in range(len(timesteps)):
-        ts = timesteps[x]
-        sigs.append(s.sigma(ts))
-    sigs += [0.0]
-    return torch.FloatTensor(sigs)
+    # Vectorized calculation to avoid multiple host-device synchronizations
+    timesteps = torch.linspace(start, end, steps, device=s.sigmas.device)
+    sigs = s.sigma(timesteps)
+    
+    # Concatenate with 0.0 and move to CPU in one go
+    return torch.cat([sigs, sigs.new_zeros([1])]).cpu().float()
 
 
 def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.FloatTensor:
@@ -253,12 +251,18 @@ def simple_scheduler(model_sampling: torch.nn.Module, steps: int) -> torch.Float
         - `torch.FloatTensor`: The scheduler.
     """
     s = model_sampling
-    sigs = []
+    if steps <= 0:
+        return torch.FloatTensor([0.0])
+
+    # Vectorized indexing to avoid Python loops and host-device syncs
+    # ss is the step size in the sigmas array
     ss = len(s.sigmas) / steps
-    for x in range(steps):
-        sigs += [float(s.sigmas[-(1 + int(x * ss))])]
-    sigs += [0.0]
-    return torch.FloatTensor(sigs)
+    indices = (torch.arange(steps, device=s.sigmas.device) * ss).long()
+    
+    # Map indices from end (legacy behavior: s.sigmas[-(1 + int(x * ss))])
+    sigs = s.sigmas.flip(0)[indices]
+    
+    return torch.cat([sigs, sigs.new_zeros([1])]).cpu().float()
 
 
 # Implemented based on: https://arxiv.org/abs/2407.12173

@@ -87,17 +87,15 @@ class PromptCacheEntry:
         self.hits = 0
     
     def get(self) -> tuple:
-        """Get cached tensors (creates new references).
+        """Get cached tensors (returns references for performance).
         
         Returns:
             tuple: (cond, pooled) tensors.
         """
         self.hits += 1
-        # Clone to prevent in-place modifications affecting cache
-        return (
-            self.cond.clone() if self.cond is not None else None,
-            self.pooled.clone() if self.pooled is not None else None
-        )
+        # No clone here: __init__ already clones to protect the cache,
+        # and consumers treat these as read-only.
+        return (self.cond, self.pooled)
 
 
 # Secondary cache using dict for more control
