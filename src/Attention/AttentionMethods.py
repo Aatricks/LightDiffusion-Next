@@ -222,7 +222,16 @@ def attention_xformers(
             mask_out[:, :, : mask.shape[-1]] = mask
             mask = mask_out[:, :, : mask.shape[-1]]
 
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=mask)
+        try:
+            out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=mask)
+        except (NotImplementedError, RuntimeError):
+            # Fallback for unsupported architectures (e.g., RTX 50 series with large head dimensions)
+            out = torch.nn.functional.scaled_dot_product_attention(
+                q.unsqueeze(0).reshape(b, heads, -1, dim_head),
+                k.unsqueeze(0).reshape(b, heads, -1, dim_head),
+                v.unsqueeze(0).reshape(b, heads, -1, dim_head),
+                attn_mask=mask, dropout_p=0.0, is_causal=False
+            ).reshape(b * heads, -1, dim_head)
 
         if skip_reshape:
             out = (
@@ -564,11 +573,20 @@ def xformers_attention(
         - `torch.Tensor`: The output tensor.
     """
     B, C, H, W = q.shape
-    q, k, v = map(
+    q_proc, k_proc, v_proc = map(
         lambda t: t.view(B, C, -1).transpose(1, 2).contiguous(),
         (q, k, v),
     )
-    out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None)
+    try:
+        out = xformers.ops.memory_efficient_attention(q_proc, k_proc, v_proc, attn_bias=None)
+    except (NotImplementedError, RuntimeError):
+        # Fallback for unsupported architectures (e.g., RTX 50 series with large head dimensions)
+        # Reshape to (B, heads=1, seq_len, head_dim=C) for PyTorch SDPA
+        out = torch.nn.functional.scaled_dot_product_attention(
+            q_proc.unsqueeze(1), k_proc.unsqueeze(1), v_proc.unsqueeze(1),
+            attn_mask=None, dropout_p=0.0, is_causal=False
+        ).squeeze(1)
+    
     out = out.transpose(1, 2).reshape(B, C, H, W)
     return out
 
