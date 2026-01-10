@@ -50,35 +50,41 @@ def load_torch_file(ckpt: str, safe_load: bool = False, device: str = None) -> d
     """
     if device is None:
         device = torch.device("cpu")
+    
+    # Optimization: Use direct device loading for safetensors if possible
     if ckpt.lower().endswith(".safetensors") or ckpt.lower().endswith(".sft"):
         sd = safetensors.torch.load_file(ckpt, device=device.type)
     else:
+        # Standard PyTorch load
         if safe_load:
             if "weights_only" not in torch.load.__code__.co_varnames:
                 logging.warning(
                     "Warning torch.load doesn't support weights_only on this pytorch version, loading unsafely."
                 )
                 safe_load = False
-        # Newer PyTorch versions changed default weights_only behavior; when
-        # we intentionally want the full pickled object (legacy checkpoints)
-        # call torch.load with weights_only=False if available. When the
-        # caller requested safe_load we pass weights_only=True to avoid
-        # executing arbitrary code.
+        
+        # Load to CPU first, using pinned memory if we intend to move to GPU soon
+        load_device = "cpu"
+        
         if safe_load:
-            pl_sd = torch.load(ckpt, map_location=device, weights_only=True)
+            pl_sd = torch.load(ckpt, map_location=load_device, weights_only=True)
         else:
             if "weights_only" in torch.load.__code__.co_varnames:
-                # Explicitly ask for full load (unsafe) to support legacy
-                # checkpoint formats which don't work with weights_only=True.
-                pl_sd = torch.load(ckpt, map_location=device, weights_only=False)
+                pl_sd = torch.load(ckpt, map_location=load_device, weights_only=False)
             else:
-                pl_sd = torch.load(ckpt, map_location=device)
+                pl_sd = torch.load(ckpt, map_location=load_device)
+        
         if "global_step" in pl_sd:
             logging.debug(f"Global Step: {pl_sd['global_step']}")
-        if "state_dict" in pl_sd:
-            sd = pl_sd["state_dict"]
-        else:
-            sd = pl_sd
+        
+        sd = pl_sd.get("state_dict", pl_sd)
+        
+        # Optimization: Pin memory for faster CPU -> GPU transfer
+        if device.type == "cuda":
+            for k in sd:
+                if isinstance(sd[k], torch.Tensor):
+                    sd[k] = sd[k].pin_memory()
+                    
     return sd
 
 

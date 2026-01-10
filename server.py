@@ -388,106 +388,29 @@ class GenerationBuffer:
             loop = asyncio.get_running_loop()
             # Special-case: flux-enabled groups require flux-specific
             # model/clip loaders which the batched code path does not
-            # configure. To ensure flux requests continue to work we run
-            # them individually through the pipeline and collect their
-            # saved artifacts per-request.
+            # configure. 
             saved_map: Dict[str, List[dict]] = {}
-            if first_req.flux_enabled:
-                for p in items:
-                    start_ts_single = time.time()
-                    # Build per-request per-sample info list
-                    per_single_info = []
-                    for k in range(max(1, p.req.num_images)):
-                        per_single_info.append(
-                            {
-                                "request_id": p.request_id,
-                                "filename_prefix": f"LD-REQ-{p.request_id}",
-                                "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
-                                "hires_fix": bool(p.req.hires_fix),
-                                "adetailer": bool(p.req.adetailer),
-                            }
-                        )
+            
+            # Run pipeline in thread pool to avoid blocking the event loop
+            func = functools.partial(pipeline, **pipeline_kwargs)
+            result = await loop.run_in_executor(None, func)
 
-                    pipeline_kwargs_single = dict(
-                        prompt=p.req.prompt,
-                        w=first_req.width,
-                        h=first_req.height,
-                        number=max(1, p.req.num_images),
-                        batch=p.req.batch_size,
-                        scheduler=first_req.scheduler,
-                        sampler=first_req.sampler,
-                        steps=first_req.steps,
-                        enhance_prompt=p.req.enhance_prompt,
-                        img2img=p.req.img2img_enabled,
-                        stable_fast=p.req.stable_fast,
-                        reuse_seed=p.req.reuse_seed,
-                        flux_enabled=True,
-                        autohdr=True,
-                        realistic_model=first_req.realistic_model,
-                        negative_prompt=p.req.negative_prompt or "",
-                        multiscale_preset=None,
-                        enable_multiscale=first_req.multiscale_enabled,
-                        multiscale_factor=first_req.multiscale_factor,
-                        multiscale_fullres_start=first_req.multiscale_fullres_start,
-                        multiscale_fullres_end=first_req.multiscale_fullres_end,
-                        multiscale_intermittent_fullres=first_req.multiscale_intermittent,
-                        img2img_image=p.req.img2img_image,
-                        per_sample_info=per_single_info,
-                        cfg_free_enabled=p.req.cfg_free_enabled,
-                        cfg_free_start_percent=p.req.cfg_free_start_percent,
-                        tome_enabled=p.req.tome_enabled,
-                        tome_ratio=p.req.tome_ratio,
-                        tome_max_downsample=p.req.tome_max_downsample,
-                        # Advanced CFG optimizations
-                        batched_cfg=p.req.batched_cfg,
-                        dynamic_cfg_rescaling=p.req.dynamic_cfg_rescaling,
-                        dynamic_cfg_method=p.req.dynamic_cfg_method,
-                        dynamic_cfg_percentile=p.req.dynamic_cfg_percentile,
-                        dynamic_cfg_target_scale=p.req.dynamic_cfg_target_scale,
-                        adaptive_noise_enabled=p.req.adaptive_noise_enabled,
-                        adaptive_noise_method=p.req.adaptive_noise_method,
-                    )
-
-                    try:
-                        result_single = await loop.run_in_executor(None, functools.partial(pipeline, **pipeline_kwargs_single))
-                    except Exception as e:
-                        logger.exception("Per-request pipeline call failed for flux request %s: %s", p.request_id, e)
-                        result_single = None
-
-                    if isinstance(result_single, dict) and "batched_results" in result_single:
-                        for rid, arr in result_single["batched_results"].items():
-                            saved_map.setdefault(rid, []).extend(arr if isinstance(arr, list) else [arr])
-                    else:
-                        # Fallback: scan filesystem for files created since the
-                        # single-call started and group by filename prefix.
-                        files = _find_images_since(start_ts_single - 60)
-                        for f in files:
-                            name = os.path.basename(f)
-                            if f"LD-REQ-{p.request_id}" in name:
-                                saved_map.setdefault(p.request_id, []).append({
-                                    "filename": name,
-                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
-                                })
+            # Expect pipeline to return a mapping under 'batched_results' when
+            # run in batched mode; otherwise fall back to scanning.
+            if isinstance(result, dict) and "batched_results" in result:
+                saved_map = result["batched_results"]
             else:
-                # Run pipeline in thread pool to avoid blocking the event loop
-                func = functools.partial(pipeline, **pipeline_kwargs)
-                result = await loop.run_in_executor(None, func)
-
-                # Expect pipeline to return a mapping under 'batched_results' when
-                # run in batched mode; otherwise fall back to scanning.
-                if isinstance(result, dict) and "batched_results" in result:
-                    saved_map = result["batched_results"]
-                else:
-                    # Fallback: scan filesystem for files created since group start
-                    files = _find_images_since(time.time() - 60)
-                    for f in files:
-                        # naive grouping by filename prefix (LD-REQ-<rid>)
-                        name = os.path.basename(f)
-                        for p in items:
-                            if f"LD-REQ-{p.request_id}" in name:
-                                saved_map.setdefault(p.request_id, []).append({
-                                    "filename": name,
-                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                # Fallback: scan filesystem for files created since group start
+                files = _find_images_since(time.time() - 60)
+                for f in files:
+                    # naive grouping by filename prefix (LD-REQ-<rid>)
+                    name = os.path.basename(f)
+                    for p in items:
+                        if f"LD-REQ-{p.request_id}" in name:
+                            saved_map.setdefault(p.request_id, []).append({
+                                "filename": name,
+                                "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                            })
                                 })
 
             # For each pending item, collect its images and set future result

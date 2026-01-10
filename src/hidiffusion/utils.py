@@ -106,6 +106,8 @@ def convert_time(
     raise ValueError("invalid time mode")
 
 
+_sigma_cache = {}
+
 def get_sigma(options: dict, key: str = "sigmas") -> float | None:
     """#### Get the sigma value from options.
 
@@ -123,7 +125,21 @@ def get_sigma(options: dict, key: str = "sigmas") -> float | None:
         return None
     if isinstance(sigmas, float):
         return sigmas
-    return sigmas.detach().cpu().max().item()
+    
+    # Optimization: Cache the scalar value by tensor ID to avoid redundant GPU syncs
+    # during the same sampling step.
+    cache_key = id(sigmas)
+    if cache_key in _sigma_cache:
+        return _sigma_cache[cache_key]
+    
+    val = sigmas.detach().cpu().max().item()
+    
+    # Keep cache extremely small (1 entry is enough for current step)
+    if len(_sigma_cache) > 4:
+        _sigma_cache.clear()
+    _sigma_cache[cache_key] = val
+    
+    return val
 
 
 def check_time(time_arg: dict | float, start_sigma: float, end_sigma: float) -> bool:
@@ -243,6 +259,8 @@ def guess_model_type(model: object) -> ModelType | None:
     return None
 
 
+_pct_cache = {}
+
 def sigma_to_pct(ms, sigma):
     """#### Convert sigma to percentage.
 
@@ -253,7 +271,20 @@ def sigma_to_pct(ms, sigma):
     #### Returns:
         - `float`: The percentage.
     """
-    return (1.0 - (ms.timestep(sigma).detach().cpu() / 999.0)).clamp(0.0, 1.0).item()
+    if isinstance(sigma, float):
+        return (1.0 - (ms.timestep(sigma) / 999.0)).clamp(0.0, 1.0)
+        
+    cache_key = id(sigma)
+    if cache_key in _pct_cache:
+        return _pct_cache[cache_key]
+        
+    val = (1.0 - (ms.timestep(sigma).detach().cpu() / 999.0)).clamp(0.0, 1.0).item()
+    
+    if len(_pct_cache) > 4:
+        _pct_cache.clear()
+    _pct_cache[cache_key] = val
+    
+    return val
 
 
 def fade_scale(
