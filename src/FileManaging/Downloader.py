@@ -59,7 +59,7 @@ def CheckAndDownload():
         #     filename="EasyNegative.safetensors",
         #     local_dir="./include/embeddings/",
         # )
-    if glob.glob("./include/vae_approx/*.pth") == []:
+    if glob.glob("./include/vae_approx/taesd_decoder.safetensors") == []:
 
         hf_hub_download(
             repo_id="madebyollin/taesd",
@@ -102,7 +102,7 @@ def CheckAndDownloadFlux():
             local_dir="./include/vae",
         )
 
-    if glob.glob("./include/vae_approx/*.pth") == []:
+    if glob.glob("./include/vae_approx/diffusion_pytorch_model.safetensors") == []:
 
         hf_hub_download(
             repo_id="madebyollin/taef1",

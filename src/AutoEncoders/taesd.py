@@ -184,19 +184,36 @@ class TAESD(nn.Module):
         self.vae_scale = torch.nn.Parameter(torch.ones(1))
         self.taesd_encoder = Encoder2(latent_channels)
         self.taesd_decoder = Decoder2(latent_channels)
-        decoder_path = (
-            "./include/vae_approx/taesd_decoder.safetensors"
-            if decoder_path is None
-            else decoder_path
-        )
+        if decoder_path is None:
+            if latent_channels == 16:
+                decoder_path = "./include/vae_approx/diffusion_pytorch_model.safetensors"
+            else:
+                decoder_path = "./include/vae_approx/taesd_decoder.safetensors"
+
         if encoder_path is not None:
             self.taesd_encoder.load_state_dict(
                 util.load_torch_file(encoder_path, safe_load=True)
             )
         if decoder_path is not None:
-            self.taesd_decoder.load_state_dict(
-                util.load_torch_file(decoder_path, safe_load=True)
-            )
+            sd = util.load_torch_file(decoder_path, safe_load=True)
+            # Fix for Flux taef1 checkpoint structure
+            if any(k.startswith("decoder.layers.") for k in sd.keys()):
+                new_sd = {}
+                for k, v in sd.items():
+                    if k.startswith("decoder.layers."):
+                        # k is like "decoder.layers.0.weight"
+                        parts = k.split(".")
+                        # parts = ["decoder", "layers", "0", "weight"]
+                        try:
+                            idx = int(parts[2])
+                            new_idx = idx + 1
+                            new_key = f"{new_idx}." + ".".join(parts[3:])
+                            new_sd[new_key] = v
+                        except ValueError:
+                            pass
+                self.taesd_decoder.load_state_dict(new_sd)
+            else:
+                self.taesd_decoder.load_state_dict(sd)
 
     @staticmethod
     def scale_latents(x: torch.Tensor) -> torch.Tensor:

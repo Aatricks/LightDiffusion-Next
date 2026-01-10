@@ -243,6 +243,7 @@ try:
                 >= 8
             ):
                 VAE_DTYPE = torch.bfloat16
+                pass
     elif is_rocm():
         # ROCm supports PyTorch attention on modern AMD GPUs
         torch_version = torch.version.__version__
@@ -1139,6 +1140,9 @@ def text_encoder_dtype(device: torch.device = None) -> torch.dtype:
     """
     if is_device_cpu(device):
         return torch.float16
+        
+    if should_use_bf16(device):
+        return torch.bfloat16
 
     return torch.float16
 
@@ -1224,6 +1228,7 @@ def device_supports_non_blocking(device: torch.device) -> bool:
     #### Returns:
         - `bool`: Whether the device supports non-blocking
     """
+    return False
     if is_device_mps(device):
         return False  # pytorch bug? mps doesn't support non blocking
     return True

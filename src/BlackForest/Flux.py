@@ -29,7 +29,8 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
     """
     q, k = apply_rope(q, k, pe)
     heads = q.shape[1]
-    x = Attention.optimized_attention(q, k, v, heads, skip_reshape=True, flux=True)
+    # x = Attention.optimized_attention(q, k, v, heads, skip_reshape=True, flux=True)
+    x = Attention.AttentionMethods.attention_pytorch(q, k, v, heads, skip_reshape=True, flux=True)
     return x
 
 _omega_cache = {}
@@ -54,15 +55,15 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
 
     # Optimization: Cache omega to avoid recomputing it every step.
     # It only depends on dim, theta, and device.
-    cache_key = (dim, theta, device)
-    if cache_key in _omega_cache:
-        omega = _omega_cache[cache_key]
-    else:
-        scale = torch.linspace(
-            0, (dim - 2) / dim, steps=dim // 2, dtype=torch.float64, device=device
-        )
-        omega = 1.0 / (theta**scale)
-        _omega_cache[cache_key] = omega
+    # cache_key = (dim, theta, device)
+    # if cache_key in _omega_cache:
+    #     omega = _omega_cache[cache_key]
+    # else:
+    scale = torch.linspace(
+        0, (dim - 2) / dim, steps=dim // 2, dtype=torch.float64, device=device
+    )
+    omega = 1.0 / (theta**scale)
+    #     _omega_cache[cache_key] = omega
 
     out = torch.einsum(
         "...n,d->...nd", pos.to(dtype=torch.float32, device=device), omega
@@ -123,9 +124,9 @@ class EmbedND(nn.Module):
         # Optimization: Cache the entire positional encoding.
         # It only depends on the IDs values, which are usually constant for a session.
         # We use a tuple of (shape, device, dtype, first_id, last_id) as a fast proxy for equality.
-        cache_key = (ids.shape, ids.device, ids.dtype, ids[0, 0, 0].item(), ids[0, -1, -1].item())
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        # cache_key = (ids.shape, ids.device, ids.dtype, ids[0, 0, 0].item(), ids[0, -1, -1].item())
+        # if cache_key in self._cache:
+        #     return self._cache[cache_key]
 
         n_axes = ids.shape[-1]
         emb = torch.cat(
@@ -135,9 +136,9 @@ class EmbedND(nn.Module):
         res = emb.unsqueeze(1)
         
         # Keep cache small (usually only 1-2 entries needed)
-        if len(self._cache) > 4:
-            self._cache.clear()
-        self._cache[cache_key] = res
+        # if len(self._cache) > 4:
+        #     self._cache.clear()
+        # self._cache[cache_key] = res
         return res
 
 # Define the MLP embedder class
@@ -286,7 +287,7 @@ class Modulation(nn.Module):
 
 # Define the double stream block class
 class DoubleStreamBlock(nn.Module):
-    def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False, dtype=None, device=None, operations=None, block_index: int = 0):
+    def __init__(self, hidden_size: int, num_heads: int, mlp_ratio: float, qkv_bias: bool = False, dtype=None, device=None, operations=None):
         """#### Initialize the DoubleStreamBlock class.
 
         #### Args:
@@ -297,12 +298,8 @@ class DoubleStreamBlock(nn.Module):
             - `dtype` (optional): The data type.
             - `device` (optional): The device.
             - `operations` (optional): The operations module.
-            - `block_index` (int, optional): The index of this block in the model.
         """
         super().__init__()
-        self.block_index = block_index
-        self._txt_proj_cache = {}
-
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
         self.num_heads = num_heads
         self.hidden_size = hidden_size
@@ -349,25 +346,9 @@ class DoubleStreamBlock(nn.Module):
         img_q, img_k = self.img_attn.norm(img_q, img_k, img_v)
 
         # prepare txt for attention
-        # Optimization: for the first block, `txt` is constant (prompt embeddings).
-        # We can precompute the projection of the normalized txt to save compute.
-        if self.block_index == 0:
-            cache_key = id(txt)
-            if cache_key in self._txt_proj_cache:
-                txt_proj_base = self._txt_proj_cache[cache_key]
-            else:
-                txt_proj_base = self.txt_attn.qkv(self.txt_norm1(txt))
-                if len(self._txt_proj_cache) > 2:
-                    self._txt_proj_cache.clear()
-                self._txt_proj_cache[cache_key] = txt_proj_base
-            
-            # Linear property: qkv( (1+scale)*norm(txt) + shift ) = (1+scale)*qkv(norm(txt)) + qkv(shift)
-            # Since shift is broadcasted, qkv(shift) is fast.
-            txt_qkv = (1 + txt_mod1.scale) * txt_proj_base + self.txt_attn.qkv(txt_mod1.shift)
-        else:
-            txt_modulated = self.txt_norm1(txt)
-            txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
-            txt_qkv = self.txt_attn.qkv(txt_modulated)
+        txt_modulated = self.txt_norm1(txt)
+        txt_modulated = (1 + txt_mod1.scale) * txt_modulated + txt_mod1.shift
+        txt_qkv = self.txt_attn.qkv(txt_modulated)
         txt_q, txt_k, txt_v = txt_qkv.view(txt_qkv.shape[0], txt_qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         txt_q, txt_k = self.txt_attn.norm(txt_q, txt_k, txt_v)
 
@@ -673,7 +654,6 @@ class Flux3(nn.Module):
                     dtype=dtype,
                     device=device,
                     operations=operations,
-                    block_index=i,
                 )
                 for i in range(params.depth)
             ]
@@ -808,30 +788,30 @@ class Flux3(nn.Module):
         context_len = context.shape[1]
         
         # Optimization: Use cached IDs if available for this configuration
-        cache_key = (bs, h_len, w_len, context_len, x.device, x.dtype)
-        if cache_key in self._ids_cache:
-            img_ids, txt_ids = self._ids_cache[cache_key]
-        else:
-            img_ids = torch.zeros((h_len, w_len, 3), device=x.device, dtype=x.dtype)
-            img_ids[..., 1] = (
-                img_ids[..., 1]
-                + torch.linspace(0, h_len - 1, steps=h_len, device=x.device, dtype=x.dtype)[
-                    :, None
-                ]
-            )
-            img_ids[..., 2] = (
-                img_ids[..., 2]
-                + torch.linspace(0, w_len - 1, steps=w_len, device=x.device, dtype=x.dtype)[
-                    None, :
-                ]
-            )
-            img_ids = repeat(img_ids, "h w c -> b (h w) c", b=bs)
-            txt_ids = torch.zeros((bs, context_len, 3), device=x.device, dtype=x.dtype)
-            
-            # Keep cache small
-            if len(self._ids_cache) > 4:
-                self._ids_cache.clear()
-            self._ids_cache[cache_key] = (img_ids, txt_ids)
+        # cache_key = (bs, h_len, w_len, context_len, x.device, x.dtype)
+        # if cache_key in self._ids_cache:
+        #     img_ids, txt_ids = self._ids_cache[cache_key]
+        # else:
+        img_ids = torch.zeros((h_len, w_len, 3), device=x.device, dtype=x.dtype)
+        img_ids[..., 1] = (
+            img_ids[..., 1]
+            + torch.linspace(0, h_len - 1, steps=h_len, device=x.device, dtype=x.dtype)[
+                :, None
+            ]
+        )
+        img_ids[..., 2] = (
+            img_ids[..., 2]
+            + torch.linspace(0, w_len - 1, steps=w_len, device=x.device, dtype=x.dtype)[
+                None, :
+            ]
+        )
+        img_ids = repeat(img_ids, "h w c -> b (h w) c", b=bs)
+        txt_ids = torch.zeros((bs, context_len, 3), device=x.device, dtype=x.dtype)
+        
+        # Keep cache small
+        # if len(self._ids_cache) > 4:
+        #     self._ids_cache.clear()
+        # self._ids_cache[cache_key] = (img_ids, txt_ids)
 
         out = self.forward_orig(
             img, img_ids, context, txt_ids, timestep, y, guidance, control
