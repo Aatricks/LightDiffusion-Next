@@ -916,6 +916,30 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
 
     mmap_released = False
 
+    def _detach_tensor(self, tensor, memo):
+        if tensor is None:
+            return None
+        if id(tensor) in memo:
+            return memo[id(tensor)]
+
+        # detach mmap by copying to memory
+        if isinstance(tensor, GGMLTensor):
+            new_data = torch.empty_like(tensor, device=tensor.device).copy_(tensor)
+            new_tensor = GGMLTensor(
+                new_data,
+                tensor_type=getattr(tensor, "tensor_type", None),
+                tensor_shape=getattr(tensor, "tensor_shape", tensor.shape),
+                patches=getattr(tensor, "patches", []).copy(),
+            )
+        else:
+            new_tensor = tensor.clone()
+
+        if isinstance(tensor, torch.nn.Parameter):
+            new_tensor = torch.nn.Parameter(new_tensor, requires_grad=tensor.requires_grad)
+
+        memo[id(tensor)] = new_tensor
+        return new_tensor
+
     def load(self, *args, force_patch_weights=False, **kwargs):
         """
         Load the model.
@@ -944,9 +968,12 @@ class GGUFModelPatcher(ModelPatcher.ModelPatcher):
                             continue
             if linked:
                 print(f"Attempting to release mmap ({len(linked)})")
+                memo = {}
                 for n, m in linked:
-                    # TODO: possible to OOM, find better way to detach
-                    m.to(self.load_device).to(self.offload_device)
+                    if hasattr(m, "weight"):
+                        m.weight = self._detach_tensor(m.weight, memo)
+                    if hasattr(m, "bias") and m.bias is not None:
+                        m.bias = self._detach_tensor(m.bias, memo)
             self.mmap_released = True
 
     def add_object_patch(self, name, obj):
