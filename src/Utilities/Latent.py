@@ -15,7 +15,8 @@ class LatentFormat:
 
     scale_factor: float = 1.0
     latent_channels: int = 4
-    
+    downscale_factor: int = 8
+
     def process_in(self, latent: torch.Tensor) -> torch.Tensor:
         """#### Process the latent input, by multiplying it by the scale factor.
 
