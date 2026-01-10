@@ -100,13 +100,13 @@ def calculate_parameters(sd: dict, prefix: str = "") -> dict:
 
 
 def state_dict_prefix_replace(
-    state_dict: dict, replace_prefix: str, filter_keys: bool = False
+    state_dict: dict, replace_prefix: dict, filter_keys: bool = False
 ) -> dict:
     """#### Replace the prefix of keys in a state dictionary.
 
     #### Args:
         - `state_dict` (dict): The state dictionary.
-        - `replace_prefix` (str): The prefix to replace.
+        - `replace_prefix` (dict): The prefix to replace.
         - `filter_keys` (bool, optional): Whether to filter keys. Defaults to False.
 
     #### Returns:
@@ -116,31 +116,28 @@ def state_dict_prefix_replace(
         out = {}
     else:
         out = state_dict
-    for rp in replace_prefix:
-        replace = list(
-            map(
-                lambda a: (a, "{}{}".format(replace_prefix[rp], a[len(rp) :])),
-                filter(lambda a: a.startswith(rp), state_dict.keys()),
-            )
-        )
-        for x in replace:
-            w = state_dict.pop(x[0])
-            out[x[1]] = w
+
+    # Optimization: Iterate over keys once instead of for each prefix.
+    # This provides a significant speedup for large state dictionaries (O(N) vs O(N*M)).
+    to_replace = []
+    for k in list(state_dict.keys()):
+        for rp, new_rp in replace_prefix.items():
+            if k.startswith(rp):
+                to_replace.append((k, rp, new_rp))
+                break
+    
+    for old_k, rp, new_rp in to_replace:
+        value = state_dict.pop(old_k)
+        new_k = new_rp + old_k[len(rp):]
+        out[new_k] = value
+        
     return out
 
 
 def lcm_of_list(numbers):
     """Calculate LCM of a list of numbers more efficiently."""
-    if not numbers:
-        return 1
-
-    result = numbers[0]
-    for num in numbers[1:]:
-        if result == 0 or num == 0:
-            return 0
-        result = abs(result * num) // math.gcd(result, num)
-
-    return result
+    # math.lcm is available in Python 3.9+ and is implemented in C, providing better performance.
+    return math.lcm(*numbers) if numbers else 1
 
 
 def repeat_to_batch_size(
@@ -258,7 +255,7 @@ def lcm(a: int, b: int) -> int:
     #### Returns:
         - `int`: The LCM of the two numbers.
     """
-    return abs(a * b) // math.gcd(a, b)
+    return math.lcm(a, b)
 
 
 def get_full_path(folder_name: str, filename: str) -> str:

@@ -314,9 +314,21 @@ class ModelSamplingDiscrete(torch.nn.Module):
         #### Returns:
             - `torch.Tensor`: The timestep value.
         """
-        log_sigma = sigma.log()
-        dists = log_sigma.to(self.log_sigmas.device) - self.log_sigmas[:, None]
-        return dists.abs().argmin(dim=0).view(sigma.shape).to(sigma.device)
+        log_sigma = sigma.log().to(self.log_sigmas.device)
+        
+        # Optimization: Use searchsorted for O(log N) instead of O(N) argmin.
+        # self.log_sigmas is strictly increasing.
+        idx = torch.searchsorted(self.log_sigmas, log_sigma)
+        
+        # Clamp to valid range
+        idx_high = idx.clamp(0, len(self.log_sigmas) - 1)
+        idx_low = (idx - 1).clamp(0, len(self.log_sigmas) - 1)
+        
+        # Find the closest neighbor
+        dist_high = (log_sigma - self.log_sigmas[idx_high]).abs()
+        dist_low = (log_sigma - self.log_sigmas[idx_low]).abs()
+        
+        return torch.where(dist_high < dist_low, idx_high, idx_low).view(sigma.shape).to(sigma.device)
 
     def sigma(self, timestep: torch.Tensor) -> torch.Tensor:
         """#### Convert timestep to sigma.

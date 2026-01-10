@@ -53,6 +53,8 @@ def checkpoint(func, inputs, params, flag):
     """
     return func(*inputs)
 
+_freqs_cache = {}
+
 def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     """#### Create a timestep embedding.
 
@@ -66,11 +68,20 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
         - `torch.Tensor`: The timestep embedding.
     """
     half = dim // 2
-    freqs = torch.exp(
-        -math.log(max_period)
-        * torch.arange(start=0, end=half, dtype=torch.float32, device=timesteps.device)
-        / half
-    )
+    
+    # Optimization: Cache freqs to avoid recomputing it every step.
+    # The cache is keyed by dim, max_period, and device.
+    cache_key = (half, max_period, timesteps.device)
+    if cache_key in _freqs_cache:
+        freqs = _freqs_cache[cache_key]
+    else:
+        freqs = torch.exp(
+            -math.log(max_period)
+            * torch.arange(start=0, end=half, dtype=torch.float32, device=timesteps.device)
+            / half
+        )
+        _freqs_cache[cache_key] = freqs
+        
     args = timesteps[:, None].float() * freqs[None]
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
     return embedding
