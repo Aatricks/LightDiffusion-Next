@@ -588,10 +588,19 @@ def encode_model_conds(
         params["device"] = device
         params["noise"] = noise
         default_width = None
-        if len(noise.shape) >= 4:  # TODO: 8 multiple should be set by the model
-            default_width = noise.shape[3] * 8
+
+        downscale_factor = 8
+        if hasattr(model_function, "__self__"):
+            model = model_function.__self__
+            if hasattr(model, "latent_format") and hasattr(
+                model.latent_format, "downscale_factor"
+            ):
+                downscale_factor = model.latent_format.downscale_factor
+
+        if len(noise.shape) >= 4:
+            default_width = noise.shape[3] * downscale_factor
         params["width"] = params.get("width", default_width)
-        params["height"] = params.get("height", noise.shape[2] * 8)
+        params["height"] = params.get("height", noise.shape[2] * downscale_factor)
         params["prompt_type"] = params.get("prompt_type", prompt_type)
         for k in kwargs:
             if k not in params:
