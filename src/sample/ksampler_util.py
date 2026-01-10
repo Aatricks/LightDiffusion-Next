@@ -409,7 +409,7 @@ def prepare_noise(
                 dtype=latent_image.dtype,
                 layout=latent_image.layout,
                 generator=g,
-                device="cpu",
+                device=latent_image.device,
             )
             noises.append(noise)
         # Map back to per-sample order
@@ -425,7 +425,7 @@ def prepare_noise(
             dtype=latent_image.dtype,
             layout=latent_image.layout,
             generator=generator,
-            device="cpu",
+            device=latent_image.device,
         )
 
     unique_inds, inverse = np.unique(noise_inds, return_inverse=True)
@@ -436,7 +436,7 @@ def prepare_noise(
             dtype=latent_image.dtype,
             layout=latent_image.layout,
             generator=generator,
-            device="cpu",
+            device=latent_image.device,
         )
         if i in unique_inds:
             noises.append(noise)

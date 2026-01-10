@@ -203,10 +203,9 @@ class GenerationBuffer:
             int(req.multiscale_fullres_end),
             # VRAM retention flags are also batch level
             bool(req.keep_models_loaded),
-            # Note: hires_fix and adetailer remain intentionally NOT part
-            # of this signature because they are executed per-sample
-            # after a shared forward pass.
-            bool(req.enable_preview),
+            # Note: hires_fix, adetailer, and enable_preview remain intentionally 
+            # NOT part of this signature because they are executed per-sample
+            # (or as side-effects) after or during a shared forward pass.
         )
 
     async def _worker(self):

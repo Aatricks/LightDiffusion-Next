@@ -255,6 +255,8 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
+_taesd_cache = {}
+
 def taesd_preview(x: torch.Tensor, flux: bool = False):
     """#### Preview the batched latent tensors as images.
 
@@ -263,52 +265,44 @@ def taesd_preview(x: torch.Tensor, flux: bool = False):
         - `flux` (bool, optional): Whether using flux model (for channel ordering). Defaults to False.
     """
     if app_instance.app.previewer_var.get() is True:
-        taesd_instance = TAESD()
+        # Optimization: Cache TAESD instance by latent channels to avoid constant re-init
+        latent_channels = x.shape[1]
+        cache_key = (latent_channels, flux)
+        if cache_key in _taesd_cache:
+            taesd_instance = _taesd_cache[cache_key]
+        else:
+            taesd_instance = TAESD(latent_channels=latent_channels)
+            # Ensure it's on the same device as x for fast inference
+            taesd_instance.to(x.device)
+            _taesd_cache[cache_key] = taesd_instance
 
-        # Handle channel dimension
-        if x.shape[1] != 4:
-            desired_channels = 4
-            current_channels = x.shape[1]
-
-            if current_channels > desired_channels:
-                x = x[:, :desired_channels, :, :]
-            else:
-                padding = torch.zeros(x.shape[0], desired_channels - current_channels,
-                                   x.shape[2], x.shape[3], device=x.device)
-                x = torch.cat([x, padding], dim=1)
+        # Handle channel dimension mismatch (rare for TAESD but good for robustness)
+        if x.shape[1] != latent_channels:
+             # Already handled by cache_key, but if it somehow slips through:
+             pass
 
         # Process entire batch at once
-        decoded_batch = taesd_instance.decode(x)
+        with torch.no_grad():
+            decoded_batch = taesd_instance.decode(x)
 
+        # Apply normalization and color space conversion in one go if possible
+        if flux:
+            # For flux: BGR -> RGB and specific scale
+            decoded_batch = decoded_batch[:, [2, 1, 0], :, :].clamp(-1, 1).add(1.0).mul(0.5)
+        else:
+            # Standard normalization
+            decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
+
+        # Optimization: Use non_blocking=True for CPU transfer to avoid GPU stall
+        # Then convert to numpy and uint8
+        decoded_np = (decoded_batch.mul(255.0).to("cpu", dtype=torch.uint8, non_blocking=True).numpy())
+        
         images = []
-
-        # Convert each image in batch
-        for decoded in decoded_batch:
-            # Handle channel dimension
-            if decoded.shape[0] == 1:
-                decoded = decoded.repeat(3, 1, 1)
-
-            # Apply different normalization for flux vs standard mode
-            if flux:
-                # For flux: Assume BGR ordering and different normalization
-                decoded = decoded[[2,1,0], :, :] # BGR -> RGB
-                # Adjust normalization for flux model range
-                decoded = decoded.clamp(-1, 1)
-                decoded = (decoded + 1.0) * 0.5 # Scale from [-1,1] to [0,1]
-            else:
-                # Standard normalization
-                decoded = (decoded + 1.0) / 2.0
-
-            # Convert to numpy and uint8
-            image_np = (decoded.cpu().detach().numpy() * 255.0)
-            image_np = np.transpose(image_np, (1, 2, 0))
-            image_np = np.clip(image_np, 0, 255).astype(np.uint8)
-
-            # Create PIL Image
-            img = Image.fromarray(image_np, mode='RGB')
+        for i in range(decoded_np.shape[0]):
+            # Transpose HWC for PIL
+            img_data = np.transpose(decoded_np[i], (1, 2, 0))
+            img = Image.fromarray(img_data, mode='RGB')
             images.append(img)
 
         # Update display with all images
         app_instance.app.update_image(images)
-    else:
-        pass

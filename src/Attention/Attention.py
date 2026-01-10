@@ -102,6 +102,9 @@ class CrossAttention(nn.Module):
             operations.Linear(inner_dim, query_dim, dtype=dtype, device=device),
             nn.Dropout(dropout),
         )
+        
+        # Optimization: Cache for static context projections
+        self._context_cache = {}
 
     def forward(
         self,
@@ -123,8 +126,23 @@ class CrossAttention(nn.Module):
         """
         q = self.to_q(x)
         context = util.default(context, x)
-        k = self.to_k(context)
-        v = self.to_v(context)
+        
+        # Optimization: Cache K and V if context is static (e.g. prompt embeddings)
+        # We use id(context) as key since it's typically the same object across steps
+        if context is not x:
+            cache_key = id(context)
+            if cache_key in self._context_cache:
+                k, v = self._context_cache[cache_key]
+            else:
+                k = self.to_k(context)
+                v = self.to_v(context)
+                # Keep cache size minimal
+                if len(self._context_cache) > 2:
+                    self._context_cache.clear()
+                self._context_cache[cache_key] = (k, v)
+        else:
+            k = self.to_k(context)
+            v = self.to_v(context)
 
         out = optimized_attention(q, k, v, self.heads)
         return self.to_out(out)
