@@ -15,23 +15,7 @@ from src.cond import cast
 
 
 class DiagonalGaussianDistribution(object):
-    """#### Represents a diagonal Gaussian distribution parameterized by mean and log-variance.
-
-    #### Attributes:
-        - `parameters` (torch.Tensor): The concatenated mean and log-variance of the distribution.
-        - `mean` (torch.Tensor): The mean of the distribution.
-        - `logvar` (torch.Tensor): The log-variance of the distribution, clamped between -30.0 and 20.0.
-        - `std` (torch.Tensor): The standard deviation of the distribution, computed as exp(0.5 * logvar).
-        - `var` (torch.Tensor): The variance of the distribution, computed as exp(logvar).
-        - `deterministic` (bool): If True, the distribution is deterministic.
-
-    #### Methods:
-        - `sample() -> torch.Tensor`:
-            Samples from the distribution using the reparameterization trick.
-        - `kl(other: DiagonalGaussianDistribution = None) -> torch.Tensor`:
-            Computes the Kullback-Leibler divergence between this distribution and a standard normal distribution.
-            If `other` is provided, computes the KL divergence between this distribution and `other`.
-    """
+    """Diagonal Gaussian distribution parameterized by mean and log-variance."""
 
     def __init__(self, parameters: torch.Tensor, deterministic: bool = False):
         self.parameters = parameters
@@ -42,27 +26,14 @@ class DiagonalGaussianDistribution(object):
         self.var = torch.exp(self.logvar)
 
     def sample(self) -> torch.Tensor:
-        """#### Samples from the distribution using the reparameterization trick.
-
-        #### Returns:
-            - `torch.Tensor`: A sample from the distribution.
-        """
+        """Sample using reparameterization trick."""
         x = self.mean + self.std * torch.randn(self.mean.shape).to(
             device=self.parameters.device
         )
         return x
 
     def kl(self, other: "DiagonalGaussianDistribution" = None) -> torch.Tensor:
-        """#### Computes the Kullback-Leibler divergence between this distribution and a standard normal distribution.
-
-        If `other` is provided, computes the KL divergence between this distribution and `other`.
-
-        #### Args:
-            - `other` (DiagonalGaussianDistribution, optional): Another distribution to compute the KL divergence with.
-
-        #### Returns:
-            - `torch.Tensor`: The KL divergence.
-        """
+        """Compute KL divergence to standard normal."""
         return 0.5 * torch.sum(
             torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
             dim=[1, 2, 3],
@@ -70,26 +41,15 @@ class DiagonalGaussianDistribution(object):
 
 
 class DiagonalGaussianRegularizer(torch.nn.Module):
-    """#### Regularizer for diagonal Gaussian distributions."""
+    """Regularizer for diagonal Gaussian distributions."""
 
     def __init__(self, sample: bool = True):
-        """#### Initialize the regularizer.
-
-        #### Args:
-            - `sample` (bool, optional): Whether to sample from the distribution. Defaults to True.
-        """
+        """Initialize regularizer."""
         super().__init__()
         self.sample = sample
 
     def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
-        """#### Forward pass for the regularizer.
-
-        #### Args:
-            - `z` (torch.Tensor): The input tensor.
-
-        #### Returns:
-            - `Tuple[torch.Tensor, dict]`: The regularized tensor and a log dictionary.
-        """
+        """Forward pass."""
         log = dict()
         posterior = DiagonalGaussianDistribution(z)
         if self.sample:
@@ -103,16 +63,10 @@ class DiagonalGaussianRegularizer(torch.nn.Module):
 
 
 class AutoencodingEngine(nn.Module):
-    """#### Class representing an autoencoding engine."""
+    """Autoencoding engine."""
 
     def __init__(self, encoder: nn.Module, decoder: nn.Module, regularizer: nn.Module, flux: bool = False):
-        """#### Initialize the autoencoding engine.
-
-        #### Args:
-            - `encoder` (nn.Module): The encoder module.
-            - `decoder` (nn.Module): The decoder module.
-            - `regularizer` (nn.Module): The regularizer module.
-        """
+        """Initialize encoder, decoder, regularizer."""
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -122,23 +76,11 @@ class AutoencodingEngine(nn.Module):
             self.quant_conv = cast.disable_weight_init.Conv2d(8, 8, 1)
         
     def get_last_layer(self):
-        """#### Get the last layer of the decoder.
-
-        Returns:
-            - `nn.Module`: The last layer of the decoder.
-        """
+        """Get last decoder layer."""
         return self.decoder.get_last_layer()
     
     def decode(self, z: torch.Tensor, flux:bool = False, **kwargs) -> torch.Tensor:
-        """#### Decode the latent tensor.
-
-        #### Args:
-            - `z` (torch.Tensor): The latent tensor.
-            - `decoder_kwargs` (dict): Additional arguments for the decoder.
-
-        #### Returns:
-            - `torch.Tensor`: The decoded tensor.
-        """
+        """Decode latent tensor."""
         if flux:
             x = self.decoder(z, **kwargs)
             return x
@@ -154,15 +96,7 @@ class AutoencodingEngine(nn.Module):
         unregularized: bool = False,
         flux: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
-        """#### Encode the input tensor.
-
-        #### Args:
-            - `x` (torch.Tensor): The input tensor.
-            - `return_reg_log` (bool, optional): Whether to return the regularization log. Defaults to False.
-
-        #### Returns:
-            - `Union[torch.Tensor, Tuple[torch.Tensor, dict]]`: The encoded tensor and optionally the regularization log.
-        """
+        """Encode input tensor."""
         z = self.encoder(x)
         if not flux:
             z = self.quant_conv(z)
@@ -180,27 +114,15 @@ if Device.xformers_enabled_vae():
 
 
 def nonlinearity(x: torch.Tensor) -> torch.Tensor:
-    """#### Apply the swish nonlinearity.
-
-    #### Args:
-        - `x` (torch.Tensor): The input tensor.
-
-    #### Returns:
-        - `torch.Tensor`: The output tensor.
-    """
+    """Apply swish nonlinearity."""
     return x * torch.sigmoid(x)
 
 
 class Upsample(nn.Module):
-    """#### Class representing an upsample layer."""
+    """Upsample layer."""
 
     def __init__(self, in_channels: int, with_conv: bool):
-        """#### Initialize the upsample layer.
-
-        #### Args:
-            - `in_channels` (int): The number of input channels.
-            - `with_conv` (bool): Whether to use convolution.
-        """
+        """Initialize upsample layer."""
         super().__init__()
         self.with_conv = with_conv
         if self.with_conv:
@@ -209,14 +131,7 @@ class Upsample(nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """#### Forward pass for the upsample layer.
-
-        #### Args:
-            - `x` (torch.Tensor): The input tensor.
-
-        #### Returns:
-            - `torch.Tensor`: The output tensor.
-        """
+        """Forward pass."""
         x = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="nearest")
         if self.with_conv:
             x = self.conv(x)
@@ -224,15 +139,10 @@ class Upsample(nn.Module):
 
 
 class Downsample(nn.Module):
-    """#### Class representing a downsample layer."""
+    """Downsample layer."""
 
     def __init__(self, in_channels: int, with_conv: bool):
-        """#### Initialize the downsample layer.
-
-        #### Args:
-            - `in_channels` (int): The number of input channels.
-            - `with_conv` (bool): Whether to use convolution.
-        """
+        """Initialize downsample layer."""
         super().__init__()
         self.with_conv = with_conv
         if self.with_conv:
@@ -242,14 +152,7 @@ class Downsample(nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """#### Forward pass for the downsample layer.
-
-        #### Args:
-            - `x` (torch.Tensor): The input tensor.
-
-        #### Returns:
-            - `torch.Tensor`: The output tensor.
-        """
+        """Forward pass."""
         pad = (0, 1, 0, 1)
         x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
         x = self.conv(x)
@@ -257,7 +160,7 @@ class Downsample(nn.Module):
 
 
 class Encoder(nn.Module):
-    """#### Class representing an encoder."""
+    """VAE Encoder."""
 
     def __init__(
         self,
@@ -277,23 +180,7 @@ class Encoder(nn.Module):
         attn_type: str = "vanilla",
         **ignore_kwargs,
     ):
-        """#### Initialize the encoder.
-
-        #### Args:
-            - `ch` (int): The base number of channels.
-            - `out_ch` (int): The number of output channels.
-            - `ch_mult` (Tuple[int, ...], optional): Channel multiplier at each resolution. Defaults to (1, 2, 4, 8).
-            - `num_res_blocks` (int): The number of residual blocks.
-            - `attn_resolutions` (Tuple[int, ...]): The resolutions at which to apply attention.
-            - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
-            - `resamp_with_conv` (bool, optional): Whether to use convolution for resampling. Defaults to True.
-            - `in_channels` (int): The number of input channels.
-            - `resolution` (int): The resolution of the input.
-            - `z_channels` (int): The number of latent channels.
-            - `double_z` (bool, optional): Whether to double the latent channels. Defaults to True.
-            - `use_linear_attn` (bool, optional): Whether to use linear attention. Defaults to False.
-            - `attn_type` (str, optional): The type of attention. Defaults to "vanilla".
-        """
+        """Initialize encoder."""
         super().__init__()
         if use_linear_attn:
             attn_type = "linear"
@@ -365,15 +252,7 @@ class Encoder(nn.Module):
         self._dtype = torch.float32
 
     def to(self, device=None, dtype=None):
-        """#### Move the encoder to a device and data type.
-        
-        #### Args:
-            - `device` (torch.device, optional): The device to move to. Defaults to None.
-            - `dtype` (torch.dtype, optional): The data type to move to. Defaults to None.
-        
-        #### Returns:
-            - `nn.Module`: The encoder.
-        """
+        """Move encoder to device/dtype."""
         if device is not None:
             self._device = device
         if dtype is not None:
@@ -381,14 +260,7 @@ class Encoder(nn.Module):
         return super().to(device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """#### Forward pass for the encoder.
-
-        #### Args:
-            - `x` (torch.Tensor): The input tensor.
-
-        #### Returns:
-            - `torch.Tensor`: The encoded tensor.
-        """
+        """Forward pass."""
         if x.device != self._device or x.dtype != self._dtype:
             self.to(device=x.device, dtype=x.dtype)
         # timestep embedding
@@ -416,7 +288,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    """#### Class representing a decoder."""
+    """VAE Decoder."""
 
     def __init__(
         self,
@@ -439,26 +311,7 @@ class Decoder(nn.Module):
         attn_op: nn.Module = Attention.AttnBlock,
         **ignorekwargs,
     ):
-        """#### Initialize the decoder.
-
-        #### Args:
-            - `ch` (int): The base number of channels.
-            - `out_ch` (int): The number of output channels.
-            - `ch_mult` (Tuple[int, ...], optional): Channel multiplier at each resolution. Defaults to (1, 2, 4, 8).
-            - `num_res_blocks` (int): The number of residual blocks.
-            - `attn_resolutions` (Tuple[int, ...]): The resolutions at which to apply attention.
-            - `dropout` (float, optional): The dropout rate. Defaults to 0.0.
-            - `resamp_with_conv` (bool, optional): Whether to use convolution for resampling. Defaults to True.
-            - `in_channels` (int): The number of input channels.
-            - `resolution` (int): The resolution of the input.
-            - `z_channels` (int): The number of latent channels.
-            - `give_pre_end` (bool, optional): Whether to give pre-end. Defaults to False.
-            - `tanh_out` (bool, optional): Whether to use tanh activation at the output. Defaults to False.
-            - `use_linear_attn` (bool, optional): Whether to use linear attention. Defaults to False.
-            - `conv_out_op` (nn.Module, optional): The convolution output operation. Defaults to ops.Conv2d.
-            - `resnet_op` (nn.Module, optional): The residual block operation. Defaults to ResBlock.ResnetBlock.
-            - `attn_op` (nn.Module, optional): The attention block operation. Defaults to Attention.AttnBlock.
-        """
+        """Initialize decoder."""
         super().__init__()
         self.ch = ch
         self.temb_ch = 0
@@ -532,16 +385,7 @@ class Decoder(nn.Module):
         )
 
     def forward(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
-        """#### Forward pass for the decoder.
-
-        #### Args:
-            - `z` (torch.Tensor): The input tensor.
-            - `**kwargs`: Additional arguments.
-
-        #### Returns:
-            - `torch.Tensor`: The output tensor.
-
-        """
+        """Forward pass."""
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
@@ -570,7 +414,7 @@ class Decoder(nn.Module):
 
 
 class VAE:
-    """#### Class representing a Variational Autoencoder (VAE)."""
+    """Variational Autoencoder."""
 
     def __init__(
         self,
@@ -580,14 +424,7 @@ class VAE:
         dtype: Optional[torch.dtype] = None,
         flux: Optional[bool] = False,
     ):
-        """#### Initialize the VAE.
-
-        #### Args:
-            - `sd` (dict, optional): The state dictionary. Defaults to None.
-            - `device` (torch.device, optional): The device to use. Defaults to None.
-            - `config` (dict, optional): The configuration dictionary. Defaults to None.
-            - `dtype` (torch.dtype, optional): The data type. Defaults to None.
-        """
+        """Initialize VAE."""
         self.memory_used_encode = lambda shape, dtype: (
             1767 * shape[2] * shape[3]
         ) * Device.dtype_size(

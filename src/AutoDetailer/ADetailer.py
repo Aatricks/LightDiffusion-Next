@@ -13,17 +13,10 @@ from src.sample import ksampler_util, samplers, sampling, sampling_util
 
 
 class DifferentialDiffusion:
-    """#### Class for applying differential diffusion to a model."""
+    """Apply differential diffusion to a model."""
 
     def apply(self, model: torch.nn.Module) -> Tuple[torch.nn.Module]:
-        """#### Apply differential diffusion to a model.
-
-        #### Args:
-            - `model` (torch.nn.Module): The input model.
-
-        #### Returns:
-            - `Tuple[torch.nn.Module]`: The modified model.
-        """
+        """Apply differential diffusion."""
         model = model.clone()
         model.set_model_denoise_mask_function(self.forward)
         return (model,)
@@ -34,16 +27,7 @@ class DifferentialDiffusion:
         denoise_mask: torch.Tensor,
         extra_options: Dict[str, Any],
     ) -> torch.Tensor:
-        """#### Forward function for differential diffusion.
-
-        #### Args:
-            - `sigma` (torch.Tensor): The sigma tensor.
-            - `denoise_mask` (torch.Tensor): The denoise mask tensor.
-            - `extra_options` (Dict[str, Any]): Additional options.
-
-        #### Returns:
-            - `torch.Tensor`: The processed denoise mask tensor.
-        """
+        """Forward pass for differential diffusion."""
         model = extra_options["model"]
         step_sigmas = extra_options["sigmas"]
         sigma_to = model.inner_model.model_sampling.sigma_min
@@ -59,16 +43,7 @@ class DifferentialDiffusion:
 
 
 def crop_condition_mask(mask: torch.Tensor, image: torch.Tensor, crop_region: list) -> torch.Tensor:
-    """#### Crop a conditioning mask to match a specific region.
-
-    #### Args:
-        - `mask` (torch.Tensor): The input mask tensor.
-        - `image` (torch.Tensor): The input image tensor.
-        - `crop_region` (list): The crop region coordinates [x1, y1, x2, y2].
-
-    #### Returns:
-        - `torch.Tensor`: The cropped mask tensor.
-    """
+    """Crop a conditioning mask to match a specific region."""
     # Extract crop coordinates
     x1, y1, x2, y2 = crop_region
     
@@ -86,15 +61,7 @@ def crop_condition_mask(mask: torch.Tensor, image: torch.Tensor, crop_region: li
 
 
 def to_latent_image(pixels: torch.Tensor, vae: VariationalAE.VAE) -> torch.Tensor:
-    """#### Convert pixels to a latent image using a VAE.
-
-    #### Args:
-        - `pixels` (torch.Tensor): The input pixel tensor.
-        - `vae` (VariationalAE.VAE): The VAE model.
-
-    #### Returns:
-        - `torch.Tensor`: The latent image tensor.
-    """
+    """Convert pixels to latent using VAE."""
     pixels.shape[1]
     pixels.shape[2]
     return VariationalAE.VAEEncode().encode(vae, pixels)[0]
@@ -103,17 +70,7 @@ def to_latent_image(pixels: torch.Tensor, vae: VariationalAE.VAE) -> torch.Tenso
 def calculate_sigmas2(
     model: torch.nn.Module, sampler: str, scheduler: str, steps: int
 ) -> torch.Tensor:
-    """#### Calculate sigmas for a model.
-
-    #### Args:
-        - `model` (torch.nn.Module): The input model.
-        - `sampler` (str): The sampler name.
-        - `scheduler` (str): The scheduler name.
-        - `steps` (int): The number of steps.
-
-    #### Returns:
-        - `torch.Tensor`: The calculated sigmas.
-    """
+    """Calculate sigmas for a model."""
     return ksampler_util.calculate_sigmas(
         model.get_model_object("model_sampling"), scheduler, steps
     )
@@ -122,17 +79,7 @@ def calculate_sigmas2(
 def get_noise_sampler(
     x: torch.Tensor, cpu: bool, total_sigmas: torch.Tensor, **kwargs
 ) -> Optional[sampling_util.BrownianTreeNoiseSampler]:
-    """#### Get a noise sampler.
-
-    #### Args:
-        - `x` (torch.Tensor): The input tensor.
-        - `cpu` (bool): Whether to use CPU.
-        - `total_sigmas` (torch.Tensor): The total sigmas tensor.
-        - `kwargs` (dict): Additional arguments.
-
-    #### Returns:
-        - `Optional[sampling_util.BrownianTreeNoiseSampler]`: The noise sampler.
-    """
+    """Get a noise sampler."""
     if "extra_args" in kwargs and "seed" in kwargs["extra_args"]:
         sigma_min, sigma_max = total_sigmas[total_sigmas > 0].min(), total_sigmas.max()
         seed = kwargs["extra_args"].get("seed", None)
@@ -148,21 +95,9 @@ def ksampler2(
     extra_options: Dict[str, Any] = {},
     inpaint_options: Dict[str, Any] = {},
     pipeline: bool = False,
-    disable_multiscale: bool = True,  # Disable multi-scale for ADetailer by default
+    disable_multiscale: bool = True,
 ) -> sampling.KSAMPLER:
-    """#### Get a ksampler.
-
-    #### Args:
-        - `sampler_name` (str): The sampler name.
-        - `total_sigmas` (torch.Tensor): The total sigmas tensor.
-        - `extra_options` (Dict[str, Any], optional): Additional options. Defaults to {}.
-        - `inpaint_options` (Dict[str, Any], optional): Inpaint options. Defaults to {}.
-        - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-        - `disable_multiscale` (bool, optional): Whether to disable multi-scale diffusion. Defaults to True for ADetailer.
-
-    #### Returns:
-        - `sampling.KSAMPLER`: The ksampler.
-    """
+    """Get a ksampler."""
     # Force disable multi-scale diffusion for ADetailer samplers
     if disable_multiscale:
         extra_options = extra_options.copy()
@@ -198,25 +133,14 @@ def ksampler2(
 
 
 class Noise_RandomNoise:
-    """#### Class for generating random noise."""
+    """Random noise generator."""
 
     def __init__(self, seed: int):
-        """#### Initialize the Noise_RandomNoise class.
-
-        #### Args:
-            - `seed` (int): The seed for random noise.
-        """
+        """Initialize with seed."""
         self.seed = seed
 
     def generate_noise(self, input_latent: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """#### Generate random noise.
-
-        #### Args:
-            - `input_latent` (Dict[str, torch.Tensor]): The input latent tensor.
-
-        #### Returns:
-            - `torch.Tensor`: The generated noise tensor.
-        """
+        """Generate random noise."""
         latent_image = input_latent["samples"]
         batch_inds = (
                 input_latent["batch_index"] if "batch_index" in input_latent else None
@@ -238,25 +162,7 @@ def sample_with_custom_noise(
     callback: Optional[callable] = None,
     pipeline: bool = False,
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
-    """#### Sample with custom noise.
-
-    #### Args:
-        - `model` (torch.nn.Module): The input model.
-        - `add_noise` (bool): Whether to add noise.
-        - `noise_seed` (int): The noise seed.
-        - `cfg` (int): Classifier-Free Guidance Scale
-        - `positive` (Any): The positive prompt.
-        - `negative` (Any): The negative prompt.
-        - `sampler` (Any): The sampler.
-        - `sigmas` (torch.Tensor): The sigmas tensor.
-        - `latent_image` (Dict[str, torch.Tensor]): The latent image tensor.
-        - `noise` (Optional[torch.Tensor], optional): The noise tensor. Defaults to None.
-        - `callback` (Optional[callable], optional): The callback function. Defaults to None.
-        - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-
-    #### Returns:
-        - `Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]`: The sampled and denoised tensors.
-    """
+    """Sample with custom noise."""
     latent = latent_image
     latent_image = latent["samples"]
 
@@ -322,32 +228,7 @@ def separated_sample(
     scheduler_func: Optional[callable] = None,
     pipeline: bool = False,
 ) -> Dict[str, torch.Tensor]:
-    """#### Perform separated sampling.
-
-    #### Args:
-        - `model` (torch.nn.Module): The input model.
-        - `add_noise` (bool): Whether to add noise.
-        - `seed` (int): The seed for random noise.
-        - `steps` (int): The number of steps.
-        - `cfg` (int): Classifier-Free Guidance Scale
-        - `sampler_name` (str): The sampler name.
-        - `scheduler` (str): The scheduler name.
-        - `positive` (Any): The positive prompt.
-        - `negative` (Any): The negative prompt.
-        - `latent_image` (Dict[str, torch.Tensor]): The latent image tensor.
-        - `start_at_step` (Optional[int]): The step to start at.
-        - `end_at_step` (Optional[int]): The step to end at.
-        - `return_with_leftover_noise` (bool): Whether to return with leftover noise.
-        - `sigma_ratio` (float, optional): The sigma ratio. Defaults to 1.0.
-        - `sampler_opt` (Optional[Dict[str, Any]], optional): The sampler options. Defaults to None.
-        - `noise` (Optional[torch.Tensor], optional): The noise tensor. Defaults to None.
-        - `callback` (Optional[callable], optional): The callback function. Defaults to None.
-        - `scheduler_func` (Optional[callable], optional): The scheduler function. Defaults to None.
-        - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-
-    #### Returns:
-        - `Dict[str, torch.Tensor]`: The sampled tensor.
-    """
+    """Perform separated sampling."""
     total_sigmas = calculate_sigmas2(model, sampler_name, scheduler, steps)
 
     sigmas = total_sigmas
@@ -396,32 +277,7 @@ def ksampler_wrapper(
     scheduler_func: Optional[callable] = None,
     pipeline: bool = False,
 ) -> Dict[str, torch.Tensor]:
-    """#### Wrapper for ksampler.
-
-    #### Args:
-        - `model` (torch.nn.Module): The input model.
-        - `seed` (int): The seed for random noise.
-        - `steps` (int): The number of steps.
-        - `cfg` (int): Classifier-Free Guidance Scale
-        - `sampler_name` (str): The sampler name.
-        - `scheduler` (str): The scheduler name.
-        - `positive` (Any): The positive prompt.
-        - `negative` (Any): The negative prompt.
-        - `latent_image` (Dict[str, torch.Tensor]): The latent image tensor.
-        - `denoise` (float): The denoise factor.
-        - `refiner_ratio` (Optional[float], optional): The refiner ratio. Defaults to None.
-        - `refiner_model` (Optional[torch.nn.Module], optional): The refiner model. Defaults to None.
-        - `refiner_clip` (Optional[Any], optional): The refiner clip. Defaults to None.
-        - `refiner_positive` (Optional[Any], optional): The refiner positive prompt. Defaults to None.
-        - `refiner_negative` (Optional[Any], optional): The refiner negative prompt. Defaults to None.
-        - `sigma_factor` (float, optional): The sigma factor. Defaults to 1.0.
-        - `noise` (Optional[torch.Tensor], optional): The noise tensor. Defaults to None.
-        - `scheduler_func` (Optional[callable], optional): The scheduler function. Defaults to None.
-        - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-
-    #### Returns:
-        - `Dict[str, torch.Tensor]`: The refined latent tensor.
-    """
+    """Wrapper for ksampler."""
     advanced_steps = math.floor(steps / denoise)
     start_at_step = advanced_steps - steps
     end_at_step = start_at_step + steps
@@ -482,45 +338,7 @@ def enhance_detail(
     scheduler_func: Optional[callable] = None,
     pipeline: bool = False,
 ) -> Tuple[torch.Tensor, Optional[Any]]:
-    """#### Enhance detail of an image.
-
-    #### Args:
-        - `image` (torch.Tensor): The input image tensor.
-        - `model` (torch.nn.Module): The model.
-        - `clip` (Any): The clip model.
-        - `vae` (VariationalAE.VAE): The VAE model.
-        - `guide_size` (int): The guide size.
-        - `guide_size_for_bbox` (bool): Whether to use guide size for bbox.
-        - `max_size` (int): The maximum size.
-        - `bbox` (Tuple[int, int, int, int]): The bounding box.
-        - `seed` (int): The seed for random noise.
-        - `steps` (int): The number of steps.
-        - `cfg` (int): Classifier-Free Guidance Scale
-        - `sampler_name` (str): The sampler name.
-        - `scheduler` (str): The scheduler name.
-        - `positive` (Any): The positive prompt.
-        - `negative` (Any): The negative prompt.
-        - `denoise` (float): The denoise factor.
-        - `noise_mask` (Optional[torch.Tensor]): The noise mask tensor.
-        - `force_inpaint` (bool): Whether to force inpaint.
-        - `wildcard_opt` (Optional[Any], optional): The wildcard options. Defaults to None.
-        - `wildcard_opt_concat_mode` (Optional[Any], optional): The wildcard concat mode. Defaults to None.
-        - `detailer_hook` (Optional[callable], optional): The detailer hook. Defaults to None.
-        - `refiner_ratio` (Optional[float], optional): The refiner ratio. Defaults to None.
-        - `refiner_model` (Optional[torch.nn.Module], optional): The refiner model. Defaults to None.
-        - `refiner_clip` (Optional[Any], optional): The refiner clip. Defaults to None.
-        - `refiner_positive` (Optional[Any], optional): The refiner positive prompt. Defaults to None.
-        - `refiner_negative` (Optional[Any], optional): The refiner negative prompt. Defaults to None.
-        - `control_net_wrapper` (Optional[Any], optional): The control net wrapper. Defaults to None.
-        - `cycle` (int, optional): The number of cycles. Defaults to 1.
-        - `inpaint_model` (bool, optional): Whether to use inpaint model. Defaults to False.
-        - `noise_mask_feather` (int, optional): The noise mask feather. Defaults to 0.
-        - `scheduler_func` (Optional[callable], optional): The scheduler function. Defaults to None.
-        - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-
-    #### Returns:
-        - `Tuple[torch.Tensor, Optional[Any]]`: The refined image tensor and optional cnet_pils.
-    """
+    """Enhance detail of an image."""
     if noise_mask is not None:
         noise_mask = tensor_util.tensor_gaussian_blur_mask(
             noise_mask, noise_mask_feather
@@ -638,7 +456,7 @@ def enhance_detail(
 
 
 class DetailerForEach:
-    """#### Class for detailing each segment of an image."""
+    """Detailing for each segment of an image."""
 
     @staticmethod
     def do_detail(
@@ -674,44 +492,7 @@ class DetailerForEach:
         scheduler_func_opt: Optional[callable] = None,
         pipeline: bool = False,
     ) -> Tuple[torch.Tensor, list, list, list, list, Tuple[torch.Tensor, list]]:
-        """#### Perform detailing on each segment of an image.
-
-        #### Args:
-            - `image` (torch.Tensor): The input image tensor.
-            - `segs` (Tuple[torch.Tensor, Any]): The segments.
-            - `model` (torch.nn.Module): The model.
-            - `clip` (Any): The clip model.
-            - `vae` (VariationalAE.VAE): The VAE model.
-            - `guide_size` (int): The guide size.
-            - `guide_size_for_bbox` (bool): Whether to use guide size for bbox.
-            - `max_size` (int): The maximum size.
-            - `seed` (int): The seed for random noise.
-            - `steps` (int): The number of steps.
-            - `cfg` (int): Classifier-Free Guidance Scale.
-            - `sampler_name` (str): The sampler name.
-            - `scheduler` (str): The scheduler name.
-            - `positive` (Any): The positive prompt.
-            - `negative` (Any): The negative prompt.
-            - `denoise` (float): The denoise factor.
-            - `feather` (int): The feather value.
-            - `noise_mask` (Optional[torch.Tensor]): The noise mask tensor.
-            - `force_inpaint` (bool): Whether to force inpaint.
-            - `wildcard_opt` (Optional[Any], optional): The wildcard options. Defaults to None.
-            - `detailer_hook` (Optional[callable], optional): The detailer hook. Defaults to None.
-            - `refiner_ratio` (Optional[float], optional): The refiner ratio. Defaults to None.
-            - `refiner_model` (Optional[torch.nn.Module], optional): The refiner model. Defaults to None.
-            - `refiner_clip` (Optional[Any], optional): The refiner clip. Defaults to None.
-            - `refiner_positive` (Optional[Any], optional): The refiner positive prompt. Defaults to None.
-            - `refiner_negative` (Optional[Any], optional): The refiner negative prompt. Defaults to None.
-            - `cycle` (int, optional): The number of cycles. Defaults to 1.
-            - `inpaint_model` (bool, optional): Whether to use inpaint model. Defaults to False.
-            - `noise_mask_feather` (int, optional): The noise mask feather. Defaults to 0.
-            - `scheduler_func_opt` (Optional[callable], optional): The scheduler function. Defaults to None.
-            - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-
-        #### Returns:
-            - `Tuple[torch.Tensor, list, list, list, list, Tuple[torch.Tensor, list]]`: The detailed image tensor, cropped list, enhanced list, enhanced alpha list, cnet PIL list, and new segments.
-        """
+        """Perform detailing on each segment."""
         image = image.clone()
         enhanced_alpha_list = []
         enhanced_list = []
@@ -872,20 +653,12 @@ class DetailerForEach:
 
 
 def empty_pil_tensor(w: int = 64, h: int = 64) -> torch.Tensor:
-    """#### Create an empty PIL tensor.
-
-    #### Args:
-        - `w` (int, optional): The width of the tensor. Defaults to 64.
-        - `h` (int, optional): The height of the tensor. Defaults to 64.
-
-    #### Returns:
-        - `torch.Tensor`: The empty tensor.
-    """
+    """Create an empty PIL tensor."""
     return torch.zeros((1, h, w, 3), dtype=torch.float32)
 
 
 class DetailerForEachTest(DetailerForEach):
-    """#### Test class for DetailerForEach."""
+    """Test class for DetailerForEach."""
 
     def doit(
         self,
@@ -916,39 +689,7 @@ class DetailerForEachTest(DetailerForEach):
         scheduler_func_opt: Optional[callable] = None,
         pipeline: bool = False,
     ) -> Tuple[torch.Tensor, list, list, list, list]:
-        """#### Perform detail enhancement for testing.
-
-        #### Args:
-            - `image` (torch.Tensor): The input image tensor.
-            - `segs` (Any): The segments.
-            - `model` (torch.nn.Module): The model.
-            - `clip` (Any): The clip model.
-            - `vae` (VariationalAE.VAE): The VAE model.
-            - `guide_size` (int): The guide size.
-            - `guide_size_for` (bool): Whether to use guide size for.
-            - `max_size` (int): The maximum size.
-            - `seed` (int): The seed for random noise.
-            - `steps` (int): The number of steps.
-            - `cfg` (Any): The configuration.
-            - `sampler_name` (str): The sampler name.
-            - `scheduler` (str): The scheduler name.
-            - `positive` (Any): The positive prompt.
-            - `negative` (Any): The negative prompt.
-            - `denoise` (float): The denoise factor.
-            - `feather` (int): The feather value.
-            - `noise_mask` (Optional[torch.Tensor]): The noise mask tensor.
-            - `force_inpaint` (bool): Whether to force inpaint.
-            - `wildcard` (Optional[Any]): The wildcard options.
-            - `detailer_hook` (Optional[callable], optional): The detailer hook. Defaults to None.
-            - `cycle` (int, optional): The number of cycles. Defaults to 1.
-            - `inpaint_model` (bool, optional): Whether to use inpaint model. Defaults to False.
-            - `noise_mask_feather` (int, optional): The noise mask feather. Defaults to 0.
-            - `scheduler_func_opt` (Optional[callable], optional): The scheduler function. Defaults to None.
-            - `pipeline` (bool, optional): Whether to use pipeline. Defaults to False.
-
-        #### Returns:
-            - `Tuple[torch.Tensor, list, list, list, list]`: The enhanced image tensor, cropped list, cropped enhanced list, cropped enhanced alpha list, and cnet PIL list.
-        """
+        """Perform detail enhancement for testing."""
         # Handle batched images by processing each image separately
         if len(image.shape) == 4 and image.shape[0] > 1:
             batch_size = image.shape[0]
