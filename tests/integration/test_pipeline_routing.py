@@ -2,7 +2,7 @@
 Integration tests for pipeline routing logic.
 
 Tests that the pipeline correctly routes execution based on flags like
-hires_fix, img2img, flux_enabled, adetailer, etc. All model loading
+hires_fix, img2img, adetailer, etc. All model loading
 is mocked to avoid loading real weights.
 """
 
@@ -65,7 +65,6 @@ def mock_all_heavy_dependencies():
     
     # Mock Downloader to avoid network calls
     patches['downloader'] = patch('src.FileManaging.Downloader.CheckAndDownload')
-    patches['downloader_flux'] = patch('src.FileManaging.Downloader.CheckAndDownloadFlux')
     
     # Mock app_instance - explicitly set interrupt_flag to False
     mock_app = MagicMock()

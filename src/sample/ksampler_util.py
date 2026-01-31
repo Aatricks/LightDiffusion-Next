@@ -122,9 +122,9 @@ def calculate_sigmas(model_sampling, scheduler_name: str, steps: int) -> torch.T
         return simple_scheduler(model_sampling, steps)
     elif scheduler_name == "beta":
         return beta_scheduler(model_sampling, steps)
-    elif scheduler_name in ["ays", "ays_sd15", "ays_sdxl", "ays_flux"]:
+    elif scheduler_name in ["ays", "ays_sd15", "ays_sdxl"]:
         from src.sample import ays_scheduler as ays
-        model_type = {"ays_sdxl": "SDXL", "ays_flux": "FLUX", "ays_sd15": "SD15"}.get(scheduler_name)
+        model_type = {"ays_sdxl": "SDXL", "ays_sd15": "SD15"}.get(scheduler_name)
         if not model_type:
             try:
                 config = getattr(getattr(model_sampling, 'model_config', None), 'unet_config', {})

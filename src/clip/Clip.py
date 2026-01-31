@@ -127,7 +127,7 @@ class CLIP:
 
         self.patcher = ModelPatcher.ModelPatcher(self.cond_stage_model, load_device=load_device, offload_device=offload_device)
         if params["device"] == load_device:
-            Device.load_models_gpu([self.patcher], force_full_load=True, flux_enabled=True)
+            Device.load_models_gpu([self.patcher], force_full_load=True)
         self.layer_idx = None
         logging.debug(f"CLIP model load device: {load_device}, offload device: {offload_device}, current: {params['device']}")
 
@@ -148,14 +148,14 @@ class CLIP:
     def tokenize(self, text, return_word_ids=False):
         return self.tokenizer.tokenize_with_weights(text, return_word_ids)
 
-    def encode_from_tokens(self, tokens, return_pooled=False, return_dict=False, flux_enabled=False):
+    def encode_from_tokens(self, tokens, return_pooled=False, return_dict=False):
         self.cond_stage_model.reset_clip_options()
         if self.layer_idx is not None:
             self.cond_stage_model.set_clip_options({"layer": self.layer_idx})
         if return_pooled == "unprojected":
             self.cond_stage_model.set_clip_options({"projected_pooled": False})
 
-        self.load_model(flux_enabled=flux_enabled)
+        self.load_model()
         o = self.cond_stage_model.encode_token_weights(tokens)
         cond, pooled = o[:2]
         
@@ -169,8 +169,8 @@ class CLIP:
     def load_sd(self, sd, full_model=False):
         return self.cond_stage_model.load_state_dict(sd, strict=False) if full_model else self.cond_stage_model.load_sd(sd)
 
-    def load_model(self, flux_enabled=False):
-        Device.load_model_gpu(self.patcher, flux_enabled=flux_enabled)
+    def load_model(self):
+        Device.load_model_gpu(self.patcher)
         return self.patcher
 
     def encode(self, text):
@@ -232,7 +232,7 @@ def load_text_encoder_state_dicts(state_dicts=[], embedding_directory=None, clip
 
 class CLIPTextEncode:
     """Text encoding with automatic prompt caching."""
-    def encode(self, clip, text, flux_enabled=False):
+    def encode(self, clip, text):
         from src.Utilities import prompt_cache
         cache_enabled = prompt_cache.is_prompt_cache_enabled()
 
@@ -240,26 +240,26 @@ class CLIPTextEncode:
             out = []
             for t in text:
                 if cache_enabled:
-                    cached = prompt_cache.get_cached_encoding(clip, t, flux_enabled)
+                    cached = prompt_cache.get_cached_encoding(clip, t)
                     if cached:
                         out.append([cached[0], {"pooled_output": cached[1]}])
                         continue
                 tokens = clip.tokenize(t)
-                cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True, flux_enabled=flux_enabled)
+                cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
                 if cache_enabled:
-                    prompt_cache.cache_encoding(clip, t, cond, pooled, flux_enabled)
+                    prompt_cache.cache_encoding(clip, t, cond, pooled)
                 out.append([cond, {"pooled_output": pooled}])
             return (out,)
 
         if cache_enabled:
-            cached = prompt_cache.get_cached_encoding(clip, text, flux_enabled)
+            cached = prompt_cache.get_cached_encoding(clip, text)
             if cached:
                 return ([[cached[0], {"pooled_output": cached[1]}]],)
 
         tokens = clip.tokenize(text)
-        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True, flux_enabled=flux_enabled)
+        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
         if cache_enabled:
-            prompt_cache.cache_encoding(clip, text, cond, pooled, flux_enabled)
+            prompt_cache.cache_encoding(clip, text, cond, pooled)
         return ([[cond, {"pooled_output": pooled}]],)
 
 

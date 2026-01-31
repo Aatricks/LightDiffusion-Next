@@ -24,6 +24,12 @@ import torch
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def resolve_checkpoint_path(realistic_model: bool = False) -> str:
+    """Resolve the checkpoint path based on model settings."""
+    return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
+
+
 # Initialize downloader check once at module load
 from src.FileManaging import Downloader
 Downloader.CheckAndDownload()

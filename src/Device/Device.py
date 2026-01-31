@@ -229,20 +229,13 @@ class LoadedModel:
             return self.model_offloaded_memory()
         return self.model_memory()
 
-    def model_load(self, lowvram_model_memory: int = 0, force_patch_weights: bool = False, flux: bool = False):
+    def model_load(self, lowvram_model_memory: int = 0, force_patch_weights: bool = False):
         self.model.model_patches_to(self.device)
         self.model.model_patches_to(self.model.model_dtype())
         load_weights = not self.weights_loaded
         
         try:
-            if flux:
-                if self.model.loaded_size() > 0:
-                    self.model_use_more_vram(lowvram_model_memory or int(1e32))
-                else:
-                    self.real_model = self.model.patch_model_flux(
-                        device_to=self.device, lowvram_model_memory=lowvram_model_memory,
-                        load_weights=load_weights, force_patch_weights=force_patch_weights)
-            elif hasattr(self.model, "patch_model_lowvram") and lowvram_model_memory > 0 and load_weights:
+            if hasattr(self.model, "patch_model_lowvram") and lowvram_model_memory > 0 and load_weights:
                 self.real_model = self.model.patch_model_lowvram(
                     device_to=self.device, lowvram_model_memory=lowvram_model_memory,
                     force_patch_weights=force_patch_weights)
@@ -306,10 +299,10 @@ def free_memory(memory_required: int, device: torch.device, keep_loaded: list = 
 
 
 def load_models_gpu(models: list, memory_required: int = 0, force_patch_weights: bool = False,
-                    minimum_memory_required: int = None, force_full_load: bool = False, flux_enabled: bool = False):
+                    minimum_memory_required: int = None, force_full_load: bool = False):
     global vram_state
     inference_memory = minimum_inference_memory()
-    extra_mem = max(inference_memory, memory_required + (extra_reserved_memory() if flux_enabled else 0))
+    extra_mem = max(inference_memory, memory_required)
     min_mem = minimum_memory_required or extra_mem
     
     models_to_load, models_already_loaded = [], []
@@ -358,25 +351,19 @@ def load_models_gpu(models: list, memory_required: int = 0, force_patch_weights:
         if vram_set in (VRAMState.LOW_VRAM, VRAMState.NORMAL_VRAM) and not force_full_load:
             model_size = loaded_model.model_memory_required(torch_dev)
             current_free = get_free_memory(torch_dev)
-            if flux_enabled:
-                lowvram_mem = max(64 * 1024 * 1024, current_free - min_mem,
-                                  min(current_free * 0.4, current_free - inference_memory))
-                if model_size <= lowvram_mem:
-                    lowvram_mem = 0
-            else:
-                lowvram_mem = int(max(64 * 1024 * 1024, (current_free - 1024 * 1024 * 1024) / 1.3))
-                if model_size <= current_free - inference_memory:
-                    lowvram_mem = 0
+            lowvram_mem = int(max(64 * 1024 * 1024, (current_free - 1024 * 1024 * 1024) / 1.3))
+            if model_size <= current_free - inference_memory:
+                lowvram_mem = 0
         
         if vram_set == VRAMState.NO_VRAM:
             lowvram_mem = 64 * 1024 * 1024
         
-        loaded_model.model_load(lowvram_mem, force_patch_weights=force_patch_weights, flux=flux_enabled)
+        loaded_model.model_load(lowvram_mem, force_patch_weights=force_patch_weights)
         current_loaded_models.insert(0, loaded_model)
 
 
-def load_model_gpu(model, flux_enabled: bool = False):
-    load_models_gpu([model], flux_enabled=flux_enabled)
+def load_model_gpu(model):
+    load_models_gpu([model])
 
 
 def cleanup_models(keep_clone_weights_loaded: bool = False):

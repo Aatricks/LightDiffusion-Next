@@ -58,7 +58,7 @@ def test_samplers():
 
 def test_schedulers():
     """Tests all available schedulers."""
-    schedulers = ["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl", "ays_flux"]
+    schedulers = ["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl"]
     for scheduler in schedulers:
         print(f"Testing scheduler: {scheduler}...")
         pipeline(
@@ -146,18 +146,6 @@ def test_img2img():
         batch=1,
         img2img=True,
         img2img_image=dummy_image_path,
-    )
-
-def test_flux():
-    """Tests the Flux pipeline."""
-    print("Testing Flux pipeline...")
-    pipeline(
-        prompt="a beautiful landscape with flux",
-        w=512,
-        h=512,
-        number=1,
-        batch=1,
-        flux_enabled=True,
     )
 
 def test_api_endpoints():
@@ -337,7 +325,6 @@ def main():
     parser.add_argument("--schedulers", action="store_true", help="Run schedulers test.")
     parser.add_argument("--optimizations", action="store_true", help="Run optimizations test.")
     parser.add_argument("--img2img", action="store_true", help="Run img2img test.")
-    parser.add_argument("--flux", action="store_true", help="Run flux test.")
     parser.add_argument("--api", action="store_true", help="Run API endpoints test.")
     parser.add_argument("--hires_fix", action="store_true", help="Run hires_fix test.")
     parser.add_argument("--adetailer", action="store_true", help="Run adetailer test.")
@@ -360,8 +347,6 @@ def main():
         run_test(test_optimizations)
     if args.all or args.img2img:
         run_test(test_img2img)
-    if args.all or args.flux:
-        run_test(test_flux)
     if args.all or args.api:
         run_test(test_api_endpoints)
     if args.all or args.hires_fix:

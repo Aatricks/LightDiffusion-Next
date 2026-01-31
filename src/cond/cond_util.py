@@ -51,7 +51,7 @@ def get_additional_models(conds: dict, dtype: torch.dtype) -> Tuple[List[object]
 
 
 def prepare_sampling(
-    model: object, noise_shape: Tuple[int], conds: dict, flux_enabled: bool = False
+    model: object, noise_shape: Tuple[int], conds: dict
 ) -> Tuple[object, dict, List[object]]:
     """#### Prepare the model for sampling.
 
@@ -59,7 +59,6 @@ def prepare_sampling(
         - `model` (object): The model.
         - `noise_shape` (Tuple[int]): The shape of the noise.
         - `conds` (dict): The conditions.
-        - `flux_enabled` (bool, optional): Whether flux is enabled. Defaults to False.
 
     #### Returns:
         - `Tuple[object, dict, List[object]]`: The prepared model, conditions, and additional models.
@@ -78,7 +77,6 @@ def prepare_sampling(
         [model] + models,
         memory_required=memory_required,
         minimum_memory_required=minimum_memory_required,
-        flux_enabled=flux_enabled,
     )
     real_model = model.model
 

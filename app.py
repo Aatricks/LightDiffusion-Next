@@ -73,7 +73,6 @@ def get_default_settings():
         "img2img_enabled": False,
         "stable_fast": False,
         "reuse_seed": False,
-        "flux_enabled": False,
         "realistic_model": False,
         "multiscale_enabled": True,
         "multiscale_intermittent": False,
@@ -329,7 +328,6 @@ def generate_images_with_preview(
     img2img_image: str = None,
     stable_fast: bool = False,
     reuse_seed: bool = False,
-    flux_enabled: bool = False,
     realistic_model: bool = False,
     multiscale_enabled: bool = True,
     multiscale_intermittent: bool = False,
@@ -369,7 +367,6 @@ def generate_images_with_preview(
             img2img_enabled=img2img_enabled,
             stable_fast=stable_fast,
             reuse_seed=reuse_seed,
-            flux_enabled=flux_enabled,
             realistic_model=realistic_model,
             multiscale_enabled=multiscale_enabled,
             multiscale_intermittent=multiscale_intermittent,
@@ -416,7 +413,6 @@ def generate_images_with_preview(
                 img2img=img2img_enabled,
                 stable_fast=stable_fast,
                 reuse_seed=reuse_seed,
-                flux_enabled=flux_enabled,
                 autohdr=True,
                 realistic_model=realistic_model,
                 enable_multiscale=multiscale_enabled,
@@ -591,7 +587,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                     with gr.Row():
                         scheduler = gr.Dropdown(
                             label="Scheduler",
-                            choices=["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl", "ays_flux"],
+                            choices=["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl"],
                             value=saved_settings.get("scheduler", "ays"),
                             info="Noise schedule for sampling"
                         )
@@ -630,9 +626,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                     with gr.Row():
                         reuse_seed = gr.Checkbox(
                             label="Reuse Seed", value=saved_settings["reuse_seed"]
-                        )
-                        flux_enabled = gr.Checkbox(
-                            label="Flux Mode", value=saved_settings["flux_enabled"]
                         )
                         realistic_model = gr.Checkbox(
                             label="Realistic Model",
@@ -844,7 +837,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             img2img_image,
             stable_fast,
             reuse_seed,
-            flux_enabled,
             realistic_model,
             multiscale_enabled,
             multiscale_intermittent,
@@ -874,7 +866,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         img2img_enabled_val,
         stable_fast_val,
         reuse_seed_val,
-        flux_enabled_val,
         realistic_model_val,
         multiscale_enabled_val,
         multiscale_intermittent_val,
@@ -901,7 +892,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             img2img_enabled=img2img_enabled_val,
             stable_fast=stable_fast_val,
             reuse_seed=reuse_seed_val,
-            flux_enabled=flux_enabled_val,
             realistic_model=realistic_model_val,
             multiscale_enabled=multiscale_enabled_val,
             multiscale_intermittent=multiscale_intermittent_val,
@@ -930,7 +920,6 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         img2img_enabled,
         stable_fast,
         reuse_seed,
-        flux_enabled,
         realistic_model,
         multiscale_enabled,
         multiscale_intermittent,

@@ -55,14 +55,13 @@ def sampling_function(model, x, timestep, uncond, condo, cond_scale, model_optio
 class CFGGuider:
     """Guidance with Classifier-Free Guidance."""
 
-    def __init__(self, model_patcher, flux=False, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance",
+    def __init__(self, model_patcher, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance",
                  dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0, 
                  adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
         self.model_patcher = model_patcher
         self.model_options = model_patcher.model_options
         self.original_conds = {}
         self.cfg = 1.0
-        self.flux = flux
         self.cfg_free_enabled = False
         self.cfg_free_start_percent = 70.0
         self.original_cfg = 1.0
@@ -172,7 +171,7 @@ class CFGGuider:
                disable_pbar=False, seed=None, pipeline=False):
         self.conds = {k: [a.copy() for a in v] for k, v in self.original_conds.items()}
         self.inner_model, self.conds, self.loaded_models = cond_util.prepare_sampling(
-            self.model_patcher, noise.shape, self.conds, flux_enabled=self.flux)
+            self.model_patcher, noise.shape, self.conds)
         device = self.model_patcher.load_device
 
         output = self.inner_sample(noise.to(device), latent_image.to(device), device, sampler,
