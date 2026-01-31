@@ -1,5 +1,4 @@
 import torch
-from src.BlackForest import Flux
 from src.Utilities import util
 from src.Model import ModelBase
 from src.SD15 import SDClip, SDToken, SDXL
@@ -77,5 +76,5 @@ class sm_SD15(ModelBase.BASE):
         return Clip.ClipTarget(SDToken.SD1Tokenizer, SDClip.SD1ClipModel)
     
 models = [
-    sm_SD15, SDXL.SDXLRefiner, SDXL.SDXL, SDXL.SSD1B, SDXL.Segmind_Vega, SDXL.KOALA_700M, SDXL.KOALA_1B, Flux.Flux
+    sm_SD15, SDXL.SDXLRefiner, SDXL.SDXL, SDXL.SSD1B, SDXL.Segmind_Vega, SDXL.KOALA_700M, SDXL.KOALA_1B
 ]

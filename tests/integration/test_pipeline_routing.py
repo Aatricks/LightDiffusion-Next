@@ -267,55 +267,6 @@ class TestImg2ImgRouting:
         )
 
 
-class TestFluxRouting:
-    """Test flux_enabled flag routing."""
-    
-    def test_flux_uses_different_pipeline(self, mock_all_heavy_dependencies):
-        """flux_enabled=True should use Flux-specific pipeline."""
-        from src.user.pipeline import pipeline
-        
-        # Mock Flux-specific components
-        with patch('src.Quantize.Quantizer.DualCLIPLoaderGGUF') as mock_clip_gguf:
-            with patch('src.Quantize.Quantizer.UnetLoaderGGUF') as mock_unet_gguf:
-                with patch('src.Quantize.Quantizer.CLIPTextEncodeFlux') as mock_flux_encode:
-                    with patch('src.Quantize.Quantizer.ConditioningZeroOut') as mock_zero:
-                        with patch('src.WaveSpeed.fbcache_nodes.ApplyFBCacheOnModel') as mock_fbcache:
-                            mock_unet_gguf.return_value.load_unet.return_value = (MagicMock(),)
-                            mock_clip_gguf.return_value.load_clip.return_value = (MagicMock(),)
-                            mock_flux_encode.return_value.encode.return_value = (MagicMock(),)
-                            mock_zero.return_value.zero_out.return_value = (MagicMock(),)
-                            mock_fbcache.return_value.patch.return_value = (MagicMock(),)
-                            
-                            pipeline(
-                                prompt="test",
-                                w=512,
-                                h=512,
-                                flux_enabled=True,
-                            )
-                            
-                            # Flux-specific loader should be called
-                            assert mock_unet_gguf.return_value.load_unet.called, (
-                                "GGUF UNet loader should be called for Flux"
-                            )
-    
-    def test_flux_disabled_uses_standard_loader(self, mock_all_heavy_dependencies):
-        """flux_enabled=False should use standard checkpoint loader."""
-        from src.user.pipeline import pipeline
-        
-        pipeline(
-            prompt="test",
-            w=512,
-            h=512,
-            flux_enabled=False,
-        )
-        
-        # Standard loader should be called
-        loader = mock_all_heavy_dependencies['loader']
-        assert loader.return_value.load_checkpoint.called, (
-            "CheckpointLoaderSimple should be called when flux_enabled=False"
-        )
-
-
 class TestADetailerRouting:
     """Test adetailer flag routing."""
     

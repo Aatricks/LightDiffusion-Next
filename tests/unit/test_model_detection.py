@@ -3,6 +3,8 @@ Unit tests for model detection functionality.
 
 Tests the detect_model_type function in src/user/model_loader.py
 with various filename patterns and edge cases.
+
+Note: GGUF/FLUX support has been removed. GGUF files now raise ValueError.
 """
 
 import os
@@ -119,34 +121,27 @@ class TestDetectModelType:
         assert result_nomarker == "SD15", f"Expected SD15 (marker not in basename), got {result_nomarker}"
     
     # =========================================================================
-    # FLUX Detection Tests
+    # GGUF Files - No Longer Supported (Must Raise ValueError)
     # =========================================================================
     
-    def test_detect_flux_from_gguf_extension(self):
-        """FLUX should be detected from .gguf extension."""
-        result = detect_model_type("flux1-dev-Q8_0.gguf")
-        assert result == "FLUX", f"Expected FLUX, got {result}"
+    def test_gguf_files_raise_value_error(self):
+        """GGUF files should raise ValueError as they're no longer supported."""
+        with pytest.raises(ValueError, match="GGUF files are no longer supported"):
+            detect_model_type("flux1-dev-Q8_0.gguf")
     
-    def test_detect_flux_from_filename_marker(self):
-        """FLUX should be detected from 'flux' in .gguf filename."""
-        result = detect_model_type("my_flux_model.gguf")
-        assert result == "FLUX", f"Expected FLUX, got {result}"
-    
-    def test_detect_flux_case_insensitive(self):
-        """FLUX detection in GGUF should be case-insensitive."""
+    def test_gguf_any_filename_raises_error(self):
+        """Any .gguf file should raise ValueError."""
         test_cases = [
+            "my_flux_model.gguf",
             "FLUX_model.gguf",
             "Flux_model.gguf",
             "model_FLUX.gguf",
+            "random_model.gguf",
+            "/models/flux/flux1-dev.gguf",
         ]
         for filename in test_cases:
-            result = detect_model_type(filename)
-            assert result == "FLUX", f"Expected FLUX for {filename}, got {result}"
-    
-    def test_detect_flux_gguf_with_path(self):
-        """FLUX detection should work with full paths for .gguf files."""
-        result = detect_model_type("/models/flux/flux1-dev.gguf")
-        assert result == "FLUX", f"Expected FLUX, got {result}"
+            with pytest.raises(ValueError, match="GGUF files are no longer supported"):
+                detect_model_type(filename)
     
     # =========================================================================
     # Edge Cases and Error Handling
@@ -172,64 +167,11 @@ class TestDetectModelType:
         result = detect_model_type("model_file")
         assert result == "SD15", f"Expected SD15 for no extension, got {result}"
     
-    def test_detect_gguf_without_flux_marker(self):
-        """GGUF files without 'flux' in name should still be FLUX (heuristic fallback)."""
-        # The function falls back to filename heuristic if GGUF header read fails
-        # and then looks for 'flux' in the path. Without it, SD15 is returned
-        result = detect_model_type("random_model.gguf")
-        # Based on the implementation, GGUF without flux in name and no readable header
-        # should default to SD15 from the exception fallback
-        assert result in ["FLUX", "SD15"], f"Unexpected result {result} for non-flux GGUF"
-    
     def test_detect_preserves_original_path(self):
         """Detection should not modify the input path."""
         original_path = "path/to/model.safetensors"
         detect_model_type(original_path)
         assert original_path == "path/to/model.safetensors"
-    
-    # =========================================================================
-    # GGUF Header Parsing Tests (mocked)
-    # =========================================================================
-    
-    def test_detect_flux_from_gguf_header_flux_arch(self):
-        """FLUX should be detected from GGUF header with flux architecture."""
-        mock_reader = MagicMock()
-        mock_field = MagicMock()
-        mock_field.data = [ord(c) for c in "flux"]
-        mock_reader.get_field.return_value = mock_field
-        
-        with patch("gguf.GGUFReader", return_value=mock_reader):
-            result = detect_model_type("model.gguf")
-            assert result == "FLUX", f"Expected FLUX from GGUF header, got {result}"
-    
-    def test_detect_sdxl_from_gguf_header_sdxl_arch(self):
-        """SDXL should be detected from GGUF header with sdxl architecture."""
-        mock_reader = MagicMock()
-        mock_field = MagicMock()
-        mock_field.data = [ord(c) for c in "sdxl"]
-        mock_reader.get_field.return_value = mock_field
-        
-        with patch("gguf.GGUFReader", return_value=mock_reader):
-            result = detect_model_type("model.gguf")
-            assert result == "SDXL", f"Expected SDXL from GGUF header, got {result}"
-    
-    def test_detect_sd15_from_gguf_header_sd1_arch(self):
-        """SD1.5 should be detected from GGUF header with sd1 architecture."""
-        mock_reader = MagicMock()
-        mock_field = MagicMock()
-        mock_field.data = [ord(c) for c in "sd1"]
-        mock_reader.get_field.return_value = mock_field
-        
-        with patch("gguf.GGUFReader", return_value=mock_reader):
-            result = detect_model_type("model.gguf")
-            assert result == "SD15", f"Expected SD15 from GGUF header, got {result}"
-    
-    def test_detect_gguf_header_read_failure_fallback(self):
-        """Failed GGUF header read should fallback to filename heuristics."""
-        with patch("gguf.GGUFReader", side_effect=Exception("Read error")):
-            result = detect_model_type("flux_model.gguf")
-            # Should fallback to filename heuristic and find 'flux'
-            assert result == "FLUX", f"Expected FLUX from filename fallback, got {result}"
 
 
 class TestListAvailableModels:
@@ -252,8 +194,8 @@ class TestListAvailableModels:
             ), "Each item should be a (display_name, full_path) tuple"
     
     def test_list_filters_valid_extensions(self):
-        """Only valid model extensions should be returned."""
-        valid_extensions = (".gguf", ".safetensors", ".pt", ".pth")
+        """Only valid model extensions should be returned (no .gguf)."""
+        valid_extensions = (".safetensors", ".pt", ".pth")  # .gguf no longer supported
         result = list_available_models(return_mapping=True)
         
         for display_name, full_path in result:
@@ -291,12 +233,18 @@ class TestModelDetectionIntegration:
         ("sdxl_vae.safetensors", "SDXL"),
         ("hassakuXLv13.safetensors", "SDXL"),
         ("SDXL_refiner_1.0.safetensors", "SDXL"),
-        
-        # FLUX models
-        ("flux1-dev-Q8_0.gguf", "FLUX"),
-        ("flux-schnell.gguf", "FLUX"),
     ])
     def test_detection_matrix(self, filename, expected):
         """Test detection across a matrix of common model filenames."""
         result = detect_model_type(filename)
         assert result == expected, f"Expected {expected} for {filename}, got {result}"
+    
+    @pytest.mark.parametrize("filename", [
+        "flux1-dev-Q8_0.gguf",
+        "flux-schnell.gguf",
+        "any_model.gguf",
+    ])
+    def test_gguf_files_raise_error(self, filename):
+        """All GGUF files should raise ValueError."""
+        with pytest.raises(ValueError, match="GGUF files are no longer supported"):
+            detect_model_type(filename)
