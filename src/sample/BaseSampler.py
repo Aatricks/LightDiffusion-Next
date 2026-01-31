@@ -131,12 +131,18 @@ class BaseSampler(ABC):
     
     def apply_cfg(self, denoised: torch.Tensor, uncond: torch.Tensor, cfg: float,
                   state: CFGState, h_ratio: Optional[float] = None) -> torch.Tensor:
-        if state.old_uncond is None or h_ratio is None:
-            return torch.lerp(uncond, denoised, cfg)
+        """Apply CFG++ momentum if we have history, otherwise just return denoised.
+        
+        Note: The model (CFGGuider) already applies CFG, so we only apply
+        momentum correction for CFG++ here, NOT additional CFG scaling.
+        """
+        if state.old_denoised is None or h_ratio is None:
+            # No history for momentum, just use the already-CFG'd denoised
+            return denoised
+        # Apply CFG++ momentum correction only (not CFG scale - that's already applied)
         h1 = 1 + h_ratio
         momentum = h1 * denoised - h_ratio * state.old_denoised
-        uncond_momentum = h1 * uncond - h_ratio * state.old_uncond
-        return torch.lerp(uncond_momentum, momentum, cfg * self.cfg_x0_scale)
+        return momentum
     
     @torch.no_grad()
     def sample(self, model: Any, x: torch.Tensor, sigmas: torch.Tensor,
@@ -152,7 +158,7 @@ class BaseSampler(ABC):
         cb = SamplerCallback(n_steps, self.pipeline)
         s_in = torch.ones((x.shape[0],), device=device)
         
-        # Setup CFG++
+        # Setup CFG++ state tracking (for momentum only, not CFG scaling)
         state = CFGState()
         extra_args = extra_args.copy()
         extra_args["model_options"] = set_model_options_post_cfg_function(
@@ -188,9 +194,9 @@ class EulerSampler(BaseSampler):
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigma_hat * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
             
-            uncond = state.old_uncond if state.old_uncond is not None else denoised
-            cfg_denoised = self.apply_cfg(denoised, uncond, self.get_cfg(i, n_steps), state)
-            state.update(denoised, uncond)
+            # CFG is already applied by CFGGuider, just apply momentum if available
+            cfg_denoised = self.apply_cfg(denoised, None, 0, state)
+            state.update(denoised, None)
             
             x = x + util.to_d(x, sigma_hat, cfg_denoised) * (sigmas[i + 1] - sigma_hat)
             if callback:
@@ -215,9 +221,9 @@ class EulerAncestralSampler(BaseSampler):
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigmas[i] * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
             
-            uncond = state.old_uncond if state.old_uncond is not None else denoised
-            cfg_denoised = self.apply_cfg(denoised, uncond, self.get_cfg(i, n_steps), state)
-            state.update(denoised, uncond)
+            # CFG is already applied by CFGGuider, just apply momentum if available
+            cfg_denoised = self.apply_cfg(denoised, None, 0, state)
+            state.update(denoised, None)
             
             sigma_down, sigma_up = sampling_util.get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
             x = x + util.to_d(x, sigmas[i], cfg_denoised) * (sigma_down - sigmas[i])
@@ -248,10 +254,10 @@ class DPMPP2MSampler(BaseSampler):
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigmas[i] * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
             
-            uncond = state.old_uncond if state.old_uncond is not None else denoised
+            # CFG is already applied by CFGGuider, just apply momentum if available
             h_ratio = h_steps[i - 1] / (2 * h_steps[i]) if i > 0 and state.old_denoised is not None else None
-            cfg_denoised = self.apply_cfg(denoised, uncond, self.get_cfg(i, n_steps), state, h_ratio)
-            state.update(denoised, uncond)
+            cfg_denoised = self.apply_cfg(denoised, None, 0, state, h_ratio)
+            state.update(denoised, None)
             
             x = ratios[i] * x - torch.expm1(-h_steps[i]) * cfg_denoised
             
@@ -283,11 +289,9 @@ class DPMPPSDESampler(BaseSampler):
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigmas[i] * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
             
-            uncond = state.old_uncond if state.old_uncond is not None else denoised
-            cfg = self.get_cfg(i, n_steps)
-            
+            # CFG is already applied by CFGGuider
             if sigmas[i + 1] == 0:
-                cfg_denoised = self.apply_cfg(denoised, uncond, cfg, state)
+                cfg_denoised = self.apply_cfg(denoised, None, 0, state)
                 x = x + util.to_d(x, sigmas[i], cfg_denoised) * (sigmas[i + 1] - sigmas[i])
             else:
                 t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
@@ -296,7 +300,7 @@ class DPMPPSDESampler(BaseSampler):
                 s_ = t_fn(sd)
                 
                 h_ratio = (t - s_) / (2 * (t - t_next)) if state.old_denoised is not None else None
-                cfg_denoised = self.apply_cfg(denoised, uncond, cfg, state, h_ratio)
+                cfg_denoised = self.apply_cfg(denoised, None, 0, state, h_ratio)
                 
                 noise1 = noise_sampler(sigma_fn(t), sigma_fn(s)).to(device) * s_noise * su
                 x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * cfg_denoised + noise1
@@ -306,8 +310,7 @@ class DPMPPSDESampler(BaseSampler):
                 else:
                     denoised_2 = ms.upscale(model(ms.downscale(x_2), sigma_fn(s) * torch.ones((ms.downscale(x_2).shape[0],), device=device), **extra_args))
                 
-                uncond_2 = state.old_uncond if state.old_uncond is not None else denoised_2
-                cfg_denoised_2 = self.apply_cfg(denoised_2, uncond_2, cfg, state, h_ratio)
+                cfg_denoised_2 = self.apply_cfg(denoised_2, None, 0, state, h_ratio)
                 
                 sd, su = sampling_util.get_ancestral_step(sigma_fn(t), sigma_fn(t_next), eta)
                 t_next_ = t_fn(sd)
@@ -316,7 +319,7 @@ class DPMPPSDESampler(BaseSampler):
                      - (t - t_next_).expm1() * ((1 - 1/(2*r)) * cfg_denoised + (1/(2*r)) * cfg_denoised_2)
                      + noise_final)
             
-            state.update(denoised, uncond)
+            state.update(denoised, None)
             if callback:
                 callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
             cb.preview(x, i)

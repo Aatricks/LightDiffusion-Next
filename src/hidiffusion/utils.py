@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import itertools
+import logging
 import math
 import sys
 from functools import partial
@@ -10,6 +11,9 @@ from typing import TYPE_CHECKING, Callable, NamedTuple
 from enum import Enum
 import torch.nn.functional as F
 from src.Utilities import Latent, upscale
+
+# Logger for HiDiffusion modules
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -222,4 +226,4 @@ def init_integrations(integrations):
 MODULES.register_init_handler(init_integrations)
 
 __all__ = ("UPSCALE_METHODS", "check_time", "convert_time", "get_sigma", "guess_model_type",
-           "parse_blocks", "rescale_size", "scale_samples")
+           "logger", "parse_blocks", "rescale_size", "scale_samples")

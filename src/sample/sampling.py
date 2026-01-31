@@ -11,6 +11,25 @@ from src.sample.BaseSampler import (
 from src.Utilities import Latent
 
 
+class TimestepEmbedSequential1(nn.Sequential):
+    """Sequential module that passes timestep embeddings to children that need them."""
+    def forward(self, x, emb=None, context=None, transformer_options={}, output_shape=None, time_context=None, num_video_frames=None, image_only_indicator=None):
+        for layer in self:
+            if hasattr(layer, 'forward'):
+                import inspect
+                sig = inspect.signature(layer.forward)
+                params = list(sig.parameters.keys())
+                if 'emb' in params or 'temb' in params:
+                    x = layer(x, emb)
+                elif 'context' in params:
+                    x = layer(x, context=context, transformer_options=transformer_options)
+                else:
+                    x = layer(x)
+            else:
+                x = layer(x)
+        return x
+
+
 # Noise prediction strategies
 class EPS:
     def calculate_input(self, sigma, noise):

@@ -7,6 +7,15 @@ import os
 import safetensors.torch
 import torch
 
+# Global folder paths for LoRA/embeddings/etc.
+# Maps folder_name -> ([list_of_paths], set_of_extensions)
+folder_names_and_paths = {
+    "loras": ([os.path.join(".", "include", "loras")], {".safetensors", ".ckpt", ".pt"}),
+    "embeddings": ([os.path.join(".", "include", "embeddings")], {".safetensors", ".pt", ".bin"}),
+    "checkpoints": ([os.path.join(".", "include", "checkpoints")], {".safetensors", ".ckpt"}),
+    "vae": ([os.path.join(".", "include", "vae")], {".safetensors", ".ckpt", ".pt"}),
+}
+
 
 def append_dims(x: torch.Tensor, target_dims: int) -> torch.Tensor:
     """Append dimensions to tensor until it has target_dims dimensions."""

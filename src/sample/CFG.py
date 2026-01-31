@@ -55,7 +55,7 @@ def sampling_function(model, x, timestep, uncond, condo, cond_scale, model_optio
 class CFGGuider:
     """Guidance with Classifier-Free Guidance."""
 
-    def __init__(self, model_patcher, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance",
+    def __init__(self, model_patcher, flux=False, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance",
                  dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0, 
                  adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
         self.model_patcher = model_patcher
@@ -66,6 +66,7 @@ class CFGGuider:
         self.cfg_free_start_percent = 70.0
         self.original_cfg = 1.0
         self.sigmas = None
+        self.flux = flux  # Flag for FLUX model behavior
         self.dynamic_cfg_rescaling = dynamic_cfg_rescaling
         self.dynamic_cfg_method = dynamic_cfg_method
         self.dynamic_cfg_percentile = dynamic_cfg_percentile
