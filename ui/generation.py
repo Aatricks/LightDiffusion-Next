@@ -21,7 +21,7 @@ from src.Device.ModelCache import (
 
 # model selection handled via model_path passed into pipeline
 from src.user import app_instance
-from src.user.model_loader import detect_model_type
+from src.Core.Models.ModelFactory import detect_model_type
 
 # pipeline takes model_path now
 from src.user.pipeline import pipeline

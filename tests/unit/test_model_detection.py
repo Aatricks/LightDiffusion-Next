@@ -1,7 +1,7 @@
 """
 Unit tests for model detection functionality.
 
-Tests the detect_model_type function in src/user/model_loader.py
+Tests the detect_model_type function in src/Core/Models/ModelFactory.py
 with various filename patterns and edge cases.
 
 Note: GGUF/FLUX support has been removed. GGUF files now raise ValueError.
@@ -17,7 +17,7 @@ from unittest.mock import patch, MagicMock
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.user.model_loader import detect_model_type, list_available_models
+from src.Core.Models.ModelFactory import detect_model_type, list_available_models
 
 
 class TestDetectModelType:
@@ -104,11 +104,9 @@ class TestDetectModelType:
         assert result == "SDXL", f"Expected SDXL, got {result}"
     
     def test_detect_sdxl_juggernaut(self):
-        """Juggernaut XL models without 'sdxl' in name default to SD15 per current impl."""
-        # Note: Current logic checks for literal 'sdxl', 'refiner', or 'hassaku' in basename
-        # 'Juggernaut-XL' contains '-XL' not 'sdxl', so defaults to SD15
+        """Juggernaut XL models should be detected as SDXL due to 'juggernaut' indicator."""
         result = detect_model_type("Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors")
-        assert result == "SD15", f"Expected SD15 (no 'sdxl' marker), got {result}"
+        assert result == "SDXL", f"Expected SDXL (juggernaut indicator), got {result}"
     
     def test_detect_sdxl_with_path(self):
         """SDXL detection works with full paths if basename contains marker."""
@@ -126,7 +124,7 @@ class TestDetectModelType:
     
     def test_gguf_files_raise_value_error(self):
         """GGUF files should raise ValueError as they're no longer supported."""
-        with pytest.raises(ValueError, match="GGUF files are no longer supported"):
+        with pytest.raises(ValueError, match="GGUF files not supported"):
             detect_model_type("flux1-dev-Q8_0.gguf")
     
     def test_gguf_any_filename_raises_error(self):
@@ -140,7 +138,7 @@ class TestDetectModelType:
             "/models/flux/flux1-dev.gguf",
         ]
         for filename in test_cases:
-            with pytest.raises(ValueError, match="GGUF files are no longer supported"):
+            with pytest.raises(ValueError, match="GGUF files not supported"):
                 detect_model_type(filename)
     
     # =========================================================================
@@ -195,7 +193,7 @@ class TestListAvailableModels:
     
     def test_list_filters_valid_extensions(self):
         """Only valid model extensions should be returned (no .gguf)."""
-        valid_extensions = (".safetensors", ".pt", ".pth")  # .gguf no longer supported
+        valid_extensions = (".safetensors", ".pt", ".pth")
         result = list_available_models(return_mapping=True)
         
         for display_name, full_path in result:
@@ -225,11 +223,10 @@ class TestModelDetectionIntegration:
         ("anythingV5.safetensors", "SD15"),
         ("deliberate_v3.safetensors", "SD15"),
         ("realisticVision.safetensors", "SD15"),
-        # These don't contain 'sdxl' literally, so default to SD15
-        ("sd_xl_base_1.0.safetensors", "SD15"),  # 'sd_xl' != 'sdxl'
-        ("Juggernaut-XL_v9.safetensors", "SD15"),  # '-XL' != 'sdxl'
         
-        # SDXL models (contain 'sdxl', 'refiner', or 'hassaku' literally)
+        # SDXL models (contain 'sdxl', 'refiner', 'hassaku', 'juggernaut', or 'xl')
+        ("sd_xl_base_1.0.safetensors", "SDXL"),  # contains 'xl'
+        ("Juggernaut-XL_v9.safetensors", "SDXL"),  # contains 'juggernaut' and 'xl'
         ("sdxl_vae.safetensors", "SDXL"),
         ("hassakuXLv13.safetensors", "SDXL"),
         ("SDXL_refiner_1.0.safetensors", "SDXL"),
@@ -246,5 +243,5 @@ class TestModelDetectionIntegration:
     ])
     def test_gguf_files_raise_error(self, filename):
         """All GGUF files should raise ValueError."""
-        with pytest.raises(ValueError, match="GGUF files are no longer supported"):
+        with pytest.raises(ValueError, match="GGUF files not supported"):
             detect_model_type(filename)

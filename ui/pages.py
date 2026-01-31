@@ -141,7 +141,7 @@ def render_generate_page():
         with st.expander("🎯 Model Selection", expanded=False):
             # Allow the user to pick a model file or use Auto (default checkpoints)
             try:
-                from src.user.model_loader import list_available_models
+                from src.Core.Models.ModelFactory import list_available_models
 
                 available_map = list_available_models(return_mapping=True)
             except Exception:

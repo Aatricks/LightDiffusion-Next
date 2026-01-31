@@ -16,11 +16,11 @@ sys.path.append(str(project_root))
 
 def test_hires_fix_is_called():
     """Test that HiresFix.apply is called when hires_fix=True."""
-    from src.Core import PipelineContext
+    from src.Core import Context
     from src.Processors import HiresFix
     
     # Create context with hires_fix enabled
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="test prompt",
         w=512,
         h=512,
@@ -34,10 +34,10 @@ def test_hires_fix_is_called():
 
 def test_hires_fix_not_called_when_disabled():
     """Test that HiresFix is not enabled when hires_fix=False."""
-    from src.Core import PipelineContext
+    from src.Core import Context
     from src.Processors import HiresFix
     
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="test prompt",
         w=512,
         h=512,
@@ -50,10 +50,10 @@ def test_hires_fix_not_called_when_disabled():
 
 def test_adetailer_is_called():
     """Test that Adetailer.apply is called when adetailer=True."""
-    from src.Core import PipelineContext
+    from src.Core import Context
     from src.Processors import Adetailer
     
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="test prompt",
         w=512,
         h=512,
@@ -66,10 +66,10 @@ def test_adetailer_is_called():
 
 def test_adetailer_not_called_when_disabled():
     """Test that Adetailer is not enabled when adetailer=False."""
-    from src.Core import PipelineContext
+    from src.Core import Context
     from src.Processors import Adetailer
     
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="test prompt",
         w=512,
         h=512,
@@ -82,10 +82,10 @@ def test_adetailer_not_called_when_disabled():
 
 def test_img2img_is_called():
     """Test that Img2Img is enabled when img2img=True."""
-    from src.Core import PipelineContext
+    from src.Core import Context
     from src.Processors import Img2Img
     
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="test prompt",
         w=512,
         h=512,
@@ -97,11 +97,11 @@ def test_img2img_is_called():
     print("PASS: Img2Img.is_enabled returns True when img2img=True")
 
 
-def test_pipeline_context_from_kwargs():
-    """Test that PipelineContext properly maps old-style kwargs."""
-    from src.Core import PipelineContext
+def test_context_from_kwargs():
+    """Test that Context properly maps old-style kwargs."""
+    from src.Core import Context
     
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="a beautiful landscape",
         w=768,
         h=512,
@@ -133,24 +133,24 @@ def test_pipeline_context_from_kwargs():
     assert ctx.features.hires_fix == True
     assert ctx.features.adetailer == True
     
-    print("PASS: PipelineContext.from_kwargs correctly maps all parameters")
+    print("PASS: Context.from_kwargs correctly maps all parameters")
 
 
-def test_model_factory_detection():
-    """Test that ModelFactory correctly detects model types."""
-    from src.Core.Models import ModelFactory
+def test_model_detection():
+    """Test that detect_model_type correctly detects model types."""
+    from src.Core.Models.ModelFactory import detect_model_type
     
     # Test SD15 detection (default)
-    assert ModelFactory.detect_model_type(None) == "SD15"
-    assert ModelFactory.detect_model_type("model.safetensors") == "SD15"
-    assert ModelFactory.detect_model_type("DreamShaper_8.safetensors") == "SD15"
+    assert detect_model_type(None) == "SD15"
+    assert detect_model_type("model.safetensors") == "SD15"
+    assert detect_model_type("DreamShaper_8.safetensors") == "SD15"
     
     # Test SDXL detection
-    assert ModelFactory.detect_model_type("sdxl_model.safetensors") == "SDXL"
-    assert ModelFactory.detect_model_type("Juggernaut-XL.safetensors") == "SDXL"
-    assert ModelFactory.detect_model_type("refiner.safetensors") == "SDXL"
+    assert detect_model_type("sdxl_model.safetensors") == "SDXL"
+    assert detect_model_type("Juggernaut-XL.safetensors") == "SDXL"
+    assert detect_model_type("refiner.safetensors") == "SDXL"
     
-    print("PASS: ModelFactory correctly detects model types")
+    print("PASS: detect_model_type correctly detects model types")
 
 
 def test_model_capabilities():
@@ -172,9 +172,9 @@ def test_model_capabilities():
 
 def test_hires_context_creation():
     """Test that with_hires_settings creates appropriate context."""
-    from src.Core import PipelineContext
+    from src.Core import Context
     
-    ctx = PipelineContext.from_kwargs(
+    ctx = Context.from_kwargs(
         prompt="test",
         w=512,
         h=512,
@@ -203,8 +203,8 @@ def run_all_tests():
         test_adetailer_is_called,
         test_adetailer_not_called_when_disabled,
         test_img2img_is_called,
-        test_pipeline_context_from_kwargs,
-        test_model_factory_detection,
+        test_context_from_kwargs,
+        test_model_detection,
         test_model_capabilities,
         test_hires_context_creation,
     ]

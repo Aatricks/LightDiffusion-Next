@@ -2,6 +2,7 @@ import math
 import numpy as np
 import torch
 from PIL import Image
+from torchvision.transforms.functional import to_pil_image, to_tensor as tv_to_tensor
 
 
 def get_tiled_scale_steps(width: int, height: int, tile_x: int, tile_y: int, overlap: int) -> int:
@@ -131,76 +132,24 @@ BLUR_KERNEL_SIZE = 15
 
 
 def tensor_to_pil(img_tensor: torch.Tensor, batch_index: int = 0) -> Image.Image:
-    """#### Convert a tensor to a PIL image.
-
-    #### Args:
-        - `img_tensor` (torch.Tensor): The input tensor.
-        - `batch_index` (int, optional): The batch index. Defaults to 0.
-
-    #### Returns:
-        - `Image.Image`: The converted PIL image.
-    """
-    # Get the tensor for the specified batch index
+    """Convert tensor to PIL image using torchvision."""
     tensor = img_tensor[batch_index]
-
-    # Handle different tensor dimensions
-    # The upscaler outputs in [H, W, C] format after movedim(-3, -1)
-    if tensor.dim() == 3:  # [H, W, C] - already in correct format
-        pass
-    elif tensor.dim() == 2:  # [H, W] - grayscale
-        pass
-    else:
-        raise ValueError(f"Unexpected tensor dimensions: {tensor.shape}")
-
-    # Clamp values to valid range [0, 1] and convert to numpy
-    tensor = torch.clamp(tensor, 0.0, 1.0)
-    numpy_array = (tensor.cpu().numpy() * 255.0).astype(np.uint8)
-
-    # Handle different channel configurations
-    if numpy_array.ndim == 3:
-        if numpy_array.shape[2] == 3:
-            img = Image.fromarray(numpy_array, 'RGB')
-        elif numpy_array.shape[2] == 1:
-            img = Image.fromarray(numpy_array.squeeze(axis=2), 'L')
-        elif numpy_array.shape[2] == 4:
-            img = Image.fromarray(numpy_array, 'RGBA')
-        else:
-            # Fallback: take first 3 channels if more than 3, or convert single channel to grayscale
-            if numpy_array.shape[2] >= 3:
-                img = Image.fromarray(numpy_array[:, :, :3], 'RGB')
-            else:
-                img = Image.fromarray(numpy_array.squeeze(axis=2), 'L')
-    elif numpy_array.ndim == 2:
-        img = Image.fromarray(numpy_array, 'L')
-    else:
-        raise ValueError(f"Cannot convert array with shape {numpy_array.shape} to PIL image")
-
-    return img
+    # Handle HWC format (common in this codebase)
+    if tensor.dim() == 3 and tensor.shape[-1] in [1, 3, 4]:
+        tensor = tensor.permute(2, 0, 1)  # HWC -> CHW
+    return to_pil_image(torch.clamp(tensor, 0, 1))
 
 
 def pil_to_tensor(image: Image.Image) -> torch.Tensor:
-    """#### Convert a PIL image to a tensor.
-
-    #### Args:
-        - `image` (Image.Image): The input PIL image.
-
-    #### Returns:
-        - `torch.Tensor`: The converted tensor.
-    """
-    # Convert RGBA to RGB if necessary (upscaler models expect 3 channels)
+    """Convert PIL image to tensor using torchvision."""
     if image.mode == 'RGBA':
-        # Create a white background for transparency
         background = Image.new('RGB', image.size, (255, 255, 255))
-        background.paste(image, mask=image.split()[-1])  # Use alpha channel as mask
+        background.paste(image, mask=image.split()[-1])
         image = background
     elif image.mode != 'RGB':
         image = image.convert('RGB')
-      # Convert to numpy array and normalize
-    image_array = np.array(image).astype(np.float32) / 255.0
-
-    # Convert to tensor and add batch dimension: [H, W, C] -> [1, H, W, C]
-    tensor = torch.from_numpy(image_array).unsqueeze(0)
-    return tensor
+    # torchvision returns CHW, we need BHWC for this codebase
+    return tv_to_tensor(image).unsqueeze(0).permute(0, 2, 3, 1)
 
 
 def get_crop_region(mask: Image.Image, pad: int = 0) -> tuple:

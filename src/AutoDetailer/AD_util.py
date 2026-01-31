@@ -6,20 +6,11 @@ from ultralytics import YOLO
 from PIL import Image
 
 orig_torch_load = torch.load
-
-# importing YOLO breaking original torch.load capabilities
 torch.load = orig_torch_load
 
 
 def load_yolo(model_path: str) -> YOLO:
-    """#### Load YOLO model.
-
-    #### Args:
-        - `model_path` (str): The path to the YOLO model.
-
-    #### Returns:
-        - `YOLO`: The YOLO model initialized with the specified model path.
-    """
+    """Load YOLO model from path."""
     try:
         return YOLO(model_path)
     except ModuleNotFoundError:
@@ -27,35 +18,19 @@ def load_yolo(model_path: str) -> YOLO:
 
 
 def inference_bbox(
-    model: YOLO,
-    image: Image.Image,
-    confidence: float = 0.3,
-    device: str = "cpu",
+    model: YOLO, image: Image.Image, confidence: float = 0.3, device: str = "cpu"
 ) -> List:
-    """#### Perform inference on an image and return bounding boxes.
-
-    #### Args:
-        - `model` (YOLO): The YOLO model.
-        - `image` (Image.Image): The image to perform inference on.
-        - `confidence` (float): The confidence threshold for the bounding boxes.
-        - `device` (str): The device to run the model on.
-
-    #### Returns:
-        - `List[List[str, List[int], np.ndarray, float]]`: The list of bounding boxes.
-    """
+    """Perform YOLO inference and return [names, bboxes, segmasks, confidences]."""
     pred = model(image, conf=confidence, device=device)
-
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
-    cv2_image = np.array(image)
-    cv2_image = cv2_image[:, :, ::-1].copy()  # Convert RGB to BGR for cv2 processing
+    cv2_image = np.array(image)[:, :, ::-1].copy()  # RGB to BGR
     cv2_gray = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2GRAY)
 
     segms = []
     for x0, y0, x1, y1 in bboxes:
         cv2_mask = np.zeros(cv2_gray.shape, np.uint8)
         cv2.rectangle(cv2_mask, (int(x0), int(y0)), (int(x1), int(y1)), 255, -1)
-        cv2_mask_bool = cv2_mask.astype(bool)
-        segms.append(cv2_mask_bool)
+        segms.append(cv2_mask.astype(bool))
 
     results = [[], [], [], []]
     for i in range(len(bboxes)):
@@ -63,41 +38,17 @@ def inference_bbox(
         results[1].append(bboxes[i])
         results[2].append(segms[i])
         results[3].append(pred[0].boxes[i].conf.cpu().numpy())
-
     return results
 
 
 def create_segmasks(results: List) -> List:
-    """#### Create segmentation masks from the results of the inference.
-
-    #### Args:
-        - `results` (List[List[str, List[int], np.ndarray, float]]): The results of the inference.
-
-    #### Returns:
-        - `List[List[int], np.ndarray, float]`: The list of segmentation masks.
-    """
-    bboxs = results[1]
-    segms = results[2]
-    confidence = results[3]
-
-    results = []
-    for i in range(len(segms)):
-        item = (bboxs[i], segms[i].astype(np.float32), confidence[i])
-        results.append(item)
-    return results
+    """Convert inference results to list of (bbox, segmask, confidence)."""
+    return [(results[1][i], results[2][i].astype(np.float32), results[3][i]) 
+            for i in range(len(results[2]))]
 
 
 def dilate_masks(segmasks: List, dilation_factor: int, iter: int = 1) -> List:
-    """#### Dilate the segmentation masks.
-
-    #### Args:
-        - `segmasks` (List[List[int], np.ndarray, float]): The segmentation masks.
-        - `dilation_factor` (int): The dilation factor.
-        - `iter` (int): The number of iterations.
-
-    #### Returns:
-        - `List[List[int], np.ndarray, float]`: The dilated segmentation masks.
-    """
+    """Dilate segmentation masks by dilation_factor."""
     dilated_masks = []
     kernel = np.ones((abs(dilation_factor), abs(dilation_factor)), np.uint8)
 
@@ -113,147 +64,53 @@ def dilate_masks(segmasks: List, dilation_factor: int, iter: int = 1) -> List:
 
 
 def normalize_region(limit: int, startp: int, size: int) -> List:
-    """#### Normalize the region.
-
-    #### Args:
-        - `limit` (int): The limit.
-        - `startp` (int): The start point.
-        - `size` (int): The size.
-
-    #### Returns:
-        - `List[int]`: The normalized start and end points.
-    """
+    """Normalize region coords to fit within limit."""
     if startp < 0:
-        new_endp = min(limit, size)
-        new_startp = 0
-    elif startp + size > limit:
-        new_startp = max(0, limit - size)
-        new_endp = limit
-    else:
-        new_startp = startp
-        new_endp = min(limit, startp + size)
-
-    return int(new_startp), int(new_endp)
+        return 0, min(limit, size)
+    if startp + size > limit:
+        return max(0, limit - size), limit
+    return int(startp), int(min(limit, startp + size))
 
 
 def make_crop_region(w: int, h: int, bbox: List, crop_factor: float) -> List:
-    """#### Make the crop region.
-
-    #### Args:
-        - `w` (int): The width.
-        - `h` (int): The height.
-        - `bbox` (List[int]): The bounding box.
-        - `crop_factor` (float): The crop factor.
-
-    #### Returns:
-        - `List[x1: int, y1: int, x2: int, y2: int]`: The crop region.
-    """
-    x1 = bbox[0]
-    y1 = bbox[1]
-    x2 = bbox[2]
-    y2 = bbox[3]
-
-    bbox_w = x2 - x1
-    bbox_h = y2 - y1
-
-    crop_w = bbox_w * crop_factor
-    crop_h = bbox_h * crop_factor
-
-    kernel_x = x1 + bbox_w / 2
-    kernel_y = y1 + bbox_h / 2
-
-    new_x1 = int(kernel_x - crop_w / 2)
-    new_y1 = int(kernel_y - crop_h / 2)
-
-    # make sure position in (w,h)
-    new_x1, new_x2 = normalize_region(w, new_x1, crop_w)
-    new_y1, new_y2 = normalize_region(h, new_y1, crop_h)
-
+    """Create expanded crop region from bbox."""
+    x1, y1, x2, y2 = bbox
+    bbox_w, bbox_h = x2 - x1, y2 - y1
+    crop_w, crop_h = bbox_w * crop_factor, bbox_h * crop_factor
+    kernel_x, kernel_y = x1 + bbox_w / 2, y1 + bbox_h / 2
+    new_x1, new_x2 = normalize_region(w, int(kernel_x - crop_w / 2), crop_w)
+    new_y1, new_y2 = normalize_region(h, int(kernel_y - crop_h / 2), crop_h)
     return [new_x1, new_y1, new_x2, new_y2]
 
 
 def crop_ndarray2(npimg: np.ndarray, crop_region: List) -> np.ndarray:
-    """#### Crop the ndarray in 2 dimensions.
-
-    #### Args:
-        - `npimg` (np.ndarray): The ndarray to crop.
-        - `crop_region` (List[int]): The crop region.
-
-    #### Returns:
-        - `np.ndarray`: The cropped ndarray.
-    """
-    x1 = crop_region[0]
-    y1 = crop_region[1]
-    x2 = crop_region[2]
-    y2 = crop_region[3]
-
-    cropped = npimg[y1:y2, x1:x2]
-
-    return cropped
+    """Crop 2D array [H,W]."""
+    x1, y1, x2, y2 = crop_region
+    return npimg[y1:y2, x1:x2]
 
 
 def crop_ndarray4(npimg: np.ndarray, crop_region: List) -> np.ndarray:
-    """#### Crop the ndarray in 4 dimensions.
-
-    #### Args:
-        - `npimg` (np.ndarray): The ndarray to crop.
-        - `crop_region` (List[int]): The crop region.
-
-    #### Returns:
-        - `np.ndarray`: The cropped ndarray.
-    """
-    x1 = crop_region[0]
-    y1 = crop_region[1]
-    x2 = crop_region[2]
-    y2 = crop_region[3]
-
-    cropped = npimg[:, y1:y2, x1:x2, :]
-
-    return cropped
+    """Crop 4D array [B,H,W,C]."""
+    x1, y1, x2, y2 = crop_region
+    return npimg[:, y1:y2, x1:x2, :]
 
 
 def crop_image(image: torch.Tensor, crop_region: List) -> torch.Tensor:
-    """#### Crop the tensor image.
-
-    #### Args:
-        - `image` (torch.Tensor): The tensor image to crop.
-        - `crop_region` (List[int]): The crop region.
-
-    #### Returns:
-        - `torch.Tensor`: The cropped tensor image.
-    """
-    # Convert to numpy if it's a torch tensor
+    """Crop tensor image."""
     if torch.is_tensor(image):
-        if len(image.shape) == 4:  # [batch, height, width, channels]
-            cropped = crop_ndarray4(image.cpu().numpy(), crop_region)
-            return torch.from_numpy(cropped)
-        elif len(image.shape) == 3:  # [height, width, channels]
-            # Add batch dimension for compatibility
-            image_np = image.unsqueeze(0).cpu().numpy()
-            cropped = crop_ndarray4(image_np, crop_region)
+        if len(image.shape) == 4:
+            return torch.from_numpy(crop_ndarray4(image.cpu().numpy(), crop_region))
+        elif len(image.shape) == 3:
+            cropped = crop_ndarray4(image.unsqueeze(0).cpu().numpy(), crop_region)
             return torch.from_numpy(cropped).squeeze(0)
-        else:
-            raise ValueError(f"Unsupported image tensor shape: {image.shape}")
-    else:
-        cropped = crop_ndarray4(image, crop_region)
-        return torch.from_numpy(cropped) if isinstance(cropped, np.ndarray) else cropped
+        raise ValueError(f"Unsupported image tensor shape: {image.shape}")
+    cropped = crop_ndarray4(image, crop_region)
+    return torch.from_numpy(cropped) if isinstance(cropped, np.ndarray) else cropped
 
 
 def segs_scale_match(segs: List[np.ndarray], target_shape: List) -> List:
-    """#### Match the scale of the segmentation masks.
-
-    #### Args:
-        - `segs` (List[np.ndarray]): The segmentation masks.
-        - `target_shape` (List[int]): The target shape.
-
-    #### Returns:
-        - `List[np.ndarray]`: The matched segmentation masks.
-    """
-    h = segs[0][0]
-    w = segs[0][1]
-
-    th = target_shape[1]
-    tw = target_shape[2]
-
+    """Scale segmentation masks to target shape."""
+    h, w = segs[0][0], segs[0][1]
+    th, tw = target_shape[1], target_shape[2]
     if (h == th and w == tw) or h == 0 or w == 0:
         return segs
