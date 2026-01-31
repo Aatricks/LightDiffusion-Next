@@ -117,6 +117,92 @@ class Flux1(SD3):
         self.taesd_decoder_name = "taef1_decoder"
 
 
+class Flux2(LatentFormat):
+    """Flux2 (Klein) latent format.
+    
+    Following ComfyUI's approach:
+    - latent_channels = 128 (patchified: 32 VAE channels * 2*2 patch)
+    - spacial_downscale_ratio = 16
+    - No scale/shift (process_in/out are identity)
+    
+    For VAE decode: Need to unpatchify 128ch 16x -> 32ch 8x
+    """
+    latent_channels = 128
+    downscale_factor = 16
+    spacial_downscale_ratio = 16
+
+    def __init__(self):
+        # No scale/shift for Flux2 (identity transform)
+        self.scale_factor = 1.0
+        self.shift_factor = 0.0
+        
+        # RGB factors for latent preview (32 groups of 4 patches)
+        self.latent_rgb_factors = [
+            [0.0058, 0.0113, 0.0073], [0.0495, 0.0443, 0.0836],
+            [-0.0099, 0.0096, 0.0644], [0.2144, 0.3009, 0.3652],
+            [0.0166, -0.0039, -0.0054], [0.0157, 0.0103, -0.0160],
+            [-0.0398, 0.0902, -0.0235], [-0.0052, 0.0095, 0.0109],
+            [-0.3527, -0.2712, -0.1666], [-0.0301, -0.0356, -0.0180],
+            [-0.0107, 0.0078, 0.0013], [0.0746, 0.0090, -0.0941],
+            [0.0156, 0.0169, 0.0070], [-0.0034, -0.0040, -0.0114],
+            [0.0032, 0.0181, 0.0080], [-0.0939, -0.0008, 0.0186],
+            [0.0018, 0.0043, 0.0104], [0.0284, 0.0056, -0.0127],
+            [-0.0024, -0.0022, -0.0030], [0.1207, -0.0026, 0.0065],
+            [0.0128, 0.0101, 0.0142], [0.0137, -0.0072, -0.0007],
+            [0.0095, 0.0092, -0.0059], [0.0000, -0.0077, -0.0049],
+            [-0.0465, -0.0204, -0.0312], [0.0095, 0.0012, -0.0066],
+            [0.0290, -0.0034, 0.0025], [0.0220, 0.0169, -0.0048],
+            [-0.0332, -0.0457, -0.0468], [-0.0085, 0.0389, 0.0609],
+            [-0.0076, 0.0003, -0.0043], [-0.0111, -0.0460, -0.0614],
+        ]
+        self.latent_rgb_factors_bias = [-0.0329, -0.0718, -0.0851]
+        self.taesd_decoder_name = None  # Flux2 doesn't use TAESD
+
+    def process_in(self, latent: torch.Tensor) -> torch.Tensor:
+        """Identity - no scale/shift for Flux2."""
+        return latent
+
+    def process_out(self, latent: torch.Tensor) -> torch.Tensor:
+        """Identity - no scale/shift for Flux2."""
+        return latent
+    
+    def unpatchify_for_vae(self, latent: torch.Tensor) -> torch.Tensor:
+        """Convert patchified latent (128ch 16x) to VAE format (32ch 8x).
+        
+        Args:
+            latent: [B, 128, H/16, W/16] patchified latent
+            
+        Returns:
+            [B, 32, H/8, W/8] VAE-compatible latent
+        """
+        # Reshape: 128 channels -> 32 channels * 2*2 patches
+        # [B, 128, h, w] -> [B, 32, 2, 2, h, w] -> [B, 32, h*2, w*2]
+        b, c, h, w = latent.shape
+        latent = latent.reshape(b, 32, 4, h, w)
+        latent = latent.reshape(b, 32, 2, 2, h, w)
+        latent = latent.permute(0, 1, 4, 2, 5, 3)  # [B, 32, h, 2, w, 2]
+        latent = latent.reshape(b, 32, h * 2, w * 2)
+        return latent
+    
+    def patchify_from_vae(self, latent: torch.Tensor) -> torch.Tensor:
+        """Convert VAE format (32ch 8x) to patchified latent (128ch 16x).
+        
+        Args:
+            latent: [B, 32, H/8, W/8] VAE-compatible latent
+            
+        Returns:
+            [B, 128, H/16, W/16] patchified latent
+        """
+        # Reshape: 32 channels * 2*2 patches -> 128 channels
+        # [B, 32, h*2, w*2] -> [B, 32, h, 2, w, 2] -> [B, 128, h, w]
+        b, c, h, w = latent.shape
+        assert c == 32, f"Expected 32 channels, got {c}"
+        latent = latent.reshape(b, 32, h // 2, 2, w // 2, 2)
+        latent = latent.permute(0, 1, 3, 5, 2, 4)  # [B, 32, 2, 2, h//2, w//2]
+        latent = latent.reshape(b, 128, h // 2, w // 2)
+        return latent
+
+
 class EmptyLatentImage:
     """Generate empty latent images."""
     def __init__(self):

@@ -1,0 +1,550 @@
+"""Klein text encoder for Flux2 models in LightDiffusion-Next.
+
+This module provides the Klein (Qwen3-4B based) text encoder used by
+Flux2 Klein models, including:
+- KleinTokenizer: Qwen3-based tokenizer with special formatting
+- Qwen3Model: Transformer-based language model for text encoding
+
+Adapted from ComfyUI's Klein implementation.
+"""
+
+import logging
+import math
+from typing import Optional, List, Dict, Any
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange
+
+from src.cond import cast as ops_module
+from src.Device import Device
+
+
+logger = logging.getLogger(__name__)
+
+
+def get_ops():
+    """Get the operations module for weight initialization."""
+    return ops_module.disable_weight_init
+
+
+class QwenRMSNorm(nn.Module):
+    """RMS Normalization for Qwen3."""
+    
+    def __init__(self, dim: int, eps: float = 1e-6, dtype=None, device=None, operations=None):
+        super().__init__()
+        if operations is None:
+            operations = get_ops()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim, dtype=dtype, device=device))
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # RMS normalization
+        rms = torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        return x * rms * self.weight
+
+
+class QwenRotaryEmbedding(nn.Module):
+    """Rotary position embeddings for Qwen3."""
+    
+    def __init__(self, dim: int, max_position_embeddings: int = 32768, base: int = 10000):
+        super().__init__()
+        self.dim = dim
+        self.max_seq_len = max_position_embeddings
+        self.base = base
+        
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+    
+    def forward(self, x: torch.Tensor, seq_len: int = None):
+        if seq_len is None:
+            seq_len = x.shape[1]
+        
+        t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        return emb.cos(), emb.sin()
+
+
+def rotate_half(x: torch.Tensor) -> torch.Tensor:
+    """Rotate half for RoPE."""
+    x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
+    """Apply rotary position embeddings to query and key."""
+    cos = cos.unsqueeze(0).unsqueeze(0)  # [1, 1, seq, dim]
+    sin = sin.unsqueeze(0).unsqueeze(0)
+    
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+
+
+class QwenAttention(nn.Module):
+    """Multi-head attention for Qwen3 with Grouped Query Attention."""
+    
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        num_kv_heads: int = None,
+        head_dim: int = 128,
+        dtype=None,
+        device=None,
+        operations=None,
+    ):
+        super().__init__()
+        if operations is None:
+            operations = get_ops()
+        
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.num_kv_heads = num_kv_heads or num_heads
+        self.head_dim = head_dim
+        
+        # Qwen3 uses separate projections with different output sizes
+        self.q_proj = operations.Linear(hidden_size, num_heads * head_dim, bias=False, dtype=dtype, device=device)
+        self.k_proj = operations.Linear(hidden_size, self.num_kv_heads * head_dim, bias=False, dtype=dtype, device=device)
+        self.v_proj = operations.Linear(hidden_size, self.num_kv_heads * head_dim, bias=False, dtype=dtype, device=device)
+        self.o_proj = operations.Linear(num_heads * head_dim, hidden_size, bias=False, dtype=dtype, device=device)
+        
+        # Normalize Q and K
+        self.q_norm = QwenRMSNorm(head_dim, dtype=dtype, device=device, operations=operations)
+        self.k_norm = QwenRMSNorm(head_dim, dtype=dtype, device=device, operations=operations)
+    
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_embeddings: Optional[tuple] = None,
+    ) -> torch.Tensor:
+        batch_size, seq_len, _ = hidden_states.shape
+        
+        q = self.q_proj(hidden_states)
+        k = self.k_proj(hidden_states)
+        v = self.v_proj(hidden_states)
+        
+        # Reshape for multi-head attention
+        q = q.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        
+        # Apply QK normalization
+        q = self.q_norm(q)
+        k = self.k_norm(k)
+        
+        # Apply rotary embeddings
+        if position_embeddings is not None:
+            cos, sin = position_embeddings
+            q, k = apply_rotary_pos_emb(q, k, cos, sin)
+        
+        # Grouped query attention - repeat K,V for each group
+        if self.num_kv_heads != self.num_heads:
+            n_rep = self.num_heads // self.num_kv_heads
+            k = k.repeat_interleave(n_rep, dim=1)
+            v = v.repeat_interleave(n_rep, dim=1)
+        
+        # Scaled dot-product attention
+        attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask)
+        
+        # Reshape back
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+        return self.o_proj(attn_output)
+
+
+class QwenMLP(nn.Module):
+    """MLP (Gate-Up-Down) for Qwen3."""
+    
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        dtype=None,
+        device=None,
+        operations=None,
+    ):
+        super().__init__()
+        if operations is None:
+            operations = get_ops()
+        
+        self.gate_proj = operations.Linear(hidden_size, intermediate_size, bias=False, dtype=dtype, device=device)
+        self.up_proj = operations.Linear(hidden_size, intermediate_size, bias=False, dtype=dtype, device=device)
+        self.down_proj = operations.Linear(intermediate_size, hidden_size, bias=False, dtype=dtype, device=device)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
+
+
+class QwenDecoderLayer(nn.Module):
+    """Single transformer decoder layer for Qwen3."""
+    
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        intermediate_size: int,
+        num_kv_heads: int = None,
+        head_dim: int = 128,
+        dtype=None,
+        device=None,
+        operations=None,
+    ):
+        super().__init__()
+        if operations is None:
+            operations = get_ops()
+        
+        self.self_attn = QwenAttention(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            dtype=dtype,
+            device=device,
+            operations=operations,
+        )
+        self.mlp = QwenMLP(
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            dtype=dtype,
+            device=device,
+            operations=operations,
+        )
+        self.input_layernorm = QwenRMSNorm(hidden_size, dtype=dtype, device=device, operations=operations)
+        self.post_attention_layernorm = QwenRMSNorm(hidden_size, dtype=dtype, device=device, operations=operations)
+    
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_embeddings: Optional[tuple] = None,
+    ) -> torch.Tensor:
+        # Self attention
+        residual = hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
+        hidden_states = self.self_attn(hidden_states, attention_mask, position_embeddings)
+        hidden_states = residual + hidden_states
+        
+        # MLP
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+        
+        return hidden_states
+
+
+class Qwen3_4BModel(nn.Module):
+    """Qwen3 4B model for Klein text encoding.
+    
+    This is a decoder-only transformer used as a text encoder
+    for the Flux2 Klein model.
+    """
+    
+    def __init__(
+        self,
+        vocab_size: int = 151936,
+        hidden_size: int = 2560,
+        intermediate_size: int = 9728,  # Qwen3 4B actual value
+        num_hidden_layers: int = 36,
+        num_attention_heads: int = 32,
+        num_key_value_heads: int = 8,
+        head_dim: int = 128,
+        max_position_embeddings: int = 32768,
+        layer_indices: tuple = (9, 18, 27),  # Layers to extract embeddings from
+        dtype=None,
+        device=None,
+        operations=None,
+    ):
+        super().__init__()
+        if operations is None:
+            operations = get_ops()
+        
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.num_hidden_layers = num_hidden_layers
+        self.layer_indices = layer_indices
+        
+        # Token embeddings
+        self.embed_tokens = operations.Embedding(vocab_size, hidden_size, dtype=dtype, device=device)
+        
+        # Rotary embeddings
+        self.rotary_emb = QwenRotaryEmbedding(
+            head_dim,
+            max_position_embeddings=max_position_embeddings,
+        )
+        
+        # Transformer layers
+        self.layers = nn.ModuleList([
+            QwenDecoderLayer(
+                hidden_size=hidden_size,
+                num_heads=num_attention_heads,
+                intermediate_size=intermediate_size,
+                num_kv_heads=num_key_value_heads,
+                head_dim=head_dim,
+                dtype=dtype,
+                device=device,
+                operations=operations,
+            )
+            for _ in range(num_hidden_layers)
+        ])
+        
+        # Final norm
+        self.norm = QwenRMSNorm(hidden_size, dtype=dtype, device=device, operations=operations)
+    
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> dict:
+        """Forward pass returning hidden states from specified layers.
+        
+        Args:
+            input_ids: Token IDs [batch, seq_len]
+            attention_mask: Optional attention mask
+            
+        Returns:
+            Dict with 'hidden_states' from specified layers (concatenated)
+        """
+        batch_size, seq_len = input_ids.shape
+        
+        # Embed tokens
+        hidden_states = self.embed_tokens(input_ids)
+        
+        # Get rotary embeddings
+        cos, sin = self.rotary_emb(hidden_states, seq_len)
+        position_embeddings = (cos, sin)
+        
+        # Create causal attention mask if needed
+        if attention_mask is None:
+            attention_mask = torch.ones((batch_size, seq_len), device=input_ids.device, dtype=hidden_states.dtype)
+        
+        # Collect outputs from specified layers
+        layer_outputs = []
+        
+        for i, layer in enumerate(self.layers):
+            hidden_states = layer(hidden_states, attention_mask, position_embeddings)
+            
+            if i in self.layer_indices:
+                layer_outputs.append(hidden_states)
+        
+        # Apply final norm
+        hidden_states = self.norm(hidden_states)
+        
+        # Concatenate layer outputs along feature dimension
+        # This gives us multi-scale features like in Klein
+        if layer_outputs:
+            concatenated = torch.cat(layer_outputs, dim=-1)
+        else:
+            concatenated = hidden_states
+        
+        return {
+            "last_hidden_state": hidden_states,
+            "hidden_states": concatenated,
+            "pooled_output": hidden_states[:, -1, :],  # Use last token as pooled
+        }
+
+
+class KleinTokenizer:
+    """Tokenizer for Klein (Qwen3-based) text encoder.
+    
+    Wraps the text with Klein-specific formatting template
+    before tokenization.
+    """
+    
+    # Klein template for prompt formatting
+    TEMPLATE = "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    
+    def __init__(
+        self,
+        tokenizer_path: str = None,
+        max_length: int = 512,
+        padding: str = "max_length",
+    ):
+        self.max_length = max_length
+        self.padding = padding
+        self._tokenizer = None
+        self._vocab = {}
+        
+        # Klein special tokens
+        self.pad_token_id = 151643  # <|endoftext|>
+        self.bos_token_id = 151644  # <|im_start|>
+        self.eos_token_id = 151645  # <|im_end|>
+    
+    def apply_template(self, text: str) -> str:
+        """Apply Klein's prompt template to input text."""
+        return self.TEMPLATE.format(text)
+    
+    def tokenize_with_weights(self, text: str, return_word_ids: bool = False) -> dict:
+        """Tokenize text with Klein template formatting.
+        
+        Args:
+            text: Input text to tokenize
+            return_word_ids: Whether to return word IDs
+            
+        Returns:
+            Dict with 'input_ids' and optional 'word_ids'
+        """
+        # Apply template
+        formatted_text = self.apply_template(text)
+        
+        # Basic tokenization (placeholder - in practice would use sentencepiece)
+        # For now, we return a placeholder structure
+        tokens = self._basic_tokenize(formatted_text)
+        
+        result = {
+            "input_ids": tokens,
+            "attention_mask": torch.ones_like(tokens),
+        }
+        
+        if return_word_ids:
+            result["word_ids"] = list(range(len(tokens[0])))
+        
+        return result
+    
+    def _basic_tokenize(self, text: str) -> torch.Tensor:
+        """Basic tokenization placeholder.
+        
+        In a full implementation, this would use the Qwen3 tokenizer.
+        For now, returns placeholder tokens padded to max_length.
+        """
+        # Placeholder: create dummy token sequence
+        # Real implementation would use sentencepiece/tiktoken
+        seq_len = min(len(text.split()), self.max_length)
+        
+        tokens = torch.full((1, self.max_length), self.pad_token_id, dtype=torch.long)
+        tokens[0, 0] = self.bos_token_id
+        
+        # Fill with placeholder token IDs
+        for i in range(1, min(seq_len + 1, self.max_length - 1)):
+            tokens[0, i] = i + 1000  # Placeholder token IDs
+        
+        tokens[0, seq_len] = self.eos_token_id
+        
+        return tokens
+    
+    def state_dict(self) -> dict:
+        """Return tokenizer state for serialization."""
+        return {
+            "max_length": self.max_length,
+            "padding": self.padding,
+        }
+
+
+class KleinCLIP:
+    """Klein text encoder wrapper compatible with CLIP interface.
+    
+    This provides the same interface as other CLIP models while
+    using the Qwen3-based Klein encoder internally.
+    """
+    
+    def __init__(
+        self,
+        tokenizer: KleinTokenizer = None,
+        model: Qwen3_4BModel = None,
+        dtype=None,
+        device=None,
+    ):
+        self.tokenizer = tokenizer or KleinTokenizer()
+        self.dtype = dtype
+        self.device = device
+        
+        if model is None:
+            self.model = Qwen3_4BModel(dtype=dtype, device=device)
+        else:
+            self.model = model
+        
+        self.clip_options = {}
+    
+    def reset_clip_options(self):
+        """Reset clip options to defaults."""
+        self.clip_options = {}
+    
+    def set_clip_options(self, options: dict):
+        """Set clip options (for API compatibility)."""
+        self.clip_options.update(options)
+    
+    def encode_token_weights(self, tokens: dict) -> tuple:
+        """Encode token weights returning (embeddings, pooled).
+        
+        Args:
+            tokens: Dict with 'input_ids' tensor
+            
+        Returns:
+            Tuple of (hidden_states, pooled_output)
+        """
+        input_ids = tokens.get("input_ids")
+        if input_ids is None:
+            raise ValueError("tokens dict must contain 'input_ids'")
+        
+        input_ids = input_ids.to(self.device)
+        
+        with torch.no_grad():
+            outputs = self.model(input_ids)
+        
+        # Return concatenated hidden states and pooled output
+        hidden_states = outputs["hidden_states"]
+        pooled = outputs["pooled_output"]
+        
+        return hidden_states, pooled
+    
+    def load_sd(self, state_dict: dict) -> tuple:
+        """Load state dictionary into model.
+        
+        Args:
+            state_dict: Model weights
+            
+        Returns:
+            Tuple of (missing_keys, unexpected_keys)
+        """
+        # Filter and map state dict keys for Qwen3 model
+        model_sd = {}
+        for k, v in state_dict.items():
+            # Map state dict keys to model structure
+            if k.startswith("model."):
+                model_sd[k[6:]] = v  # Remove "model." prefix
+            else:
+                model_sd[k] = v
+        
+        return self.model.load_state_dict(model_sd, strict=False)
+
+
+def klein_clip(dtype=None) -> dict:
+    """Create Klein CLIP configuration.
+    
+    Returns:
+        Dict with 'clip' and 'tokenizer' classes
+    """
+    class Target:
+        clip = KleinCLIP
+        tokenizer = KleinTokenizer
+        params = {"dtype": dtype}
+    
+    return Target
+
+
+# Convenience function to detect Klein model from state dict
+def detect_klein_model(state_dict: dict) -> bool:
+    """Detect if state dict is from a Klein text encoder.
+    
+    Args:
+        state_dict: Model state dictionary
+        
+    Returns:
+        True if this appears to be a Klein model
+    """
+    klein_indicators = [
+        "model.layers.0.self_attn.q_norm.weight",
+        "model.layers.0.self_attn.k_norm.weight",
+        "embed_tokens.weight",
+    ]
+    
+    keys = set(state_dict.keys())
+    for indicator in klein_indicators:
+        for key in keys:
+            if indicator in key:
+                return True
+    
+    return False

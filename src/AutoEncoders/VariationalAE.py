@@ -44,14 +44,15 @@ class DiagonalGaussianRegularizer(nn.Module):
 
 class AutoencodingEngine(nn.Module):
     """Autoencoding engine."""
-    def __init__(self, encoder, decoder, regularizer, flux=False):
+    def __init__(self, encoder, decoder, regularizer, flux=False, z_channels=4):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.regularization = regularizer
         if not flux:
-            self.post_quant_conv = ops.Conv2d(4, 4, 1)
-            self.quant_conv = ops.Conv2d(8, 8, 1)
+            # z_channels for post_quant_conv, z_channels*2 for quant_conv (double_z)
+            self.post_quant_conv = ops.Conv2d(z_channels, z_channels, 1)
+            self.quant_conv = ops.Conv2d(z_channels * 2, z_channels * 2, 1)
 
     def get_last_layer(self):
         return self.decoder.get_last_layer()
@@ -213,7 +214,8 @@ class VAE:
                 self.downscale_ratio = self.upscale_ratio = 4
             self.latent_channels = ddconfig["z_channels"] = sd["decoder.conv_in.weight"].shape[1]
             self.first_stage_model = AutoencodingEngine(
-                Encoder(**ddconfig), Decoder(**ddconfig), DiagonalGaussianRegularizer(), flux=flux)
+                Encoder(**ddconfig), Decoder(**ddconfig), DiagonalGaussianRegularizer(), 
+                flux=flux, z_channels=self.latent_channels)
         else:
             logging.warning("No VAE weights detected")
             self.first_stage_model = None

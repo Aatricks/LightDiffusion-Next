@@ -240,7 +240,7 @@ class LoadedModel:
                     device_to=self.device, lowvram_model_memory=lowvram_model_memory,
                     force_patch_weights=force_patch_weights)
             else:
-                self.real_model = self.model.patch_model(device_to=self.device, patch_weights=load_weights)
+                self.real_model = self.model.patch_model(device_to=self.device, load_weights=load_weights)
         except Exception as e:
             self.model.unpatch_model(self.model.offload_device)
             self.model_unload()

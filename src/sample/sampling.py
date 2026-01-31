@@ -313,15 +313,40 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
 class ModelType(Enum):
     EPS = 1
     FLUX = 8
+    FLUX2 = 9  # Flux2 Klein
 
 
-def model_sampling(model_config, model_type, flux=False):
-    if not flux:
-        class ModelSampling(ModelSamplingDiscrete, EPS):
+class ModelSamplingFlux2(torch.nn.Module):
+    """Model sampling for Flux2 (Klein) models with different shift default."""
+    def __init__(self, model_config=None):
+        super().__init__()
+        shift = model_config.sampling_settings.get("shift", 1.15) if model_config else 1.15
+        self.shift = shift
+        ts = self.sigma(torch.arange(1, 10001) / 10000)
+        self.register_buffer("sigmas", ts)
+
+    @property
+    def sigma_max(self):
+        return self.sigmas[-1]
+
+    def timestep(self, sigma):
+        return sigma
+
+    def sigma(self, timestep):
+        return math.exp(self.shift) / (math.exp(self.shift) + (1 / timestep - 1))
+
+
+def model_sampling(model_config, model_type, flux=False, flux2=False):
+    if flux2:
+        class ModelSampling(ModelSamplingFlux2, CONST):
+            pass
+        return ModelSampling(model_config)
+    elif flux:
+        class ModelSampling(ModelSamplingFlux, CONST):
             pass
         return ModelSampling(model_config)
     else:
-        class ModelSampling(ModelSamplingFlux, CONST):
+        class ModelSampling(ModelSamplingDiscrete, EPS):
             pass
         return ModelSampling(model_config)
 
