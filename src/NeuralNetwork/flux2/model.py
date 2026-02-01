@@ -521,17 +521,19 @@ class Flux2(nn.Module):
         return self.model_sampling.calculate_denoised(sigma, output.float(), x)
 
 
-def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000) -> torch.Tensor:
+def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000, time_factor: float = 1000.0) -> torch.Tensor:
     """Create sinusoidal timestep embeddings.
     
     Args:
         t: Timestep tensor [B]
         dim: Embedding dimension
         max_period: Maximum period for frequencies
+        time_factor: Scaling factor for timestep (default 1000.0 as in ComfyUI)
         
     Returns:
         Embeddings [B, dim]
     """
+    t = time_factor * t
     half = dim // 2
     freqs = torch.exp(
         -math.log(max_period) * torch.arange(half, dtype=torch.float32, device=t.device) / half

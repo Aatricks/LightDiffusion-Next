@@ -318,12 +318,21 @@ class ModelType(Enum):
 
 class ModelSamplingFlux2(torch.nn.Module):
     """Model sampling for Flux2 (Klein) models with different shift default."""
-    def __init__(self, model_config=None):
+    def __init__(self, model_config=None, shift=None):
         super().__init__()
-        shift = model_config.sampling_settings.get("shift", 1.15) if model_config else 1.15
-        self.shift = shift
+        # Flux2 default shift is 2.02 (different from Flux1's 1.15)
+        if shift is not None:
+            self.shift = shift
+        elif model_config and hasattr(model_config, 'sampling_settings'):
+            self.shift = model_config.sampling_settings.get("shift", 2.02)
+        else:
+            self.shift = 2.02  # Flux2 default
         ts = self.sigma(torch.arange(1, 10001) / 10000)
         self.register_buffer("sigmas", ts)
+
+    @property
+    def sigma_min(self):
+        return self.sigmas[0]
 
     @property
     def sigma_max(self):
