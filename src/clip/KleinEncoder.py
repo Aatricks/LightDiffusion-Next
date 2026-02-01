@@ -350,8 +350,8 @@ class Qwen3_4BModel(nn.Module):
 class KleinTokenizer:
     """Tokenizer for Klein (Qwen3-based) text encoder.
     
-    Wraps the text with Klein-specific formatting template
-    before tokenization.
+    Uses Qwen2Tokenizer from Hugging Face transformers with
+    Klein-specific formatting template.
     """
     
     # Klein template for prompt formatting
@@ -365,13 +365,25 @@ class KleinTokenizer:
     ):
         self.max_length = max_length
         self.padding = padding
-        self._tokenizer = None
-        self._vocab = {}
         
         # Klein special tokens
         self.pad_token_id = 151643  # <|endoftext|>
         self.bos_token_id = 151644  # <|im_start|>
         self.eos_token_id = 151645  # <|im_end|>
+        
+        # Load the real tokenizer
+        if tokenizer_path is None:
+            # Default path relative to this file
+            import os
+            tokenizer_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "qwen25_tokenizer")
+        
+        try:
+            from transformers import Qwen2Tokenizer
+            self._tokenizer = Qwen2Tokenizer.from_pretrained(tokenizer_path)
+            logger.info(f"Loaded Qwen2Tokenizer from {tokenizer_path}")
+        except Exception as e:
+            logger.error(f"Failed to load tokenizer: {e}")
+            raise RuntimeError(f"Could not load Klein tokenizer from {tokenizer_path}") from e
     
     def apply_template(self, text: str) -> str:
         """Apply Klein's prompt template to input text."""
@@ -385,45 +397,31 @@ class KleinTokenizer:
             return_word_ids: Whether to return word IDs
             
         Returns:
-            Dict with 'input_ids' and optional 'word_ids'
+            Dict with 'input_ids' and 'attention_mask'
         """
         # Apply template
         formatted_text = self.apply_template(text)
         
-        # Basic tokenization (placeholder - in practice would use sentencepiece)
-        # For now, we return a placeholder structure
-        tokens = self._basic_tokenize(formatted_text)
+        # Tokenize with the real tokenizer
+        encoded = self._tokenizer(
+            formatted_text,
+            padding="max_length" if self.padding == "max_length" else False,
+            max_length=self.max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
         
         result = {
-            "input_ids": tokens,
-            "attention_mask": torch.ones_like(tokens),
+            "input_ids": encoded["input_ids"],
+            "attention_mask": encoded["attention_mask"],
         }
         
         if return_word_ids:
-            result["word_ids"] = list(range(len(tokens[0])))
+            # Word IDs from the tokenizer's encoding
+            word_ids = encoded.word_ids() if hasattr(encoded, 'word_ids') else list(range(encoded["input_ids"].shape[1]))
+            result["word_ids"] = word_ids
         
         return result
-    
-    def _basic_tokenize(self, text: str) -> torch.Tensor:
-        """Basic tokenization placeholder.
-        
-        In a full implementation, this would use the Qwen3 tokenizer.
-        For now, returns placeholder tokens padded to max_length.
-        """
-        # Placeholder: create dummy token sequence
-        # Real implementation would use sentencepiece/tiktoken
-        seq_len = min(len(text.split()), self.max_length)
-        
-        tokens = torch.full((1, self.max_length), self.pad_token_id, dtype=torch.long)
-        tokens[0, 0] = self.bos_token_id
-        
-        # Fill with placeholder token IDs
-        for i in range(1, min(seq_len + 1, self.max_length - 1)):
-            tokens[0, i] = i + 1000  # Placeholder token IDs
-        
-        tokens[0, seq_len] = self.eos_token_id
-        
-        return tokens
     
     def state_dict(self) -> dict:
         """Return tokenizer state for serialization."""

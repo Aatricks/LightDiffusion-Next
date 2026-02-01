@@ -21,6 +21,7 @@ from src.NeuralNetwork.flux2.layers import (
     LastLayer,
     MLPEmbedder,
     EmbedND,
+    Modulation,
 )
 
 
@@ -52,6 +53,7 @@ class Flux2Params:
         gated_mlp: Use gated MLP (SwiGLU) structure for Klein models
         ops_bias: Use bias in final projection
         patch_size: Size of image patches (1 for Flux2, 2 for Flux1)
+        use_vector_in: Whether to use vector conditioning (pooled text embedding)
     """
     in_channels: int = 128  # Flux2 default (128 for patch_size=1)
     out_channels: int = 128  # Flux2 default
@@ -71,6 +73,7 @@ class Flux2Params:
     gated_mlp: bool = True  # Flux2/Klein feature
     ops_bias: bool = False  # Flux2 default
     patch_size: int = 1  # CRITICAL: Flux2 uses patch_size=1
+    use_vector_in: bool = False  # Flux2/Klein doesn't use pooled conditioning
 
 
 class Flux2(nn.Module):
@@ -138,14 +141,20 @@ class Flux2(nn.Module):
             operations=operations,
             ops_bias=params.ops_bias,
         )
-        self.vector_in = MLPEmbedder(
-            in_dim=params.vec_in_dim,
-            hidden_dim=params.hidden_size,
-            dtype=dtype,
-            device=device,
-            operations=operations,
-            ops_bias=params.ops_bias,
-        )
+        
+        # Optional vector conditioning (pooled text embedding) - not used in Flux2/Klein
+        self.use_vector_in = params.use_vector_in
+        if params.use_vector_in:
+            self.vector_in = MLPEmbedder(
+                in_dim=params.vec_in_dim,
+                hidden_dim=params.hidden_size,
+                dtype=dtype,
+                device=device,
+                operations=operations,
+                ops_bias=params.ops_bias,
+            )
+        else:
+            self.vector_in = None
         
         # Optional guidance embedding
         self.guidance_embed = params.guidance_embed
@@ -159,6 +168,26 @@ class Flux2(nn.Module):
                 ops_bias=params.ops_bias,
             )
         
+        # Global modulation for Flux2 (Klein) - shared across all blocks
+        # These are at model level, not per-block, to match checkpoint naming
+        if params.global_modulation:
+            self.double_stream_modulation_img = Modulation(
+                params.hidden_size, double=True, dtype=dtype, device=device, 
+                operations=operations, ops_bias=params.ops_bias
+            )
+            self.double_stream_modulation_txt = Modulation(
+                params.hidden_size, double=True, dtype=dtype, device=device,
+                operations=operations, ops_bias=params.ops_bias
+            )
+            self.single_stream_modulation = Modulation(
+                params.hidden_size, double=False, dtype=dtype, device=device,
+                operations=operations, ops_bias=params.ops_bias
+            )
+        else:
+            self.double_stream_modulation_img = None
+            self.double_stream_modulation_txt = None
+            self.single_stream_modulation = None
+        
         # Positional embedding
         self.pe_embedder = EmbedND(
             dim=params.hidden_size // params.num_heads,
@@ -167,6 +196,7 @@ class Flux2(nn.Module):
         )
         
         # Double-stream transformer blocks (joint image-text attention)
+        # When global_modulation is True, blocks don't have their own modulation
         self.double_blocks = nn.ModuleList([
             DoubleStreamBlock(
                 hidden_size=params.hidden_size,
@@ -185,6 +215,7 @@ class Flux2(nn.Module):
         ])
         
         # Single-stream transformer blocks (merged image-text)
+        # When global_modulation is True, blocks don't have their own modulation
         self.single_blocks = nn.ModuleList([
             SingleStreamBlock(
                 hidden_size=params.hidden_size,
@@ -196,6 +227,7 @@ class Flux2(nn.Module):
                 silu_mlp=params.mlp_silu_act,
                 gated_mlp=params.gated_mlp,
                 ops_bias=params.ops_bias,
+                global_modulation=params.global_modulation,
             )
             for _ in range(params.depth_single_blocks)
         ])
@@ -265,18 +297,27 @@ class Flux2(nn.Module):
         # Time embedding
         vec = self.time_in(timestep_embedding(timesteps, 256).to(img.dtype))
         
-        # Add vector conditioning
-        if y is not None:
+        # Add vector conditioning (if available)
+        if y is not None and self.vector_in is not None:
             vec = vec + self.vector_in(y)
         
         # Add guidance embedding
         if self.guidance_embed and guidance is not None:
             vec = vec + self.guidance_in(timestep_embedding(guidance, 256).to(img.dtype))
         
+        # Compute global modulation (for Flux2/Klein)
+        if self.double_stream_modulation_img is not None:
+            img_mod1, img_mod2 = self.double_stream_modulation_img(vec)
+            txt_mod1, txt_mod2 = self.double_stream_modulation_txt(vec)
+            single_mod, _ = self.single_stream_modulation(vec)
+        else:
+            img_mod1 = img_mod2 = txt_mod1 = txt_mod2 = single_mod = None
+        
         # Run double-stream blocks
         for i, block in enumerate(self.double_blocks):
             block_replace = patches_replace.get(f"double_block{i}", {})
-            img, txt = block(img, txt, vec, pe, attn_mask)
+            img, txt = block(img, txt, vec, pe, attn_mask, 
+                           img_mod=(img_mod1, img_mod2), txt_mod=(txt_mod1, txt_mod2))
             
             # Handle control signals if provided
             if control is not None:
@@ -290,7 +331,7 @@ class Flux2(nn.Module):
         # Run single-stream blocks
         for i, block in enumerate(self.single_blocks):
             block_replace = patches_replace.get(f"single_block{i}", {})
-            x = block(x, vec, pe, attn_mask)
+            x = block(x, vec, pe, attn_mask, modulation=single_mod)
             
             # Handle control signals
             if control is not None:
@@ -416,6 +457,18 @@ class Flux2(nn.Module):
         Returns:
             Model output (noise prediction) [B, C, H, W]
         """
+        # DEBUG: Log what we receive
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.debug(f"apply_model called: x={x.shape}, c_crossattn={c_crossattn.shape if c_crossattn is not None else None}")
+        _logger.debug(f"  kwargs keys: {kwargs.keys()}")
+        if c_crossattn is not None:
+            _logger.debug(f"  c_crossattn mean: {c_crossattn.mean():.6f}")
+        if "y" in kwargs:
+            _logger.debug(f"  y shape: {kwargs['y'].shape}, y mean: {kwargs['y'].mean():.6f}")
+        else:
+            _logger.debug(f"  y NOT in kwargs!")
+        
         # Get derived values from model_sampling
         sigma = t
         xc = self.model_sampling.calculate_input(sigma, x)

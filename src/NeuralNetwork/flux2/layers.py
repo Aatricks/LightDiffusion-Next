@@ -34,12 +34,15 @@ class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6, dtype=None, device=None):
         super().__init__()
         self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim, dtype=dtype, device=device))
+        # Use 'scale' to match Flux2 checkpoint naming convention
+        self.scale = nn.Parameter(torch.ones(dim, dtype=dtype, device=device))
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Compute RMS normalization
+        # Ensure scale is on the same device as input
+        scale = self.scale.to(x.device, x.dtype)
         rms = torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-        return x * rms * self.weight.to(x.dtype)
+        return x * rms * scale
 
 
 class EmbedND(nn.Module):
@@ -360,13 +363,16 @@ class DoubleStreamBlock(nn.Module):
             mlp_intermediate = mlp_hidden_dim
 
         if global_modulation:
-            self.double_stream_modulation = GlobalModulation(hidden_size, dtype=dtype, device=device, operations=operations, ops_bias=ops_bias)
+            # When using global modulation at model level, don't create per-block modulation
+            self.double_stream_modulation = None
             self.img_mod = None
             self.txt_mod = None
+            self.use_global_modulation = True
         else:
             self.double_stream_modulation = None
             self.img_mod = Modulation(hidden_size, double=True, dtype=dtype, device=device, operations=operations, ops_bias=ops_bias)
             self.txt_mod = Modulation(hidden_size, double=True, dtype=dtype, device=device, operations=operations, ops_bias=ops_bias)
+            self.use_global_modulation = False
 
         # Image stream
         self.img_norm1 = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
@@ -412,13 +418,20 @@ class DoubleStreamBlock(nn.Module):
         vec: torch.Tensor,
         pe: torch.Tensor,
         attn_mask=None,
+        img_mod: tuple = None,  # (img_mod1, img_mod2) from global modulation
+        txt_mod: tuple = None,  # (txt_mod1, txt_mod2) from global modulation
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Get modulation parameters
-        if self.double_stream_modulation is not None:
-            img_mod1, img_mod2, txt_mod1, txt_mod2 = self.double_stream_modulation(vec)
-        else:
+        if self.use_global_modulation and img_mod is not None and txt_mod is not None:
+            # Use global modulation passed from model level
+            img_mod1, img_mod2 = img_mod
+            txt_mod1, txt_mod2 = txt_mod
+        elif self.img_mod is not None and self.txt_mod is not None:
+            # Use per-block modulation (Flux1 style)
             img_mod1, img_mod2 = self.img_mod(vec)
             txt_mod1, txt_mod2 = self.txt_mod(vec)
+        else:
+            raise ValueError("No modulation available - either provide global or use per-block modulation")
 
         # Prepare normed inputs
         img_normed = self.img_norm1(img)
@@ -489,6 +502,7 @@ class SingleStreamBlock(nn.Module):
         silu_mlp: bool = False,
         gated_mlp: bool = False,
         ops_bias: bool = True,
+        global_modulation: bool = False,
     ):
         super().__init__()
         if operations is None:
@@ -500,6 +514,7 @@ class SingleStreamBlock(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
         self.silu_mlp = silu_mlp
         self.gated_mlp = gated_mlp
+        self.use_global_modulation = global_modulation
 
         # For gated MLP, mlp_ratio gives intermediate size
         # linear1 outputs gate+up (2x intermediate), linear2 takes intermediate
@@ -525,7 +540,11 @@ class SingleStreamBlock(nn.Module):
         self.hidden_size = hidden_size
         self.pre_norm = operations.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, dtype=dtype, device=device)
 
-        self.modulation = Modulation(hidden_size, double=False, dtype=dtype, device=device, operations=operations, ops_bias=ops_bias)
+        # Only create per-block modulation if not using global modulation
+        if not global_modulation:
+            self.modulation = Modulation(hidden_size, double=False, dtype=dtype, device=device, operations=operations, ops_bias=ops_bias)
+        else:
+            self.modulation = None
 
     def forward(
         self,
@@ -533,8 +552,15 @@ class SingleStreamBlock(nn.Module):
         vec: torch.Tensor,
         pe: torch.Tensor,
         attn_mask=None,
+        modulation=None,  # ModulationOut from global modulation
     ) -> torch.Tensor:
-        mod, _ = self.modulation(vec)
+        # Get modulation
+        if self.use_global_modulation and modulation is not None:
+            mod = modulation
+        elif self.modulation is not None:
+            mod, _ = self.modulation(vec)
+        else:
+            raise ValueError("No modulation available - either provide global or use per-block modulation")
         
         x_normed = self.pre_norm(x)
         x_mod = (1 + mod.scale) * x_normed + mod.shift

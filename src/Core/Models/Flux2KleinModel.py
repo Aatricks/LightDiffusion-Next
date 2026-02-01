@@ -276,6 +276,7 @@ class Flux2KleinModel(AbstractModel):
                 "global_modulation": True,  # Flux2 feature
                 "mlp_silu_act": True,  # Flux2 feature
                 "ops_bias": False,  # Flux2 feature
+                "use_vector_in": False,  # Flux2/Klein doesn't use pooled conditioning
             }
             logger.info("Detected Flux2 model (has double_stream_modulation)")
         else:

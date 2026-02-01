@@ -60,6 +60,10 @@ def convert_cond(cond: list) -> list:
                 temp["cross_attn"] = cond_tensor
             except Exception:
                 pass
+        # Pass pooled_output as 'y' for models that need it (e.g., Flux2)
+        pooled = temp.get("pooled_output")
+        if pooled is not None:
+            model_conds["y"] = CONDRegular(pooled)
         temp["model_conds"] = model_conds
         out.append(temp)
     return out
