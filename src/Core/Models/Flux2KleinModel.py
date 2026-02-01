@@ -545,7 +545,7 @@ class Flux2KleinModel(AbstractModel):
         class Flux2KleinConfig:
             """Configuration for Flux2 Klein sampling."""
             sampling_settings = {
-                "shift": 1.15,  # Flux2 default shift
+                "shift": 2.02,  # Flux2 default shift (different from Flux1's 1.15)
             }
             latent_format = Flux2LatentFormat()
         
@@ -577,38 +577,58 @@ class Flux2KleinModel(AbstractModel):
             raise RuntimeError("No text encoder loaded")
         
         try:
+            import torch
+            
             # Use Klein encoder directly
             if isinstance(prompt, list):
                 prompt = prompt[0]  # Handle batch
             
-            # Tokenize and encode
+            # Tokenize and encode positive
             tokens = self.clip.tokenizer.tokenize_with_weights(prompt)
             hidden_states, pooled, extra = self.clip.encode_token_weights(tokens)
+            pos_mask = extra.get("attention_mask")
+            
+            # Encode negative (or empty)
+            neg_prompt = negative_prompt
+            if neg_prompt:
+                if isinstance(neg_prompt, list):
+                    neg_prompt = neg_prompt[0]
+            else:
+                neg_prompt = ""  # Empty string for negative
+            
+            neg_tokens = self.clip.tokenizer.tokenize_with_weights(neg_prompt)
+            neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
+            neg_mask = neg_extra.get("attention_mask")
+            
+            # Pad to same sequence length (required for batching in sampling)
+            pos_len = hidden_states.shape[1]
+            neg_len = neg_hidden.shape[1]
+            max_len = max(pos_len, neg_len)
+            
+            if pos_len < max_len:
+                # Pad positive (right padding with zeros)
+                pad_size = max_len - pos_len
+                hidden_states = torch.nn.functional.pad(hidden_states, (0, 0, 0, pad_size), value=0)
+                if pos_mask is not None:
+                    pos_mask = torch.nn.functional.pad(pos_mask, (0, pad_size), value=0)
+            
+            if neg_len < max_len:
+                # Pad negative (right padding with zeros)
+                pad_size = max_len - neg_len
+                neg_hidden = torch.nn.functional.pad(neg_hidden, (0, 0, 0, pad_size), value=0)
+                if neg_mask is not None:
+                    neg_mask = torch.nn.functional.pad(neg_mask, (0, pad_size), value=0)
             
             # Format as conditioning - include attention_mask for the diffusion model
             cond_dict = {"pooled_output": pooled}
-            if "attention_mask" in extra:
-                cond_dict["attention_mask"] = extra["attention_mask"]
+            if pos_mask is not None:
+                cond_dict["attention_mask"] = pos_mask
             positive = [[hidden_states, cond_dict]]
             
-            # Encode negative (or empty)
-            if negative_prompt:
-                if isinstance(negative_prompt, list):
-                    negative_prompt = negative_prompt[0]
-                neg_tokens = self.clip.tokenizer.tokenize_with_weights(negative_prompt)
-                neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
-                neg_cond_dict = {"pooled_output": neg_pooled}
-                if "attention_mask" in neg_extra:
-                    neg_cond_dict["attention_mask"] = neg_extra["attention_mask"]
-                negative = [[neg_hidden, neg_cond_dict]]
-            else:
-                # Create empty conditioning
-                neg_tokens = self.clip.tokenizer.tokenize_with_weights("")
-                neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
-                neg_cond_dict = {"pooled_output": neg_pooled}
-                if "attention_mask" in neg_extra:
-                    neg_cond_dict["attention_mask"] = neg_extra["attention_mask"]
-                negative = [[neg_hidden, neg_cond_dict]]
+            neg_cond_dict = {"pooled_output": neg_pooled}
+            if neg_mask is not None:
+                neg_cond_dict["attention_mask"] = neg_mask
+            negative = [[neg_hidden, neg_cond_dict]]
             
             return positive, negative
             

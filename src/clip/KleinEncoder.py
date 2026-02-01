@@ -387,10 +387,12 @@ class KleinTokenizer:
     def __init__(
         self,
         tokenizer_path: str = None,
-        max_length: int = 512,
-        padding: str = "max_length",
+        max_length: int = 99999999,  # ComfyUI uses essentially unlimited
+        min_length: int = 512,  # ComfyUI uses min_length=512 for Klein
+        padding: str = "do_not_pad",  # ComfyUI uses pad_to_max_length=False
     ):
         self.max_length = max_length
+        self.min_length = min_length
         self.padding = padding
         
         # Klein special tokens
@@ -442,14 +444,22 @@ class KleinTokenizer:
         # Apply template
         formatted_text = self.apply_template(text)
         
-        # Tokenize with the real tokenizer
+        # Tokenize with the real tokenizer - NO PADDING (match ComfyUI)
+        # ComfyUI uses pad_to_max_length=False, so we don't pad
         encoded = self._tokenizer(
             formatted_text,
-            padding="max_length" if self.padding == "max_length" else False,
-            max_length=self.max_length,
+            padding=False,  # NO PADDING - let sequences be natural length
             truncation=True,
             return_tensors="pt",
         )
+        
+        # Pad to minimum length if needed (ComfyUI uses min_length=512)
+        seq_len = encoded["input_ids"].shape[1]
+        if seq_len < self.min_length:
+            # Pad with pad_token_id at the END (right padding for content-first)
+            # Note: ComfyUI actually doesn't pad at all, they just pass the raw tokens
+            # But the model might need consistent lengths, so we pad minimally
+            pass  # Actually, don't pad - let it be natural length
         
         result = {
             "input_ids": encoded["input_ids"],
@@ -467,6 +477,7 @@ class KleinTokenizer:
         """Return tokenizer state for serialization."""
         return {
             "max_length": self.max_length,
+            "min_length": self.min_length,
             "padding": self.padding,
         }
 

@@ -54,6 +54,7 @@ class Flux2Params:
         ops_bias: Use bias in final projection
         patch_size: Size of image patches (1 for Flux2, 2 for Flux1)
         use_vector_in: Whether to use vector conditioning (pooled text embedding)
+        txt_ids_dims: Which axes to give text tokens positional IDs (critical for conditioning)
     """
     in_channels: int = 128  # Flux2 default (128 for patch_size=1)
     out_channels: int = 128  # Flux2 default
@@ -74,6 +75,7 @@ class Flux2Params:
     ops_bias: bool = False  # Flux2 default
     patch_size: int = 1  # CRITICAL: Flux2 uses patch_size=1
     use_vector_in: bool = False  # Flux2/Klein doesn't use pooled conditioning
+    txt_ids_dims: tuple[int, ...] = (3,)  # Flux2/Klein: text gets position IDs in axis 3
 
 
 class Flux2(nn.Module):
@@ -286,7 +288,15 @@ class Flux2(nn.Module):
         # Create position IDs for RoPE (number of axes matches axes_dim)
         num_axes = len(self.params.axes_dim)
         img_ids = self._create_img_ids(b, h, w, img.device, img.dtype, num_axes)
-        txt_ids = torch.zeros(b, txt.shape[1], num_axes, device=txt.device, dtype=txt.dtype)
+        
+        # Create text position IDs - CRITICAL: text tokens need positional IDs in txt_ids_dims
+        txt_ids = torch.zeros(b, txt.shape[1], num_axes, device=txt.device, dtype=torch.float32)
+        if len(self.params.txt_ids_dims) > 0:
+            # Give text tokens positional IDs in specified dimensions
+            txt_seq_len = txt.shape[1]
+            for i in self.params.txt_ids_dims:
+                txt_ids[:, :, i] = torch.linspace(0, txt_seq_len - 1, steps=txt_seq_len, 
+                                                    device=txt.device, dtype=torch.float32)
         ids = torch.cat((txt_ids, img_ids), dim=1)
         pe = self.pe_embedder(ids)
         
