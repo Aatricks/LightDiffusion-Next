@@ -583,23 +583,32 @@ class Flux2KleinModel(AbstractModel):
             
             # Tokenize and encode
             tokens = self.clip.tokenizer.tokenize_with_weights(prompt)
-            hidden_states, pooled = self.clip.encode_token_weights(tokens)
+            hidden_states, pooled, extra = self.clip.encode_token_weights(tokens)
             
-            # Format as conditioning
-            positive = [[hidden_states, {"pooled_output": pooled}]]
+            # Format as conditioning - include attention_mask for the diffusion model
+            cond_dict = {"pooled_output": pooled}
+            if "attention_mask" in extra:
+                cond_dict["attention_mask"] = extra["attention_mask"]
+            positive = [[hidden_states, cond_dict]]
             
             # Encode negative (or empty)
             if negative_prompt:
                 if isinstance(negative_prompt, list):
                     negative_prompt = negative_prompt[0]
                 neg_tokens = self.clip.tokenizer.tokenize_with_weights(negative_prompt)
-                neg_hidden, neg_pooled = self.clip.encode_token_weights(neg_tokens)
-                negative = [[neg_hidden, {"pooled_output": neg_pooled}]]
+                neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
+                neg_cond_dict = {"pooled_output": neg_pooled}
+                if "attention_mask" in neg_extra:
+                    neg_cond_dict["attention_mask"] = neg_extra["attention_mask"]
+                negative = [[neg_hidden, neg_cond_dict]]
             else:
                 # Create empty conditioning
                 neg_tokens = self.clip.tokenizer.tokenize_with_weights("")
-                neg_hidden, neg_pooled = self.clip.encode_token_weights(neg_tokens)
-                negative = [[neg_hidden, {"pooled_output": neg_pooled}]]
+                neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
+                neg_cond_dict = {"pooled_output": neg_pooled}
+                if "attention_mask" in neg_extra:
+                    neg_cond_dict["attention_mask"] = neg_extra["attention_mask"]
+                negative = [[neg_hidden, neg_cond_dict]]
             
             return positive, negative
             

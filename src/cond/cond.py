@@ -64,6 +64,10 @@ def convert_cond(cond: list) -> list:
         pooled = temp.get("pooled_output")
         if pooled is not None:
             model_conds["y"] = CONDRegular(pooled)
+        # Pass attention_mask for Klein/Flux2 models to properly mask padding
+        attention_mask = temp.get("attention_mask")
+        if attention_mask is not None:
+            model_conds["attention_mask"] = CONDRegular(attention_mask)
         temp["model_conds"] = model_conds
         out.append(temp)
     return out

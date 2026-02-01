@@ -493,6 +493,9 @@ class Flux2(nn.Module):
         # Guidance (not used in Klein)
         guidance = kwargs.get("guidance")
         
+        # Get attention mask for text conditioning (CRITICAL for padding masking)
+        attention_mask = kwargs.get("attention_mask")
+        
         # Call forward
         output = self.forward(
             img=xc,
@@ -502,6 +505,7 @@ class Flux2(nn.Module):
             guidance=guidance,
             control=control,
             transformer_options=transformer_options,
+            attn_mask=attention_mask,
         )
         
         return self.model_sampling.calculate_denoised(sigma, output.float(), x)

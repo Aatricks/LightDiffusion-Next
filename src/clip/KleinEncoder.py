@@ -48,7 +48,7 @@ class QwenRMSNorm(nn.Module):
 class QwenRotaryEmbedding(nn.Module):
     """Rotary position embeddings for Qwen3."""
     
-    def __init__(self, dim: int, max_position_embeddings: int = 32768, base: int = 10000):
+    def __init__(self, dim: int, max_position_embeddings: int = 32768, base: float = 1000000.0):
         super().__init__()
         self.dim = dim
         self.max_seq_len = max_position_embeddings
@@ -147,8 +147,14 @@ class QwenAttention(nn.Module):
             k = k.repeat_interleave(n_rep, dim=1)
             v = v.repeat_interleave(n_rep, dim=1)
         
-        # Scaled dot-product attention
-        attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask)
+        # Scaled dot-product attention with causal masking
+        # Use is_causal=True for efficiency, or attn_mask for custom masks
+        if attention_mask is None:
+            # Pure causal masking
+            attn_output = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        else:
+            # Custom mask (includes causal + padding)
+            attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask)
         
         # Reshape back
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
@@ -317,18 +323,39 @@ class Qwen3_4BModel(nn.Module):
         cos, sin = self.rotary_emb(hidden_states, seq_len)
         position_embeddings = (cos, sin)
         
-        # Create causal attention mask if needed
-        if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_len), device=input_ids.device, dtype=hidden_states.dtype)
+        # Prepare attention mask
+        # If we have a padding mask, create a combined causal + padding mask
+        # Otherwise, pass None and let the attention layer use is_causal=True
+        final_mask = None
+        if attention_mask is not None:
+            # Create mask matching ComfyUI's approach:
+            # 1. Convert padding mask from [B, L] to [B, 1, L, L] with expansion
+            # 2. Set padded positions (where mask=0) to -inf
+            # 3. Add causal mask
+            
+            # Reshape and expand: [B, L] -> [B, 1, L, L]
+            mask = 1.0 - attention_mask.to(hidden_states.dtype)  # 0 = valid, 1 = padding
+            mask = mask.reshape(mask.shape[0], 1, -1, mask.shape[-1])  # [B, 1, 1, L]
+            mask = mask.expand(mask.shape[0], 1, seq_len, seq_len)  # [B, 1, L, L]
+            mask = mask.masked_fill(mask.to(torch.bool), float("-inf"))
+            
+            # Create causal mask [L, L]
+            causal_mask = torch.empty(seq_len, seq_len, dtype=hidden_states.dtype, device=input_ids.device).fill_(float("-inf")).triu_(1)
+            
+            # Combine
+            final_mask = mask + causal_mask
         
         # Collect outputs from specified layers
+        # NOTE: ComfyUI captures the INPUT to layers (before the layer runs),
+        # so we capture before applying each layer
         layer_outputs = []
         
         for i, layer in enumerate(self.layers):
-            hidden_states = layer(hidden_states, attention_mask, position_embeddings)
-            
+            # Capture BEFORE the layer (input to layer i)
             if i in self.layer_indices:
-                layer_outputs.append(hidden_states)
+                layer_outputs.append(hidden_states.clone())
+            
+            hidden_states = layer(hidden_states, final_mask, position_embeddings)
         
         # Apply final norm
         hidden_states = self.norm(hidden_states)
@@ -373,13 +400,26 @@ class KleinTokenizer:
         
         # Load the real tokenizer
         if tokenizer_path is None:
-            # Default path relative to this file
+            # Default path relative to include folder
             import os
-            tokenizer_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "qwen25_tokenizer")
+            # Try multiple locations
+            possible_paths = [
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))), "include", "text_encoder", "qwen25_tokenizer"),
+                os.path.join(os.path.dirname(os.path.realpath(__file__)), "qwen25_tokenizer"),
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    tokenizer_path = path
+                    break
+            else:
+                tokenizer_path = possible_paths[0]  # Use first as default
         
         try:
             from transformers import Qwen2Tokenizer
             self._tokenizer = Qwen2Tokenizer.from_pretrained(tokenizer_path)
+            # CRITICAL: Use left padding for Qwen models with causal attention
+            # This ensures actual content comes last (where the model attends during generation)
+            self._tokenizer.padding_side = "left"
             logger.info(f"Loaded Qwen2Tokenizer from {tokenizer_path}")
         except Exception as e:
             logger.error(f"Failed to load tokenizer: {e}")
@@ -465,13 +505,14 @@ class KleinCLIP:
         self.clip_options.update(options)
     
     def encode_token_weights(self, tokens: dict) -> tuple:
-        """Encode token weights returning (embeddings, pooled).
+        """Encode token weights returning (embeddings, pooled, extra).
         
         Args:
-            tokens: Dict with 'input_ids' tensor
+            tokens: Dict with 'input_ids' and 'attention_mask' tensors
             
         Returns:
-            Tuple of (hidden_states, pooled_output)
+            Tuple of (hidden_states, pooled_output, extra_dict)
+            where extra_dict contains 'attention_mask' for the diffusion model
         """
         input_ids = tokens.get("input_ids")
         if input_ids is None:
@@ -479,14 +520,24 @@ class KleinCLIP:
         
         input_ids = input_ids.to(self.device)
         
-        with torch.no_grad():
-            outputs = self.model(input_ids)
+        # Get attention mask if present - CRITICAL for proper masking of padding tokens
+        attention_mask = tokens.get("attention_mask")
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(self.device)
         
-        # Return concatenated hidden states and pooled output
+        with torch.no_grad():
+            outputs = self.model(input_ids, attention_mask=attention_mask)
+        
+        # Return concatenated hidden states, pooled output, and extra with attention_mask
         hidden_states = outputs["hidden_states"]
         pooled = outputs["pooled_output"]
         
-        return hidden_states, pooled
+        # Return attention mask in extra dict for the diffusion model to use
+        extra = {}
+        if attention_mask is not None:
+            extra["attention_mask"] = attention_mask
+        
+        return hidden_states, pooled, extra
     
     def load_sd(self, state_dict: dict) -> tuple:
         """Load state dictionary into model.
