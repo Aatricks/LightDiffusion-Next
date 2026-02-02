@@ -80,6 +80,7 @@ def get_default_settings():
         "scheduler": "ays",  # Options: normal, karras, simple, beta, ays
         "sampler": "dpmpp_sde_cfgpp",  # Options: euler, euler_ancestral, dpmpp_2m, etc.
         "steps": 20,
+        "cfg_scale": 7.0,  # Classifier-Free Guidance scale (1.0 for Flux2, 7.0 for SD1.5/SDXL)
 
         # Optimizations
         "prompt_cache_enabled": True,  # Cache CLIP embeddings (5-15% speedup)

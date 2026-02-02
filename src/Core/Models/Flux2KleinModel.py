@@ -22,6 +22,16 @@ from src.Core.AbstractModel import AbstractModel, ModelCapabilities
 from src.Utilities import util
 from src.Device import Device
 
+# Import modules that were previously lazy-loaded inside methods
+# This avoids KeyError: 'src' when running via uv run streamlit
+from src.NeuralNetwork.flux2.model import Flux2, Flux2Params
+from src.Model import ModelPatcher
+from src.clip.KleinEncoder import KleinCLIP, Qwen3_4BModel
+from src.AutoEncoders import VariationalAE
+from src.sample import sampling
+from src.Utilities import Latent
+from src.Model import LoRas
+
 if TYPE_CHECKING:
     from src.Core.Context import Context
 
@@ -188,9 +198,6 @@ class Flux2KleinModel(AbstractModel):
         Returns:
             ModelPatcher wrapping the Flux2 model
         """
-        from src.NeuralNetwork.flux2.model import Flux2, Flux2Params
-        from src.Model import ModelPatcher
-        
         logger.info(f"Loading Flux2 diffusion model: {path}")
         
         # Load state dict using native utility
@@ -395,8 +402,6 @@ class Flux2KleinModel(AbstractModel):
         Returns:
             CLIP-compatible text encoder wrapper
         """
-        from src.clip.KleinEncoder import KleinCLIP, Qwen3_4BModel
-        
         logger.info(f"Loading Klein text encoder (Qwen3): {path}")
         
         # Load state dict
@@ -454,8 +459,6 @@ class Flux2KleinModel(AbstractModel):
         Returns:
             VAE model
         """
-        from src.AutoEncoders import VariationalAE
-        
         logger.info(f"Loading VAE: {path}")
         
         # Load state dict
@@ -660,8 +663,6 @@ class Flux2KleinModel(AbstractModel):
             raise RuntimeError("Model must be loaded before generating")
         
         try:
-            from src.sample import sampling
-            
             # Create empty latent for Flux2
             latent = self._create_flux2_latent(
                 ctx.width,
@@ -766,9 +767,6 @@ class Flux2KleinModel(AbstractModel):
             raise RuntimeError("Model must be loaded before decoding")
         
         try:
-            from src.AutoEncoders import VariationalAE
-            from src.Utilities import Latent
-            
             # Handle both raw tensor and dict input
             if isinstance(latents, dict):
                 samples_tensor = latents["samples"]
@@ -822,7 +820,6 @@ class Flux2KleinModel(AbstractModel):
             raise RuntimeError("Model must be loaded before applying LoRA")
         
         try:
-            from src.Model import LoRas
             loader = LoRas.LoraLoader()
             result = loader.load_lora(
                 lora_name=lora_name,

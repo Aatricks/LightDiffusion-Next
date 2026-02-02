@@ -22,6 +22,40 @@ from ui.history import (
 )
 
 
+def _apply_flux2_optimal_settings(settings: dict) -> None:
+    """Apply optimal settings for Flux2 Klein 4B model.
+    
+    Flux2 Klein is a distilled diffusion transformer that works best with:
+    - CFG=1.0 (no classifier-free guidance needed)
+    - Euler sampler (simple and fast)
+    - Simple scheduler (not AYS which is UNet-optimized)
+    - 4 steps (distilled model converges quickly)
+    - Multi-scale disabled (incompatible with DiT architecture)
+    - DeepCache disabled (UNet-specific optimization)
+    """
+    # Sampling settings optimized for Flux2 Klein
+    settings["cfg_scale"] = 1.0  # CFG=1.0 is optimal for Flux2 (no guidance needed)
+    settings["sampler"] = "euler"  # Euler is optimal for Flux2
+    settings["scheduler"] = "simple"  # Simple scheduler, not AYS
+    settings["steps"] = 4  # Klein 4B is distilled, 4 steps is optimal
+    
+    # Disable features incompatible with DiT architecture
+    settings["multiscale_preset"] = "disabled"  # Multi-scale is for UNet
+    settings["multiscale_custom"] = False
+    settings["deepcache_enabled"] = False  # DeepCache is UNet-specific
+    settings["tome_enabled"] = False  # ToMe is UNet-specific
+    
+    # Disable enhancements that don't work well with Flux2
+    settings["hiresfix"] = False  # HiRes Fix is UNet-based
+    settings["adetailer"] = False  # ADetailer is UNet-based
+    settings["stable_fast"] = False  # Stable-Fast is UNet compilation
+    
+    # Set default resolution if not already at Flux2 size
+    if settings.get("width", 512) < 1024 or settings.get("height", 512) < 1024:
+        settings["width"] = 1024
+        settings["height"] = 1024
+
+
 def render_generate_page():
     """Render the main generation page (moved from streamlit_app).
 
@@ -157,6 +191,9 @@ def render_generate_page():
                 settings["model_path"] = ""
             elif sel == "Flux2 Klein (auto-detected)":
                 settings["model_path"] = "__FLUX2_KLEIN__"  # Special marker for Flux2
+                # Auto-apply optimal Flux2 settings
+                _apply_flux2_optimal_settings(settings)
+                st.info("⚡ Flux2 Klein selected: Auto-applied optimal settings (CFG=1.0, Euler, Simple scheduler, 4 steps)")
             else:
                 # map display name back to full path; if mapping missing, fall back
                 settings["model_path"] = mapping.get(sel, sel)
@@ -233,6 +270,22 @@ def render_generate_page():
                 step=1,
                 disabled=controls_disabled,
                 help="Number of denoising steps. AYS: 10 steps, Normal: 20 steps typical"
+            )
+
+            # CFG Scale slider
+            is_flux2 = settings.get("model_path") == "__FLUX2_KLEIN__"
+            cfg_help = "Classifier-Free Guidance scale. Flux2: use 1.0, SD1.5/SDXL: use 7.0-8.0"
+            if is_flux2:
+                cfg_help = "⚡ Flux2 Klein works best with CFG=1.0 (no guidance needed)"
+            
+            settings["cfg_scale"] = st.slider(
+                "CFG Scale",
+                min_value=1.0,
+                max_value=20.0,
+                value=settings.get("cfg_scale", 1.0 if is_flux2 else 7.0),
+                step=0.5,
+                disabled=controls_disabled,
+                help=cfg_help
             )
 
             st.markdown("**Optimization Caching**")

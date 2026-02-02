@@ -238,7 +238,7 @@ class Context:
         
         # Sampling
         ctx.sampling.steps = kwargs.get("steps", 20)
-        ctx.sampling.cfg = kwargs.get("cfg", 7.0)
+        ctx.sampling.cfg = kwargs.get("cfg_scale", kwargs.get("cfg", 7.0))  # Accept both cfg_scale and cfg
         ctx.sampling.sampler = kwargs.get("sampler", "dpmpp_sde_cfgpp")
         ctx.sampling.scheduler = kwargs.get("scheduler", "ays")
         ctx.sampling.enable_multiscale = kwargs.get("enable_multiscale", True)

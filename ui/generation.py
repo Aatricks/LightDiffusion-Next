@@ -164,6 +164,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             scheduler=settings.get("scheduler", "ays"),
                             sampler=settings.get("sampler", "dpmpp_sde_cfgpp"),
                             steps=settings.get("steps", 20),
+                            cfg_scale=settings.get("cfg_scale", 7.0),
                             # Honor the configured batch size as an independent
                             # setting. Previously the batch argument was clamped
                             # to the remaining number of images which made the
