@@ -838,11 +838,16 @@ class Flux2KleinModel(AbstractModel):
 
 
 class Flux2LatentFormat:
-    """Latent format specification for Flux2 models."""
+    """Latent format specification for Flux2 models.
     
-    latent_channels = 64  # Flux2 Klein standard
+    IMPORTANT: Unlike Flux1 which applies scale/shift to latents,
+    Flux2 uses IDENTITY transforms - no scaling or shifting.
+    This matches ComfyUI's implementation in latent_formats.py.
+    """
+    
+    latent_channels = 32  # Flux2 uses 32 channels (not 64)
     latent_rgb_factors = [
-        # RGB mapping factors for preview generation (abbreviated)
+        # RGB mapping factors for preview generation (from ComfyUI Flux2)
         [0.0036, -0.0159, 0.0113],
         [0.0115, -0.0065, 0.0018],
         [0.0109, -0.0098, -0.0021],
@@ -850,16 +855,18 @@ class Flux2LatentFormat:
     ]
     
     def __init__(self):
-        self.scale_factor = 0.3611  # Flux2 specific scale factor
-        self.shift_factor = 0.1159
+        # Flux2 uses identity transform (no scale/shift)
+        # This is different from Flux1 which uses scale_factor=0.3611, shift_factor=0.1159
+        self.scale_factor = 1.0
+        self.shift_factor = 0.0
     
     def process_in(self, latent: torch.Tensor) -> torch.Tensor:
-        """Process latent input for the model."""
-        return (latent - self.shift_factor) * self.scale_factor
+        """Process latent input for the model - identity for Flux2."""
+        return latent
     
     def process_out(self, latent: torch.Tensor) -> torch.Tensor:
-        """Process latent output from the model."""
-        return latent / self.scale_factor + self.shift_factor
+        """Process latent output from the model - identity for Flux2."""
+        return latent
 
 
 def detect_flux2_klein(state_dict_keys: set) -> bool:
