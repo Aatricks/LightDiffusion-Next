@@ -293,7 +293,7 @@ class Flux2KleinModel(AbstractModel):
                 "in_channels": 16,
                 "out_channels": 16,
                 "vec_in_dim": 768,
-                "context_in_dim": 4096,
+                "context_in_dim": 7680,
                 "hidden_size": 3072,
                 "mlp_ratio": 4.0,
                 "num_heads": 24,

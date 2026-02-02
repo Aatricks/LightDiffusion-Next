@@ -74,31 +74,31 @@ class EmbedND(nn.Module):
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     """Compute rotary position embeddings.
     
+    Matches ComfyUI's implementation exactly for numerical precision.
+    
     Args:
         pos: Position indices
         dim: Embedding dimension
         theta: Base frequency
         
     Returns:
-        Rotary embeddings as concatenation of cos and sin
+        Rotary embeddings as float32 concatenation of cos and sin
     """
     assert dim % 2 == 0
-    if Device.xformers_enabled():
-        device = pos.device
-        dtype = torch.float32  # Compute in fp32 for precision
-    else:
-        device = pos.device
-        dtype = torch.float64  # Higher precision fallback
-        
-    scale = torch.linspace(0, (dim - 2) / dim, dim // 2, dtype=dtype, device=device)
+    device = pos.device
+    
+    # ComfyUI uses float64 for scale calculation for maximum precision
+    scale = torch.linspace(0, (dim - 2) / dim, dim // 2, dtype=torch.float64, device=device)
     omega = 1.0 / (theta ** scale)
     
-    # Einsum for position-frequency interaction
-    out = torch.einsum("...n,d->...nd", pos.to(dtype), omega)
+    # Einsum for position-frequency interaction - cast pos to float32 like ComfyUI
+    out = torch.einsum("...n,d->...nd", pos.to(dtype=torch.float32, device=device), omega)
     
     out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)
     out = rearrange(out, "b n d (i j) -> b n d i j", i=2, j=2)
-    return out.to(dtype=pos.dtype)
+    
+    # ComfyUI always returns float32 for RoPE embeddings
+    return out.to(dtype=torch.float32, device=pos.device)
 
 
 class MLPEmbedder(nn.Module):
@@ -186,7 +186,7 @@ class SelfAttention(nn.Module):
         return x
 
 
-def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tensor) -> torch.Tensor:
+def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
     """Apply attention with rotary position embeddings.
     
     Args:
@@ -194,6 +194,7 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
         k: Key tensor [batch, heads, seq, dim]  
         v: Value tensor [batch, heads, seq, dim]
         pe: Positional embeddings
+        mask: Optional attention mask for padding tokens
         
     Returns:
         Attention output [batch, seq, heads*dim]
@@ -202,7 +203,7 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
     
     # Efficient attention implementation
     heads = q.shape[1]
-    x = optimized_attention(q, k, v, heads)
+    x = optimized_attention(q, k, v, heads, mask=mask)
     return x
 
 
@@ -239,7 +240,7 @@ def apply_rope(q: torch.Tensor, k: torch.Tensor, pe: torch.Tensor) -> tuple[torc
     return apply_rope1(q, pe), apply_rope1(k, pe)
 
 
-def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int) -> torch.Tensor:
+def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int, mask: torch.Tensor = None) -> torch.Tensor:
     """Optimized attention using Flash/SDPA with fallback to xformers.
     
     Performance priority: cuDNN > Flash > SDPA > xformers > naive
@@ -255,9 +256,24 @@ def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads
             # Get SDPA backend priority context manager from Device
             sdpa_context = Device.get_sdpa_context()
             
+            # Process attention mask for SDPA if provided
+            attn_mask = None
+            if mask is not None:
+                # Add dimensions as needed: [B, L] -> [B, 1, 1, L] for broadcasting
+                if mask.ndim == 2:
+                    attn_mask = mask.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, L]
+                elif mask.ndim == 3:
+                    attn_mask = mask.unsqueeze(1)  # [B, 1, L, L]
+                else:
+                    attn_mask = mask
+                # Convert mask to additive form (0 for attend, -inf for mask)
+                # Input mask is 1 for valid, 0 for invalid (padding)
+                attn_mask = attn_mask.to(dtype=q.dtype)
+                attn_mask = (1.0 - attn_mask) * torch.finfo(q.dtype).min
+            
             # SDPA expects [batch, heads, seq, dim] - q/k/v are already in this format
             with sdpa_context:
-                out = F.scaled_dot_product_attention(q, k, v)
+                out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
             
             # Reshape: [batch, heads, seq, dim] -> [batch, seq, heads*dim]
             # Use transpose + view for efficiency (avoid copy)
@@ -274,6 +290,7 @@ def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads
             q_xf = q.transpose(1, 2).contiguous()
             k_xf = k.transpose(1, 2).contiguous()
             v_xf = v.transpose(1, 2).contiguous()
+            # Note: xformers has different mask format, conversion would be needed
             out = xops.memory_efficient_attention(q_xf, k_xf, v_xf)
             del q_xf, k_xf, v_xf  # Free memory early
             # Reshape: [batch, seq, heads, dim] -> [batch, seq, heads*dim]
@@ -482,7 +499,7 @@ class DoubleStreamBlock(nn.Module):
         v = torch.cat((v_txt, v_img), dim=2)
         del v_txt, v_img
 
-        attn_out = attention(q, k, v, pe=pe)
+        attn_out = attention(q, k, v, pe=pe, mask=attn_mask)
         del q, k, v
         txt_attn, img_attn = attn_out[:, : txt.shape[1]], attn_out[:, txt.shape[1] :]
         del attn_out
@@ -624,7 +641,7 @@ class SingleStreamBlock(nn.Module):
         del qkv
         q, k = self.norm(q, k, v)
         
-        attn = attention(q, k, v, pe=pe)
+        attn = attention(q, k, v, pe=pe, mask=attn_mask)
         del q, k, v
         
         # Combine and project

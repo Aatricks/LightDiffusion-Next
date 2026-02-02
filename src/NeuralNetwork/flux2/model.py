@@ -59,7 +59,7 @@ class Flux2Params:
     in_channels: int = 128  # Flux2 default (128 for patch_size=1)
     out_channels: int = 128  # Flux2 default
     vec_in_dim: int = 768
-    context_in_dim: int = 4096
+    context_in_dim: int = 7680
     hidden_size: int = 3072
     mlp_ratio: float = 4.0
     num_heads: int = 48  # Flux2 default (hidden/axes_sum = 3072/64)
@@ -277,17 +277,24 @@ class Flux2(nn.Module):
         
         # Handle input dimensions
         if img.ndim == 4:
-            # Input is [B, C, H, W] - need to patchify
-            b, c, h, w = img.shape
+            # Input is [B, C, H, W] - need to pad and patchify
+            b, c, h_orig, w_orig = img.shape
+            
+            # Pad to patch size (matches ComfyUI's pad_to_patch_size)
+            img = self._pad_to_patch_size(img, self.patch_size)
+            _, _, h, w = img.shape
+            
             img = self._patchify(img)
         else:
             # Assume already patchified [B, L, C]
             b = img.shape[0]
             h = w = int(math.sqrt(img.shape[1] * self.patch_size * self.patch_size / self.in_channels))
+            h_orig = w_orig = h  # No cropping needed if pre-patchified
         
         # Create position IDs for RoPE (number of axes matches axes_dim)
+        # CRITICAL: Position IDs must ALWAYS be float32 for precision (matches ComfyUI)
         num_axes = len(self.params.axes_dim)
-        img_ids = self._create_img_ids(b, h, w, img.device, img.dtype, num_axes)
+        img_ids = self._create_img_ids(b, h, w, img.device, torch.float32, num_axes)
         
         # Create text position IDs - CRITICAL: text tokens need positional IDs in txt_ids_dims
         txt_ids = torch.zeros(b, txt.shape[1], num_axes, device=txt.device, dtype=torch.float32)
@@ -358,6 +365,35 @@ class Flux2(nn.Module):
         # Unpatchify back to image shape
         img = self._unpatchify(img, h // self.patch_size, w // self.patch_size)
         
+        # Crop back to original size (remove padding - matches ComfyUI)
+        img = img[:, :, :h_orig, :w_orig]
+        
+        return img
+
+    def _pad_to_patch_size(self, img: torch.Tensor, patch_size: int, mode: str = "circular") -> torch.Tensor:
+        """Pad image to be divisible by patch size.
+        
+        Matches ComfyUI's pad_to_patch_size function exactly.
+        
+        Args:
+            img: Image tensor [B, C, H, W]
+            patch_size: Patch size to pad to
+            mode: Padding mode ("circular", "reflect", etc.)
+            
+        Returns:
+            Padded image tensor
+        """
+        if mode == "circular" and (torch.jit.is_tracing() or torch.jit.is_scripting()):
+            mode = "reflect"
+        
+        _, _, h, w = img.shape
+        pad_h = (patch_size - h % patch_size) % patch_size
+        pad_w = (patch_size - w % patch_size) % patch_size
+        
+        if pad_h > 0 or pad_w > 0:
+            # PyTorch pad format: (left, right, top, bottom)
+            img = torch.nn.functional.pad(img, (0, pad_w, 0, pad_h), mode=mode)
+        
         return img
 
     def _patchify(self, img: torch.Tensor) -> torch.Tensor:
@@ -396,6 +432,8 @@ class Flux2(nn.Module):
     def _create_img_ids(self, batch: int, h: int, w: int, device, dtype, num_axes: int = 3) -> torch.Tensor:
         """Create image position IDs for RoPE.
         
+        Matches ComfyUI's img_ids creation exactly for numerical precision.
+        
         Returns tensor of shape [B, H*W/patch^2, num_axes] with indices.
         For Flux1: [time=0, row, col] (3 axes)
         For Flux2: [index=0, row, col, extra=0] (4 axes)
@@ -403,25 +441,23 @@ class Flux2(nn.Module):
         nh = h // self.patch_size
         nw = w // self.patch_size
         
-        rows = torch.arange(nh, device=device, dtype=dtype).view(-1, 1).expand(-1, nw)
-        cols = torch.arange(nw, device=device, dtype=dtype).view(1, -1).expand(nh, -1)
+        # ComfyUI uses linspace instead of arange, and always float32
+        # Create img_ids matching ComfyUI's format: [h, w, num_axes] then reshape
+        img_ids = torch.zeros((nh, nw, num_axes), device=device, dtype=torch.float32)
         
-        # Create position indices for each axis
-        # Axis 0: index (time/frame), always 0 for single images
-        # Axis 1: row position (h coordinate)
-        # Axis 2: col position (w coordinate)
-        # Axis 3+: zeros for any additional axes
-        tensors = [
-            torch.zeros_like(rows),  # Index/time dimension
-            rows.float(),            # Row position
-            cols.float(),            # Column position
-        ]
+        # Axis 0: index (time/frame), always 0 for single images (like ComfyUI)
+        img_ids[:, :, 0] = 0
         
-        # Add additional zero axes if needed (e.g., Flux2 has 4 axes)
-        for _ in range(3, num_axes):
-            tensors.append(torch.zeros_like(rows))
+        # Axis 1: row position using linspace (matches ComfyUI exactly)
+        img_ids[:, :, 1] = torch.linspace(0, nh - 1, steps=nh, device=device, dtype=torch.float32).unsqueeze(1)
         
-        img_ids = torch.stack(tensors, dim=-1)
+        # Axis 2: col position using linspace (matches ComfyUI exactly)
+        img_ids[:, :, 2] = torch.linspace(0, nw - 1, steps=nw, device=device, dtype=torch.float32).unsqueeze(0)
+        
+        # Additional axes are zeros (for Flux2 which has 4 axes)
+        # Already initialized to zeros
+        
+        # Reshape to [batch, seq_len, num_axes] and expand
         img_ids = img_ids.reshape(1, -1, num_axes).expand(batch, -1, -1)
         return img_ids
 
@@ -542,7 +578,7 @@ def get_flux2_klein_params() -> Flux2Params:
         in_channels=128,           # Different from standard Flux (16)
         out_channels=128,          # Different from standard Flux (16)
         vec_in_dim=768,            # Unchanged
-        context_in_dim=4096,       # From Klein/Qwen3 text encoder
+        context_in_dim=7680,       # From Klein/Qwen3 text encoder (3 layers × 2560)
         hidden_size=3072,          # Model hidden size
         mlp_ratio=3.0,             # Different from standard (4.0)
         num_heads=48,              # Different from standard (24)

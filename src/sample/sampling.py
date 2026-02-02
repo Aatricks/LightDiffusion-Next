@@ -50,38 +50,92 @@ class EPS:
         return latent
 
 
+def reshape_sigma(sigma, noise_dim):
+    """Reshape sigma for broadcasting with noise tensor.
+    
+    Matches ComfyUI's implementation to handle both scalar and batch sigmas.
+    """
+    if sigma.nelement() == 1:
+        return sigma.view(())
+    else:
+        return sigma.view(sigma.shape[:1] + (1,) * (noise_dim - 1))
+
+
 class CONST:
+    """CONST noise prediction for flow matching models (Flux)."""
     def calculate_input(self, sigma, noise):
         return noise
 
     def calculate_denoised(self, sigma, model_output, model_input):
-        sigma = sigma.view(sigma.shape[:1] + (1,) * (model_output.ndim - 1))
+        sigma = reshape_sigma(sigma, model_output.ndim)
         return model_input - model_output * sigma
 
     def noise_scaling(self, sigma, noise, latent_image, max_denoise=False):
+        sigma = reshape_sigma(sigma, noise.ndim)
         return sigma * noise + (1.0 - sigma) * latent_image
 
     def inverse_noise_scaling(self, sigma, latent):
+        sigma = reshape_sigma(sigma, latent.ndim)
         return latent / (1.0 - sigma)
 
 
+def time_snr_shift(alpha, t):
+    """SNR shift function for FLOW models (not Flux).
+    
+    Used by ModelSamplingDiscreteFlow, NOT ModelSamplingFlux.
+    """
+    if alpha == 1.0:
+        return t
+    return alpha * t / (1 + (alpha - 1) * t)
+
+
+def flux_time_shift(mu, sigma, t):
+    """Time shift function for Flux models (matches ComfyUI exactly).
+    
+    This is the correct formula for Flux1 and Flux2 models.
+    
+    Args:
+        mu: Shift parameter (1.15 for Flux1, 2.02 for Flux2)
+        sigma: Sigma parameter (typically 1.0)
+        t: Timestep normalized to [0, 1]
+    
+    Returns:
+        Shifted sigma value
+    """
+    return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+
+
 class ModelSamplingFlux(torch.nn.Module):
+    """Model sampling for Flux1 models."""
     def __init__(self, model_config=None):
         super().__init__()
         shift = model_config.sampling_settings.get("shift", 1.15) if model_config else 1.15
         self.shift = shift
-        ts = self.sigma(torch.arange(1, 10001) / 10000)
+        # Use 10000 timesteps like ComfyUI ModelSamplingFlux
+        ts = self.sigma(torch.arange(1, 10001, 1) / 10000)
         self.register_buffer("sigmas", ts)
+
+    @property
+    def sigma_min(self):
+        return self.sigmas[0]
 
     @property
     def sigma_max(self):
         return self.sigmas[-1]
 
     def timestep(self, sigma):
+        # Flux returns sigma directly as timestep (no multiplier)
         return sigma
 
     def sigma(self, timestep):
-        return math.exp(self.shift) / (math.exp(self.shift) + (1 / timestep - 1))
+        return flux_time_shift(self.shift, 1.0, timestep)
+    
+    def percent_to_sigma(self, percent):
+        if percent <= 0.0:
+            return 1.0
+        if percent >= 1.0:
+            return 0.0
+        return flux_time_shift(self.shift, 1.0, 1.0 - percent)
 
 
 class ModelSamplingDiscrete(torch.nn.Module):
@@ -317,7 +371,11 @@ class ModelType(Enum):
 
 
 class ModelSamplingFlux2(torch.nn.Module):
-    """Model sampling for Flux2 (Klein) models with different shift default."""
+    """Model sampling for Flux2 (Klein) models with different shift default.
+    
+    Uses flux_time_shift formula matching ComfyUI's ModelSamplingFlux.
+    The shift parameter for Flux2 is 2.02 (different from Flux1's 1.15).
+    """
     def __init__(self, model_config=None, shift=None):
         super().__init__()
         # Flux2 default shift is 2.02 (different from Flux1's 1.15)
@@ -327,7 +385,8 @@ class ModelSamplingFlux2(torch.nn.Module):
             self.shift = model_config.sampling_settings.get("shift", 2.02)
         else:
             self.shift = 2.02  # Flux2 default
-        ts = self.sigma(torch.arange(1, 10001) / 10000)
+        # Use 10000 timesteps like ComfyUI ModelSamplingFlux
+        ts = self.sigma(torch.arange(1, 10001, 1) / 10000)
         self.register_buffer("sigmas", ts)
 
     @property
@@ -339,10 +398,19 @@ class ModelSamplingFlux2(torch.nn.Module):
         return self.sigmas[-1]
 
     def timestep(self, sigma):
+        # Flux returns sigma directly as timestep (no multiplier)
         return sigma
 
     def sigma(self, timestep):
-        return math.exp(self.shift) / (math.exp(self.shift) + (1 / timestep - 1))
+        # Use flux_time_shift formula (matching ComfyUI ModelSamplingFlux)
+        return flux_time_shift(self.shift, 1.0, timestep)
+    
+    def percent_to_sigma(self, percent):
+        if percent <= 0.0:
+            return 1.0
+        if percent >= 1.0:
+            return 0.0
+        return flux_time_shift(self.shift, 1.0, 1.0 - percent)
 
 
 def model_sampling(model_config, model_type, flux=False, flux2=False):
