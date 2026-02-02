@@ -315,17 +315,32 @@ class Pipeline:
         return {"batched_results": results}
     
     def _load_model(self, ctx: Context) -> AbstractModel:
-        """Load the model for this context."""
-        path = ctx.model_path or "./include/checkpoints/DreamShaper_8_pruned.safetensors"
-        model = self.model_factory(path)
+        """Load the model for this context.
+        
+        Uses ModelFactory for auto-detection when model_path is empty or
+        set to the special __FLUX2_KLEIN__ marker.
+        """
+        path = ctx.model_path
+        
+        # Handle special Flux2 Klein marker or empty path
+        if path == "__FLUX2_KLEIN__":
+            # Explicitly request Flux2 Klein
+            model = self.model_factory(model_path=None, model_type="Flux2Klein")
+        elif not path:
+            # Auto-detect model type (may detect Flux2 components)
+            model = self.model_factory(model_path=None)
+        else:
+            # Specific checkpoint path provided
+            model = self.model_factory(model_path=path)
+        
         model.load()
         self._model = model
         return model
     
     def _apply_optimizations(self, ctx: Context, model: AbstractModel) -> None:
         """Apply all configured optimizations to the model."""
-        # LoRA
-        if self.default_lora:
+        # LoRA - only if model supports it
+        if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
             try:
                 model.apply_lora(*self.default_lora)
             except Exception as e:

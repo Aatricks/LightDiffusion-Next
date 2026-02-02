@@ -144,10 +144,11 @@ class BaseSampler(ABC):
         momentum = h1 * denoised - h_ratio * state.old_denoised
         return momentum
     
-    @torch.no_grad()
+    @torch.inference_mode()
     def sample(self, model: Any, x: torch.Tensor, sigmas: torch.Tensor,
                extra_args: Optional[dict] = None, callback: Optional[Callable] = None,
                disable: Optional[bool] = None, **kwargs) -> torch.Tensor:
+        """Sample with inference_mode for optimal performance."""
         extra_args = extra_args or {}
         n_steps = len(sigmas) - 1
         if n_steps <= 0:

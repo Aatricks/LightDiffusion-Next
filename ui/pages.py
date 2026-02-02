@@ -69,7 +69,13 @@ def render_generate_page():
                 "1216x832 (SDXL 3:2)",
                 "832x1216 (SDXL 2:3)",
                 "1344x768 (SDXL 16:9)",
-                "768x1344 (SDXL 9:16)"
+                "768x1344 (SDXL 9:16)",
+                "--- Flux2 Klein ---",
+                "1024x1024 (Flux2 1:1)",
+                "1280x768 (Flux2 16:9)",
+                "768x1280 (Flux2 9:16)",
+                "1024x768 (Flux2 4:3)",
+                "768x1024 (Flux2 3:4)",
             ], disabled=controls_disabled)
             # SD1.5 presets
             if preset == "512x512 (SD1.5)":
@@ -95,26 +101,52 @@ def render_generate_page():
                 settings["width"], settings["height"] = 1344, 768
             elif preset == "768x1344 (SDXL 9:16)":
                 settings["width"], settings["height"] = 768, 1344
+            # Flux2 presets
+            elif preset == "1024x1024 (Flux2 1:1)":
+                settings["width"], settings["height"] = 1024, 1024
+            elif preset == "1280x768 (Flux2 16:9)":
+                settings["width"], settings["height"] = 1280, 768
+            elif preset == "768x1280 (Flux2 9:16)":
+                settings["width"], settings["height"] = 768, 1280
+            elif preset == "1024x768 (Flux2 4:3)":
+                settings["width"], settings["height"] = 1024, 768
+            elif preset == "768x1024 (Flux2 3:4)":
+                settings["width"], settings["height"] = 768, 1024
 
             settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster. This setting is honored independently of 'Number of Images' (the pipeline may use internal batching even when you request fewer images).")
 
         with st.expander("🎯 Model Selection", expanded=False):
-            # Allow the user to pick a model file or use Auto (default checkpoints)
+            # Allow the user to pick a model type or file
             try:
-                from src.Core.Models.ModelFactory import list_available_models
+                from src.Core.Models.ModelFactory import list_available_models, _find_flux2_components
 
                 available_map = list_available_models(return_mapping=True)
+                # Check if Flux2 Klein components exist
+                flux2_diff, flux2_te, flux2_vae = _find_flux2_components()
+                flux2_available = flux2_diff is not None
             except Exception:
                 available_map = []
+                flux2_available = False
 
             # available_map is list of (display_name, full_path)
             display_names = [d for d, _ in available_map]
             mapping = {d: p for d, p in available_map}
 
-            model_options = ["Auto (use default)"] + display_names
+            # Build model options with Flux2 Klein if available
+            model_options = ["Auto (use default)"]
+            if flux2_available:
+                model_options.append("Flux2 Klein (auto-detected)")
+                mapping["Flux2 Klein (auto-detected)"] = "__FLUX2_KLEIN__"
+            model_options.extend(display_names)
+
             # For current selection, show the basename so it matches the dropdown
             current_full = settings.get("model_path", "")
-            current = os.path.basename(current_full) if current_full else "Auto (use default)"
+            if current_full == "__FLUX2_KLEIN__":
+                current = "Flux2 Klein (auto-detected)"
+            elif current_full:
+                current = os.path.basename(current_full)
+            else:
+                current = "Auto (use default)"
             try:
                 idx = model_options.index(current)
             except Exception:
@@ -123,6 +155,8 @@ def render_generate_page():
             sel = st.selectbox("Model", options=model_options, index=idx, disabled=controls_disabled)
             if sel == "Auto (use default)":
                 settings["model_path"] = ""
+            elif sel == "Flux2 Klein (auto-detected)":
+                settings["model_path"] = "__FLUX2_KLEIN__"  # Special marker for Flux2
             else:
                 # map display name back to full path; if mapping missing, fall back
                 settings["model_path"] = mapping.get(sel, sel)

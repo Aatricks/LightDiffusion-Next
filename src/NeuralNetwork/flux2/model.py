@@ -467,34 +467,22 @@ class Flux2(nn.Module):
         Returns:
             Model output (noise prediction) [B, C, H, W]
         """
-        # DEBUG: Log what we receive
-        import logging
-        _logger = logging.getLogger(__name__)
-        _logger.debug(f"apply_model called: x={x.shape}, c_crossattn={c_crossattn.shape if c_crossattn is not None else None}")
-        _logger.debug(f"  kwargs keys: {kwargs.keys()}")
-        if c_crossattn is not None:
-            _logger.debug(f"  c_crossattn mean: {c_crossattn.mean():.6f}")
-        if "y" in kwargs:
-            _logger.debug(f"  y shape: {kwargs['y'].shape}, y mean: {kwargs['y'].mean():.6f}")
-        else:
-            _logger.debug(f"  y NOT in kwargs!")
-        
         # Get derived values from model_sampling
         sigma = t
         xc = self.model_sampling.calculate_input(sigma, x)
         timestep = self.model_sampling.timestep(t).float()
         
-        # Cast to model dtype
+        # Cast to model dtype - use non_blocking for async transfer
         dtype = self.dtype or torch.bfloat16
-        xc = xc.to(dtype)
+        xc = xc.to(dtype, non_blocking=True)
         
         # Get text conditioning
-        txt = c_crossattn.to(dtype) if c_crossattn is not None else None
+        txt = c_crossattn.to(dtype, non_blocking=True) if c_crossattn is not None else None
         
         # Get pooled text embedding
         y = kwargs.get("y")
         if y is not None:
-            y = y.to(dtype)
+            y = y.to(dtype, non_blocking=True)
         else:
             # Create dummy pooled if not provided
             batch_size = x.shape[0]

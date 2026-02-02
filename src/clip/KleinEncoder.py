@@ -550,6 +550,47 @@ class KleinCLIP:
         
         return hidden_states, pooled, extra
     
+    def tokenize(self, text, return_word_ids=False):
+        """Tokenize text (CLIP interface compatibility for Adetailer).
+        
+        Args:
+            text: Text to tokenize
+            return_word_ids: Whether to return word IDs
+            
+        Returns:
+            Dict with 'input_ids' and 'attention_mask'
+        """
+        return self.tokenizer.tokenize_with_weights(text, return_word_ids)
+    
+    def encode_from_tokens(self, tokens, return_pooled=False, return_dict=False):
+        """Encode from tokens (CLIP interface compatibility for Adetailer).
+        
+        Args:
+            tokens: Dict with 'input_ids' and 'attention_mask'
+            return_pooled: Whether to return pooled output
+            return_dict: Whether to return as dict
+            
+        Returns:
+            Embeddings, or (embeddings, pooled) if return_pooled, or dict if return_dict
+        """
+        cond, pooled, extra = self.encode_token_weights(tokens)
+        if return_dict:
+            out = {"cond": cond, "pooled_output": pooled}
+            out.update(extra)
+            return out
+        return (cond, pooled) if return_pooled else cond
+    
+    def load_model(self):
+        """Load model to GPU (CLIP interface compatibility).
+        
+        Returns:
+            Self for compatibility
+        """
+        # Move model to device if not already there
+        if self.device is not None:
+            self.model = self.model.to(self.device)
+        return self
+    
     def load_sd(self, state_dict: dict) -> tuple:
         """Load state dictionary into model.
         

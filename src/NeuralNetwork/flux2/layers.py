@@ -240,30 +240,54 @@ def apply_rope(q: torch.Tensor, k: torch.Tensor, pe: torch.Tensor) -> tuple[torc
 
 
 def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int) -> torch.Tensor:
-    """Optimized attention using xformers or native PyTorch."""
+    """Optimized attention using Flash/SDPA with fallback to xformers.
+    
+    Performance priority: Flash > SDPA > xformers > naive
+    """
     b, _, seq_q, dim = q.shape
     _, _, seq_kv, _ = k.shape
     
+    # Method 1: Use native scaled_dot_product_attention (includes Flash attention when available)
+    # This is the fastest path on modern PyTorch with GPU support
+    if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+        try:
+            # SDPA expects [batch, heads, seq, dim] - q/k/v are already in this format
+            with torch.backends.cuda.sdp_kernel(
+                enable_flash=True,   # Use Flash Attention when available
+                enable_math=True,    # Fallback to math
+                enable_mem_efficient=True  # Or memory efficient attention
+            ):
+                out = F.scaled_dot_product_attention(q, k, v)
+            # Reshape: [batch, heads, seq, dim] -> [batch, seq, heads*dim]
+            out = out.transpose(1, 2).reshape(b, seq_q, -1)
+            return out
+        except Exception:
+            pass  # Fall through to xformers
+    
+    # Method 2: Use xformers memory-efficient attention
+    if Device.xformers_enabled():
+        try:
+            import xformers.ops as xops
+            # xformers expects [batch, seq, heads, dim]
+            q_xf = q.transpose(1, 2).contiguous()
+            k_xf = k.transpose(1, 2).contiguous()
+            v_xf = v.transpose(1, 2).contiguous()
+            out = xops.memory_efficient_attention(q_xf, k_xf, v_xf)
+            # Reshape: [batch, seq, heads, dim] -> [batch, seq, heads*dim]
+            out = out.reshape(b, seq_q, -1)
+            return out
+        except Exception:
+            pass  # Fall through to naive
+    
+    # Method 3: Naive implementation (slowest, memory intensive)
     # Reshape for attention: [b, heads, seq, dim] -> [b, seq, heads, dim]
     q = q.transpose(1, 2).contiguous()
     k = k.transpose(1, 2).contiguous()
     v = v.transpose(1, 2).contiguous()
     
-    if Device.xformers_enabled():
-        try:
-            import xformers.ops as xops
-            # xformers expects [b, seq, heads, dim]
-            out = xops.memory_efficient_attention(q, k, v)
-        except Exception:
-            # Fallback to scaled dot product
-            out = F.scaled_dot_product_attention(
-                q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-            ).transpose(1, 2)
-    else:
-        # Use native scaled dot product attention
-        out = F.scaled_dot_product_attention(
-            q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-        ).transpose(1, 2)
+    out = F.scaled_dot_product_attention(
+        q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+    ).transpose(1, 2)
     
     # Reshape back: [b, seq, heads, dim] -> [b, seq, heads*dim]
     out = out.reshape(b, seq_q, -1)

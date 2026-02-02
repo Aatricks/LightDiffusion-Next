@@ -33,6 +33,7 @@ class ModelCapabilities:
     supports_img2img: bool = True
     supports_inpainting: bool = False
     supports_controlnet: bool = False
+    supports_lora: bool = True  # LoRA compatibility
     
     # Performance hints
     supports_stable_fast: bool = True

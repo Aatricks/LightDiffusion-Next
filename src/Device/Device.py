@@ -1,4 +1,11 @@
-"""Simplified device and memory management for LightDiffusion-Next."""
+"""Optimized device and memory management for LightDiffusion-Next.
+
+Performance optimizations from ComfyUI:
+- Async CUDA streams for weight offloading
+- Pinned memory for faster CPU-GPU transfers
+- cuDNN benchmarking
+- FP16 accumulation
+"""
 import logging
 import platform
 import sys
@@ -7,9 +14,16 @@ from typing import Optional, Union, Tuple
 import psutil
 import torch
 
-# Enable TF32 on supported hardware
+# Enable TF32 on supported hardware for faster matrix ops
 try:
     torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+except:
+    pass
+
+# Enable cuDNN benchmarking for optimal convolution algorithms
+try:
+    torch.backends.cudnn.benchmark = True
 except:
     pass
 
@@ -39,6 +53,16 @@ FORCE_FP32 = False
 FORCE_FP16 = False
 WINDOWS = any(platform.win32_ver())
 EXTRA_RESERVED_VRAM = 600 * 1024 * 1024 if WINDOWS else 400 * 1024 * 1024
+
+# Async offloading with CUDA streams (from ComfyUI)
+NUM_STREAMS = 2  # Set to 2 for async offloading on Nvidia/AMD
+STREAMS = {}
+stream_counters = {}
+
+# Pinned memory management (from ComfyUI)
+PINNED_MEMORY = {}
+TOTAL_PINNED_MEMORY = 0
+MAX_PINNED_MEMORY = -1  # Will be set during initialization
 
 # Detect hardware
 try:
@@ -87,6 +111,119 @@ try:
     OOM_EXCEPTION = torch.cuda.OutOfMemoryError
 except:
     OOM_EXCEPTION = Exception
+
+
+# === Async CUDA Stream Management (from ComfyUI for faster offloading) ===
+
+def get_offload_stream(device: torch.device):
+    """Get a CUDA stream for async weight offloading."""
+    global STREAMS, stream_counters, NUM_STREAMS
+    if NUM_STREAMS < 1:
+        return None
+    if not torch.cuda.is_available():
+        return None
+    
+    device_idx = device.index if device.index is not None else 0
+    if device_idx not in STREAMS:
+        STREAMS[device_idx] = [torch.cuda.Stream(device=device) for _ in range(NUM_STREAMS)]
+        stream_counters[device_idx] = 0
+    
+    stream_idx = stream_counters[device_idx] % NUM_STREAMS
+    stream_counters[device_idx] += 1
+    return STREAMS[device_idx][stream_idx]
+
+
+def sync_stream(device: torch.device, stream):
+    """Synchronize a CUDA stream."""
+    if stream is not None and torch.cuda.is_available():
+        stream.synchronize()
+
+
+def sync_all_streams(device: torch.device = None):
+    """Synchronize all streams for a device."""
+    global STREAMS
+    if device is None:
+        for dev_streams in STREAMS.values():
+            for stream in dev_streams:
+                stream.synchronize()
+    else:
+        device_idx = device.index if device.index is not None else 0
+        if device_idx in STREAMS:
+            for stream in STREAMS[device_idx]:
+                stream.synchronize()
+
+
+# === Pinned Memory Management (from ComfyUI for faster CPU<->GPU transfers) ===
+
+def init_pinned_memory():
+    """Initialize pinned memory subsystem."""
+    global MAX_PINNED_MEMORY
+    try:
+        # Use up to 25% of system RAM for pinned memory (capped at 8GB)
+        total_ram = psutil.virtual_memory().total
+        MAX_PINNED_MEMORY = min(total_ram // 4, 8 * 1024 * 1024 * 1024)
+    except:
+        MAX_PINNED_MEMORY = 4 * 1024 * 1024 * 1024  # Default 4GB
+
+
+def pin_memory(tensor: torch.Tensor, key: str = None) -> torch.Tensor:
+    """Pin a CPU tensor for faster transfers to GPU."""
+    global PINNED_MEMORY, TOTAL_PINNED_MEMORY, MAX_PINNED_MEMORY
+    if MAX_PINNED_MEMORY < 0:
+        init_pinned_memory()
+    
+    if tensor.device.type != 'cpu' or tensor.is_pinned():
+        return tensor
+    
+    tensor_size = tensor.nelement() * tensor.element_size()
+    if TOTAL_PINNED_MEMORY + tensor_size > MAX_PINNED_MEMORY:
+        return tensor  # Not enough room
+    
+    try:
+        pinned = tensor.pin_memory()
+        TOTAL_PINNED_MEMORY += tensor_size
+        if key is not None:
+            PINNED_MEMORY[key] = (pinned, tensor_size)
+        return pinned
+    except:
+        return tensor
+
+
+def unpin_memory(key: str = None):
+    """Unpin memory associated with a key."""
+    global PINNED_MEMORY, TOTAL_PINNED_MEMORY
+    if key is not None and key in PINNED_MEMORY:
+        _, tensor_size = PINNED_MEMORY.pop(key)
+        TOTAL_PINNED_MEMORY -= tensor_size
+
+
+def clear_pinned_memory():
+    """Clear all pinned memory."""
+    global PINNED_MEMORY, TOTAL_PINNED_MEMORY
+    PINNED_MEMORY.clear()
+    TOTAL_PINNED_MEMORY = 0
+
+
+# === Optimized tensor transfer with async streams ===
+
+def cast_to(tensor: torch.Tensor, device: torch.device, dtype: torch.dtype = None, 
+            copy: bool = False, non_blocking: bool = True, stream=None):
+    """Optimized tensor transfer with optional async streaming."""
+    target_dtype = dtype if dtype is not None else tensor.dtype
+    
+    # Fast path: no change needed
+    if tensor.device == device and tensor.dtype == target_dtype and not copy:
+        return tensor
+    
+    # Use provided stream or get one
+    if stream is None and NUM_STREAMS > 0 and torch.cuda.is_available():
+        stream = get_offload_stream(device)
+    
+    if stream is not None:
+        with torch.cuda.stream(stream):
+            return tensor.to(device=device, dtype=target_dtype, copy=copy, non_blocking=non_blocking)
+    else:
+        return tensor.to(device=device, dtype=target_dtype, copy=copy, non_blocking=non_blocking)
 
 
 def is_intel_xpu() -> bool:
@@ -166,6 +303,71 @@ def soft_empty_cache(force: bool = False) -> None:
     elif torch.cuda.is_available() and (force or is_nvidia()):
         torch.cuda.empty_cache()
         torch.cuda.ipc_collect()
+
+
+# === torch.compile support (from ComfyUI for model optimization) ===
+
+TORCH_COMPILE_ENABLED = False
+COMPILED_MODELS = {}
+
+
+def enable_torch_compile(enabled: bool = True):
+    """Enable or disable torch.compile for model optimization."""
+    global TORCH_COMPILE_ENABLED
+    TORCH_COMPILE_ENABLED = enabled
+    if enabled:
+        logging.info("torch.compile enabled for model optimization")
+
+
+def compile_model(model: torch.nn.Module, mode: str = "reduce-overhead", 
+                  fullgraph: bool = False, dynamic: bool = True) -> torch.nn.Module:
+    """Compile a model with torch.compile for faster inference.
+    
+    Args:
+        model: The model to compile
+        mode: Compilation mode - "reduce-overhead" (faster), "max-autotune" (optimal), "default"
+        fullgraph: Whether to compile the full graph
+        dynamic: Whether to allow dynamic shapes
+        
+    Returns:
+        Compiled model (or original if compilation fails)
+    """
+    global COMPILED_MODELS
+    
+    if not TORCH_COMPILE_ENABLED:
+        return model
+    
+    # Check PyTorch version
+    if not hasattr(torch, 'compile'):
+        logging.warning("torch.compile not available (requires PyTorch 2.0+)")
+        return model
+    
+    # Check if already compiled
+    model_id = id(model)
+    if model_id in COMPILED_MODELS:
+        return COMPILED_MODELS[model_id]
+    
+    try:
+        # Use inductor backend for best performance
+        compiled = torch.compile(
+            model,
+            mode=mode,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend="inductor"
+        )
+        COMPILED_MODELS[model_id] = compiled
+        logging.info(f"Model compiled successfully with mode={mode}")
+        return compiled
+    except Exception as e:
+        logging.warning(f"torch.compile failed: {e}")
+        return model
+
+
+def clear_compiled_models():
+    """Clear the compiled models cache."""
+    global COMPILED_MODELS
+    COMPILED_MODELS.clear()
 
 
 # Initialize PyTorch attention and VAE dtype

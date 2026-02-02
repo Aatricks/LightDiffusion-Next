@@ -85,6 +85,7 @@ class Flux2KleinModel(AbstractModel):
             supports_stable_fast=False,  # May need special handling
             supports_deepcache=False,  # Architecture differs from UNet
             supports_tome=False,  # Token merging needs special implementation
+            supports_lora=False,  # Flux2 LoRA format differs from SD
             uses_dual_clip=False,  # Uses single Klein (Qwen3) encoder
             requires_size_conditioning=False,
         )
