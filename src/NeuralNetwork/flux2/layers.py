@@ -218,9 +218,9 @@ def apply_rope1(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
     """
     x_ = x.to(dtype=freqs_cis.dtype).reshape(*x.shape[:-1], -1, 1, 2)
     
-    # Apply rotation: out = freqs[..., 0] * x[..., 0] + freqs[..., 1] * x[..., 1]
+    # Apply rotation with in-place addcmul for speed (from ComfyUI)
     x_out = freqs_cis[..., 0] * x_[..., 0]
-    x_out = x_out + freqs_cis[..., 1] * x_[..., 1]
+    x_out.addcmul_(freqs_cis[..., 1], x_[..., 1])
     
     return x_out.reshape(*x.shape).type_as(x)
 
@@ -242,19 +242,25 @@ def apply_rope(q: torch.Tensor, k: torch.Tensor, pe: torch.Tensor) -> tuple[torc
 def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads: int) -> torch.Tensor:
     """Optimized attention using Flash/SDPA with fallback to xformers.
     
-    Performance priority: Flash > SDPA > xformers > naive
+    Performance priority: cuDNN > Flash > SDPA > xformers > naive
+    Uses SDPA backend priority from Device module for optimal dispatch.
     """
     b, _, seq_q, dim = q.shape
     _, _, seq_kv, _ = k.shape
     
-    # Method 1: Use native scaled_dot_product_attention (includes Flash attention when available)
+    # Method 1: Use native scaled_dot_product_attention with backend priority
     # This is the fastest path on modern PyTorch with GPU support
     if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
         try:
+            # Get SDPA backend priority context manager from Device
+            sdpa_context = Device.get_sdpa_context()
+            
             # SDPA expects [batch, heads, seq, dim] - q/k/v are already in this format
-            # Just call directly - PyTorch auto-selects the best backend
-            out = F.scaled_dot_product_attention(q, k, v)
+            with sdpa_context:
+                out = F.scaled_dot_product_attention(q, k, v)
+            
             # Reshape: [batch, heads, seq, dim] -> [batch, seq, heads*dim]
+            # Use transpose + view for efficiency (avoid copy)
             out = out.transpose(1, 2).reshape(b, seq_q, -1)
             return out
         except Exception:
@@ -269,6 +275,7 @@ def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads
             k_xf = k.transpose(1, 2).contiguous()
             v_xf = v.transpose(1, 2).contiguous()
             out = xops.memory_efficient_attention(q_xf, k_xf, v_xf)
+            del q_xf, k_xf, v_xf  # Free memory early
             # Reshape: [batch, seq, heads, dim] -> [batch, seq, heads*dim]
             out = out.reshape(b, seq_q, -1)
             return out
@@ -276,17 +283,8 @@ def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads
             pass  # Fall through to naive
     
     # Method 3: Naive implementation (slowest, memory intensive)
-    # Reshape for attention: [b, heads, seq, dim] -> [b, seq, heads, dim]
-    q = q.transpose(1, 2).contiguous()
-    k = k.transpose(1, 2).contiguous()
-    v = v.transpose(1, 2).contiguous()
-    
-    out = F.scaled_dot_product_attention(
-        q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-    ).transpose(1, 2)
-    
-    # Reshape back: [b, seq, heads, dim] -> [b, seq, heads*dim]
-    out = out.reshape(b, seq_q, -1)
+    out = F.scaled_dot_product_attention(q, k, v)
+    out = out.transpose(1, 2).reshape(b, seq_q, -1)
     return out
 
 
@@ -456,39 +454,53 @@ class DoubleStreamBlock(nn.Module):
         # Prepare normed inputs
         img_normed = self.img_norm1(img)
         img_modulated = (1 + img_mod1.scale) * img_normed + img_mod1.shift
+        del img_normed  # Free memory early
         
         txt_normed = self.txt_norm1(txt)
         txt_modulated = (1 + txt_mod1.scale) * txt_normed + txt_mod1.shift
+        del txt_normed  # Free memory early
 
-        # Run joint attention
-        q_img, k_img, v_img = rearrange(
-            self.img_attn.qkv(img_modulated), "B L (K H D) -> K B H L D", K=3, H=self.num_heads
-        )
-        q_txt, k_txt, v_txt = rearrange(
-            self.txt_attn.qkv(txt_modulated), "B L (K H D) -> K B H L D", K=3, H=self.num_heads
-        )
+        # Run joint attention - use view+permute for efficiency instead of rearrange
+        img_qkv = self.img_attn.qkv(img_modulated)
+        del img_modulated
+        q_img, k_img, v_img = img_qkv.view(img_qkv.shape[0], img_qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        del img_qkv
+        
+        txt_qkv = self.txt_attn.qkv(txt_modulated)
+        del txt_modulated
+        q_txt, k_txt, v_txt = txt_qkv.view(txt_qkv.shape[0], txt_qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        del txt_qkv
 
         q_img, k_img = self.img_attn.norm(q_img, k_img, v_img)
         q_txt, k_txt = self.txt_attn.norm(q_txt, k_txt, v_txt)
 
         # Concatenate for joint attention
         q = torch.cat((q_txt, q_img), dim=2)
+        del q_txt, q_img
         k = torch.cat((k_txt, k_img), dim=2)
+        del k_txt, k_img
         v = torch.cat((v_txt, v_img), dim=2)
+        del v_txt, v_img
 
         attn_out = attention(q, k, v, pe=pe)
+        del q, k, v
         txt_attn, img_attn = attn_out[:, : txt.shape[1]], attn_out[:, txt.shape[1] :]
+        del attn_out
 
         # Apply residual connections with gating
         img = img + img_mod1.gate * self.img_attn.proj(img_attn)
+        del img_attn
         txt = txt + txt_mod1.gate * self.txt_attn.proj(txt_attn)
+        del txt_attn
 
         # MLP with modulation
         img_mlp_in = (1 + img_mod2.scale) * self.img_norm2(img) + img_mod2.shift
         img = img + img_mod2.gate * self._forward_mlp(self.img_mlp, img_mlp_in)
+        del img_mlp_in
 
         txt_mlp_in = (1 + txt_mod2.scale) * self.txt_norm2(txt) + txt_mod2.shift
         txt = txt + txt_mod2.gate * self._forward_mlp(self.txt_mlp, txt_mlp_in)
+        del txt_mlp_in
 
         return img, txt
 
@@ -584,31 +596,40 @@ class SingleStreamBlock(nn.Module):
         
         x_normed = self.pre_norm(x)
         x_mod = (1 + mod.scale) * x_normed + mod.shift
+        del x_normed  # Free memory early
         
         # Joint projection - split QKV from MLP part
         qkv_mlp = self.linear1(x_mod)
+        del x_mod
         
         if self.gated_mlp:
             qkv, mlp_gate_up = qkv_mlp.split([self.hidden_size * 3, self.mlp_gate_up_dim], dim=-1)
+            del qkv_mlp
             # Gated MLP: split into gate and up, apply SiLU to gate, multiply
             gate, up = mlp_gate_up.chunk(2, dim=-1)
+            del mlp_gate_up
             mlp = F.silu(gate) * up
+            del gate, up
         else:
             qkv, mlp = qkv_mlp.split([self.hidden_size * 3, self.mlp_hidden_dim], dim=-1)
+            del qkv_mlp
             # Standard activation
             if self.silu_mlp:
                 mlp = F.silu(mlp)
             else:
                 mlp = F.gelu(mlp, approximate="tanh")
         
-        # Attention
-        q, k, v = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads)
+        # Attention - use view+permute for efficiency instead of rearrange
+        q, k, v = qkv.view(qkv.shape[0], qkv.shape[1], 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        del qkv
         q, k = self.norm(q, k, v)
         
         attn = attention(q, k, v, pe=pe)
+        del q, k, v
         
         # Combine and project
         output = self.linear2(torch.cat((attn, mlp), dim=-1))
+        del attn, mlp
         
         return x + mod.gate * output
 

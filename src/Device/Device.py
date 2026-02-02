@@ -27,6 +27,36 @@ try:
 except:
     pass
 
+# === SDPA Backend Priority (from ComfyUI for optimal attention on Windows) ===
+# Set Flash Attention > Efficient > Math priority
+SDPA_PRIORITY_SET = False
+try:
+    if torch.cuda.is_available():
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+        import inspect
+        if "set_priority" in inspect.signature(sdpa_kernel).parameters:
+            SDPA_BACKEND_PRIORITY = [
+                SDPBackend.FLASH_ATTENTION,
+                SDPBackend.EFFICIENT_ATTENTION,
+                SDPBackend.MATH,
+            ]
+            # Add cuDNN attention if available (newest)
+            if hasattr(SDPBackend, 'CUDNN_ATTENTION'):
+                SDPA_BACKEND_PRIORITY.insert(0, SDPBackend.CUDNN_ATTENTION)
+            SDPA_PRIORITY_SET = True
+            logging.info(f"SDPA backend priority set: {[b.name for b in SDPA_BACKEND_PRIORITY]}")
+except (ModuleNotFoundError, TypeError, AttributeError) as e:
+    logging.debug(f"Could not set SDPA backend priority: {e}")
+
+def get_sdpa_context():
+    """Get context manager for SDPA backend priority."""
+    if SDPA_PRIORITY_SET:
+        from torch.nn.attention import sdpa_kernel
+        return sdpa_kernel(SDPA_BACKEND_PRIORITY, set_priority=True)
+    else:
+        import contextlib
+        return contextlib.nullcontext()
+
 
 class VRAMState(Enum):
     DISABLED = 0

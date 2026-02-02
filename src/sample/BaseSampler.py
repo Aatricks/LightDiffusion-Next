@@ -94,6 +94,8 @@ def set_model_options_post_cfg_function(opts: dict, fn: Callable, disable_cfg1_o
     opts["sampler_post_cfg_function"] = opts.get("sampler_post_cfg_function", []) + [fn]
     if disable_cfg1_optimization:
         opts["disable_cfg1_optimization"] = True
+    # Note: We don't force disable_cfg1_optimization=True anymore - 
+    # when CFG=1.0 we want to skip the unconditional pass for speed
     return opts
 
 
@@ -160,10 +162,11 @@ class BaseSampler(ABC):
         s_in = torch.ones((x.shape[0],), device=device)
         
         # Setup CFG++ state tracking (for momentum only, not CFG scaling)
+        # Use disable_cfg1_optimization=False to allow skipping uncond pass when CFG=1.0
         state = CFGState()
         extra_args = extra_args.copy()
         extra_args["model_options"] = set_model_options_post_cfg_function(
-            extra_args.get("model_options", {}), state.capture, disable_cfg1_optimization=True)
+            extra_args.get("model_options", {}), state.capture, disable_cfg1_optimization=False)
         
         return self._loop(model, x, sigmas, extra_args, callback, disable,
                           n_steps, device, ms, cb, s_in, state, **kwargs)
