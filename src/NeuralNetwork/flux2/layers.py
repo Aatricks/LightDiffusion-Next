@@ -252,12 +252,8 @@ def optimized_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, heads
     if hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
         try:
             # SDPA expects [batch, heads, seq, dim] - q/k/v are already in this format
-            with torch.backends.cuda.sdp_kernel(
-                enable_flash=True,   # Use Flash Attention when available
-                enable_math=True,    # Fallback to math
-                enable_mem_efficient=True  # Or memory efficient attention
-            ):
-                out = F.scaled_dot_product_attention(q, k, v)
+            # Just call directly - PyTorch auto-selects the best backend
+            out = F.scaled_dot_product_attention(q, k, v)
             # Reshape: [batch, heads, seq, dim] -> [batch, seq, heads*dim]
             out = out.transpose(1, 2).reshape(b, seq_q, -1)
             return out

@@ -284,6 +284,11 @@ def taesd_preview(x: torch.Tensor, flux: bool = False):
     if app_instance.app.previewer_var.get() is True:
         # Optimization: Cache TAESD instance by latent channels to avoid constant re-init
         latent_channels = x.shape[1]
+        
+        # Skip preview for Flux2 128-channel latents - no TAESD model exists for this
+        if latent_channels not in (4, 16):
+            return  # TAESD only supports 4 (SD) or 16 (Flux1) channels
+        
         cache_key = (latent_channels, flux)
         if cache_key in _taesd_cache:
             taesd_instance = _taesd_cache[cache_key]

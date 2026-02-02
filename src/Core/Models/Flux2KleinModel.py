@@ -427,11 +427,14 @@ class Flux2KleinModel(AbstractModel):
         if unexpected:
             logger.debug(f"Klein encoder unexpected keys: {len(unexpected)}")
         
-        # Move model to device after loading weights
-        model = model.to(load_device).to(dtype)
+        # IMPORTANT: Keep model on CPU to save VRAM for diffusion model
+        # KleinCLIP will move it to GPU only during encoding
+        # This follows ComfyUI's approach of lazy model loading
+        offload_device = Device.text_encoder_offload_device()  # CPU
+        model = model.to(offload_device).to(dtype)
         
-        # Create CLIP wrapper
-        clip = KleinCLIP(model=model, dtype=dtype, device=load_device)
+        # Create CLIP wrapper - pass load_device so it knows where to move when encoding
+        clip = KleinCLIP(model=model, dtype=dtype, device=load_device, offload_device=offload_device)
         
         # Ensure embeddings directory exists
         os.makedirs("./include/embeddings", exist_ok=True)
@@ -669,6 +672,13 @@ class Flux2KleinModel(AbstractModel):
             # Add seeds for deterministic noise
             latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
             
+            # CRITICAL: Force-disable multi-scale for Flux2 models
+            # Multi-scale is designed for UNet architectures (SD1.5/SDXL) and
+            # causes significant performance overhead for Flux2's DiT architecture
+            enable_multiscale = False  # Always disable for Flux2
+            if ctx.sampling.enable_multiscale:
+                logger.info("Multi-scale disabled: not compatible with Flux2 architecture")
+            
             # Run sampling with flux=True
             ksampler = sampling.KSampler()
             result = ksampler.sample(
@@ -684,7 +694,7 @@ class Flux2KleinModel(AbstractModel):
                 negative=negative,
                 latent_image=latent,
                 flux=True,  # Enable Flux sampling mode
-                enable_multiscale=ctx.sampling.enable_multiscale,
+                enable_multiscale=enable_multiscale,  # Force disabled for Flux2
                 multiscale_factor=ctx.sampling.multiscale_factor,
                 multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
                 multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,

@@ -73,10 +73,14 @@ def prepare_sampling(
         model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
         + inference_memory
     )
+    
+    # Don't force full load - let partial loading work for all models including Flux2
+    # This enables ComfyUI-style partial loading: load what fits in VRAM, offload rest
     Device.load_models_gpu(
         [model] + models,
         memory_required=memory_required,
         minimum_memory_required=minimum_memory_required,
+        force_full_load=False,
     )
     real_model = model.model
 

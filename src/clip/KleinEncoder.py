@@ -487,6 +487,9 @@ class KleinCLIP:
     
     This provides the same interface as other CLIP models while
     using the Qwen3-based Klein encoder internally.
+    
+    VRAM Optimization: Model stays on CPU until encoding, then moves to GPU
+    and back to CPU. This follows ComfyUI's lazy loading approach.
     """
     
     def __init__(
@@ -495,13 +498,15 @@ class KleinCLIP:
         model: Qwen3_4BModel = None,
         dtype=None,
         device=None,
+        offload_device=None,
     ):
         self.tokenizer = tokenizer or KleinTokenizer()
         self.dtype = dtype
-        self.device = device
+        self.device = device  # Device to use for encoding (GPU)
+        self.offload_device = offload_device or torch.device("cpu")  # Device when idle (CPU)
         
         if model is None:
-            self.model = Qwen3_4BModel(dtype=dtype, device=device)
+            self.model = Qwen3_4BModel(dtype=dtype, device=self.offload_device)
         else:
             self.model = model
         
@@ -518,6 +523,9 @@ class KleinCLIP:
     def encode_token_weights(self, tokens: dict) -> tuple:
         """Encode token weights returning (embeddings, pooled, extra).
         
+        VRAM Optimization: Moves model to GPU only during encoding,
+        then offloads back to CPU to free VRAM for diffusion model.
+        
         Args:
             tokens: Dict with 'input_ids' and 'attention_mask' tensors
             
@@ -529,6 +537,10 @@ class KleinCLIP:
         if input_ids is None:
             raise ValueError("tokens dict must contain 'input_ids'")
         
+        # Move model to GPU for encoding
+        logger.info(f"Moving text encoder to {self.device} for encoding...")
+        self.model = self.model.to(self.device)
+        
         input_ids = input_ids.to(self.device)
         
         # Get attention mask if present - CRITICAL for proper masking of padding tokens
@@ -536,12 +548,19 @@ class KleinCLIP:
         if attention_mask is not None:
             attention_mask = attention_mask.to(self.device)
         
-        with torch.no_grad():
-            outputs = self.model(input_ids, attention_mask=attention_mask)
-        
-        # Return concatenated hidden states, pooled output, and extra with attention_mask
-        hidden_states = outputs["hidden_states"]
-        pooled = outputs["pooled_output"]
+        try:
+            with torch.no_grad():
+                outputs = self.model(input_ids, attention_mask=attention_mask)
+            
+            # Return concatenated hidden states, pooled output, and extra with attention_mask
+            hidden_states = outputs["hidden_states"].clone()  # Clone to keep on GPU
+            pooled = outputs["pooled_output"].clone()  # Clone to keep on GPU
+        finally:
+            # Offload model back to CPU to free VRAM for diffusion model
+            logger.info(f"Offloading text encoder to {self.offload_device}...")
+            self.model = self.model.to(self.offload_device)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         # Return attention mask in extra dict for the diffusion model to use
         extra = {}
