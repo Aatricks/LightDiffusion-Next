@@ -40,9 +40,11 @@ class QwenRMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim, dtype=dtype, device=device))
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # RMS normalization
-        rms = torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-        return x * rms * self.weight
+        # RMS normalization - compute in float32 for precision, cast back to input dtype
+        input_dtype = x.dtype
+        x_float = x.float()
+        rms = torch.rsqrt(x_float.pow(2).mean(-1, keepdim=True) + self.eps)
+        return (x_float * rms * self.weight.float()).to(input_dtype)
 
 
 class QwenRotaryEmbedding(nn.Module):
@@ -147,17 +149,24 @@ class QwenAttention(nn.Module):
             k = k.repeat_interleave(n_rep, dim=1)
             v = v.repeat_interleave(n_rep, dim=1)
         
+        # Ensure all tensors have same dtype for SDPA
+        attn_dtype = q.dtype
+        k = k.to(attn_dtype)
+        v = v.to(attn_dtype)
+        
         # Scaled dot-product attention with causal masking
         # Use is_causal=True for efficiency, or attn_mask for custom masks
         if attention_mask is None:
             # Pure causal masking
             attn_output = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         else:
-            # Custom mask (includes causal + padding)
+            # Custom mask (includes causal + padding) - ensure mask dtype matches
+            attention_mask = attention_mask.to(attn_dtype)
             attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask)
         
-        # Reshape back
+        # Reshape back and ensure output dtype matches input for o_proj
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+        attn_output = attn_output.to(hidden_states.dtype)  # Match input dtype for o_proj
         return self.o_proj(attn_output)
 
 
