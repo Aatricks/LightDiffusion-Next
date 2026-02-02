@@ -39,7 +39,7 @@ try:
     with open(os.path.join("./include/", "last_seed.txt"), "r") as f:
         _last_seed = int(f.read().strip())
 except Exception:
-    _last_seed = random.randint(1, 2**64)
+    _last_seed = random.randint(1, 2**63 - 1)
 
 
 def pipeline(

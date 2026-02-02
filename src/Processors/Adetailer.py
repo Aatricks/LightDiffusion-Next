@@ -131,7 +131,7 @@ class Adetailer:
             )
             
             # Apply body enhancement
-            body_seed = random.randint(1, 2**64)
+            body_seed = random.randint(1, 2**63 - 1)
             body_result = detailer.doit(
                 guide_size=cls.DEFAULT_GUIDE_SIZE,
                 guide_size_for=False,
@@ -220,7 +220,7 @@ class Adetailer:
             )
             
             # Apply face enhancement
-            face_seed = random.randint(1, 2**64)
+            face_seed = random.randint(1, 2**63 - 1)
             face_result = detailer.doit(
                 guide_size=cls.DEFAULT_GUIDE_SIZE,
                 guide_size_for=False,

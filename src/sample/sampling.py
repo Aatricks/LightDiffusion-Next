@@ -299,7 +299,7 @@ class KSampler:
     def sample(self, model=None, seed=None, steps=None, cfg=None, sampler_name=None, scheduler=None,
                positive=None, negative=None, latent_image=None, denoise=None, start_step=None, last_step=None,
                force_full_denoise=False, noise_mask=None, callback=None, disable_pbar=False, disable_noise=False,
-               pipeline=False, flux=False, enable_multiscale=True, multiscale_factor=0.5,
+               pipeline=False, flux=False, flux2=False, enable_multiscale=True, multiscale_factor=0.5,
                multiscale_fullres_start=3, multiscale_fullres_end=8, multiscale_intermittent_fullres=False,
                cfg_free_enabled=False, cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
@@ -313,7 +313,7 @@ class KSampler:
         latent = latent_image if isinstance(latent_image, dict) else {"samples": latent_image}
         return common_ksampler(model, seed, steps, cfg, sampler_name or self.sampler_name, scheduler or self.scheduler,
                                positive, negative, latent, denoise or self.denoise, disable_noise, start_step, last_step,
-                               force_full_denoise, pipeline or self.pipeline, flux, enable_multiscale, multiscale_factor,
+                               force_full_denoise, pipeline or self.pipeline, flux, flux2, enable_multiscale, multiscale_factor,
                                multiscale_fullres_start, multiscale_fullres_end, multiscale_intermittent_fullres,
                                cfg_free_enabled, cfg_free_start_percent, batched_cfg, dynamic_cfg_rescaling,
                                dynamic_cfg_method, dynamic_cfg_percentile, dynamic_cfg_target_scale,
@@ -329,7 +329,7 @@ MULTISCALE_SAMPLERS = ["dpmpp_sde_cfgpp", "euler_ancestral", "euler", "dpmpp_2m_
 
 def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0,
             disable_noise=False, start_step=None, last_step=None, force_full_denoise=False, noise_mask=None,
-            sigmas=None, callback=None, disable_pbar=False, seed=None, pipeline=False, flux=False,
+            sigmas=None, callback=None, disable_pbar=False, seed=None, pipeline=False, flux=False, flux2=False,
             enable_multiscale=True, multiscale_factor=0.5, multiscale_fullres_start=3, multiscale_fullres_end=8,
             multiscale_intermittent_fullres=False, cfg_free_enabled=False, cfg_free_start_percent=70.0,
             batched_cfg=True, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance", dynamic_cfg_percentile=95,
@@ -339,13 +339,29 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
                      "multiscale_intermittent_fullres": multiscale_intermittent_fullres}
 
     sampler_obj = ksampler(sampler_name, pipeline=pipeline, extra_options=extra_options)
-    sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, steps)
+    
+    # For Flux2, calculate sigmas using resolution-aware scheduler (matches ComfyUI Flux2Scheduler)
+    if flux2:
+        # Flux2 uses 16x16 patches, calculate pixel dimensions from latent shape
+        height = latent_image.shape[2] * 16
+        width = latent_image.shape[3] * 16
+        sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, steps, 
+                                                 width=width, height=height, is_flux2=True)
+    else:
+        sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, steps)
     
     if denoise is not None and denoise <= 0.9999:
         if denoise <= 0.0:
             sigmas = torch.FloatTensor([])
         else:
-            sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, int(steps / denoise))[-(steps + 1):]
+            # For Flux2, use resolution-aware scheduler even with partial denoise
+            if flux2:
+                height = latent_image.shape[2] * 16
+                width = latent_image.shape[3] * 16
+                sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, 
+                                                        int(steps / denoise), width=width, height=height, is_flux2=True)[-(steps + 1):]
+            else:
+                sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, int(steps / denoise))[-(steps + 1):]
     
     if last_step is not None and last_step < len(sigmas) - 1:
         sigmas = sigmas[:last_step + 1]
@@ -355,7 +371,7 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
 
     samples = sample(model, noise, positive, negative, cfg, model.load_device, sampler_obj, sigmas.to(model.load_device),
                      model.model_options, latent_image=latent_image, denoise_mask=noise_mask, callback=callback,
-                     disable_pbar=disable_pbar, seed=seed, pipeline=pipeline, flux=flux,
+                     disable_pbar=disable_pbar, seed=seed, pipeline=pipeline, flux=flux or flux2,
                      cfg_free_enabled=cfg_free_enabled, cfg_free_start_percent=cfg_free_start_percent,
                      batched_cfg=batched_cfg, dynamic_cfg_rescaling=dynamic_cfg_rescaling,
                      dynamic_cfg_method=dynamic_cfg_method, dynamic_cfg_percentile=dynamic_cfg_percentile,
@@ -437,7 +453,7 @@ def sample_custom(model, noise, cfg, sampler, sigmas, positive, negative, latent
 
 def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent, denoise=1.0,
                     disable_noise=False, start_step=None, last_step=None, force_full_denoise=False, pipeline=False,
-                    flux=False, enable_multiscale=True, multiscale_factor=0.5, multiscale_fullres_start=3,
+                    flux=False, flux2=False, enable_multiscale=True, multiscale_factor=0.5, multiscale_fullres_start=3,
                     multiscale_fullres_end=8, multiscale_intermittent_fullres=False, cfg_free_enabled=False,
                     cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                     dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
@@ -450,7 +466,7 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
     samples = sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negative, latent_image,
                       denoise=denoise, disable_noise=disable_noise, start_step=start_step, last_step=last_step,
                       force_full_denoise=force_full_denoise, noise_mask=latent.get("noise_mask"), seed=seed,
-                      pipeline=pipeline, flux=flux, enable_multiscale=enable_multiscale, multiscale_factor=multiscale_factor,
+                      pipeline=pipeline, flux=flux, flux2=flux2, enable_multiscale=enable_multiscale, multiscale_factor=multiscale_factor,
                       multiscale_fullres_start=multiscale_fullres_start, multiscale_fullres_end=multiscale_fullres_end,
                       multiscale_intermittent_fullres=multiscale_intermittent_fullres, cfg_free_enabled=cfg_free_enabled,
                       cfg_free_start_percent=cfg_free_start_percent, batched_cfg=batched_cfg,

@@ -90,8 +90,8 @@ class HiresFix:
                 height=new_height,
             )[0]
             
-            # Generate new seed for hires pass
-            hires_seed = random.randint(1, 2**64)
+            # Generate new seed for hires pass (PyTorch max: 2**63 - 1)
+            hires_seed = random.randint(1, 2**63 - 1)
             
             # Apply HiDiffusion optimizer if available
             try:

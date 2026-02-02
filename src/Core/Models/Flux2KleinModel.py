@@ -569,6 +569,11 @@ class Flux2KleinModel(AbstractModel):
         For Flux2 Klein, this uses the Qwen3-based Klein text encoder
         which does not use traditional CLIP skip.
         
+        CRITICAL: ComfyUI LEFT-PADS text embeddings to 512 tokens before passing
+        to the diffusion model. This is essential for matching image quality because:
+        1. The positional encoding (RoPE) depends on sequence length
+        2. The model was trained with fixed 512-token text sequences
+        
         Args:
             prompt: Positive prompt(s) to encode
             negative_prompt: Negative prompt(s) (may be ignored for Flux2)
@@ -593,7 +598,6 @@ class Flux2KleinModel(AbstractModel):
             # Tokenize and encode positive
             tokens = self.clip.tokenizer.tokenize_with_weights(prompt)
             hidden_states, pooled, extra = self.clip.encode_token_weights(tokens)
-            pos_mask = extra.get("attention_mask")
             
             # Encode negative (or empty)
             neg_prompt = negative_prompt
@@ -605,36 +609,35 @@ class Flux2KleinModel(AbstractModel):
             
             neg_tokens = self.clip.tokenizer.tokenize_with_weights(neg_prompt)
             neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
-            neg_mask = neg_extra.get("attention_mask")
             
-            # Pad to same sequence length (required for batching in sampling)
+            # CRITICAL: ComfyUI LEFT-PADS text embeddings to 512 tokens (Flux2.extra_conds)
+            # This is essential for matching image quality because the model expects
+            # a fixed sequence length for positional encoding
+            target_text_len = 512
+            
+            # Left-pad positive embeddings (pad at START with zeros)
             pos_len = hidden_states.shape[1]
+            if pos_len < target_text_len:
+                # F.pad format: (left_dim_n, right_dim_n, left_dim_n-1, right_dim_n-1, ...)
+                # For [B, L, D]: (0, 0, target-L, 0) = pad sequence dim at start
+                pad_size = target_text_len - pos_len
+                hidden_states = torch.nn.functional.pad(hidden_states, (0, 0, pad_size, 0), value=0)
+                logger.debug(f"Left-padded positive from {pos_len} to {target_text_len} tokens")
+            
+            # Left-pad negative embeddings  
             neg_len = neg_hidden.shape[1]
-            max_len = max(pos_len, neg_len)
+            if neg_len < target_text_len:
+                pad_size = target_text_len - neg_len
+                neg_hidden = torch.nn.functional.pad(neg_hidden, (0, 0, pad_size, 0), value=0)
+                logger.debug(f"Left-padded negative from {neg_len} to {target_text_len} tokens")
             
-            if pos_len < max_len:
-                # Pad positive (right padding with zeros)
-                pad_size = max_len - pos_len
-                hidden_states = torch.nn.functional.pad(hidden_states, (0, 0, 0, pad_size), value=0)
-                if pos_mask is not None:
-                    pos_mask = torch.nn.functional.pad(pos_mask, (0, pad_size), value=0)
-            
-            if neg_len < max_len:
-                # Pad negative (right padding with zeros)
-                pad_size = max_len - neg_len
-                neg_hidden = torch.nn.functional.pad(neg_hidden, (0, 0, 0, pad_size), value=0)
-                if neg_mask is not None:
-                    neg_mask = torch.nn.functional.pad(neg_mask, (0, pad_size), value=0)
-            
-            # Format as conditioning - include attention_mask for the diffusion model
+            # Format as conditioning
+            # Note: ComfyUI does NOT pass attention_mask to diffusion model for Flux2
+            # The zero-padded tokens don't contribute meaningfully to cross-attention
             cond_dict = {"pooled_output": pooled}
-            if pos_mask is not None:
-                cond_dict["attention_mask"] = pos_mask
             positive = [[hidden_states, cond_dict]]
             
             neg_cond_dict = {"pooled_output": neg_pooled}
-            if neg_mask is not None:
-                neg_cond_dict["attention_mask"] = neg_mask
             negative = [[neg_hidden, neg_cond_dict]]
             
             return positive, negative
@@ -680,7 +683,7 @@ class Flux2KleinModel(AbstractModel):
             if ctx.sampling.enable_multiscale:
                 logger.info("Multi-scale disabled: not compatible with Flux2 architecture")
             
-            # Run sampling with flux=True
+            # Run sampling with flux=True AND flux2=True for resolution-aware scheduler
             ksampler = sampling.KSampler()
             result = ksampler.sample(
                 seed=ctx.seed,
@@ -695,6 +698,7 @@ class Flux2KleinModel(AbstractModel):
                 negative=negative,
                 latent_image=latent,
                 flux=True,  # Enable Flux sampling mode
+                flux2=True,  # Enable Flux2-specific resolution-aware scheduler (matches ComfyUI Flux2Scheduler)
                 enable_multiscale=enable_multiscale,  # Force disabled for Flux2
                 multiscale_factor=ctx.sampling.multiscale_factor,
                 multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,

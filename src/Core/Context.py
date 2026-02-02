@@ -98,7 +98,8 @@ class Context:
     features: FeatureFlags = field(default_factory=FeatureFlags)
     
     # Runtime state
-    seed: int = field(default_factory=lambda: random.randint(1, 2**64))
+    # Note: PyTorch generators only support seeds up to 2**63 - 1
+    seed: int = field(default_factory=lambda: random.randint(1, 2**63 - 1))
     seeds: list[int] = field(default_factory=list)
     
     # Pipeline state (modified during execution)
@@ -136,7 +137,7 @@ class Context:
                 pass
             self.seeds = [self.seed] * total
         else:
-            self.seeds = [random.randint(1, 2**64) for _ in range(total)]
+            self.seeds = [random.randint(1, 2**63 - 1) for _ in range(total)]
             self.seed = self.seeds[0]
     
     def save_seed(self) -> None:

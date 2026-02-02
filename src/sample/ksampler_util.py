@@ -112,8 +112,73 @@ def beta_scheduler(model_sampling, steps, alpha=0.6, beta=0.6) -> torch.FloatTen
     return torch.cat([sigs, sigs.new_zeros([1])]).cpu().float()
 
 
-def calculate_sigmas(model_sampling, scheduler_name: str, steps: int) -> torch.Tensor:
-    """Calculate sigmas for scheduler."""
+def _compute_flux2_mu(image_seq_len: int, num_steps: int) -> float:
+    """Compute empirical mu for Flux2 scheduler (matches ComfyUI exactly).
+    
+    This resolution-dependent mu calculation is critical for Flux2 quality.
+    """
+    a1, b1 = 8.73809524e-05, 1.89833333
+    a2, b2 = 0.00016927, 0.45666666
+    
+    if image_seq_len > 4300:
+        return a2 * image_seq_len + b2
+    
+    m_200 = a2 * image_seq_len + b2
+    m_10 = a1 * image_seq_len + b1
+    a = (m_200 - m_10) / 190.0
+    b = m_200 - 200.0 * a
+    return a * num_steps + b
+
+
+def _flux2_time_shift(t: torch.Tensor, mu: float, sigma: float = 1.0) -> torch.Tensor:
+    """Generalized time SNR shift for Flux2 (matches ComfyUI exactly)."""
+    import math
+    return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+
+
+def flux2_scheduler(steps: int, width: int, height: int) -> torch.FloatTensor:
+    """Create Flux2 noise scheduler (matches ComfyUI Flux2Scheduler exactly).
+    
+    This scheduler dynamically computes mu based on image resolution and steps,
+    which is critical for Flux2 image quality.
+    
+    Args:
+        steps: Number of sampling steps
+        width: Image width in pixels  
+        height: Image height in pixels
+        
+    Returns:
+        Sigmas tensor of shape (steps + 1,) ending with 0
+    """
+    # Calculate sequence length (number of 16x16 patches)
+    seq_len = round((width * height) / (16 * 16))
+    
+    # Compute resolution/steps-dependent mu
+    mu = _compute_flux2_mu(seq_len, steps)
+    
+    # Create timesteps from 1 to 0 (inclusive)
+    timesteps = torch.linspace(1, 0, steps + 1)
+    
+    # Apply time shift - avoid division by zero at t=0
+    sigmas = torch.zeros_like(timesteps)
+    mask = timesteps > 0
+    sigmas[mask] = _flux2_time_shift(timesteps[mask], mu)
+    sigmas[~mask] = 0.0  # t=0 maps to sigma=0
+    
+    return sigmas.cpu().float()
+
+
+def calculate_sigmas(model_sampling, scheduler_name: str, steps: int, 
+                     width: int = None, height: int = None, is_flux2: bool = False) -> torch.Tensor:
+    """Calculate sigmas for scheduler.
+    
+    For Flux2 models, use the resolution-aware Flux2Scheduler when width/height are provided.
+    This matches ComfyUI's behavior and is critical for image quality.
+    """
+    # For Flux2 with resolution info, use the dedicated Flux2 scheduler (matches ComfyUI)
+    if is_flux2 and width is not None and height is not None:
+        return flux2_scheduler(steps, width, height)
+    
     if scheduler_name == "karras":
         return sampling_util.get_sigmas_karras(steps, float(model_sampling.sigma_min), float(model_sampling.sigma_max))
     elif scheduler_name == "normal":
@@ -137,7 +202,13 @@ def calculate_sigmas(model_sampling, scheduler_name: str, steps: int) -> torch.T
 
 def prepare_noise(latent_image: torch.Tensor, seed: int, noise_inds: list = None, 
                   seeds_per_sample: list | None = None) -> torch.Tensor:
-    """Prepare noise for latent image."""
+    """Prepare noise for latent image.
+    
+    NOTE: Noise is generated on CPU for reproducibility across devices (matching ComfyUI behavior).
+    Using a GPU generator produces different random values than CPU even with the same seed.
+    """
+    target_device = latent_image.device
+    
     if seeds_per_sample is not None:
         sps = np.array(seeds_per_sample)
         if sps.shape[0] != latent_image.size(0):
@@ -145,21 +216,25 @@ def prepare_noise(latent_image: torch.Tensor, seed: int, noise_inds: list = None
         unique_seeds, inverse = np.unique(sps, return_inverse=True)
         noises = []
         for us in unique_seeds:
-            g = torch.Generator()
+            g = torch.Generator(device="cpu")
             g.manual_seed(int(us))
+            # Generate on CPU for reproducibility, then move to target device
             noises.append(torch.randn([1] + list(latent_image.size())[1:], dtype=latent_image.dtype,
-                                      layout=latent_image.layout, generator=g, device=latent_image.device))
+                                      layout=latent_image.layout, generator=g, device="cpu").to(target_device))
         return torch.cat([noises[i] for i in inverse], axis=0)
 
-    generator = torch.manual_seed(seed)
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(seed)
+    
     if noise_inds is None:
+        # Generate on CPU for reproducibility (matches ComfyUI), then move to target device
         return torch.randn(latent_image.size(), dtype=latent_image.dtype, layout=latent_image.layout,
-                          generator=generator, device=latent_image.device)
+                          generator=generator, device="cpu").to(target_device)
 
     unique_inds, inverse = np.unique(noise_inds, return_inverse=True)
     noises = []
     for i in range(unique_inds[-1] + 1):
         noise = torch.randn([1] + list(latent_image.size())[1:], dtype=latent_image.dtype,
-                           layout=latent_image.layout, generator=generator, device=latent_image.device)
+                           layout=latent_image.layout, generator=generator, device="cpu").to(target_device)
         if i in unique_inds: noises.append(noise)
     return torch.cat([noises[i] for i in inverse], axis=0)
