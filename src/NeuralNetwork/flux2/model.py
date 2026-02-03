@@ -560,7 +560,7 @@ class Flux2(nn.Module):
             batch_size = x.shape[0]
             y = torch.zeros(batch_size, self.params.vec_in_dim, device=x.device, dtype=dtype)
         
-        # Guidance (not used in Klein)
+        # Guidance (not used in Klein, but layer exists?)
         guidance = kwargs.get("guidance")
         
         # Get attention mask for text conditioning (CRITICAL for padding masking)

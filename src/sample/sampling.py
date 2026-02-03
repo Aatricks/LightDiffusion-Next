@@ -415,6 +415,7 @@ class ModelSamplingFlux2(torch.nn.Module):
 
     def timestep(self, sigma):
         # Flux returns sigma directly as timestep (no multiplier)
+        # Shift is already applied in the scheduler (Flux2Scheduler)
         return sigma
 
     def sigma(self, timestep):

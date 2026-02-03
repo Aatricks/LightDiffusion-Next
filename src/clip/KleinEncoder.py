@@ -262,10 +262,10 @@ class Qwen3_4BModel(nn.Module):
         self,
         vocab_size: int = 151936,
         hidden_size: int = 2560,
-        intermediate_size: int = 9728,  # Qwen3 4B actual value
+        intermediate_size: int = 9728,  # Matches checkpoint
         num_hidden_layers: int = 36,
-        num_attention_heads: int = 32,
-        num_key_value_heads: int = 8,
+        num_attention_heads: int = 32,   # Matches checkpoint (4096/128)
+        num_key_value_heads: int = 8,    # Matches checkpoint (1024/128)
         head_dim: int = 128,
         max_position_embeddings: int = 32768,
         layer_indices: tuple = (9, 18, 27),  # Layers to extract embeddings from
@@ -360,19 +360,25 @@ class Qwen3_4BModel(nn.Module):
         layer_outputs = []
         
         for i, layer in enumerate(self.layers):
-            # Capture BEFORE the layer (input to layer i)
+            hidden_states = layer(hidden_states, final_mask, position_embeddings)
+            
+            # Capture AFTER the layer (output of layer i)
             if i in self.layer_indices:
                 layer_outputs.append(hidden_states.clone())
-            
-            hidden_states = layer(hidden_states, final_mask, position_embeddings)
         
         # Apply final norm
         hidden_states = self.norm(hidden_states)
         
-        # Concatenate layer outputs along feature dimension
-        # This gives us multi-scale features like in Klein
+        # Concatenate layer outputs matching ComfyUI's interleaving pattern
+        # This is critical for Flux2/Klein cross-attention
         if layer_outputs:
-            concatenated = torch.cat(layer_outputs, dim=-1)
+            # layer_outputs is a list of [B, L, D] tensors
+            # stack: (B, 3, L, D)
+            stacked = torch.stack(layer_outputs, dim=1)
+            # permute: (B, L, 3, D) - interleave the 3 layers at each sequence position
+            permuted = stacked.permute(0, 2, 1, 3)
+            # reshape: (B, L, 3*D)
+            concatenated = permuted.reshape(batch_size, seq_len, -1)
         else:
             concatenated = hidden_states
         
@@ -428,9 +434,8 @@ class KleinTokenizer:
         try:
             from transformers import Qwen2Tokenizer
             self._tokenizer = Qwen2Tokenizer.from_pretrained(tokenizer_path)
-            # CRITICAL: Use left padding for Qwen models with causal attention
-            # This ensures actual content comes last (where the model attends during generation)
-            self._tokenizer.padding_side = "left"
+            # Use right padding for content-first alignment, matching ComfyUI default
+            self._tokenizer.padding_side = "right"
             logger.info(f"Loaded Qwen2Tokenizer from {tokenizer_path}")
         except Exception as e:
             logger.error(f"Failed to load tokenizer: {e}")
@@ -453,22 +458,15 @@ class KleinTokenizer:
         # Apply template
         formatted_text = self.apply_template(text)
         
-        # Tokenize with the real tokenizer - NO PADDING (match ComfyUI)
-        # ComfyUI uses pad_to_max_length=False, so we don't pad
+        # Tokenize with the real tokenizer - pad to min_length (512)
+        # Matches ComfyUI Qwen3Tokenizer behavior
         encoded = self._tokenizer(
             formatted_text,
-            padding=False,  # NO PADDING - let sequences be natural length
+            padding="max_length",
+            max_length=self.min_length,
             truncation=True,
             return_tensors="pt",
         )
-        
-        # Pad to minimum length if needed (ComfyUI uses min_length=512)
-        seq_len = encoded["input_ids"].shape[1]
-        if seq_len < self.min_length:
-            # Pad with pad_token_id at the END (right padding for content-first)
-            # Note: ComfyUI actually doesn't pad at all, they just pass the raw tokens
-            # But the model might need consistent lengths, so we pad minimally
-            pass  # Actually, don't pad - let it be natural length
         
         result = {
             "input_ids": encoded["input_ids"],

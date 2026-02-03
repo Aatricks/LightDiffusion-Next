@@ -623,40 +623,14 @@ class Flux2KleinModel(AbstractModel):
             neg_tokens = self.clip.tokenizer.tokenize_with_weights(neg_prompt)
             neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
             
-            # CRITICAL: ComfyUI LEFT-PADS text embeddings to 512 tokens (Flux2.extra_conds)
-            # This is essential for matching image quality because the model expects
-            # a fixed sequence length for positional encoding
-            target_text_len = 512
-            
-            # Left-pad positive embeddings (pad at START with zeros)
-            pos_len = hidden_states.shape[1]
-            if pos_len < target_text_len:
-                # F.pad format: (left_dim_n, right_dim_n, left_dim_n-1, right_dim_n-1, ...)
-                # For [B, L, D]: (0, 0, target-L, 0) = pad sequence dim at start
-                pad_size = target_text_len - pos_len
-                hidden_states = torch.nn.functional.pad(hidden_states, (0, 0, pad_size, 0), value=0)
-                logger.debug(f"Left-padded positive from {pos_len} to {target_text_len} tokens")
-            
-            # Left-pad negative embeddings  
-            neg_len = neg_hidden.shape[1]
-            if neg_len < target_text_len:
-                pad_size = target_text_len - neg_len
-                neg_hidden = torch.nn.functional.pad(neg_hidden, (0, 0, pad_size, 0), value=0)
-                logger.debug(f"Left-padded negative from {neg_len} to {target_text_len} tokens")
-            
+            # Embeddings are already padded to 512 tokens by the tokenizer
             # Format as conditioning
             # Note: ComfyUI does NOT pass attention_mask to diffusion model for Flux2
             # The zero-padded tokens don't contribute meaningfully to cross-attention
             cond_dict = {"pooled_output": pooled}
-            if "attention_mask" in extra:
-                cond_dict["attention_mask"] = extra["attention_mask"]
-                
             positive = [[hidden_states, cond_dict]]
             
             neg_cond_dict = {"pooled_output": neg_pooled}
-            if "attention_mask" in neg_extra:
-                neg_cond_dict["attention_mask"] = neg_extra["attention_mask"]
-                
             negative = [[neg_hidden, neg_cond_dict]]
             
             return positive, negative
