@@ -241,6 +241,9 @@ class Flux2KleinModel(AbstractModel):
         params = Flux2Params(**config)
         model = Flux2(params=params, dtype=dtype, device="cpu")
         
+        # Attach config for compatibility
+        model.model_config = self._create_model_config()
+        
         # Load weights
         missing, unexpected = model.load_state_dict(sd, strict=False)
         if missing:
@@ -669,10 +672,7 @@ class Flux2KleinModel(AbstractModel):
         if not self._loaded:
             raise RuntimeError("Model must be loaded before generating")
         
-        # Log recommendation if steps are high for this distilled model
-        if ctx.sampling.steps > 8:
-            logger.info(f"Tip: Flux2 Klein is a distilled model and works best with 4-6 steps. "
-                       f"You are currently using {ctx.sampling.steps} steps.")
+        # Log recommendation if CFG is high for this distilled model
         if ctx.sampling.cfg > 2.0:
             logger.info(f"Tip: Flux2 Klein works best with CFG 1.0. "
                        f"You are currently using CFG {ctx.sampling.cfg}.")
@@ -736,7 +736,7 @@ class Flux2KleinModel(AbstractModel):
     def _create_flux2_latent(self, width: int, height: int, batch_size: int) -> dict:
         """Create an empty latent tensor for Flux2.
         
-        Flux2 uses variable latent channels based on model config.
+        Flux2 uses 32-channel VAE-shaped latents in the pipeline.
         
         Args:
             width: Image width
@@ -746,18 +746,13 @@ class Flux2KleinModel(AbstractModel):
         Returns:
             Dict with 'samples' key containing latent tensor
         """
-        # Use detected in_channels or default
-        in_channels = 64
-        if self._raw_model is not None and hasattr(self._raw_model, 'in_channels'):
-            in_channels = self._raw_model.in_channels
-        
-        # Flux2 uses 16x downscaling 
-        latent_height = height // 16
-        latent_width = width // 16
+        # Flux VAE uses 8x downscaling 
+        latent_height = height // 8
+        latent_width = width // 8
         
         latent = torch.zeros(
             batch_size,
-            in_channels,
+            32,
             latent_height,
             latent_width,
             dtype=torch.float32,
@@ -767,11 +762,6 @@ class Flux2KleinModel(AbstractModel):
     
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode latents to pixel space using the VAE.
-        
-        Following ComfyUI's approach:
-        - Unpatchify 128-channel patchified latent to 32-channel VAE format
-        - Use process_latent_out to undo scale/shift from sampling
-        - Decode with VAE (flux=False for standard post_quant_conv path)
         
         Args:
             latents: Latent tensor or dict with 'samples' key
@@ -789,12 +779,8 @@ class Flux2KleinModel(AbstractModel):
             else:
                 samples_tensor = latents
             
-            # Flux2 latent is patchified: [B, 128, H/16, W/16]
-            # VAE expects: [B, 32, H/8, W/8]
-            # Use the Flux2 latent format's unpatchify_for_vae method
+            # Use the Flux2 latent format
             flux2_latent_format = self.get_model_object("latent_format")
-            samples_tensor = flux2_latent_format.unpatchify_for_vae(samples_tensor)
-            logger.info(f"Unpatchified latent shape: {samples_tensor.shape}")
             
             # Apply process_latent_out (undo scale/shift from sampling)
             # For Flux2, this is identity (no scale/shift)
@@ -805,7 +791,6 @@ class Flux2KleinModel(AbstractModel):
             result = decoder.decode(
                 vae=self.vae,
                 samples={"samples": samples_tensor},
-                flux=self.vae.flux if hasattr(self.vae, "flux") else False,
             )
             
             return result[0]

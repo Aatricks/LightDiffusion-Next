@@ -76,14 +76,22 @@ def process_images(p, pipeline=False):
     (latent,) = VariationalAE.VAEEncode().encode(p.vae, batched_tiles)
     
     # Auto-detect Flux for disabling multi-scale and setting correct flags
-    model_sampling_obj = getattr(p.model.get_model_object("model"), "model_sampling", None)
+    model_sampling_obj = p.model.get_model_object("model_sampling")
     from src.sample.sampling import ModelSamplingFlux, ModelSamplingFlux2
     is_flux = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
     is_flux2 = isinstance(model_sampling_obj, ModelSamplingFlux2)
 
+    # Pass crop offsets for positional embedding coherence (Critical for Flux/DiT)
+    model_options = p.model.model_options.copy()
+    transformer_options = model_options.get("transformer_options", {}).copy()
+    transformer_options["top"] = y1
+    transformer_options["left"] = x1
+    model_options["transformer_options"] = transformer_options
+
     (samples,) = sampling.common_ksampler(p.model, p.seed, p.steps, p.cfg, p.sampler_name, p.scheduler,
                                           positive_cropped, negative_cropped, latent, denoise=p.denoise, 
-                                          pipeline=pipeline, flux=is_flux, flux2=is_flux2)
+                                          pipeline=pipeline, flux=is_flux, flux2=is_flux2,
+                                          model_options=model_options)
     (decoded,) = VariationalAE.VAEDecode().decode(p.vae, samples)
 
     for i, tile_sampled in enumerate([image_util.tensor_to_pil(decoded, j) for j in range(len(decoded))]):

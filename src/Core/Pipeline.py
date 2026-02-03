@@ -151,8 +151,8 @@ class Pipeline:
         model = self._load_model(ctx)
         self._apply_optimizations(ctx, model)
         
-        # Higher LoRA strength for img2img
-        if self.default_lora:
+        # Higher LoRA strength for img2img - only if supported
+        if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
             try:
                 model.apply_lora(self.default_lora[0], 2.0, 2.0)
             except Exception as e:

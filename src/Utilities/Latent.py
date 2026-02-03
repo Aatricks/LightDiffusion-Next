@@ -121,15 +121,15 @@ class Flux2(LatentFormat):
     """Flux2 (Klein) latent format.
     
     Following ComfyUI's approach:
-    - latent_channels = 128 (patchified: 32 VAE channels * 2*2 patch)
-    - spacial_downscale_ratio = 16
-    - No scale/shift (process_in/out are identity)
+    - VAE shape: 32 channels, 8x downscale
+    - Transformer shape: 128 channels, 16x downscale
     
-    For VAE decode: Need to unpatchify 128ch 16x -> 32ch 8x
+    The pipeline works with VAE shape (32ch 8x). 
+    Conversion to Transformer shape is handled internally by the model forward pass.
     """
-    latent_channels = 128
-    downscale_factor = 16
-    spacial_downscale_ratio = 16
+    latent_channels = 32
+    downscale_factor = 8
+    spacial_downscale_ratio = 8
 
     def __init__(self):
         # No scale/shift for Flux2 (identity transform)

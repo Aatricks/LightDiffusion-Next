@@ -204,6 +204,7 @@ class VAE:
         self.process_input = lambda img: img * 2.0 - 1.0
         self.process_output = lambda img: torch.clamp((img + 1.0) / 2.0, 0.0, 1.0)
         self.working_dtypes = [torch.bfloat16, torch.float32]
+        self.flux = flux
 
         if config is None and sd and "decoder.conv_in.weight" in sd:
             ddconfig = {"double_z": True, "z_channels": 4, "resolution": 256, "in_channels": 3,
@@ -232,7 +233,9 @@ class VAE:
         self.output_device = Device.intermediate_device()
         self.patcher = ModelPatcher.ModelPatcher(self.first_stage_model, self.device, Device.vae_offload_device())
 
-    def decode(self, samples_in, flux=False):
+    def decode(self, samples_in, flux=None):
+        if flux is None:
+            flux = self.flux
         memory_used = self.memory_used_decode(samples_in.shape, self.vae_dtype)
         if memory_used > Device.get_free_memory(self.device) * 0.8:
             return self.decode_tiled(samples_in, flux=flux)
@@ -246,13 +249,17 @@ class VAE:
             out[i:i+batch] = self.process_output(self.first_stage_model.decode(s, flux=flux).to(self.output_device).float())
         return out.movedim(1, -1)
 
-    def decode_tiled(self, samples, tile_x=64, tile_y=64, overlap=16, flux=False):
+    def decode_tiled(self, samples, tile_x=64, tile_y=64, overlap=16, flux=None):
+        if flux is None:
+            flux = self.flux
         Device.load_models_gpu([self.patcher])
         decode_fn = lambda s: self.first_stage_model.decode(s.to(self.device).to(self.vae_dtype), flux=flux).float()
         return self.process_output(util.tiled_scale(samples, decode_fn, tile_x, tile_y, overlap,
                                                      self.upscale_ratio, 3, self.output_device)).movedim(1, -1)
 
-    def encode(self, pixel_samples, flux=False):
+    def encode(self, pixel_samples, flux=None):
+        if flux is None:
+            flux = self.flux
         pixel_samples = pixel_samples.movedim(-1, 1)
         memory_used = self.memory_used_encode(pixel_samples.shape, self.vae_dtype)
         if memory_used > Device.get_free_memory(self.device) * 0.8:
@@ -268,7 +275,9 @@ class VAE:
             out[i:i+batch] = self.first_stage_model.encode(p, flux=flux).to(self.output_device).float()
         return out
 
-    def encode_tiled(self, pixel_samples, tile_x=512, tile_y=512, overlap=64, flux=False):
+    def encode_tiled(self, pixel_samples, tile_x=512, tile_y=512, overlap=64, flux=None):
+        if flux is None:
+            flux = self.flux
         Device.load_models_gpu([self.patcher])
         encode_fn = lambda s: self.first_stage_model.encode(self.process_input(s).to(self.device).to(self.vae_dtype), flux=flux).float()
         return util.tiled_scale(pixel_samples, encode_fn, tile_x, tile_y, overlap,

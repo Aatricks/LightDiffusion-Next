@@ -79,6 +79,16 @@ class Flux2Params:
     txt_norm: bool = False  # Flux2/Klein may use text normalization
 
 
+class RMSNorm(nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6, dtype=None, device=None):
+        super().__init__()
+        self.eps = eps
+        self.scale = nn.Parameter(torch.ones(dim, dtype=dtype, device=device))
+
+    def forward(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.scale
+
+
 class Flux2(nn.Module):
     """Flux2 transformer model for image generation.
     
@@ -297,10 +307,21 @@ class Flux2(nn.Module):
         patches_replace = transformer_options.get("patches_replace", {})
         initial_shape = img.shape
         
+        # Track if we converted from VAE format (32ch 8x -> 128ch 16x)
+        converted_from_vae = False
+        
         # Handle input dimensions
         if img.ndim == 4:
-            # Input is [B, C, H, W] - need to pad and patchify
+            # Input is [B, C, H, W]
             b, c, h_orig, w_orig = img.shape
+            
+            # Auto-convert from VAE format if needed
+            if c == 32 and self.in_channels == 128:
+                img = self.latent_format.patchify_from_vae(img)
+                converted_from_vae = True
+                b, c, h, w = img.shape
+            else:
+                h, w = h_orig, w_orig
             
             # Pad to patch size (matches ComfyUI's pad_to_patch_size)
             img = self._pad_to_patch_size(img, self.patch_size)
@@ -310,13 +331,21 @@ class Flux2(nn.Module):
         else:
             # Assume already patchified [B, L, C]
             b = img.shape[0]
+            # Approximate H, W for img_ids
             h = w = int(math.sqrt(img.shape[1] * self.patch_size * self.patch_size / self.in_channels))
-            h_orig = w_orig = h  # No cropping needed if pre-patchified
+            h_orig = w_orig = h
         
         # Create position IDs for RoPE (number of axes matches axes_dim)
         # CRITICAL: Position IDs must ALWAYS be float32 for precision (matches ComfyUI)
         num_axes = len(self.params.axes_dim)
-        img_ids = self._create_img_ids(b, h, w, img.device, torch.float32, num_axes)
+        
+        # Support positional offsets for tiling (from UltimateSDUpscale)
+        # Offsets are provided in pixels, convert to latent patches
+        offset_y = transformer_options.get("top", 0) // 16
+        offset_x = transformer_options.get("left", 0) // 16
+        
+        img_ids = self._create_img_ids(b, h, w, img.device, torch.float32, num_axes, 
+                                       offset_y=offset_y, offset_x=offset_x)
         
         # Create text position IDs - CRITICAL: text tokens need positional IDs in txt_ids_dims
         txt_ids = torch.zeros(b, txt.shape[1], num_axes, device=txt.device, dtype=torch.float32)
@@ -395,8 +424,13 @@ class Flux2(nn.Module):
         # Unpatchify back to image shape
         img = self._unpatchify(img, h // self.patch_size, w // self.patch_size)
         
-        # Crop back to original size (remove padding - matches ComfyUI)
-        img = img[:, :, :h_orig, :w_orig]
+        # If we converted from VAE format, convert back
+        if converted_from_vae:
+            img = self.latent_format.unpatchify_for_vae(img)
+            img = img[:, :, :initial_shape[2], :initial_shape[3]]
+        else:
+            # Crop back to original size (remove padding - matches ComfyUI)
+            img = img[:, :, :h_orig, :w_orig]
         
         return img
 
@@ -459,7 +493,8 @@ class Flux2(nn.Module):
         x = rearrange(x, "b (h w) (c p1 p2) -> b c (h p1) (w p2)", h=h, w=w, p1=p, p2=p, c=c)
         return x
 
-    def _create_img_ids(self, batch: int, h: int, w: int, device, dtype, num_axes: int = 3) -> torch.Tensor:
+    def _create_img_ids(self, batch: int, h: int, w: int, device, dtype, num_axes: int = 3, 
+                        offset_y: int = 0, offset_x: int = 0) -> torch.Tensor:
         """Create image position IDs for RoPE.
         
         Matches ComfyUI's img_ids creation exactly for numerical precision.
@@ -471,18 +506,17 @@ class Flux2(nn.Module):
         nh = h // self.patch_size
         nw = w // self.patch_size
         
-        # ComfyUI uses linspace instead of arange, and always float32
         # Create img_ids matching ComfyUI's format: [h, w, num_axes] then reshape
         img_ids = torch.zeros((nh, nw, num_axes), device=device, dtype=torch.float32)
         
         # Axis 0: index (time/frame), always 0 for single images (like ComfyUI)
-        img_ids[:, :, 0] = img_ids[:, :, 1] + 0
+        img_ids[:, :, 0] = 0
 
-        # Axis 1: row position using linspace (matches ComfyUI exactly)
-        img_ids[:, :, 1] = torch.linspace(0, nh - 1, steps=nh, device=device, dtype=torch.float32).unsqueeze(1)
+        # Axis 1: row position using linspace (matches ComfyUI exactly) + offset
+        img_ids[:, :, 1] = torch.linspace(offset_y, offset_y + nh - 1, steps=nh, device=device, dtype=torch.float32).unsqueeze(1)
         
-        # Axis 2: col position using linspace (matches ComfyUI exactly)
-        img_ids[:, :, 2] = torch.linspace(0, nw - 1, steps=nw, device=device, dtype=torch.float32).unsqueeze(0)
+        # Axis 2: col position using linspace (matches ComfyUI exactly) + offset
+        img_ids[:, :, 2] = torch.linspace(offset_x, offset_x + nw - 1, steps=nw, device=device, dtype=torch.float32).unsqueeze(0)
         
         # Additional axes are zeros (for Flux2 which has 4 axes)
         # Already initialized to zeros
@@ -554,14 +588,13 @@ class Flux2(nn.Module):
             y = y.to(dtype, non_blocking=True)
         else:
             # Create dummy pooled if not provided
-            if self.params.use_vector_in:
-                # Use print/logging appropriately or just warn
-                pass 
             batch_size = x.shape[0]
             y = torch.zeros(batch_size, self.params.vec_in_dim, device=x.device, dtype=dtype)
         
-        # Guidance (not used in Klein, but layer exists?)
+        # Guidance (Inject default 3.5 for Flux if missing)
         guidance = kwargs.get("guidance")
+        if guidance is None and self.guidance_embed:
+            guidance = torch.full((x.shape[0],), 3.5, device=x.device, dtype=dtype)
         
         # Get attention mask for text conditioning (CRITICAL for padding masking)
         attention_mask = kwargs.get("attention_mask")

@@ -333,7 +333,8 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
             enable_multiscale=True, multiscale_factor=0.5, multiscale_fullres_start=3, multiscale_fullres_end=8,
             multiscale_intermittent_fullres=False, cfg_free_enabled=False, cfg_free_start_percent=70.0,
             batched_cfg=True, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance", dynamic_cfg_percentile=95,
-            dynamic_cfg_target_scale=1.0, adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
+            dynamic_cfg_target_scale=1.0, adaptive_noise_enabled=False, adaptive_noise_method="complexity",
+            model_options=None):
     
     # Auto-detect Flux/Flux2 to disable multi-scale (DiT architecture compatibility)
     model_sampling_obj = getattr(model.model, "model_sampling", None)
@@ -377,8 +378,11 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
     if start_step is not None and start_step < len(sigmas) - 1:
         sigmas = sigmas[start_step:]
 
+    # Use provided model_options or default to model's own
+    m_opts = model_options if model_options is not None else model.model_options
+
     samples = sample(model, noise, positive, negative, cfg, model.load_device, sampler_obj, sigmas.to(model.load_device),
-                     model.model_options, latent_image=latent_image, denoise_mask=noise_mask, callback=callback,
+                     m_opts, latent_image=latent_image, denoise_mask=noise_mask, callback=callback,
                      disable_pbar=disable_pbar, seed=seed, pipeline=pipeline, flux=flux or flux2,
                      cfg_free_enabled=cfg_free_enabled, cfg_free_start_percent=cfg_free_start_percent,
                      batched_cfg=batched_cfg, dynamic_cfg_rescaling=dynamic_cfg_rescaling,
@@ -466,7 +470,7 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
                     multiscale_fullres_end=8, multiscale_intermittent_fullres=False, cfg_free_enabled=False,
                     cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                     dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
-                    adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
+                    adaptive_noise_enabled=False, adaptive_noise_method="complexity", model_options=None):
     
     # Auto-detect Flux/Flux2 to disable multi-scale
     model_sampling_obj = getattr(model.model, "model_sampling", None)
@@ -488,7 +492,8 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
                       cfg_free_start_percent=cfg_free_start_percent, batched_cfg=batched_cfg,
                       dynamic_cfg_rescaling=dynamic_cfg_rescaling, dynamic_cfg_method=dynamic_cfg_method,
                       dynamic_cfg_percentile=dynamic_cfg_percentile, dynamic_cfg_target_scale=dynamic_cfg_target_scale,
-                      adaptive_noise_enabled=adaptive_noise_enabled, adaptive_noise_method=adaptive_noise_method)
+                      adaptive_noise_enabled=adaptive_noise_enabled, adaptive_noise_method=adaptive_noise_method,
+                      model_options=model_options)
     out = latent.copy()
     out["samples"] = samples
     return (out,)
