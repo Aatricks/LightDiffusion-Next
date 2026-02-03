@@ -76,6 +76,7 @@ class Flux2Params:
     patch_size: int = 1  # CRITICAL: Flux2 uses patch_size=1
     use_vector_in: bool = False  # Flux2/Klein doesn't use pooled conditioning
     txt_ids_dims: tuple[int, ...] = (3,)  # Flux2/Klein: text gets position IDs in axis 3
+    txt_norm: bool = False  # Flux2/Klein may use text normalization
 
 
 class Flux2(nn.Module):
@@ -149,6 +150,11 @@ class Flux2(nn.Module):
             dtype=dtype,
             device=device
         )
+
+        if params.txt_norm:
+            self.txt_norm = RMSNorm(params.context_in_dim, dtype=dtype, device=device)
+        else:
+            self.txt_norm = None
         
         # Time/vector embedding
         self.time_in = MLPEmbedder(
@@ -325,6 +331,10 @@ class Flux2(nn.Module):
         
         # Embed inputs
         img = self.img_in(img)
+        
+        # Apply text norm if enabled (matches ComfyUI)
+        if self.txt_norm is not None:
+            txt = self.txt_norm(txt)
         txt = self.txt_in(txt)
         
         # Time embedding
@@ -466,8 +476,8 @@ class Flux2(nn.Module):
         img_ids = torch.zeros((nh, nw, num_axes), device=device, dtype=torch.float32)
         
         # Axis 0: index (time/frame), always 0 for single images (like ComfyUI)
-        img_ids[:, :, 0] = 0
-        
+        img_ids[:, :, 0] = img_ids[:, :, 1] + 0
+
         # Axis 1: row position using linspace (matches ComfyUI exactly)
         img_ids[:, :, 1] = torch.linspace(0, nh - 1, steps=nh, device=device, dtype=torch.float32).unsqueeze(1)
         
@@ -537,10 +547,16 @@ class Flux2(nn.Module):
         
         # Get pooled text embedding
         y = kwargs.get("y")
+        if y is None:
+            y = kwargs.get("pooled_output")
+            
         if y is not None:
             y = y.to(dtype, non_blocking=True)
         else:
             # Create dummy pooled if not provided
+            if self.params.use_vector_in:
+                # Use print/logging appropriately or just warn
+                pass 
             batch_size = x.shape[0]
             y = torch.zeros(batch_size, self.params.vec_in_dim, device=x.device, dtype=dtype)
         

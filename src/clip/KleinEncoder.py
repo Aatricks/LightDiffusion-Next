@@ -379,7 +379,7 @@ class Qwen3_4BModel(nn.Module):
         return {
             "last_hidden_state": hidden_states,
             "hidden_states": concatenated,
-            "pooled_output": hidden_states[:, -1, :],  # Use last token as pooled
+            "pooled_output": None,  # Match ComfyUI: No pooling for Qwen -> Flux2 uses zeros
         }
 
 
@@ -563,7 +563,8 @@ class KleinCLIP:
             
             # Return concatenated hidden states, pooled output, and extra with attention_mask
             hidden_states = outputs["hidden_states"].clone()  # Clone to keep on GPU
-            pooled = outputs["pooled_output"].clone()  # Clone to keep on GPU
+            pooled_out = outputs["pooled_output"]
+            pooled = pooled_out.clone() if pooled_out is not None else None  # Clone if exists
         finally:
             # Offload model back to CPU to free VRAM for diffusion model
             logger.info(f"Offloading text encoder to {self.offload_device}...")

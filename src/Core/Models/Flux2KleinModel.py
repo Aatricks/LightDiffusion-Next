@@ -381,10 +381,17 @@ class Flux2KleinModel(AbstractModel):
         # Detect vec_in_dim from vector_in
         if "vector_in.in_layer.weight" in sd:
             config["vec_in_dim"] = sd["vector_in.in_layer.weight"].shape[1]
+            config["use_vector_in"] = True  # Enable vector_in if weights exist
+            logger.info(f"Detected vector_in with dim {config['vec_in_dim']}")
         
         # Detect guidance embedding
         if any("guidance_in" in k for k in sd.keys()):
             config["guidance_embed"] = True
+            
+        # Detect txt_norm (critical for some Flux2 variants)
+        if any("txt_norm.scale" in k for k in sd.keys()):
+            config["txt_norm"] = True
+            logger.info("Detected txt_norm in model weights")
         
         logger.info(f"Detected Flux2 config: depth={config['depth']}, "
                    f"single_blocks={config['depth_single_blocks']}, "
@@ -470,16 +477,22 @@ class Flux2KleinModel(AbstractModel):
             sd = self._convert_diffusers_vae(sd)
         
         # Log VAE structure
+        is_flux_vae = False
         if 'decoder.conv_in.weight' in sd:
             z_ch = sd['decoder.conv_in.weight'].shape[1]
             logger.info(f"VAE z_channels: {z_ch}")
+        
         if 'post_quant_conv.weight' in sd:
             embed_dim = sd['post_quant_conv.weight'].shape[1]
-            logger.info(f"VAE embed_dim: {embed_dim}")
+            logger.info(f"VAE embed_dim: {embed_dim} (Standard VAE)")
+            is_flux_vae = False
+        else:
+            logger.info("VAE missing post_quant_conv (Flux VAE)")
+            is_flux_vae = True
         
         # Create VAE using native implementation
-        # flux=False because Flux2 VAE uses standard post_quant_conv/quant_conv structure
-        vae = VariationalAE.VAE(sd=sd, flux=False)
+        # Set flux=True if it's a Flux VAE (skips post_quant_conv)
+        vae = VariationalAE.VAE(sd=sd, flux=is_flux_vae)
         
         return vae
     
@@ -554,7 +567,7 @@ class Flux2KleinModel(AbstractModel):
             sampling_settings = {
                 "shift": 2.02,  # Flux2 default shift (different from Flux1's 1.15)
             }
-            latent_format = Flux2LatentFormat()
+            latent_format = Latent.Flux2()
         
         return Flux2KleinConfig()
     
@@ -635,9 +648,15 @@ class Flux2KleinModel(AbstractModel):
             # Note: ComfyUI does NOT pass attention_mask to diffusion model for Flux2
             # The zero-padded tokens don't contribute meaningfully to cross-attention
             cond_dict = {"pooled_output": pooled}
+            if "attention_mask" in extra:
+                cond_dict["attention_mask"] = extra["attention_mask"]
+                
             positive = [[hidden_states, cond_dict]]
             
             neg_cond_dict = {"pooled_output": neg_pooled}
+            if "attention_mask" in neg_extra:
+                neg_cond_dict["attention_mask"] = neg_extra["attention_mask"]
+                
             negative = [[neg_hidden, neg_cond_dict]]
             
             return positive, negative
@@ -788,12 +807,12 @@ class Flux2KleinModel(AbstractModel):
             # For Flux2, this is identity (no scale/shift)
             samples_tensor = flux2_latent_format.process_out(samples_tensor)
             
-            # Decode with VAE (flux=False for standard post_quant_conv structure)
+            # Decode with VAE
             decoder = VariationalAE.VAEDecode()
             result = decoder.decode(
                 vae=self.vae,
                 samples={"samples": samples_tensor},
-                flux=False,  # Use standard post_quant_conv path
+                flux=self.vae.flux if hasattr(self.vae, "flux") else False,
             )
             
             return result[0]
@@ -841,57 +860,4 @@ class Flux2KleinModel(AbstractModel):
         return self
 
 
-class Flux2LatentFormat:
-    """Latent format specification for Flux2 models.
-    
-    IMPORTANT: Unlike Flux1 which applies scale/shift to latents,
-    Flux2 uses IDENTITY transforms - no scaling or shifting.
-    This matches ComfyUI's implementation in latent_formats.py.
-    """
-    
-    latent_channels = 32  # Flux2 uses 32 channels (not 64)
-    latent_rgb_factors = [
-        # RGB mapping factors for preview generation (from ComfyUI Flux2)
-        [0.0036, -0.0159, 0.0113],
-        [0.0115, -0.0065, 0.0018],
-        [0.0109, -0.0098, -0.0021],
-        [0.0023, -0.0017, -0.0036],
-    ]
-    
-    def __init__(self):
-        # Flux2 uses identity transform (no scale/shift)
-        # This is different from Flux1 which uses scale_factor=0.3611, shift_factor=0.1159
-        self.scale_factor = 1.0
-        self.shift_factor = 0.0
-    
-    def process_in(self, latent: torch.Tensor) -> torch.Tensor:
-        """Process latent input for the model - identity for Flux2."""
-        return latent
-    
-    def process_out(self, latent: torch.Tensor) -> torch.Tensor:
-        """Process latent output from the model - identity for Flux2."""
-        return latent
 
-
-def detect_flux2_klein(state_dict_keys: set) -> bool:
-    """Detect if a checkpoint is a Flux2 Klein model.
-    
-    Args:
-        state_dict_keys: Set of keys from the state dict
-        
-    Returns:
-        True if this is a Flux2 Klein checkpoint
-    """
-    flux2_indicators = [
-        "double_stream_modulation",
-        "double_blocks.0.img_mod",
-        "single_blocks.0.modulation",
-        "img_in.weight",
-    ]
-    
-    for indicator in flux2_indicators:
-        for key in state_dict_keys:
-            if indicator in key:
-                return True
-    
-    return False
