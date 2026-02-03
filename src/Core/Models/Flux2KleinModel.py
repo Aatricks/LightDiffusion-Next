@@ -273,10 +273,10 @@ class Flux2KleinModel(AbstractModel):
                 "context_in_dim": 7680,  # Klein uses concatenated multi-layer output
                 "hidden_size": 3072,
                 "mlp_ratio": 3.0,  # Klein uses 3.0 with gated MLP
-                "num_heads": 48,  # Flux2 uses 48 heads (hidden/axes_sum = 3072/64)
+                "num_heads": 24,  # Flux2: hidden_size/sum(axes_dim) = 3072/128 = 24
                 "depth": 19,
                 "depth_single_blocks": 38,
-                "axes_dim": [32, 32, 32, 32],  # Flux2 specific
+                "axes_dim": [32, 32, 32, 32],  # Flux2 specific - sum=128
                 "theta": 2000,  # Flux2 uses lower theta
                 "qkv_bias": False,
                 "guidance_embed": False,

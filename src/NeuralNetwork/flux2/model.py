@@ -62,10 +62,10 @@ class Flux2Params:
     context_in_dim: int = 7680
     hidden_size: int = 3072
     mlp_ratio: float = 4.0
-    num_heads: int = 48  # Flux2 default (hidden/axes_sum = 3072/64)
+    num_heads: int = 24  # Flux2 default: hidden_size/sum(axes_dim) = 3072/128 = 24
     depth: int = 19
     depth_single_blocks: int = 38
-    axes_dim: tuple[int, ...] = (32, 32, 32, 32)  # Flux2 default
+    axes_dim: tuple[int, ...] = (32, 32, 32, 32)  # Flux2 default - sum=128
     theta: int = 2000  # Flux2 default
     qkv_bias: bool = False  # Flux2 default
     guidance_embed: bool = False
@@ -95,6 +95,22 @@ class Flux2(nn.Module):
         
         if operations is None:
             operations = get_ops()
+        
+        # Validation: hidden_size must be divisible by num_heads (ComfyUI check)
+        if params.hidden_size % params.num_heads != 0:
+            raise ValueError(
+                f"Hidden size {params.hidden_size} must be divisible by num_heads {params.num_heads}"
+            )
+        
+        # Validation: pe_dim must equal sum(axes_dim) for RoPE to work correctly
+        pe_dim = params.hidden_size // params.num_heads
+        axes_sum = sum(params.axes_dim)
+        if axes_sum != pe_dim:
+            raise ValueError(
+                f"sum(axes_dim)={axes_sum} must equal hidden_size/num_heads={pe_dim}. "
+                f"For hidden_size={params.hidden_size}, axes_dim={params.axes_dim}, "
+                f"num_heads should be {params.hidden_size // axes_sum}"
+            )
         
         self.dtype = dtype
         self.in_channels = params.in_channels
@@ -342,6 +358,10 @@ class Flux2(nn.Module):
                 if control_out_i is not None:
                     img = img + control_out_i
         
+        # Handle fp16 numerical issues (matches ComfyUI exactly)
+        if img.dtype == torch.float16:
+            img = torch.nan_to_num(img, nan=0.0, posinf=65504, neginf=-65504)
+        
         # Merge streams
         x = torch.cat((txt, img), dim=1)
         
@@ -581,10 +601,10 @@ def get_flux2_klein_params() -> Flux2Params:
         context_in_dim=7680,       # From Klein/Qwen3 text encoder (3 layers × 2560)
         hidden_size=3072,          # Model hidden size
         mlp_ratio=3.0,             # Different from standard (4.0)
-        num_heads=48,              # Different from standard (24)
-        depth=19,                  # Same as standard Flux
-        depth_single_blocks=38,    # Same as standard Flux
-        axes_dim=(32, 32, 32, 32), # Different from standard (16, 56, 56)
+        num_heads=24,              # hidden_size/sum(axes_dim) = 3072/128 = 24
+        depth=5,                   # Klein 4B has 5 double blocks (NOT 19!)
+        depth_single_blocks=20,    # Klein 4B has 20 single blocks (NOT 38!)
+        axes_dim=(32, 32, 32, 32), # Different from standard (16, 56, 56) - sum=128
         theta=2000,                # Different from standard (10000)
         qkv_bias=False,            # Different from standard (True)
         guidance_embed=False,      # No guidance embedding needed

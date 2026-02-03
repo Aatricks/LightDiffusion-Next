@@ -169,16 +169,16 @@ class Flux2(LatentFormat):
     def unpatchify_for_vae(self, latent: torch.Tensor) -> torch.Tensor:
         """Convert patchified latent (128ch 16x) to VAE format (32ch 8x).
         
+        Matches ComfyUI's latent_rgb_factors_reshape exactly.
+        
         Args:
             latent: [B, 128, H/16, W/16] patchified latent
             
         Returns:
             [B, 32, H/8, W/8] VAE-compatible latent
         """
-        # Reshape: 128 channels -> 32 channels * 2*2 patches
-        # [B, 128, h, w] -> [B, 32, 2, 2, h, w] -> [B, 32, h*2, w*2]
+        # Match ComfyUI exactly: t.reshape(b, 32, 2, 2, h, w).permute(0, 1, 4, 2, 5, 3).reshape(b, 32, h*2, w*2)
         b, c, h, w = latent.shape
-        latent = latent.reshape(b, 32, 4, h, w)
         latent = latent.reshape(b, 32, 2, 2, h, w)
         latent = latent.permute(0, 1, 4, 2, 5, 3)  # [B, 32, h, 2, w, 2]
         latent = latent.reshape(b, 32, h * 2, w * 2)

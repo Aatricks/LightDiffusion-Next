@@ -29,20 +29,30 @@ def get_ops():
 
 
 class RMSNorm(nn.Module):
-    """Root Mean Square Layer Normalization."""
+    """Root Mean Square Layer Normalization.
+    
+    Uses native PyTorch rms_norm when available for numerical consistency with ComfyUI.
+    """
     
     def __init__(self, dim: int, eps: float = 1e-6, dtype=None, device=None):
         super().__init__()
         self.eps = eps
         # Use 'scale' to match Flux2 checkpoint naming convention
         self.scale = nn.Parameter(torch.ones(dim, dtype=dtype, device=device))
+        # Check if native rms_norm is available
+        self._use_native = hasattr(torch.nn.functional, 'rms_norm')
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Compute RMS normalization
         # Ensure scale is on the same device as input
         scale = self.scale.to(x.device, x.dtype)
-        rms = torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-        return x * rms * scale
+        
+        if self._use_native and not (torch.jit.is_tracing() or torch.jit.is_scripting()):
+            # Use native PyTorch rms_norm for better precision (matches ComfyUI)
+            return torch.nn.functional.rms_norm(x, scale.shape, weight=scale, eps=self.eps)
+        else:
+            # Fallback implementation
+            rms = torch.rsqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+            return x * rms * scale
 
 
 class EmbedND(nn.Module):
@@ -151,7 +161,8 @@ class QKNorm(nn.Module):
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         q = self.query_norm(q)
         k = self.key_norm(k)
-        return q, k
+        # Cast to v's dtype and device to match ComfyUI (crucial for numerical consistency)
+        return q.to(v), k.to(v)
 
 
 class SelfAttention(nn.Module):
@@ -519,6 +530,10 @@ class DoubleStreamBlock(nn.Module):
         txt = txt + txt_mod2.gate * self._forward_mlp(self.txt_mlp, txt_mlp_in)
         del txt_mlp_in
 
+        # Handle fp16 numerical issues (matches ComfyUI exactly)
+        if txt.dtype == torch.float16:
+            txt = torch.nan_to_num(txt, nan=0.0, posinf=65504, neginf=-65504)
+
         return img, txt
 
     def _forward_mlp(self, mlp: nn.Sequential, x: torch.Tensor) -> torch.Tensor:
@@ -648,7 +663,13 @@ class SingleStreamBlock(nn.Module):
         output = self.linear2(torch.cat((attn, mlp), dim=-1))
         del attn, mlp
         
-        return x + mod.gate * output
+        result = x + mod.gate * output
+        
+        # Handle fp16 numerical issues (matches ComfyUI exactly)
+        if result.dtype == torch.float16:
+            result = torch.nan_to_num(result, nan=0.0, posinf=65504, neginf=-65504)
+        
+        return result
 
 
 class LastLayer(nn.Module):
