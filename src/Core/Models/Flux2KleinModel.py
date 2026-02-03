@@ -143,8 +143,11 @@ class Flux2KleinModel(AbstractModel):
         """
         # Resolve paths
         diffusion_path = model_path or self.model_path or self._find_diffusion_model()
-        text_encoder_path = self._text_encoder_path or self._find_text_encoder()
-        vae_path = self._vae_path or self._find_vae()
+        
+        # Guard: Don't reload if already loaded with same diffusion model
+        if self._loaded and self.model_path == diffusion_path:
+            logger.info("Flux2KleinModel: Already loaded, skipping redundant load")
+            return self
         
         if diffusion_path is None:
             raise ValueError(
@@ -153,6 +156,10 @@ class Flux2KleinModel(AbstractModel):
             )
         
         self.model_path = diffusion_path
+        
+        # Resolve other paths only when loading is actually needed
+        text_encoder_path = self._text_encoder_path or self._find_text_encoder()
+        vae_path = self._vae_path or self._find_vae()
         
         logger.info(f"Flux2KleinModel: Loading components...")
         logger.info(f"  Diffusion model: {diffusion_path}")

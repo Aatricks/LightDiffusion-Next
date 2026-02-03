@@ -67,6 +67,11 @@ class SDXLModel(AbstractModel):
             # Use default SDXL checkpoint
             path = "./include/checkpoints/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
         
+        # Guard: Don't reload if already loaded with same path
+        if self._loaded and self.model_path == path:
+            logger.info(f"SDXLModel: Already loaded {path}, skipping redundant load")
+            return self
+            
         self.model_path = path
         
         try:

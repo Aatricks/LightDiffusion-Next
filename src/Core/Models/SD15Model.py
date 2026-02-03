@@ -65,6 +65,11 @@ class SD15Model(AbstractModel):
             # Use default checkpoint
             path = "./include/checkpoints/DreamShaper_8_pruned.safetensors"
         
+        # Guard: Don't reload if already loaded with same path
+        if self._loaded and self.model_path == path:
+            logger.info(f"SD15Model: Already loaded {path}, skipping redundant load")
+            return self
+            
         self.model_path = path
         
         try:

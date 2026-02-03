@@ -319,10 +319,46 @@ class Pipeline:
         
         Uses ModelFactory for auto-detection when model_path is empty or
         set to the special __FLUX2_KLEIN__ marker.
+        
+        Optimized to reuse existing loaded model if it matches the request.
         """
         path = ctx.model_path
         
-        # Handle special Flux2 Klein marker or empty path
+        # 1. Determine target model type for reuse check
+        from src.Core.Models.ModelFactory import detect_model_type
+        target_type = "Flux2Klein" if path == "__FLUX2_KLEIN__" else detect_model_type(path)
+        
+        # 2. Check if current model can be reused
+        if self._model is not None and self._model.is_loaded:
+            current_type = self._model.__class__.__name__.replace("Model", "")
+            
+            # Match if paths are identical OR if both are Flux2 (auto-detected/marker)
+            paths_match = (self._model.model_path == path)
+            types_match = (current_type == target_type)
+            
+            if paths_match or (not path and types_match) or (path == "__FLUX2_KLEIN__" and target_type == "Flux2Klein" and types_match):
+                logger.info(f"Reusing currently loaded {current_type} model")
+                return self._model
+            
+            # 3. Different model requested: UNLOAD OLD ONE FIRST to free VRAM
+            logger.info(f"Unloading {current_type} model to load {target_type}")
+            self._model.unload()
+            self._model = None
+            
+            # Also clear the global model cache used by CheckpointLoader
+            try:
+                from src.Device.ModelCache import clear_model_cache
+                clear_model_cache()
+            except Exception:
+                pass
+            
+            # Force cleanup to prevent memory pressure/stuttering during transition
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+        
+        # 4. Create and load new model instance
         if path == "__FLUX2_KLEIN__":
             # Explicitly request Flux2 Klein
             model = self.model_factory(model_path=None, model_type="Flux2Klein")
