@@ -98,6 +98,8 @@ class Flux2KleinModel(AbstractModel):
             supports_lora=False,  # Flux2 LoRA format differs from SD
             uses_dual_clip=False,  # Uses single Klein (Qwen3) encoder
             requires_size_conditioning=False,
+            is_flux=True,
+            is_flux2=True,
         )
 
     def _find_diffusion_model(self) -> Optional[str]:
@@ -575,6 +577,8 @@ class Flux2KleinModel(AbstractModel):
                 "shift": 2.02,  # Flux2 default shift (different from Flux1's 1.15)
             }
             latent_format = Latent.Flux2()
+            recommended_steps = 4
+            recommended_cfg = 1.0
         
         return Flux2KleinConfig()
     
@@ -664,6 +668,14 @@ class Flux2KleinModel(AbstractModel):
         """
         if not self._loaded:
             raise RuntimeError("Model must be loaded before generating")
+        
+        # Log recommendation if steps are high for this distilled model
+        if ctx.sampling.steps > 8:
+            logger.info(f"Tip: Flux2 Klein is a distilled model and works best with 4-6 steps. "
+                       f"You are currently using {ctx.sampling.steps} steps.")
+        if ctx.sampling.cfg > 2.0:
+            logger.info(f"Tip: Flux2 Klein works best with CFG 1.0. "
+                       f"You are currently using CFG {ctx.sampling.cfg}.")
         
         try:
             # Create empty latent for Flux2
@@ -780,7 +792,7 @@ class Flux2KleinModel(AbstractModel):
             # Flux2 latent is patchified: [B, 128, H/16, W/16]
             # VAE expects: [B, 32, H/8, W/8]
             # Use the Flux2 latent format's unpatchify_for_vae method
-            flux2_latent_format = Latent.Flux2()
+            flux2_latent_format = self.get_model_object("latent_format")
             samples_tensor = flux2_latent_format.unpatchify_for_vae(samples_tensor)
             logger.info(f"Unpatchified latent shape: {samples_tensor.shape}")
             
@@ -802,6 +814,14 @@ class Flux2KleinModel(AbstractModel):
             logger.exception(f"Decoding failed: {e}")
             raise
     
+    def get_model_object(self, name):
+        """Get an attribute from the model or its patcher."""
+        if name == "latent_format":
+            return self._model_config.latent_format
+        if self.model:
+            return self.model.get_model_object(name)
+        return None
+
     def apply_lora(
         self,
         lora_name: str,

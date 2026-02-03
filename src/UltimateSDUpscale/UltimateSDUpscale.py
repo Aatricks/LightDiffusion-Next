@@ -74,8 +74,16 @@ def process_images(p, pipeline=False):
 
     batched_tiles = torch.cat([image_util.pil_to_tensor(t) for t in tiles], dim=0)
     (latent,) = VariationalAE.VAEEncode().encode(p.vae, batched_tiles)
+    
+    # Auto-detect Flux for disabling multi-scale and setting correct flags
+    model_sampling_obj = getattr(p.model.get_model_object("model"), "model_sampling", None)
+    from src.sample.sampling import ModelSamplingFlux, ModelSamplingFlux2
+    is_flux = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
+    is_flux2 = isinstance(model_sampling_obj, ModelSamplingFlux2)
+
     (samples,) = sampling.common_ksampler(p.model, p.seed, p.steps, p.cfg, p.sampler_name, p.scheduler,
-                                          positive_cropped, negative_cropped, latent, denoise=p.denoise, pipeline=pipeline)
+                                          positive_cropped, negative_cropped, latent, denoise=p.denoise, 
+                                          pipeline=pipeline, flux=is_flux, flux2=is_flux2)
     (decoded,) = VariationalAE.VAEDecode().decode(p.vae, samples)
 
     for i, tile_sampled in enumerate([image_util.tensor_to_pil(decoded, j) for j in range(len(decoded))]):
@@ -296,24 +304,51 @@ class Script(USDU_upscaler.Script):
 # Monkey-patch overrides
 _old_init = USDUpscaler.__init__
 def _new_init(self, p, image, upscaler_index, save_redraw, save_seams_fix, tile_width, tile_height):
-    p.width = math.ceil((image.width * p.upscale_by) / 8) * 8
-    p.height = math.ceil((image.height * p.upscale_by) / 8) * 8
+    # Determine downscale factor from model (8 for SD, 16 for Flux)
+    downscale_factor = 8
+    try:
+        latent_format = p.model.get_model_object("latent_format")
+        if hasattr(latent_format, "downscale_factor"):
+            downscale_factor = latent_format.downscale_factor
+    except Exception:
+        pass
+        
+    p.width = math.ceil((image.width * p.upscale_by) / downscale_factor) * downscale_factor
+    p.height = math.ceil((image.height * p.upscale_by) / downscale_factor) * downscale_factor
     _old_init(self, p, image, upscaler_index, save_redraw, save_seams_fix, tile_width, tile_height)
 USDUpscaler.__init__ = _new_init
 
 _old_redraw = USDURedraw.init_draw
 def _new_redraw(self, p, width, height):
     mask, draw = _old_redraw(self, p, width, height)
-    p.width = math.ceil((self.tile_width + self.padding) / 8) * 8
-    p.height = math.ceil((self.tile_height + self.padding) / 8) * 8
+    
+    downscale_factor = 8
+    try:
+        latent_format = p.model.get_model_object("latent_format")
+        if hasattr(latent_format, "downscale_factor"):
+            downscale_factor = latent_format.downscale_factor
+    except Exception:
+        pass
+        
+    p.width = math.ceil((self.tile_width + self.padding) / downscale_factor) * downscale_factor
+    p.height = math.ceil((self.tile_height + self.padding) / downscale_factor) * downscale_factor
     return mask, draw
 USDURedraw.init_draw = _new_redraw
 
 _old_seams = USDUSeamsFix.init_draw
 def _new_seams(self, p):
     _old_seams(self, p)
-    p.width = math.ceil((self.tile_width + self.padding) / 8) * 8
-    p.height = math.ceil((self.tile_height + self.padding) / 8) * 8
+    
+    downscale_factor = 8
+    try:
+        latent_format = p.model.get_model_object("latent_format")
+        if hasattr(latent_format, "downscale_factor"):
+            downscale_factor = latent_format.downscale_factor
+    except Exception:
+        pass
+        
+    p.width = math.ceil((self.tile_width + self.padding) / downscale_factor) * downscale_factor
+    p.height = math.ceil((self.tile_height + self.padding) / downscale_factor) * downscale_factor
 USDUSeamsFix.init_draw = _new_seams
 
 _old_upscale = USDUpscaler.upscale

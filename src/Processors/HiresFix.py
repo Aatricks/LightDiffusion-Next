@@ -62,10 +62,22 @@ class HiresFix:
             logger.warning("Model does not support HiresFix, returning original latents")
             return latents
         
+        # Determine model flags
+        is_flux = getattr(model.capabilities, "is_flux", False)
+        is_flux2 = getattr(model.capabilities, "is_flux2", False)
+        
         # Use defaults if not specified
         scale = scale or cls.DEFAULT_SCALE
         denoise = denoise or cls.DEFAULT_DENOISE
-        steps = steps or max(10, int(ctx.sampling.steps * cls.DEFAULT_STEPS_RATIO))
+        
+        # Calculate steps - for Flux2 Klein (distilled), we can use fewer steps
+        min_steps = 3 if is_flux2 else 10
+        steps = steps or max(min_steps, int(ctx.sampling.steps * cls.DEFAULT_STEPS_RATIO))
+        
+        # Adjust CFG for Flux models
+        hires_cfg = cls.DEFAULT_CFG
+        if is_flux or is_flux2:
+            hires_cfg = 1.0
         
         try:
             # Import required modules
@@ -76,6 +88,17 @@ class HiresFix:
             # Calculate new dimensions
             new_width = int(ctx.generation.width * scale)
             new_height = int(ctx.generation.height * scale)
+            
+            # Get model-specific downscale factor (e.g., 8 for SD, 16 for Flux)
+            downscale_factor = 8
+            try:
+                latent_format = model.get_model_object("latent_format")
+                if hasattr(latent_format, "downscale_factor"):
+                    downscale_factor = latent_format.downscale_factor
+                elif hasattr(latent_format, "spacial_downscale_ratio"):
+                    downscale_factor = latent_format.spacial_downscale_ratio
+            except Exception:
+                pass
             
             # Validate against model capabilities
             new_width, new_height = model.capabilities.validate_resolution(new_width, new_height)
@@ -88,16 +111,20 @@ class HiresFix:
                 samples=latents,
                 width=new_width,
                 height=new_height,
+                downscale_factor=downscale_factor,
             )[0]
             
             # Generate new seed for hires pass (PyTorch max: 2**63 - 1)
             hires_seed = random.randint(1, 2**63 - 1)
             
-            # Apply HiDiffusion optimizer if available
-            try:
-                hidiff_optimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-                optimized_model = hidiff_optimizer.go(model_type="auto", model=model.model)[0]
-            except Exception:
+            # Apply HiDiffusion optimizer if available (not for Flux2)
+            if not is_flux:
+                try:
+                    hidiff_optimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+                    optimized_model = hidiff_optimizer.go(model_type="auto", model=model.model)[0]
+                except Exception:
+                    optimized_model = model.model
+            else:
                 optimized_model = model.model
             
             # Create sampler and run hires pass
@@ -105,7 +132,7 @@ class HiresFix:
             hires_result = ksampler.sample(
                 seed=hires_seed,
                 steps=steps,
-                cfg=cls.DEFAULT_CFG,
+                cfg=hires_cfg,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=ctx.sampling.scheduler,
                 denoise=denoise,
@@ -114,6 +141,9 @@ class HiresFix:
                 negative=negative,
                 latent_image=upscaled,
                 pipeline=True,
+                flux=is_flux,
+                flux2=is_flux2,
+                enable_multiscale=False if is_flux else ctx.sampling.enable_multiscale,
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
             )

@@ -77,6 +77,15 @@ class Img2Img:
         upscale_by = upscale_by or cls.DEFAULT_UPSCALE_BY
         denoise = denoise or cls.DEFAULT_DENOISE
         
+        # Determine model flags
+        is_flux = getattr(model.capabilities, "is_flux", False)
+        is_flux2 = getattr(model.capabilities, "is_flux2", False)
+        
+        # Adjust CFG for Flux models
+        img2img_cfg = cls.DEFAULT_CFG
+        if is_flux or is_flux2:
+            img2img_cfg = 1.0
+        
         try:
             # Import required modules
             from src.UltimateSDUpscale import UltimateSDUpscale, USDU_upscaler
@@ -98,7 +107,7 @@ class Img2Img:
                 upscale_by=upscale_by,
                 seed=current_seed,
                 steps=cls.DEFAULT_STEPS,
-                cfg=cls.DEFAULT_CFG,
+                cfg=img2img_cfg,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=cls.DEFAULT_SCHEDULER,
                 denoise=denoise,
@@ -183,15 +192,22 @@ class Img2Img:
             from src.sample import sampling
             from src.hidiffusion import msw_msa_attention
             
+            # Determine model flags
+            is_flux = getattr(model.capabilities, "is_flux", False)
+            is_flux2 = getattr(model.capabilities, "is_flux2", False)
+            
             # Encode image to latents
             vae_encode = VariationalAE.VAEEncode()
             latents = vae_encode.encode(vae=model.vae, pixels=image_tensor)[0]
             
-            # Apply HiDiffusion optimizer
-            try:
-                hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-                optimized_model = hidiff.go(model_type="auto", model=model.model)[0]
-            except Exception:
+            # Apply HiDiffusion optimizer (not for Flux)
+            if not is_flux:
+                try:
+                    hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+                    optimized_model = hidiff.go(model_type="auto", model=model.model)[0]
+                except Exception:
+                    optimized_model = model.model
+            else:
                 optimized_model = model.model
             
             # Run sampling with denoise < 1.0
@@ -199,7 +215,7 @@ class Img2Img:
             result = ksampler.sample(
                 seed=ctx.seed,
                 steps=ctx.sampling.steps,
-                cfg=ctx.sampling.cfg,
+                cfg=ctx.sampling.cfg if not is_flux else 1.0,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=ctx.sampling.scheduler,
                 denoise=denoise,
@@ -208,11 +224,9 @@ class Img2Img:
                 negative=negative,
                 latent_image=latents,
                 pipeline=True,
-                enable_multiscale=ctx.sampling.enable_multiscale,
-                multiscale_factor=ctx.sampling.multiscale_factor,
-                multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
-                multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
-                multiscale_intermittent_fullres=ctx.sampling.multiscale_intermittent_fullres,
+                flux=is_flux,
+                flux2=is_flux2,
+                enable_multiscale=False if is_flux else ctx.sampling.enable_multiscale,
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
             )

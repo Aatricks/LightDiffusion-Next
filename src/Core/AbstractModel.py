@@ -43,6 +43,8 @@ class ModelCapabilities:
     # Model-specific flags
     uses_dual_clip: bool = False  # SDXL uses dual CLIP
     requires_size_conditioning: bool = False  # SDXL needs size embeddings
+    is_flux: bool = False
+    is_flux2: bool = False
     
     def validate_resolution(self, width: int, height: int) -> tuple[int, int]:
         """Validate and adjust resolution to meet model requirements.

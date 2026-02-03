@@ -95,6 +95,20 @@ class Adetailer:
             saveimage = ImageSaver.SaveImage()
             hdr = ahdr.HDREffects()
             
+            # Determine model flags
+            is_flux = getattr(model.capabilities, "is_flux", False)
+            is_flux2 = getattr(model.capabilities, "is_flux2", False)
+            
+            # Adjust parameters for Flux/distilled models
+            adetailer_steps = cls.DEFAULT_STEPS
+            adetailer_cfg = cls.DEFAULT_CFG
+            if is_flux2:
+                adetailer_steps = 6  # Distilled models need very few steps
+                adetailer_cfg = 1.0  # Flux distilled usually CFG 1.0
+            elif is_flux:
+                adetailer_steps = 20
+                adetailer_cfg = 1.0
+            
             # ===== BODY PASS =====
             # Detect body regions
             body_segs = bbox_detector.doit(
@@ -137,8 +151,8 @@ class Adetailer:
                 guide_size_for=False,
                 max_size=cls.DEFAULT_MAX_SIZE,
                 seed=body_seed,
-                steps=cls.DEFAULT_STEPS,
-                cfg=cls.DEFAULT_CFG,
+                steps=adetailer_steps,
+                cfg=adetailer_cfg,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=cls.DEFAULT_SCHEDULER,
                 denoise=cls.DEFAULT_DENOISE,
@@ -173,6 +187,10 @@ class Adetailer:
             
             # Save body-enhanced image
             body_meta = cls._build_metadata(ctx, body_seed_str, "body")
+            # Update meta with actual steps/cfg used
+            body_meta["steps"] = str(adetailer_steps)
+            body_meta["cfg"] = str(adetailer_cfg)
+            
             saved_body = saveimage.save_images(
                 filename_prefix="LD-body",
                 images=body_image,
@@ -226,8 +244,8 @@ class Adetailer:
                 guide_size_for=False,
                 max_size=cls.DEFAULT_MAX_SIZE,
                 seed=face_seed,
-                steps=cls.DEFAULT_STEPS,
-                cfg=cls.DEFAULT_CFG,
+                steps=adetailer_steps,
+                cfg=adetailer_cfg,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=cls.DEFAULT_SCHEDULER,
                 denoise=cls.DEFAULT_DENOISE,
@@ -262,6 +280,8 @@ class Adetailer:
             
             # Save face-enhanced (final) image
             face_meta = cls._build_metadata(ctx, face_seed_str, "head")
+            face_meta["steps"] = str(adetailer_steps)
+            face_meta["cfg"] = str(adetailer_cfg)
             saved_face = saveimage.save_images(
                 filename_prefix="LD-head",
                 images=final_image,

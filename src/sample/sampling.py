@@ -334,6 +334,14 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
             multiscale_intermittent_fullres=False, cfg_free_enabled=False, cfg_free_start_percent=70.0,
             batched_cfg=True, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance", dynamic_cfg_percentile=95,
             dynamic_cfg_target_scale=1.0, adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
+    
+    # Auto-detect Flux/Flux2 to disable multi-scale (DiT architecture compatibility)
+    model_sampling_obj = getattr(model.model, "model_sampling", None)
+    is_flux_sampling = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
+    if flux or flux2 or is_flux_sampling:
+        enable_multiscale = False
+        flux = True # Ensure flux mode is enabled if detected via sampling object
+
     extra_options = {"enable_multiscale": enable_multiscale, "multiscale_factor": multiscale_factor,
                      "multiscale_fullres_start": multiscale_fullres_start, "multiscale_fullres_end": multiscale_fullres_end,
                      "multiscale_intermittent_fullres": multiscale_intermittent_fullres}
@@ -459,6 +467,13 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
                     cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                     dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
                     adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
+    
+    # Auto-detect Flux/Flux2 to disable multi-scale
+    model_sampling_obj = getattr(model.model, "model_sampling", None)
+    is_flux_sampling = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
+    if flux or flux2 or is_flux_sampling:
+        enable_multiscale = False
+
     latent_image = Latent.fix_empty_latent_channels(model, latent["samples"])
     if disable_noise:
         noise = torch.zeros(latent_image.size(), dtype=latent_image.dtype, layout=latent_image.layout, device="cpu")
