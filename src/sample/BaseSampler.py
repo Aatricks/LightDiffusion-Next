@@ -133,7 +133,8 @@ class BaseSampler(ABC):
     def __init__(self, enable_multiscale: bool = True, multiscale_factor: float = 0.5,
                  multiscale_fullres_start: int = 3, multiscale_fullres_end: int = 8,
                  multiscale_intermittent_fullres: bool = False, cfg_scale: float = 7.5,
-                 cfg_min: float = 1.0, cfg_x0_scale: float = 1.0, pipeline: bool = False):
+                 cfg_min: float = 1.0, cfg_x0_scale: float = 1.0, pipeline: bool = False,
+                 use_momentum: bool = False):
         self.ms_config = MultiscaleConfig(enable_multiscale, multiscale_factor,
                                           multiscale_fullres_start, multiscale_fullres_end,
                                           multiscale_intermittent_fullres)
@@ -141,19 +142,20 @@ class BaseSampler(ABC):
         self.cfg_min = cfg_min
         self.cfg_x0_scale = cfg_x0_scale
         self.pipeline = pipeline
+        self.use_momentum = use_momentum
     
     def get_cfg(self, step: int, n_steps: int) -> float:
         return self.cfg_scale + (self.cfg_min - self.cfg_scale) * (step / max(1, n_steps - 1))
     
     def apply_cfg(self, denoised: torch.Tensor, uncond: torch.Tensor, cfg: float,
                   state: CFGState, h_ratio: Optional[float] = None) -> torch.Tensor:
-        """Apply CFG++ momentum if we have history, otherwise just return denoised.
+        """Apply CFG++ momentum if enabled and we have history, otherwise just return denoised.
         
         Note: The model (CFGGuider) already applies CFG, so we only apply
         momentum correction for CFG++ here, NOT additional CFG scaling.
         """
-        if state.old_denoised is None or h_ratio is None:
-            # No history for momentum, just use the already-CFG'd denoised
+        if not self.use_momentum or state.old_denoised is None or h_ratio is None:
+            # No momentum or no history, just use the already-CFG'd denoised
             return denoised
         # Apply CFG++ momentum correction only (not CFG scale - that's already applied)
         h1 = 1 + h_ratio
@@ -363,4 +365,7 @@ SAMPLERS = {
 def get_sampler(name: str, **kwargs) -> BaseSampler:
     if name not in SAMPLERS:
         raise ValueError(f"Unknown sampler: {name}. Available: {list(SAMPLERS.keys())}")
-    return SAMPLERS[name](**kwargs)
+    
+    # Enable momentum only for _cfgpp samplers
+    use_momentum = "_cfgpp" in name
+    return SAMPLERS[name](use_momentum=use_momentum, **kwargs)

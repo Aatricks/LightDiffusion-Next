@@ -43,12 +43,13 @@ def get_default_settings():
         "enable_preview": True,
 
         # Multi-scale
-        "multiscale_preset": "balanced",
+        "multiscale_preset": "disabled",
         "multiscale_custom": False,
         "multiscale_factor": 0.5,
         "multiscale_fullres_start": 3,
         "multiscale_fullres_end": 8,
         "multiscale_intermittent_fullres": False,
+        "enable_multiscale": False,
 
         # DeepCache
         "deepcache_enabled": False,
@@ -78,12 +79,15 @@ def get_default_settings():
 
         # Scheduler & Sampling
         "scheduler": "ays",  # Options: normal, karras, simple, beta, ays
-        "sampler": "dpmpp_sde_cfgpp",  # Options: euler, euler_ancestral, dpmpp_2m, etc.
+        "sampler": "dpmpp_sde",  # Options: euler, euler_ancestral, dpmpp_2m, etc.
         "steps": 20,
         "cfg_scale": 7.0,  # Classifier-Free Guidance scale (1.0 for Flux2, 7.0 for SD1.5/SDXL)
 
         # Optimizations
         "prompt_cache_enabled": True,  # Cache CLIP embeddings (5-15% speedup)
+
+        # Processors
+        "autohdr": True,
 
         # UI Settings
         "dark_mode": True,

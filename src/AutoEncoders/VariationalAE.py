@@ -183,12 +183,12 @@ class Decoder(nn.Module):
 
     def forward(self, z, **kwargs):
         h = self.conv_in(z)
-        h = self.mid.block_1(h, None, **kwargs)
-        h = self.mid.attn_1(h, **kwargs)
-        h = self.mid.block_2(h, None, **kwargs)
+        h = self.mid.block_1(h, None)
+        h = self.mid.attn_1(h)
+        h = self.mid.block_2(h, None)
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
-                h = self.up[i_level].block[i_block](h, None, **kwargs)
+                h = self.up[i_level].block[i_block](h, None)
             if i_level != 0:
                 h = self.up[i_level].upsample(h)
         return self.conv_out(nonlinearity(self.norm_out(h)))

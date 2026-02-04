@@ -101,14 +101,17 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
             if settings.get("multiscale_custom"):
                 multiscale_params = {
                     "multiscale_preset": None,
-                    "enable_multiscale": True,
+                    "enable_multiscale": settings.get("enable_multiscale", False),
                     "multiscale_factor": settings.get("multiscale_factor", 0.5),
                     "multiscale_fullres_start": settings.get("multiscale_fullres_start", 3),
                     "multiscale_fullres_end": settings.get("multiscale_fullres_end", 8),
                     "multiscale_intermittent_fullres": settings.get("multiscale_intermittent_fullres", False),
                 }
             else:
-                multiscale_params = {"multiscale_preset": settings.get("multiscale_preset", "balanced")}
+                multiscale_params = {
+                    "multiscale_preset": settings.get("multiscale_preset", "balanced"),
+                    "enable_multiscale": settings.get("enable_multiscale", False),
+                }
 
             images_generated = 0
             last_error = None
@@ -162,7 +165,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             h=settings.get("height"),
                             number=attempt_chunk,
                             scheduler=settings.get("scheduler", "ays"),
-                            sampler=settings.get("sampler", "dpmpp_sde_cfgpp"),
+                            sampler=settings.get("sampler", "dpmpp_sde"),
                             steps=settings.get("steps", 20),
                             cfg_scale=settings.get("cfg_scale", 7.0),
                             # Honor the configured batch size as an independent
@@ -180,7 +183,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             img2img=settings.get("img2img_mode", False),
                             stable_fast=settings.get("stable_fast", False),
                             reuse_seed=settings.get("reuse_seed", False),
-                            autohdr=True,
+                            autohdr=settings.get("autohdr", True),
                             img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,
                             deepcache_enabled=settings.get("deepcache_enabled", False),
                             deepcache_interval=settings.get("deepcache_interval", 3),

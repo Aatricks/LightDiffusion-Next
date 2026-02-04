@@ -226,7 +226,9 @@ SAMPLER_CLASSES = {
     "euler_ancestral": EulerAncestralSampler,
     "euler_cfgpp": EulerSampler,
     "euler_ancestral_cfgpp": EulerAncestralSampler,
+    "dpmpp_2m": DPMPP2MSampler,
     "dpmpp_2m_cfgpp": DPMPP2MSampler,
+    "dpmpp_sde": DPMPPSDESampler,
     "dpmpp_sde_cfgpp": DPMPPSDESampler,
 }
 

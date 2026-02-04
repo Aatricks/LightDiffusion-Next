@@ -19,12 +19,12 @@ class SamplingConfig:
     """Sampling parameters - all values have sensible defaults."""
     steps: int = 20
     cfg: float = 7.0
-    sampler: str = "dpmpp_sde_cfgpp"
+    sampler: str = "dpmpp_sde"
     scheduler: str = "ays"
     denoise: float = 1.0
     
     # Multi-scale diffusion
-    enable_multiscale: bool = True
+    enable_multiscale: bool = False
     multiscale_factor: float = 0.5
     multiscale_fullres_start: int = 3
     multiscale_fullres_end: int = 8
@@ -240,9 +240,9 @@ class Context:
         # Sampling
         ctx.sampling.steps = kwargs.get("steps", 20)
         ctx.sampling.cfg = kwargs.get("cfg_scale", kwargs.get("cfg", 7.0))  # Accept both cfg_scale and cfg
-        ctx.sampling.sampler = kwargs.get("sampler", "dpmpp_sde_cfgpp")
+        ctx.sampling.sampler = kwargs.get("sampler", "dpmpp_sde")
         ctx.sampling.scheduler = kwargs.get("scheduler", "ays")
-        ctx.sampling.enable_multiscale = kwargs.get("enable_multiscale", True)
+        ctx.sampling.enable_multiscale = kwargs.get("enable_multiscale", False)
         ctx.sampling.multiscale_factor = kwargs.get("multiscale_factor", 0.5)
         ctx.sampling.multiscale_fullres_start = kwargs.get("multiscale_fullres_start", 3)
         ctx.sampling.multiscale_fullres_end = kwargs.get("multiscale_fullres_end", 8)
