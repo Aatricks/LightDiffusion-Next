@@ -22,15 +22,86 @@ from ui.history import (
 )
 
 
-def render_generate_page():
-    """Render the main generation page (moved from streamlit_app).
+def _apply_flux2_optimal_settings(settings: dict) -> None:
+    """Apply optimal settings for Flux2 Klein 4B model."""
+    # Sampling settings optimized for Flux2 Klein
+    settings["cfg_scale"] = 1.0
+    settings["sampler"] = "euler"
+    settings["scheduler"] = "simple"
+    settings["steps"] = 4
+    
+    # Disable features incompatible with DiT architecture
+    settings["multiscale_preset"] = "disabled"
+    settings["multiscale_custom"] = False
+    settings["deepcache_enabled"] = False
+    settings["tome_enabled"] = False
+    
+    # Disable enhancements that don't work well with Flux2
+    settings["hiresfix"] = False
+    settings["adetailer"] = False
+    settings["stable_fast"] = False
+    
+    # Set default resolution if not already at Flux2 size
+    if settings.get("width", 512) < 1024 or settings.get("height", 512) < 1024:
+        settings["width"] = 1024
+        settings["height"] = 1024
+        # Sync to widget keys if they exist in session state
+        if "width_input" in st.session_state:
+            st.session_state.width_input = 1024
+        if "height_input" in st.session_state:
+            st.session_state.height_input = 1024
+        if "preset_selectbox" in st.session_state:
+            st.session_state.preset_selectbox = "1024x1024 (Flux2 1:1)"
 
-    This function uses the UI helpers and delegates generation to
-    `ui.generation.generate_images` so the page code stays focused on
-    laying out controls and placeholders.
-    """
+
+def render_generate_page():
+    """Render the main generation page."""
     settings = st.session_state.settings
     controls_disabled = st.session_state.is_generating
+
+    # Define resolution presets mapping
+    PRESETS = {
+        "512x512 (SD1.5)": (512, 512),
+        "768x768 (SD1.5)": (768, 768),
+        "512x768 (SD1.5 Portrait)": (512, 768),
+        "768x512 (SD1.5 Landscape)": (768, 512),
+        "1024x1024 (SDXL 1:1)": (1024, 1024),
+        "1152x896 (SDXL 4:3)": (1152, 896),
+        "896x1152 (SDXL 3:4)": (896, 1152),
+        "1216x832 (SDXL 3:2)": (1216, 832),
+        "832x1216 (SDXL 2:3)": (832, 1216),
+        "1344x768 (SDXL 16:9)": (1344, 768),
+        "768x1344 (SDXL 9:16)": (768, 1344),
+        "1024x1024 (Flux2 1:1)": (1024, 1024),
+        "1280x768 (Flux2 16:9)": (1280, 768),
+        "768x1280 (Flux2 9:16)": (768, 1280),
+        "1024x768 (Flux2 4:3)": (1024, 768),
+        "768x1024 (Flux2 3:4)": (768, 1024),
+    }
+
+    def on_preset_change():
+        p = st.session_state.preset_selectbox
+        if p in PRESETS:
+            w, h = PRESETS[p]
+            st.session_state.settings["width"] = w
+            st.session_state.settings["height"] = h
+            # Sync widget states
+            st.session_state.width_input = w
+            st.session_state.height_input = h
+
+    def on_dim_change():
+        # Reset preset to Custom on manual dimension change
+        st.session_state.preset_selectbox = "Custom"
+        st.session_state.settings["width"] = st.session_state.width_input
+        st.session_state.settings["height"] = st.session_state.height_input
+
+    # Ensure widget session state is initialized
+    if "width_input" not in st.session_state:
+        st.session_state.width_input = settings.get("width", 512)
+    if "height_input" not in st.session_state:
+        st.session_state.height_input = settings.get("height", 512)
+    if "preset_selectbox" not in st.session_state:
+        st.session_state.preset_selectbox = "Custom"
 
     with st.sidebar:
         st.markdown(
@@ -41,120 +112,38 @@ def render_generate_page():
         if controls_disabled:
             st.warning("⚠️ Generation in progress — settings are locked until the current job finishes or you press Stop.")
 
-        with st.expander("📝 Prompt & Text", expanded=True):
-            prompt = st.text_area("Prompt", value=settings["prompt"], height=100, key="prompt_input", disabled=controls_disabled)
-            settings["prompt"] = prompt
-            negative_prompt = st.text_area("Negative Prompt", value=settings["negative_prompt"], height=80, key="negative_prompt_input", disabled=controls_disabled)
-            settings["negative_prompt"] = negative_prompt
-
-        with st.expander("📐 Dimensions & Batch", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                settings["width"] = st.number_input("Width", min_value=64, max_value=2048, value=settings["width"], step=64, disabled=controls_disabled)
-            with col2:
-                settings["height"] = st.number_input("Height", min_value=64, max_value=2048, value=settings["height"], step=64, disabled=controls_disabled)
-
-            settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=1000, value=settings["num_images"], key="num_images_input", disabled=controls_disabled)
-
-            preset = st.selectbox("Presets", [
-                "Custom",
-                "512x512 (SD1.5)",
-                "768x768 (SD1.5)",
-                "512x768 (SD1.5 Portrait)",
-                "768x512 (SD1.5 Landscape)",
-                "--- SDXL (1.0 MP) ---",
-                "1024x1024 (SDXL 1:1)",
-                "1152x896 (SDXL 4:3)",
-                "896x1152 (SDXL 3:4)",
-                "1216x832 (SDXL 3:2)",
-                "832x1216 (SDXL 2:3)",
-                "1344x768 (SDXL 16:9)",
-                "768x1344 (SDXL 9:16)",
-                "--- Flux (1.0 MP) ---",
-                "1024x1024 (Flux 1:1)",
-                "1152x896 (Flux 4:3)",
-                "896x1152 (Flux 3:4)",
-                "1216x832 (Flux 3:2)",
-                "832x1216 (Flux 2:3)",
-                "1344x768 (Flux 16:9)",
-                "768x1344 (Flux 9:16)",
-                "--- Flux (2.0 MP Max) ---",
-                "1408x1408 (Flux 1:1)",
-                "1664x1216 (Flux 4:3)",
-                "1728x1152 (Flux 3:2)",
-                "1920x1088 (Flux 16:9)",
-                "2176x960 (Flux 21:9)"
-            ], disabled=controls_disabled)
-            # SD1.5 presets
-            if preset == "512x512 (SD1.5)":
-                settings["width"], settings["height"] = 512, 512
-            elif preset == "768x768 (SD1.5)":
-                settings["width"], settings["height"] = 768, 768
-            elif preset == "512x768 (SD1.5 Portrait)":
-                settings["width"], settings["height"] = 512, 768
-            elif preset == "768x512 (SD1.5 Landscape)":
-                settings["width"], settings["height"] = 768, 512
-            # SDXL presets (1.0 MP)
-            elif preset == "1024x1024 (SDXL 1:1)":
-                settings["width"], settings["height"] = 1024, 1024
-            elif preset == "1152x896 (SDXL 4:3)":
-                settings["width"], settings["height"] = 1152, 896
-            elif preset == "896x1152 (SDXL 3:4)":
-                settings["width"], settings["height"] = 896, 1152
-            elif preset == "1216x832 (SDXL 3:2)":
-                settings["width"], settings["height"] = 1216, 832
-            elif preset == "832x1216 (SDXL 2:3)":
-                settings["width"], settings["height"] = 832, 1216
-            elif preset == "1344x768 (SDXL 16:9)":
-                settings["width"], settings["height"] = 1344, 768
-            elif preset == "768x1344 (SDXL 9:16)":
-                settings["width"], settings["height"] = 768, 1344
-            # Flux presets (1.0 MP - same as SDXL recommended)
-            elif preset == "1024x1024 (Flux 1:1)":
-                settings["width"], settings["height"] = 1024, 1024
-            elif preset == "1152x896 (Flux 4:3)":
-                settings["width"], settings["height"] = 1152, 896
-            elif preset == "896x1152 (Flux 3:4)":
-                settings["width"], settings["height"] = 896, 1152
-            elif preset == "1216x832 (Flux 3:2)":
-                settings["width"], settings["height"] = 1216, 832
-            elif preset == "832x1216 (Flux 2:3)":
-                settings["width"], settings["height"] = 832, 1216
-            elif preset == "1344x768 (Flux 16:9)":
-                settings["width"], settings["height"] = 1344, 768
-            elif preset == "768x1344 (Flux 9:16)":
-                settings["width"], settings["height"] = 768, 1344
-            # Flux presets (2.0 MP - Flux maximum)
-            elif preset == "1408x1408 (Flux 1:1)":
-                settings["width"], settings["height"] = 1408, 1408
-            elif preset == "1664x1216 (Flux 4:3)":
-                settings["width"], settings["height"] = 1664, 1216
-            elif preset == "1728x1152 (Flux 3:2)":
-                settings["width"], settings["height"] = 1728, 1152
-            elif preset == "1920x1088 (Flux 16:9)":
-                settings["width"], settings["height"] = 1920, 1088
-            elif preset == "2176x960 (Flux 21:9)":
-                settings["width"], settings["height"] = 2176, 960
-
-            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch. Higher values use more VRAM but can be faster. This setting is honored independently of 'Number of Images' (the pipeline may use internal batching even when you request fewer images).")
-
-        with st.expander("🎯 Model Selection", expanded=False):
-            # Allow the user to pick a model file or use Auto (default checkpoints)
+        with st.expander("🎯 Model Selection", expanded=True):
+            # Allow the user to pick a model type or file
             try:
-                from src.user.model_loader import list_available_models
+                from src.Core.Models.ModelFactory import list_available_models, _find_flux2_components
 
                 available_map = list_available_models(return_mapping=True)
+                # Check if Flux2 Klein components exist
+                flux2_diff, flux2_te, flux2_vae = _find_flux2_components()
+                flux2_available = flux2_diff is not None
             except Exception:
                 available_map = []
+                flux2_available = False
 
             # available_map is list of (display_name, full_path)
             display_names = [d for d, _ in available_map]
             mapping = {d: p for d, p in available_map}
 
-            model_options = ["Auto (use default)"] + display_names
+            # Build model options with Flux2 Klein if available
+            model_options = ["Auto (use default)"]
+            if flux2_available:
+                model_options.append("Flux2 Klein (auto-detected)")
+                mapping["Flux2 Klein (auto-detected)"] = "__FLUX2_KLEIN__"
+            model_options.extend(display_names)
+
             # For current selection, show the basename so it matches the dropdown
             current_full = settings.get("model_path", "")
-            current = os.path.basename(current_full) if current_full else "Auto (use default)"
+            if current_full == "__FLUX2_KLEIN__":
+                current = "Flux2 Klein (auto-detected)"
+            elif current_full:
+                current = os.path.basename(current_full)
+            else:
+                current = "Auto (use default)"
             try:
                 idx = model_options.index(current)
             except Exception:
@@ -163,15 +152,19 @@ def render_generate_page():
             sel = st.selectbox("Model", options=model_options, index=idx, disabled=controls_disabled)
             if sel == "Auto (use default)":
                 settings["model_path"] = ""
+            elif sel == "Flux2 Klein (auto-detected)":
+                if settings.get("model_path") != "__FLUX2_KLEIN__":
+                    settings["model_path"] = "__FLUX2_KLEIN__"
+                    _apply_flux2_optimal_settings(settings)
+                    st.info("⚡ Flux2 Klein selected: Auto-applied optimal settings")
             else:
-                # map display name back to full path; if mapping missing, fall back
                 settings["model_path"] = mapping.get(sel, sel)
 
             settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
 
             if settings["img2img_mode"]:
                 if controls_disabled:
-                    st.info("Image upload is disabled while generation is running. Stop the job to change the input image.")
+                    st.info("Image upload is disabled while generation is running.")
                     if settings.get("input_image_path") and os.path.exists(settings.get("input_image_path")):
                         try:
                             st.image(settings.get("input_image_path"), caption="Current Input Image", width='stretch')
@@ -186,6 +179,52 @@ def render_generate_page():
                         settings["input_image_path"] = img_path
                         st.image(uploaded_file, caption="Input Image", width='stretch')
 
+        with st.expander("📝 Prompt & Text", expanded=True):
+            prompt = st.text_area("Prompt", value=settings["prompt"], height=100, key="prompt_input", disabled=controls_disabled)
+            settings["prompt"] = prompt
+            negative_prompt = st.text_area("Negative Prompt", value=settings["negative_prompt"], height=80, key="negative_prompt_input", disabled=controls_disabled)
+            settings["negative_prompt"] = negative_prompt
+
+        with st.expander("📐 Dimensions & Batch", expanded=True):
+            preset_options = ["Custom"] + list(PRESETS.keys())
+            # Insert separators for readability
+            preset_options.insert(5, "--- SDXL (1.0 MP) ---")
+            preset_options.insert(13, "--- Flux2 Klein ---")
+            
+            st.selectbox(
+                "Presets", 
+                options=preset_options, 
+                key="preset_selectbox", 
+                on_change=on_preset_change, 
+                disabled=controls_disabled
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                settings["width"] = st.number_input(
+                    "Width", 
+                    min_value=64, 
+                    max_value=2048, 
+                    key="width_input", 
+                    on_change=on_dim_change, 
+                    step=64, 
+                    disabled=controls_disabled
+                )
+            with col2:
+                settings["height"] = st.number_input(
+                    "Height", 
+                    min_value=64, 
+                    max_value=2048, 
+                    key="height_input", 
+                    on_change=on_dim_change, 
+                    step=64, 
+                    disabled=controls_disabled
+                )
+
+            settings["num_images"] = st.number_input("Number of Images", min_value=1, max_value=1000, value=settings["num_images"], key="num_images_input", disabled=controls_disabled)
+            settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch.")
+
+
         with st.expander("⚡ Sampling & Scheduling", expanded=False):
             st.markdown("**Scheduler & Sampler Settings**")
 
@@ -196,8 +235,7 @@ def render_generate_page():
                 "beta": "Beta - Alternative schedule",
                 "ays": "AYS - Align Your Steps (SD1.5 auto)",
                 "ays_sd15": "AYS SD1.5 - Optimized for SD1.5",
-                "ays_sdxl": "AYS SDXL - Optimized for SDXL",
-                "ays_flux": "AYS Flux - Optimized for Flux"
+                "ays_sdxl": "AYS SDXL - Optimized for SDXL"
             }
             current_scheduler = settings.get("scheduler", "ays")
             settings["scheduler"] = st.selectbox(
@@ -240,6 +278,22 @@ def render_generate_page():
                 step=1,
                 disabled=controls_disabled,
                 help="Number of denoising steps. AYS: 10 steps, Normal: 20 steps typical"
+            )
+
+            # CFG Scale slider
+            is_flux2 = settings.get("model_path") == "__FLUX2_KLEIN__"
+            cfg_help = "Classifier-Free Guidance scale. Flux2: use 1.0, SD1.5/SDXL: use 7.0-8.0"
+            if is_flux2:
+                cfg_help = "⚡ Flux2 Klein works best with CFG=1.0 (no guidance needed)"
+            
+            settings["cfg_scale"] = st.slider(
+                "CFG Scale",
+                min_value=1.0,
+                max_value=20.0,
+                value=settings.get("cfg_scale", 1.0 if is_flux2 else 7.0),
+                step=0.5,
+                disabled=controls_disabled,
+                help=cfg_help
             )
 
             st.markdown("**Optimization Caching**")

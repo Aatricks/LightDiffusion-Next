@@ -34,25 +34,22 @@ def is_prompt_cache_enabled() -> bool:
     return _cache_enabled
 
 
-def get_prompt_hash(prompt: str, flux_enabled: bool = False) -> str:
+def get_prompt_hash(prompt: str) -> str:
     """Generate a unique hash for a prompt.
     
     Args:
         prompt (str): The text prompt.
-        flux_enabled (bool): Whether Flux mode is enabled.
     
     Returns:
-        str: MD5 hash of the prompt and mode.
+        str: MD5 hash of the prompt.
     """
-    # Include flux_enabled in hash since encoding differs
-    cache_key = f"{prompt}|flux={flux_enabled}"
-    return hashlib.md5(cache_key.encode('utf-8')).hexdigest()
+    return hashlib.md5(prompt.encode('utf-8')).hexdigest()
 
 
 # LRU cache with 128 slots (enough for typical session)
 # Each cached entry is ~100-500KB depending on model
 @lru_cache(maxsize=128)
-def _cached_encode_impl(prompt_hash: str, prompt: str, flux_enabled: bool, clip_id: int):
+def _cached_encode_impl(prompt_hash: str, prompt: str, clip_id: int):
     """Internal cached encoding function.
     
     Note: This is called by get_cached_encoding and should not be called directly.
@@ -61,14 +58,11 @@ def _cached_encode_impl(prompt_hash: str, prompt: str, flux_enabled: bool, clip_
     Args:
         prompt_hash (str): Hash of the prompt.
         prompt (str): The actual prompt text.
-        flux_enabled (bool): Whether Flux is enabled.
         clip_id (int): Unique ID of the CLIP model instance.
     
     Returns:
         None (actual encoding happens in caller)
     """
-    # This function exists to provide the LRU cache decorator
-    # Actual encoding logic is in the caller to avoid circular imports
     pass
 
 
@@ -105,13 +99,12 @@ _prompt_cache_dict = {}
 _cache_stats = {"hits": 0, "misses": 0, "size_mb": 0.0}
 
 
-def get_cached_encoding(clip, prompt: str, flux_enabled: bool = False) -> tuple:
+def get_cached_encoding(clip, prompt: str) -> tuple:
     """Get cached encoding or encode and cache if not present.
     
     Args:
         clip: CLIP model instance.
         prompt (str): Text prompt.
-        flux_enabled (bool): Whether Flux mode is enabled.
     
     Returns:
         tuple: (cond, pooled) or None if caching disabled.
@@ -119,7 +112,7 @@ def get_cached_encoding(clip, prompt: str, flux_enabled: bool = False) -> tuple:
     if not _cache_enabled:
         return None
     
-    prompt_hash = get_prompt_hash(prompt, flux_enabled)
+    prompt_hash = get_prompt_hash(prompt)
     clip_id = id(clip)
     cache_key = f"{clip_id}_{prompt_hash}"
     
@@ -140,7 +133,7 @@ def get_cached_encoding(clip, prompt: str, flux_enabled: bool = False) -> tuple:
     return None
 
 
-def cache_encoding(clip, prompt: str, cond: torch.Tensor, pooled: torch.Tensor, flux_enabled: bool = False):
+def cache_encoding(clip, prompt: str, cond: torch.Tensor, pooled: torch.Tensor):
     """Cache an encoding result.
     
     Args:
@@ -148,12 +141,11 @@ def cache_encoding(clip, prompt: str, cond: torch.Tensor, pooled: torch.Tensor, 
         prompt (str): Text prompt.
         cond (torch.Tensor): Conditional embedding.
         pooled (torch.Tensor): Pooled output.
-        flux_enabled (bool): Whether Flux mode is enabled.
     """
     if not _cache_enabled:
         return
     
-    prompt_hash = get_prompt_hash(prompt, flux_enabled)
+    prompt_hash = get_prompt_hash(prompt)
     clip_id = id(clip)
     cache_key = f"{clip_id}_{prompt_hash}"
     

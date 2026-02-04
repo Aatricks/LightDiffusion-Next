@@ -51,7 +51,7 @@ def get_additional_models(conds: dict, dtype: torch.dtype) -> Tuple[List[object]
 
 
 def prepare_sampling(
-    model: object, noise_shape: Tuple[int], conds: dict, flux_enabled: bool = False
+    model: object, noise_shape: Tuple[int], conds: dict
 ) -> Tuple[object, dict, List[object]]:
     """#### Prepare the model for sampling.
 
@@ -59,7 +59,6 @@ def prepare_sampling(
         - `model` (object): The model.
         - `noise_shape` (Tuple[int]): The shape of the noise.
         - `conds` (dict): The conditions.
-        - `flux_enabled` (bool, optional): Whether flux is enabled. Defaults to False.
 
     #### Returns:
         - `Tuple[object, dict, List[object]]`: The prepared model, conditions, and additional models.
@@ -74,11 +73,14 @@ def prepare_sampling(
         model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
         + inference_memory
     )
+    
+    # Don't force full load - let partial loading work for all models including Flux2
+    # This enables ComfyUI-style partial loading: load what fits in VRAM, offload rest
     Device.load_models_gpu(
         [model] + models,
         memory_required=memory_required,
         minimum_memory_required=minimum_memory_required,
-        flux_enabled=flux_enabled,
+        force_full_load=False,
     )
     real_model = model.model
 

@@ -12,9 +12,8 @@ sys.path.append(str(project_root))
 
 from src.user.pipeline import pipeline
 
-def run_benchmarked_pipeline(flux=False):
-    mode_name = "Flux" if flux else "Standard"
-    print(f"🚀 Starting benchmarked {mode_name} generation...")
+def run_benchmarked_pipeline():
+    print("🚀 Starting benchmarked generation...")
     
     # Warm-up run
     print("🔥 Warm-up run...")
@@ -25,10 +24,9 @@ def run_benchmarked_pipeline(flux=False):
         number=1,
         batch=1,
         steps=10,
-        flux_enabled=flux
     )
     
-    print(f"📊 Profiling {mode_name} generation...")
+    print("📊 Profiling generation...")
     pr = cProfile.Profile()
     pr.enable()
     
@@ -40,13 +38,12 @@ def run_benchmarked_pipeline(flux=False):
         number=1,
         batch=1,
         steps=20,
-        flux_enabled=flux
     )
     end_time = time.perf_counter()
     
     pr.disable()
     
-    print(f"✅ {mode_name} Generation finished in {end_time - start_time:.2f}s")
+    print(f"✅ Generation finished in {end_time - start_time:.2f}s")
     
     # Analyze profile
     s = io.StringIO()
@@ -54,7 +51,7 @@ def run_benchmarked_pipeline(flux=False):
     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
     ps.print_stats(30)
     
-    print(f"\n=== TOP 30 {mode_name.upper()} FUNCTIONS BY CUMULATIVE TIME ===")
+    print("\n=== TOP 30 FUNCTIONS BY CUMULATIVE TIME ===")
     print(s.getvalue())
     
     # Also show by internal time
@@ -63,15 +60,10 @@ def run_benchmarked_pipeline(flux=False):
     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
     ps.print_stats(30)
     
-    print(f"\n=== TOP 30 {mode_name.upper()} FUNCTIONS BY INTERNAL TIME ===")
+    print("\n=== TOP 30 FUNCTIONS BY INTERNAL TIME ===")
     print(s.getvalue())
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--flux", action="store_true")
-    args = parser.parse_args()
-    
     # Ensure output dir exists
     os.makedirs("./output", exist_ok=True)
-    run_benchmarked_pipeline(flux=args.flux)
+    run_benchmarked_pipeline()

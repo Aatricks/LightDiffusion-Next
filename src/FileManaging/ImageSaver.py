@@ -55,7 +55,7 @@ def get_save_image_path(
     full_output_folder = os.path.join(output_dir, subfolder)
     subfolder_paths = [
         os.path.join(full_output_folder, x)
-        for x in ["Classic", "HiresFix", "Img2Img", "Flux", "Adetailer"]
+        for x in ["Classic", "HiresFix", "Img2Img", "Adetailer"]
     ]
     for path in subfolder_paths:
         os.makedirs(path, exist_ok=True)
@@ -166,8 +166,6 @@ class SaveImage:
                         save_path = os.path.join(full_output_folder, "HiresFix")
                     elif filename_prefix == "LD-I2I":
                         save_path = os.path.join(full_output_folder, "Img2Img")
-                    elif filename_prefix == "LD-Flux":
-                        save_path = os.path.join(full_output_folder, "Flux")
                     elif filename_prefix == "LD-head" or filename_prefix == "LD-body":
                         save_path = os.path.join(full_output_folder, "Adetailer")
                     else:
