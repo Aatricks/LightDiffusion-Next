@@ -42,19 +42,25 @@ jobs:
       - name: Run tests
         run: |
           # Run tests file-by-file for isolation to prevent mock leaks between suites.
-          # We use a loop and allow exit code 5 (no tests collected) which happens
-          # when a file only contains 'slow' or 'gpu' tests that are filtered out.
+          # We handle exit code 5 (no tests collected) which happens when a file 
+          # only contains 'slow' or 'gpu' tests that are filtered out.
           failed=0
           for f in $(find tests -type f -name "test_*.py"); do
             echo "Running tests in $f..."
-            pytest -v -m "not gpu and not slow" --tb=short "$f"
-            status=$?
-            if [ $status -ne 0 ] && [ $status -ne 5 ]; then
-              echo "Error: tests in $f failed with exit code $status"
-              failed=1
+            if pytest -v -m "not gpu and not slow" --tb=short "$f"; then
+              echo "Successfully ran tests in $f"
+            else
+              status=$?
+              if [ $status -eq 5 ]; then
+                echo "No tests matching filter in $f (exit code 5), continuing..."
+              else
+                echo "Error: tests in $f failed with exit code $status"
+                failed=1
+              fi
             fi
           done
           if [ $failed -ne 0 ]; then
+            echo "One or more test suites failed."
             exit 1
           fi
 
