@@ -41,8 +41,22 @@ jobs:
 
       - name: Run tests
         run: |
-          # Run tests file-by-file for isolation to prevent mock leaks between suites
-          find tests -type f -name "test_*.py" | xargs -n 1 pytest -v -m "not gpu and not slow" --tb=short
+          # Run tests file-by-file for isolation to prevent mock leaks between suites.
+          # We use a loop and allow exit code 5 (no tests collected) which happens
+          # when a file only contains 'slow' or 'gpu' tests that are filtered out.
+          failed=0
+          for f in $(find tests -type f -name "test_*.py"); do
+            echo "Running tests in $f..."
+            pytest -v -m "not gpu and not slow" --tb=short "$f"
+            status=$?
+            if [ $status -ne 0 ] && [ $status -ne 5 ]; then
+              echo "Error: tests in $f failed with exit code $status"
+              failed=1
+            fi
+          done
+          if [ $failed -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Upload coverage report
         if: matrix.python-version == '3.10'
