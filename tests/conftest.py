@@ -38,13 +38,38 @@ class MockModelPatcher:
         self.model_type = model_type
         self.model = MagicMock()
         self.model.diffusion_model = MagicMock()
+        self.model.model_type = 0 # EPS
+        self.model.model_sampling = MagicMock()
+        self.model.model_sampling.sigma_min = 0.02
+        self.model.model_sampling.sigma_max = 14.6
+        self.model.model_sampling.sigmas = torch.linspace(0.02, 14.6, 1000)
+        self.model.model_sampling.timestep = lambda x: x * 1000
+        
+        self.latent_format = MagicMock()
+        self.latent_format.latent_channels = 4
+        
         self.patches = {}
         self.object_patches = {}
         self.weight_inplace_update = False
         self.load_device = torch.device("cpu")
+        self.offload_device = torch.device("cpu")
         self.current_device = torch.device("cpu")
         self.model_options = {}
     
+    def model_dtype(self):
+        return torch.float16
+        
+    def memory_required(self, shape):
+        return 1024 * 1024 * 1024 # 1GB
+        
+    def model_memory_required(self, device=None):
+        return 2 * 1024 * 1024 * 1024 # 2GB
+        
+    def get_model_object(self, name):
+        if name == "model_sampling":
+            return self.model.model_sampling
+        return MagicMock()
+
     def clone(self):
         """Return a clone of this patcher."""
         cloned = MockModelPatcher(self.model_name, self.model_type)
@@ -99,6 +124,16 @@ class MockCLIP:
         """Mock tokenize."""
         return {"input_ids": torch.randint(0, 49407, (1, 77))}
     
+    def encode_token_weights(self, tokens: Any) -> Tuple:
+        """Mock encode_token_weights."""
+        if self.clip_type == "SDXL":
+            embed_dim = 2048
+        else:
+            embed_dim = 768
+        cond = torch.randn(1, 77, embed_dim)
+        pooled = torch.randn(1, embed_dim) if self.clip_type == "SDXL" else None
+        return cond, pooled
+
     def clone(self):
         """Clone the CLIP model."""
         return MockCLIP(self.clip_type)
@@ -361,8 +396,31 @@ def assert_valid_latent(latent_dict: Dict, expected_channels: int = 4):
 
 
 # =============================================================================
-# Test Path Helpers
+# Global Hooks
 # =============================================================================
+
+def pytest_runtest_teardown(item, nextitem):
+    """Ensure all patches are stopped after each test."""
+    patch.stopall()
+
+
+@pytest.fixture
+def patch_model_loader():
+    """Patch load_model_for_pipeline to return mock results."""
+    def mock_load(model_path=None, flux_dequant_dtype=None, flux_patch_dtype=None):
+        if model_path and "flux" in model_path.lower():
+            return ("FLUX", (MockModelPatcher(model_path, "FLUX"),))
+        elif model_path and "sdxl" in model_path.lower():
+            return ("SDXL", MockCheckpointResult("SDXL").as_tuple())
+        else:
+            return ("SD15", MockCheckpointResult("SD15").as_tuple())
+    
+    with patch(
+        "src.user.model_loader.load_model_for_pipeline",
+        side_effect=mock_load
+    ) as mock:
+        yield mock
+
 
 def get_test_data_path(relative_path: str) -> Path:
     """Get absolute path to test data file."""

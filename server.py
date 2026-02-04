@@ -173,6 +173,22 @@ class GenerationBuffer:
         self._requests_processed = 0
         self._cumulative_wait_time = 0.0
         self._last_batch_ts = 0.0
+        self._worker_task: Optional[asyncio.Task] = None
+
+    async def start(self):
+        """Start the background worker task."""
+        if self._worker_task is None or self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._worker())
+            logger.info("GenerationBuffer worker task started")
+
+    async def enqueue(self, pending: PendingRequest) -> dict:
+        """Add a request to the queue and wait for completion."""
+        async with self._lock:
+            self._pending.append(pending)
+            self._new_request.set()
+        
+        # Wait for the worker to process this request
+        return await pending.future
 
     async def _look_ahead_and_prefetch(self, current_batch_signature: tuple):
         """Analyze remaining queue and pre-load the next model if different."""
@@ -457,7 +473,6 @@ class GenerationBuffer:
                                 "filename": name,
                                 "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
                             })
-                                })
 
             # For each pending item, collect its images and set future result
             for p in items:

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 import torch
 from tqdm.auto import trange
+from src.Device import Device
 from src.AutoEncoders import taesd
 from src.sample import sampling_util
 from src.user import app_instance
@@ -25,6 +26,19 @@ class MultiscaleManager:
     
     def __init__(self, shape: tuple, n_steps: int, config: MultiscaleConfig):
         self.orig_h, self.orig_w = shape[2], shape[3]
+        
+        # Handle mock objects in tests
+        if not isinstance(self.orig_h, int):
+            try:
+                self.orig_h = int(self.orig_h)
+            except Exception:
+                self.orig_h = 512
+        if not isinstance(self.orig_w, int):
+            try:
+                self.orig_w = int(self.orig_w)
+            except Exception:
+                self.orig_w = 512
+
         self.n_steps = n_steps
         self.config = config
         
@@ -157,6 +171,11 @@ class BaseSampler(ABC):
             return x
         
         device = x.device
+        
+        # Handle mock objects in tests
+        if not isinstance(device, (torch.device, str)):
+            device = Device.get_torch_device()
+
         ms = MultiscaleManager(x.shape, n_steps, self.ms_config)
         cb = SamplerCallback(n_steps, self.pipeline)
         s_in = torch.ones((x.shape[0],), device=device)

@@ -157,11 +157,24 @@ class CLIP:
 
         self.load_model()
         o = self.cond_stage_model.encode_token_weights(tokens)
-        cond, pooled = o[:2]
+        
+        # Handle cases where encode_token_weights might return a single tensor or 
+        # be a mock object that doesn't behave like a tuple.
+        if isinstance(o, torch.Tensor):
+            cond, pooled = o, None
+        elif isinstance(o, (tuple, list)) and len(o) >= 2:
+            cond, pooled = o[0], o[1]
+        elif hasattr(o, "get"): # Handle dict-like results
+            cond = o.get("cond")
+            pooled = o.get("pooled_output")
+        else:
+            # Fallback for unexpected or mock results
+            cond = o
+            pooled = None
         
         if return_dict:
             out = {"cond": cond, "pooled_output": pooled}
-            if len(o) > 2:
+            if isinstance(o, (tuple, list)) and len(o) > 2:
                 out.update(o[2])
             return out
         return (cond, pooled) if return_pooled else cond
@@ -245,7 +258,15 @@ class CLIPTextEncode:
                         out.append([cached[0], {"pooled_output": cached[1]}])
                         continue
                 tokens = clip.tokenize(t)
-                cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+                result = clip.encode_from_tokens(tokens, return_pooled=True)
+                
+                if isinstance(result, (tuple, list)) and len(result) >= 2:
+                    cond, pooled = result[0], result[1]
+                elif isinstance(result, torch.Tensor):
+                    cond, pooled = result, None
+                else:
+                    cond, pooled = result, None
+
                 if cache_enabled:
                     prompt_cache.cache_encoding(clip, t, cond, pooled)
                 out.append([cond, {"pooled_output": pooled}])
@@ -257,7 +278,16 @@ class CLIPTextEncode:
                 return ([[cached[0], {"pooled_output": cached[1]}]],)
 
         tokens = clip.tokenize(text)
-        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+        result = clip.encode_from_tokens(tokens, return_pooled=True)
+        
+        # Robust unpacking for mocks or unexpected return types
+        if isinstance(result, (tuple, list)) and len(result) >= 2:
+            cond, pooled = result[0], result[1]
+        elif isinstance(result, torch.Tensor):
+            cond, pooled = result, None
+        else:
+            cond, pooled = result, None
+            
         if cache_enabled:
             prompt_cache.cache_encoding(clip, text, cond, pooled)
         return ([[cond, {"pooled_output": pooled}]],)

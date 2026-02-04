@@ -87,10 +87,6 @@ def detect_model_type(model_path: Optional[str]) -> str:
         ValueError: If GGUF file provided (unsupported)
     """
     if not model_path:
-        # Check if Flux2 components exist in default dirs
-        diffusion_path, _, _ = _find_flux2_components()
-        if diffusion_path:
-            return "Flux2Klein"
         return "SD15"
     
     lp = model_path.lower()

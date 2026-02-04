@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.10', '3.14']
       fail-fast: false
 
     steps:
@@ -41,7 +41,8 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/ -v -m "not gpu and not slow" --tb=short
+          # Run tests file-by-file for isolation to prevent mock leaks between suites
+          find tests -type f -name "test_*.py" | xargs -n 1 pytest -v -m "not gpu and not slow" --tb=short
 
       - name: Upload coverage report
         if: matrix.python-version == '3.10'

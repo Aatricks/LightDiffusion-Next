@@ -208,7 +208,10 @@ class UNetModel1(nn.Module):
         transformer_options["original_shape"], transformer_options["transformer_index"] = list(x.shape), 0
         num_video_frames = kwargs.get("num_video_frames", self.default_num_video_frames)
         image_only_indicator, time_context = kwargs.get("image_only_indicator"), kwargs.get("time_context")
-        assert (y is not None) == (self.num_classes is not None)
+        if self.num_classes is None:
+            y = None
+        elif y is None:
+            raise ValueError("y is required for models with num_classes")
         emb = self.time_embed(sampling_util.timestep_embedding(timesteps, self.model_channels).to(device=x.device, dtype=x.dtype))
         hs, h = [], x
         for id, module in enumerate(self.input_blocks):

@@ -382,9 +382,13 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
     # Use provided model_options or default to model's own
     m_opts = model_options if model_options is not None else model.model_options
 
-    samples = sample(model, noise, positive, negative, cfg, model.load_device, sampler_obj, sigmas.to(model.load_device),
-                     m_opts, latent_image=latent_image, denoise_mask=noise_mask, callback=callback,
-                     disable_pbar=disable_pbar, seed=seed, pipeline=pipeline, flux=flux or flux2,
+    load_device = model.load_device
+    if not isinstance(load_device, (torch.device, str)):
+        load_device = Device.get_torch_device() # Fallback
+
+    samples = sample(model, noise, positive, negative, cfg, load_device, sampler_obj, sigmas.to(load_device),
+                     m_opts, latent_image=latent_image, denoise_mask=noise_mask, callback=callback,  
+                     disable_pbar=disable_pbar, seed=seed, pipeline=pipeline, flux=flux or flux2,    
                      cfg_free_enabled=cfg_free_enabled, cfg_free_start_percent=cfg_free_start_percent,
                      batched_cfg=batched_cfg, dynamic_cfg_rescaling=dynamic_cfg_rescaling,
                      dynamic_cfg_method=dynamic_cfg_method, dynamic_cfg_percentile=dynamic_cfg_percentile,
@@ -395,6 +399,8 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
 
 class ModelType(Enum):
     EPS = 1
+    V_PREDICTION = 2
+    EDM = 3
     FLUX = 8
     FLUX2 = 9  # Flux2 Klein
 

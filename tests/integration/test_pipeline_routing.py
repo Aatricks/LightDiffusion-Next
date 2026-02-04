@@ -24,7 +24,7 @@ sys.path.insert(0, str(project_root))
 # =============================================================================
 
 @pytest.fixture
-def mock_all_heavy_dependencies():
+def mock_all_heavy_dependencies(request):
     """
     Comprehensive mock that patches all heavy dependencies to allow
     testing pipeline routing logic without loading real models.
@@ -74,6 +74,17 @@ def mock_all_heavy_dependencies():
     # Start all patches
     mocks = {name: p.start() for name, p in patches.items()}
     
+    def teardown():
+        # Stop all patches in reverse order
+        for p in reversed(list(patches.values())):
+            try:
+                p.stop()
+            except Exception:
+                pass
+        patch.stopall()
+    
+    request.addfinalizer(teardown)
+    
     # Configure default return values
     mock_model_patcher = MagicMock()
     mock_model_patcher.model = MagicMock()
@@ -118,10 +129,6 @@ def mock_all_heavy_dependencies():
     mocks['save_image'].return_value.save_images_async = MagicMock()
     
     yield mocks
-    
-    # Stop all patches
-    for p in patches.values():
-        p.stop()
 
 
 # =============================================================================

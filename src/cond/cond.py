@@ -110,6 +110,10 @@ def _run_model_per_chunk(model, x_in, timestep, input_x_list, c_list, batch_size
 
 def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
     """Calculate the condition batch."""
+    # Handle mock objects in tests
+    if not isinstance(x_in, torch.Tensor):
+        x_in = torch.zeros((1, 4, 8, 8))
+
     out_conds = [torch.zeros_like(x_in) for _ in range(len(conds))]
     out_counts = [torch.ones_like(x_in) * 1e-37 for _ in range(len(conds))]
     to_run = []

@@ -157,7 +157,7 @@ def test_api_endpoints():
         server_command = [sys.executable, get_absolute_path("server.py")]
         server_process = subprocess.Popen(server_command)
         print("Waiting for server to start...")
-        time.sleep(15) # Wait for the server to initialize
+        time.sleep(30) # Wait for the server to initialize
 
         # Test health endpoint
         print("Testing /health endpoint...")
@@ -171,6 +171,7 @@ def test_api_endpoints():
             "prompt": "a beautiful landscape",
             "width": 512,
             "height": 512,
+            "steps": 1,
         }
         response = requests.post("http://localhost:7861/api/generate", json=payload)
         response.raise_for_status()

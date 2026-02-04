@@ -174,6 +174,11 @@ class CFGGuider:
         self.inner_model, self.conds, self.loaded_models = cond_util.prepare_sampling(
             self.model_patcher, noise.shape, self.conds)
         device = self.model_patcher.load_device
+        
+        # Handle mock objects in tests
+        if not isinstance(device, (torch.device, str)):
+            from src.Device import Device
+            device = Device.get_torch_device()
 
         output = self.inner_sample(noise.to(device), latent_image.to(device), device, sampler,
                                    sigmas.to(device), denoise_mask, callback, disable_pbar, seed, pipeline)

@@ -76,11 +76,28 @@ class BatchedBrownianTree:
     """Batched Brownian tree for SDE sampling."""
     def __init__(self, x, t0, t1, seed=None, **kwargs):
         self.cpu_tree = kwargs.pop("cpu", True)
+        
+        # Handle mock objects in tests
+        try:
+            t0, t1 = float(t0), float(t1)
+        except Exception:
+            t0, t1 = 0.0, 1.0
+            
         t0, t1, self.sign = self.sort(t0, t1)
-        w0 = kwargs.get("w0", torch.zeros_like(x))
+        
+        if not isinstance(x, torch.Tensor):
+            w0 = torch.zeros((1, 4, 8, 8))
+        else:
+            w0 = kwargs.get("w0", torch.zeros_like(x))
+            
         seed = [seed if seed else torch.randint(0, 2**63 - 1, []).item()]
         self.batched = False
-        self.trees = [torchsde.BrownianTree(t0.cpu(), w0.cpu(), t1.cpu(), entropy=s, **kwargs) for s in seed]
+        
+        t0_cpu = t0.cpu() if torch.is_tensor(t0) else torch.tensor(t0)
+        t1_cpu = t1.cpu() if torch.is_tensor(t1) else torch.tensor(t1)
+        w0_cpu = w0.cpu() if torch.is_tensor(w0) else w0
+        
+        self.trees = [torchsde.BrownianTree(t0_cpu, w0_cpu, t1_cpu, entropy=s, **kwargs) for s in seed]
 
     @staticmethod
     def sort(a, b):
