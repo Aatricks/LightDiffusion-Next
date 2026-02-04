@@ -47,6 +47,7 @@ class SDXLModel(AbstractModel):
             supports_stable_fast=True,
             supports_deepcache=True,
             supports_tome=True,
+            supports_lora=True,
             uses_dual_clip=True,
             requires_size_conditioning=True,
         )
@@ -178,6 +179,19 @@ class SDXLModel(AbstractModel):
                 f"to {width}x{height}"
             )
         
+        # Inject size conditioning into positive and negative conditioning
+        for cond_list in [positive, negative]:
+            for cond_item in cond_list:
+                if len(cond_item) > 1 and isinstance(cond_item[1], dict):
+                    cond_item[1].update({
+                        "width": width,
+                        "height": height,
+                        "crop_w": 0,
+                        "crop_h": 0,
+                        "target_width": width,
+                        "target_height": height,
+                    })
+        
         try:
             from src.sample import sampling
             from src.Utilities import Latent
@@ -263,6 +277,7 @@ class SDXLModel(AbstractModel):
             result = decoder.decode(
                 samples=samples,
                 vae=self.vae,
+                flux=getattr(self.vae, "flux", False),
             )
             
             return result[0]

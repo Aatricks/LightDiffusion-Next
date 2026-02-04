@@ -64,7 +64,10 @@ def load_checkpoint_guess_config(
             sd, {k: "" for k in model_config.vae_key_prefix}, filter_keys=True
         )
         vae_sd = model_config.process_vae_state_dict(vae_sd)
-        vae = VariationalAE.VAE(sd=vae_sd)
+        
+        # Check for flux flag in model_config
+        flux_vae = getattr(model_config, "vae_config", {}).get("flux", False)
+        vae = VariationalAE.VAE(sd=vae_sd, flux=flux_vae)
 
     if output_clip:
         clip_target = model_config.clip_target()

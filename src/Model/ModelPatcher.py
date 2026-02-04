@@ -231,7 +231,19 @@ class ModelPatcher:
             mat2 = Device.cast_to_device(v[1], weight.device, torch.float32)
             if v[2] is not None:
                 alpha *= v[2] / mat2.shape[0]
-            weight += (alpha * torch.mm(mat1.flatten(start_dim=1), mat2.flatten(start_dim=1))).reshape(weight.shape).type(weight.dtype)
+            
+            patch_shape = (mat1.shape[0], mat2.shape[1])
+            if patch_shape != weight.shape:
+                # Handle cases where weight might be flattened but patch is not, or vice versa
+                if mat1.flatten(start_dim=1).shape[0] * mat2.flatten(start_dim=1).shape[1] != weight.numel():
+                    logging.warning(f"Skipping patch for {key}: shape mismatch. Weight: {weight.shape}, Patch: {patch_shape}")
+                    continue
+                
+            try:
+                weight += (alpha * torch.mm(mat1.flatten(start_dim=1), mat2.flatten(start_dim=1))).reshape(weight.shape).type(weight.dtype)
+            except Exception as e:
+                logging.error(f"Failed to apply patch for {key}: {e}")
+                continue
         return weight
 
     def unpatch_model(self, device_to=None, unpatch_weights=True):

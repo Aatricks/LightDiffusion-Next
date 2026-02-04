@@ -375,12 +375,23 @@ class Pipeline:
     
     def _apply_optimizations(self, ctx: Context, model: AbstractModel) -> None:
         """Apply all configured optimizations to the model."""
-        # LoRA - only if model supports it
+        # LoRA - only if model supports it and matches default LoRA type
+        # Default LoRA (add_detail) is SD1.5 (context_dim 768)
+        is_sd15 = False
+        try:
+            is_sd15 = model.get_model_object("context_dim") == 768
+        except Exception:
+            pass
+
         if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
-            try:
-                model.apply_lora(*self.default_lora)
-            except Exception as e:
-                logger.warning(f"LoRA failed: {e}")
+            # Only apply default detailing LoRA to SD1.5 models
+            if not is_sd15 and self.default_lora[0] == "add_detail.safetensors":
+                logger.debug(f"Skipping default SD1.5 LoRA for non-SD1.5 model")
+            else:
+                try:
+                    model.apply_lora(*self.default_lora)
+                except Exception as e:
+                    logger.warning(f"LoRA failed: {e}")
         
         # StableFast
         if ctx.generation.stable_fast:

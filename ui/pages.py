@@ -85,13 +85,14 @@ def render_generate_page():
             w, h = PRESETS[p]
             st.session_state.settings["width"] = w
             st.session_state.settings["height"] = h
-            # Sync widget states
+            # Sync widget states to avoid one-frame lag
             st.session_state.width_input = w
             st.session_state.height_input = h
 
     def on_dim_change():
         # Reset preset to Custom on manual dimension change
         st.session_state.preset_selectbox = "Custom"
+        # Immediate sync to settings
         st.session_state.settings["width"] = st.session_state.width_input
         st.session_state.settings["height"] = st.session_state.height_input
 
@@ -205,6 +206,7 @@ def render_generate_page():
                     "Width", 
                     min_value=64, 
                     max_value=2048, 
+                    value=settings.get("width", 1024),
                     key="width_input", 
                     on_change=on_dim_change, 
                     step=64, 
@@ -215,6 +217,7 @@ def render_generate_page():
                     "Height", 
                     min_value=64, 
                     max_value=2048, 
+                    value=settings.get("height", 1024),
                     key="height_input", 
                     on_change=on_dim_change, 
                     step=64, 

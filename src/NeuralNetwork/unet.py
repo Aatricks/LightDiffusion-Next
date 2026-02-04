@@ -138,6 +138,14 @@ class UNetModel1(nn.Module):
         self.time_embed = nn.Sequential(
             operations.Linear(model_channels, time_embed_dim, dtype=self.dtype, device=device), nn.SiLU(),
             operations.Linear(time_embed_dim, time_embed_dim, dtype=self.dtype, device=device))
+        
+        if adm_in_channels is not None:
+            self.label_emb = nn.Sequential(
+                nn.Sequential(
+                    operations.Linear(adm_in_channels, time_embed_dim, dtype=self.dtype, device=device),
+                    nn.SiLU(),
+                    operations.Linear(time_embed_dim, time_embed_dim, dtype=self.dtype, device=device)))
+
         self.input_blocks = nn.ModuleList([sampling.TimestepEmbedSequential1(
             operations.conv_nd(dims, in_channels, model_channels, 3, padding=1, dtype=self.dtype, device=device))])
         self._feature_size, input_block_chans, ch, ds = model_channels, [model_channels], model_channels, 1
@@ -213,6 +221,10 @@ class UNetModel1(nn.Module):
         elif y is None:
             raise ValueError("y is required for models with num_classes")
         emb = self.time_embed(sampling_util.timestep_embedding(timesteps, self.model_channels).to(device=x.device, dtype=x.dtype))
+        
+        if y is not None:
+            emb = emb + self.label_emb(y.to(device=x.device, dtype=x.dtype))
+
         hs, h = [], x
         for id, module in enumerate(self.input_blocks):
             transformer_options["block"] = ("input", id)

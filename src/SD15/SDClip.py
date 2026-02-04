@@ -148,10 +148,11 @@ class SDClipModel(torch.nn.Module, ClipTokenWeightEncoder):
         if embedding_weights:
             new_embedding = self.operations.Embedding(next_new_token + 1, current_embeds.weight.shape[1],
                                                        device=current_embeds.weight.device, dtype=current_embeds.weight.dtype)
-            new_embedding.weight[:token_dict_size] = current_embeds.weight
-            for x in embedding_weights:
-                new_embedding.weight[n] = x
-                n += 1
+            with torch.no_grad():
+                new_embedding.weight[:token_dict_size] = current_embeds.weight
+                for x in embedding_weights:
+                    new_embedding.weight[n] = x
+                    n += 1
             self.transformer.set_input_embeddings(new_embedding)
 
         return [[n if a == -1 else a for a in x] for x in out_tokens]

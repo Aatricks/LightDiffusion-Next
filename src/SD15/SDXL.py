@@ -86,6 +86,17 @@ class SDXL(ModelBase.BASE):
     latent_format = Latent.SDXL
     memory_usage_factor = 0.8
 
+    def process_vae_state_dict(self, state_dict):
+        """Process VAE state dict for SDXL.
+        
+        Detects if the VAE is a 'flux-style' VAE (missing post_quant_conv)
+        and sets the flag for decoding logic.
+        """
+        if "post_quant_conv.weight" not in state_dict:
+            # If missing post_quant_conv, it's a Flux-style VAE
+            self.vae_config = {"flux": True}
+        return state_dict
+
     def model_type(self, state_dict, prefix=""):
         """Detect the model type from state dict.
 

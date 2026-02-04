@@ -60,10 +60,11 @@ def convert_cond(cond: list) -> list:
                 temp["cross_attn"] = cond_tensor
             except Exception:
                 pass
-        # Pass pooled_output as 'y' for models that need it (e.g., Flux2)
+        # Pass pooled_output as 'y' only if needed (e.g., Flux2 without extra_conds)
+        # For SDXL, extra_conds will handle this via encode_adm
         pooled = temp.get("pooled_output")
         if pooled is not None:
-            model_conds["y"] = CONDRegular(pooled)
+            model_conds["y_pooled"] = CONDRegular(pooled)
         # Pass attention_mask for Klein/Flux2 models to properly mask padding
         attention_mask = temp.get("attention_mask")
         if attention_mask is not None:
@@ -197,7 +198,20 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
                         {"input": input_x, "timestep": timestep_, "c": c, "cond_or_uncond": cond_or_uncond})
                 else:
                     full_out = model.apply_model(input_x, timestep_, **c)
-                output_parts = list(torch.split(full_out, batch_sizes, dim=0))
+                
+                # Robust split: ensure sum matches full_out.shape[0]
+                actual_out_batch = full_out.shape[0]
+                if actual_out_batch != expected_sum:
+                    # If model returned more/fewer items than expected (e.g. HiDiffusion internal batching)
+                    # use actual_out_batch to prevent torch.split crash
+                    split_size = actual_out_batch // len(batch_sizes)
+                    if split_size > 0:
+                        output_parts = list(torch.split(full_out, split_size, dim=0))
+                    else:
+                        # Fallback for single item output
+                        output_parts = [full_out] * len(batch_sizes)
+                else:
+                    output_parts = list(torch.split(full_out, batch_sizes, dim=0))
             except Exception as e:
                 logging.exception("Fast-path model call failed, falling back to per-chunk: %s", e)
                 output_parts = _run_model_per_chunk(model, x_in, timestep, input_x_list, c_list, batch_sizes, batch_indices_list, cond_or_uncond, model_options)
