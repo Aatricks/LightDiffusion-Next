@@ -6,6 +6,7 @@ import time
 import sys
 import subprocess
 import requests
+import pytest
 from pathlib import Path
 
 # Add the project root to the Python path
@@ -31,6 +32,7 @@ def run_test(test_function, *args, **kwargs):
         print(f"Error: {e}")
 
 
+@pytest.mark.slow
 def test_normal_pipeline():
     """Tests the default text-to-image pipeline."""
     print("Testing normal pipeline with default settings...")
@@ -42,6 +44,7 @@ def test_normal_pipeline():
         batch=1,
     )
 
+@pytest.mark.slow
 def test_samplers():
     """Tests all available samplers."""
     samplers = ["euler", "euler_ancestral", "euler_cfgpp", "euler_ancestral_cfgpp", "dpmpp_2m_cfgpp", "dpmpp_sde_cfgpp"]
@@ -56,6 +59,7 @@ def test_samplers():
             sampler=sampler,
         )
 
+@pytest.mark.slow
 def test_schedulers():
     """Tests all available schedulers."""
     schedulers = ["normal", "karras", "simple", "beta", "ays", "ays_sd15", "ays_sdxl"]
@@ -70,6 +74,7 @@ def test_schedulers():
             scheduler=scheduler,
         )
 
+@pytest.mark.slow
 def test_optimizations():
     """Tests various optimizations."""
     import time
@@ -88,7 +93,7 @@ def test_optimizations():
         )
         end_time = time.perf_counter()
         duration = end_time - start_time
-        print(".2f")
+        print(f"{duration:.2f}")
         return duration
     
     # Baseline: no optimizations
@@ -128,6 +133,7 @@ def test_optimizations():
         print(f"DeepCache: {deepcache_time:.2f}s ({slowdown:.2f}x slower)")
 
 
+@pytest.mark.slow
 def test_img2img():
     """Tests the img2img pipeline."""
     print("Testing img2img pipeline...")
@@ -148,6 +154,7 @@ def test_img2img():
         img2img_image=dummy_image_path,
     )
 
+@pytest.mark.slow
 def test_api_endpoints():
     """Tests the API endpoints."""
     print("Testing API endpoints...")
@@ -184,6 +191,7 @@ def test_api_endpoints():
             server_process.terminate()
             server_process.wait()
 
+@pytest.mark.slow
 def test_hires_fix():
     """Tests the hires_fix feature."""
     print("Testing hires_fix...")
@@ -196,6 +204,7 @@ def test_hires_fix():
         hires_fix=True,
     )
 
+@pytest.mark.slow
 def test_adetailer():
     """Tests the adetailer feature."""
     print("Testing adetailer...")
@@ -208,6 +217,7 @@ def test_adetailer():
         adetailer=True,
     )
 
+@pytest.mark.slow
 def test_enhance_prompt():
     """Tests the enhance_prompt feature."""
     print("Testing enhance_prompt...")
@@ -220,6 +230,7 @@ def test_enhance_prompt():
         enhance_prompt=True,
     )
 
+@pytest.mark.slow
 def test_reuse_seed():
     """Tests the reuse_seed feature."""
     print("Testing reuse_seed...")
@@ -232,6 +243,7 @@ def test_reuse_seed():
         reuse_seed=True,
     )
 
+@pytest.mark.slow
 def test_realistic_model():
     """Tests the realistic_model feature."""
     print("Testing realistic_model...")
@@ -244,6 +256,7 @@ def test_realistic_model():
         realistic_model=True,
     )
 
+@pytest.mark.slow
 def test_all_features():
     """Tests all features at once."""
     print("Testing all features at once...")
@@ -260,6 +273,7 @@ def test_all_features():
         realistic_model=True,
     )
 
+@pytest.mark.slow
 def benchmark_optimizations():
     """Benchmarks optimizations with multiple runs for statistical analysis."""
     import time
@@ -282,11 +296,11 @@ def benchmark_optimizations():
             end_time = time.perf_counter()
             duration = end_time - start_time
             times.append(duration)
-            print(".2f")
+            print(f"{duration:.2f}")
         
         avg_time = statistics.mean(times)
         std_dev = statistics.stdev(times) if len(times) > 1 else 0
-        print(".2f")
+        print(f"{avg_time:.2f}")
         return avg_time, std_dev
     
     print("=== Optimization Benchmark (3 runs each) ===")

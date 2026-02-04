@@ -237,6 +237,11 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
 def _apply_output_no_area(out_conds, out_counts, cond_index, out_part, mult, batch_inds):
     """Apply output without area specification."""
     if batch_inds is None:
+        # Ensure out_part matches batch size of target
+        if out_part.shape[0] != out_conds[cond_index].shape[0]:
+            out_part = out_part[:out_conds[cond_index].shape[0]]
+            mult = mult[:out_counts[cond_index].shape[0]]
+            
         out_conds[cond_index] += out_part * mult
         out_counts[cond_index] += mult
     else:
@@ -246,8 +251,13 @@ def _apply_output_no_area(out_conds, out_counts, cond_index, out_part, mult, bat
         if not valid:
             return
         idx = torch.tensor(valid, dtype=torch.long, device=dev)
-        out_conds[cond_index][idx] += out_part[:idx.shape[0]] * mult[:idx.shape[0]]
-        out_counts[cond_index][idx] += mult[:idx.shape[0]]
+        
+        # Slice out_part to match the number of valid indices
+        out_part_final = out_part[:idx.shape[0]]
+        mult_final = mult[:idx.shape[0]]
+        
+        out_conds[cond_index][idx] += out_part_final * mult_final
+        out_counts[cond_index][idx] += mult_final
 
 
 def _apply_output_with_area(out_conds, out_counts, cond_index, out_part, mult, batch_inds, a):
@@ -267,6 +277,11 @@ def _apply_output_with_area(out_conds, out_counts, cond_index, out_part, mult, b
         mult_crop = mult[..., :region_h, :region_w]
         
         if batch_inds is None:
+            # Ensure out_part matches batch size of target if not using indices
+            if out_part_crop.shape[0] != out_conds[cond_index].shape[0]:
+                out_part_crop = out_part_crop[:out_conds[cond_index].shape[0]]
+                mult_crop = mult_crop[:out_counts[cond_index].shape[0]]
+            
             out_conds[cond_index][:, :, y0:y1, x0:x1] += out_part_crop * mult_crop
             out_counts[cond_index][:, :, y0:y1, x0:x1] += mult_crop
         else:
@@ -276,8 +291,13 @@ def _apply_output_with_area(out_conds, out_counts, cond_index, out_part, mult, b
             if not valid:
                 return
             idx = torch.tensor(valid, dtype=torch.long, device=dev)
-            out_conds[cond_index][idx, :, y0:y1, x0:x1] += out_part_crop[:idx.shape[0]] * mult_crop[:idx.shape[0]]
-            out_counts[cond_index][idx, :, y0:y1, x0:x1] += mult_crop[:idx.shape[0]]
+            
+            # Slice out_part to match the number of valid indices
+            out_part_final = out_part_crop[:idx.shape[0]]
+            mult_final = mult_crop[:idx.shape[0]]
+            
+            out_conds[cond_index][idx, :, y0:y1, x0:x1] += out_part_final * mult_final
+            out_counts[cond_index][idx, :, y0:y1, x0:x1] += mult_final
 
 
 def encode_model_conds(model_function, conds, noise, device, prompt_type, **kwargs) -> list:
