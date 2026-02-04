@@ -73,8 +73,16 @@ class Img2Img:
             # Load image from path
             image_tensor = cls._load_image(source_path)
         
-        # Use defaults if not specified
-        upscale_by = upscale_by or cls.DEFAULT_UPSCALE_BY
+        # Determine upscale factor from context dimensions if not provided
+        if upscale_by is None:
+            input_w = image_tensor.shape[2] # [B, H, W, C]
+            target_w = ctx.generation.width
+            if target_w and target_w != input_w:
+                upscale_by = target_w / input_w
+                logger.info(f"Img2Img: calculated upscale_by={upscale_by:.2f} from target width {target_w}")
+            else:
+                upscale_by = cls.DEFAULT_UPSCALE_BY
+        
         denoise = denoise or cls.DEFAULT_DENOISE
         
         # Determine model flags

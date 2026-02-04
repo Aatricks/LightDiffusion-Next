@@ -351,9 +351,10 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
     
     # For Flux2, calculate sigmas using resolution-aware scheduler (matches ComfyUI Flux2Scheduler)
     if flux2:
-        # Flux2 uses 16x16 patches, calculate pixel dimensions from latent shape
-        height = latent_image.shape[2] * 16
-        width = latent_image.shape[3] * 16
+        # Flux2 uses 16x16 patches, but the VAE latent in the pipeline is 8x downscaled (32 channels)
+        # Calculate original pixel dimensions: H/8 * 8 = H
+        height = latent_image.shape[2] * 8
+        width = latent_image.shape[3] * 8
         sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, steps, 
                                                  width=width, height=height, is_flux2=True)
     else:
@@ -365,8 +366,8 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
         else:
             # For Flux2, use resolution-aware scheduler even with partial denoise
             if flux2:
-                height = latent_image.shape[2] * 16
-                width = latent_image.shape[3] * 16
+                height = latent_image.shape[2] * 8
+                width = latent_image.shape[3] * 8
                 sigmas = ksampler_util.calculate_sigmas(model.get_model_object("model_sampling"), scheduler, 
                                                         int(steps / denoise), width=width, height=height, is_flux2=True)[-(steps + 1):]
             else:
