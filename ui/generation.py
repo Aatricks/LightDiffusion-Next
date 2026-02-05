@@ -308,41 +308,69 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                 status_placeholder.warning("⏹️ Stopping generation...")
             break
 
+        current_previews = None
         if preview_container and settings["enable_preview"]:
-            current_time = time.time()
-            if current_time - last_preview_time > 0.5:
-                previews = []
-                try:
-                    previews = app_instance.app.get_latest_previews()
-                except Exception:
-                    previews = []
-                if previews:
-                    try:
-                        recent = previews[-6:]
-                        cols_count = min(3, len(recent)) or 1
-                        with preview_container.container():
-                            cols = st.columns(cols_count)
-                            for i, pth in enumerate(recent):
-                                try:
-                                    with Image.open(pth) as img_prev:
-                                        cols_for_preview = cols_count or 1
-                                        tile_w = max(64, int(ui_full_w / cols_for_preview))
-                                        # Preserve the preview's real aspect ratio to avoid stretching
-                                        orig_w, orig_h = img_prev.size if getattr(img_prev, 'size', None) else (tile_w, tile_w)
-                                        tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
-                                        render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
-                                except Exception:
-                                    pass
-                        last_preview_time = current_time
-                    except Exception:
-                        pass
+            try:
+                current_previews = app_instance.app.get_latest_previews()
+                # Only update the UI if we have new preview images
+                if current_previews and current_previews.get("paths") and current_previews.get("timestamp", 0) > last_preview_time:
+                    recent = current_previews["paths"]
+                    step = current_previews.get("step", 0)
+                    total = current_previews.get("total_steps", 0)
+                    
+                    # Update timestamp to avoid redundant renders
+                    last_preview_time = current_previews["timestamp"]
+                    
+                    with preview_container.container():
+                        # Display progress header
+                        if total > 0:
+                            st.caption(f"🎨 Generating... Step {step}/{total}")
+                        
+                        # Determine optimal grid layout
+                        num_images = len(recent)
+                        if num_images == 4:
+                            cols_count = 2
+                        elif num_images >= 7:
+                            cols_count = 4
+                        elif num_images >= 5:
+                            cols_count = 3
+                        else:
+                            cols_count = min(3, num_images) or 1
+                            
+                        cols = st.columns(cols_count)
+                        for i, pth in enumerate(recent):
+                            try:
+                                with Image.open(pth) as img_prev:
+                                    cols_for_preview = cols_count or 1
+                                    tile_w = max(64, int(ui_full_w / cols_for_preview))
+                                    # Preserve the preview's real aspect ratio to avoid stretching
+                                    orig_w, orig_h = img_prev.size if getattr(img_prev, 'size', None) else (tile_w, tile_w)
+                                    tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
+                                    render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
+                            except Exception:
+                                pass
+            except Exception:
+                pass
 
         elapsed = time.time() - st.session_state.generation_job["start_time"]
         try:
+            # Update status bar with both elapsed time and step progress if available
+            p_text = f"🎨 Generating — {elapsed:.1f}s"
+            
+            # Reuse current_previews if we just fetched it, otherwise fetch now
+            if current_previews is None:
+                try:
+                    current_previews = app_instance.app.get_latest_previews()
+                except Exception:
+                    pass
+            
+            if current_previews and current_previews.get("total_steps", 0) > 0:
+                p_text += f" (Step {current_previews['step']}/{current_previews['total_steps']})"
+
             if status_bar is not None:
-                status_bar.markdown(f"<div class=\"ld-status-bar\">🎨 Generating — {elapsed:.1f}s</div>", unsafe_allow_html=True)
+                status_bar.markdown(f"<div class=\"ld-status-bar\">{p_text}</div>", unsafe_allow_html=True)
             else:
-                status_placeholder.info(f"🎨 Generating... ({elapsed:.1f}s)")
+                status_placeholder.info(f"{p_text}")
         except Exception:
             status_placeholder.info(f"🎨 Generating... ({elapsed:.1f}s)")
 

@@ -24,7 +24,8 @@ generation_in_progress = False
 def get_preview_images():
     """Get current preview images for display during generation"""
     if app_instance.app.previewer_var.get():
-        return app_instance.app.get_latest_previews()
+        previews = app_instance.app.get_latest_previews()
+        return previews.get("paths", [])
     return []
 
 
@@ -33,8 +34,9 @@ def update_main_gallery_with_preview():
     global generation_in_progress
     if generation_in_progress and app_instance.app.previewer_var.get():
         previews = app_instance.app.get_latest_previews()
-        if previews:
-            return previews
+        paths = previews.get("paths", [])
+        if paths:
+            return paths
     return gr.update()
 
 
@@ -44,9 +46,10 @@ def check_preview_updates():
 
     if generation_in_progress and app_instance.app.previewer_var.get():
         previews = app_instance.app.get_latest_previews()
-        if previews:
-            status = f"🎨 Generating... (Preview: {len(previews)} images)"
-            return previews, status
+        paths = previews.get("paths", [])
+        if paths:
+            status = f"🎨 Generating... (Preview: {len(paths)} images)"
+            return paths, status
         else:
             status = "🎨 Generating..."
             return [], status

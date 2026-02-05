@@ -274,57 +274,67 @@ class TAESD(nn.Module):
 
 _taesd_cache = {}
 
-def taesd_preview(x: torch.Tensor, flux: bool = False):
+def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_steps: int = 0):
     """#### Preview the batched latent tensors as images.
 
     #### Args:
         - `x` (torch.Tensor): Input latent tensor with shape [B,C,H,W]
         - `flux` (bool, optional): Whether using flux model (for channel ordering). Defaults to False.
+        - `step` (int): Current step number.
+        - `total_steps` (int): Total number of steps.
     """
     if app_instance.app.previewer_var.get() is True:
-        # Optimization: Cache TAESD instance by latent channels to avoid constant re-init
         latent_channels = x.shape[1]
         
-        # Skip preview for Flux2 128-channel latents - no TAESD model exists for this
-        if latent_channels not in (4, 16):
-            return  # TAESD only supports 4 (SD) or 16 (Flux1) channels
+        # If we have TAESD model for these channels, use it (4 for SD, 16 for Flux1)
+        if latent_channels in (4, 16):
+            cache_key = (latent_channels, flux)
+            if cache_key in _taesd_cache:
+                taesd_instance = _taesd_cache[cache_key]
+            else:
+                taesd_instance = TAESD(latent_channels=latent_channels)
+                taesd_instance.to(x.device)
+                _taesd_cache[cache_key] = taesd_instance
+
+            with torch.no_grad():
+                decoded_batch = taesd_instance.decode(x)
+
+            if flux:
+                decoded_batch = decoded_batch[:, [2, 1, 0], :, :].clamp(-1, 1).add(1.0).mul(0.5)
+            else:
+                decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
         
-        cache_key = (latent_channels, flux)
-        if cache_key in _taesd_cache:
-            taesd_instance = _taesd_cache[cache_key]
+        # For Flux2 (32 channels), use RGB approximation since no TAESD exists for 32ch
+        elif latent_channels == 32:
+            # Use RGB factors from Flux2 latent format
+            from src.Utilities import Latent
+            flux2_format = Latent.Flux2()
+            factors = torch.tensor(flux2_format.latent_rgb_factors, device=x.device, dtype=x.dtype)
+            bias = torch.tensor(flux2_format.latent_rgb_factors_bias, device=x.device, dtype=x.dtype)
+            
+            # x is [B, 32, H, W], factors is [32, 3]
+            # Output should be [B, 3, H, W]
+            with torch.no_grad():
+                # [B, 32, H, W] -> [B, H, W, 32]
+                x_permuted = x.permute(0, 2, 3, 1)
+                # Matrix multiply: [B, H, W, 32] @ [32, 3] -> [B, H, W, 3]
+                decoded_batch = x_permuted @ factors + bias
+                # [B, H, W, 3] -> [B, 3, H, W]
+                decoded_batch = decoded_batch.permute(0, 3, 1, 2)
+                # Normalize and clamp
+                decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
+        
         else:
-            taesd_instance = TAESD(latent_channels=latent_channels)
-            # Ensure it's on the same device as x for fast inference
-            taesd_instance.to(x.device)
-            _taesd_cache[cache_key] = taesd_instance
-
-        # Handle channel dimension mismatch (rare for TAESD but good for robustness)
-        if x.shape[1] != latent_channels:
-             # Already handled by cache_key, but if it somehow slips through:
-             pass
-
-        # Process entire batch at once
-        with torch.no_grad():
-            decoded_batch = taesd_instance.decode(x)
-
-        # Apply normalization and color space conversion in one go if possible
-        if flux:
-            # For flux: BGR -> RGB and specific scale
-            decoded_batch = decoded_batch[:, [2, 1, 0], :, :].clamp(-1, 1).add(1.0).mul(0.5)
-        else:
-            # Standard normalization
-            decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
+            return # Unsupported channels
 
         # Optimization: Use non_blocking=True for CPU transfer to avoid GPU stall
-        # Then convert to numpy and uint8
         decoded_np = (decoded_batch.mul(255.0).to("cpu", dtype=torch.uint8, non_blocking=True).numpy())
         
         images = []
         for i in range(decoded_np.shape[0]):
-            # Transpose HWC for PIL
             img_data = np.transpose(decoded_np[i], (1, 2, 0))
             img = Image.fromarray(img_data, mode='RGB')
             images.append(img)
 
         # Update display with all images
-        app_instance.app.update_image(images)
+        app_instance.app.update_image(images, step=step, total_steps=total_steps)

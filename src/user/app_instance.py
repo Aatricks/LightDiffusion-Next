@@ -18,13 +18,15 @@ class AppInstance:
         self.preview_lock = threading.Lock()
         self.preview_files = []
         self.last_preview_time = 0
+        self.current_step = 0
+        self.total_steps = 0
         self.progress = ProgressTracker()
         self._interrupt_event = threading.Event()
 
         # Create preview directory
         os.makedirs(self.preview_dir, exist_ok=True)
 
-    def update_image(self, images: List[Image.Image]):
+    def update_image(self, images: List[Image.Image], step: int = 0, total_steps: int = 0):
         """Update the gallery with preview images in real-time"""
         with self.preview_lock:
             # Clear old preview files
@@ -32,6 +34,8 @@ class AppInstance:
 
             # Save new preview images with timestamp
             self.preview_files = []
+            self.current_step = step
+            self.total_steps = total_steps
             timestamp = int(time.time() * 1000)  # milliseconds for uniqueness
 
             for i, img in enumerate(images):
@@ -47,16 +51,23 @@ class AppInstance:
             self.last_preview_time = timestamp
 
     def get_latest_previews(self):
-        """Get the latest preview images as file paths for Gradio"""
+        """Get the latest preview images and metadata"""
         with self.preview_lock:
             try:
+                paths = []
                 if self.preview_files:
                     # Return existing file paths if they exist
-                    return [path for path in self.preview_files if os.path.exists(path)]
-                return []
+                    paths = [path for path in self.preview_files if os.path.exists(path)]
+                
+                return {
+                    "paths": paths,
+                    "step": self.current_step,
+                    "total_steps": self.total_steps,
+                    "timestamp": self.last_preview_time
+                }
             except Exception as e:
                 print(f"Error loading preview images: {e}")
-                return []
+                return {"paths": [], "step": 0, "total_steps": 0, "timestamp": 0}
 
     def clear_preview_files(self):
         """Clear temporary preview files"""

@@ -87,6 +87,8 @@ class SamplerCallback:
     def __init__(self, n_steps: int, pipeline: bool = False):
         self.n_steps = n_steps
         self.pipeline = pipeline
+        self._preview_lock = threading.Lock()
+        self._preview_thread = None
     
     def check_interrupt(self) -> bool:
         return getattr(getattr(app_instance, "app", None), "interrupt_flag", False)
@@ -99,8 +101,33 @@ class SamplerCallback:
     
     def preview(self, x: torch.Tensor, step: int):
         app = getattr(app_instance, "app", None)
-        if app and app.previewer_var.get() and step % 5 == 0:
-            threading.Thread(target=taesd.taesd_preview, args=(x,)).start()
+        if app and app.previewer_var.get():
+            # Adaptive interval: at least 5 previews per generation, but at most every 5 steps
+            interval = min(5, max(1, self.n_steps // 5))
+            
+            # Also always preview the first and last few steps for better feedback
+            is_significant_step = (step % interval == 0) or (step == self.n_steps - 1)
+            
+            if is_significant_step:
+                # Only start a new preview thread if the previous one is finished
+                if self._preview_lock.acquire(blocking=False):
+                    try:
+                        if self._preview_thread is None or not self._preview_thread.is_alive():
+                            def run_preview():
+                                try:
+                                    # If channels == 16, it's Flux1. Flux2 uses 128 channels and is currently skipped in taesd_preview.
+                                    is_flux = (x.shape[1] == 16)
+                                    taesd.taesd_preview(x.clone(), flux=is_flux, step=step, total_steps=self.n_steps)
+                                finally:
+                                    self._preview_lock.release()
+                            
+                            self._preview_thread = threading.Thread(target=run_preview)
+                            self._preview_thread.start()
+                        else:
+                            self._preview_lock.release()
+                    except Exception:
+                        if self._preview_lock.locked():
+                            self._preview_lock.release()
 
 
 def set_model_options_post_cfg_function(opts: dict, fn: Callable, disable_cfg1_optimization: bool = False) -> dict:
