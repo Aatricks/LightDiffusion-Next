@@ -182,8 +182,8 @@ class SD15Model(AbstractModel):
             # Add seeds for deterministic noise
             latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
             
-            # Apply HiDiffusion optimization only for high resolutions
-            if ctx.generation.width > 1024 or ctx.generation.height > 1024:
+            # Apply HiDiffusion optimization only for very high resolutions
+            if ctx.generation.width > 2048 or ctx.generation.height > 2048:
                 try:
                     hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
                     optimized_model = hidiff.go(model_type="sd15", model=self.model)[0]

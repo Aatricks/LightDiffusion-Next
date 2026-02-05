@@ -74,8 +74,8 @@ class HiresFix:
         min_steps = 3 if is_flux2 else 10
         steps = steps or max(min_steps, int(ctx.sampling.steps * cls.DEFAULT_STEPS_RATIO))
         
-        # Adjust CFG for Flux models
-        hires_cfg = cls.DEFAULT_CFG
+        # Respect user CFG from context
+        hires_cfg = ctx.sampling.cfg
         if is_flux or is_flux2:
             hires_cfg = 1.0
         
@@ -117,11 +117,13 @@ class HiresFix:
             # Generate new seed for hires pass (PyTorch max: 2**63 - 1)
             hires_seed = random.randint(1, 2**63 - 1)
             
-            # Apply HiDiffusion optimizer if available (not for Flux2)
-            if not is_flux:
+            # Apply HiDiffusion optimizer only for very high resolutions (>2048px)
+            # This avoids the grid/weave artifacts reported at standard hires sizes
+            if not is_flux and (new_width > 2048 or new_height > 2048):
                 try:
                     hidiff_optimizer = msw_msa_attention.ApplyMSWMSAAttentionSimple()
                     optimized_model = hidiff_optimizer.go(model_type="auto", model=model.model)[0]
+                    logger.info("HiresFix: Applied HiDiffusion optimization for extreme resolution")
                 except Exception:
                     optimized_model = model.model
             else:
@@ -143,7 +145,10 @@ class HiresFix:
                 pipeline=True,
                 flux=is_flux,
                 flux2=is_flux2,
-                enable_multiscale=False if is_flux else ctx.sampling.enable_multiscale,
+                # CRITICAL: Always disable multi-scale for the hires pass itself
+                # Multi-scale downscales during sampling, which defeats the purpose of hires fix
+                # and can introduce blurriness or artifacts.
+                enable_multiscale=False,
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
             )
