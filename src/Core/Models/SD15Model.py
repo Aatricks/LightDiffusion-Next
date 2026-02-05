@@ -35,7 +35,7 @@ class SD15Model(AbstractModel):
         """Create capabilities for SD1.5 models."""
         return ModelCapabilities(
             min_resolution=256,
-            max_resolution=1024,
+            max_resolution=2048,
             preferred_resolution=512,
             requires_resolution_multiple=64,
             supports_hires_fix=True,
@@ -91,6 +91,12 @@ class SD15Model(AbstractModel):
         
         return self
     
+    def get_model_object(self, name: str) -> Any:
+        """Get an attribute from the underlying model."""
+        if self.model:
+            return self.model.get_model_object(name)
+        return None
+
     def encode_prompt(
         self,
         prompt: str | list[str],
@@ -176,11 +182,14 @@ class SD15Model(AbstractModel):
             # Add seeds for deterministic noise
             latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
             
-            # Apply HiDiffusion optimization
-            try:
-                hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-                optimized_model = hidiff.go(model_type="sd15", model=self.model)[0]
-            except Exception:
+            # Apply HiDiffusion optimization only for high resolutions
+            if ctx.generation.width > 1024 or ctx.generation.height > 1024:
+                try:
+                    hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+                    optimized_model = hidiff.go(model_type="sd15", model=self.model)[0]
+                except Exception:
+                    optimized_model = self.model
+            else:
                 optimized_model = self.model
             
             # Run sampling

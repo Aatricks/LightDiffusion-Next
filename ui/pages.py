@@ -54,6 +54,28 @@ def _apply_flux2_optimal_settings(settings: dict) -> None:
             st.session_state.preset_selectbox = "1024x1024 (Flux2 1:1)"
 
 
+def _revert_flux2_optimal_settings(settings: dict) -> None:
+    """Revert Flux2-specific settings to standard defaults when switching away."""
+    settings["cfg_scale"] = 7.0
+    settings["sampler"] = "dpmpp_sde_cfgpp"
+    settings["scheduler"] = "ays"
+    settings["steps"] = 20
+    
+    # Re-enable standard features
+    settings["multiscale_preset"] = "balanced"
+    
+    # Reset resolution to SD1.5 standard if it was forced to 1024
+    if settings.get("width") == 1024 and settings.get("height") == 1024:
+        settings["width"] = 512
+        settings["height"] = 512
+        if "width_input" in st.session_state:
+            st.session_state.width_input = 512
+        if "height_input" in st.session_state:
+            st.session_state.height_input = 512
+        if "preset_selectbox" in st.session_state:
+            st.session_state.preset_selectbox = "512x512 (SD1.5)"
+
+
 def render_generate_page():
     """Render the main generation page."""
     settings = st.session_state.settings
@@ -152,6 +174,9 @@ def render_generate_page():
 
             sel = st.selectbox("Model", options=model_options, index=idx, disabled=controls_disabled)
             if sel == "Auto (use default)":
+                if settings.get("model_path") == "__FLUX2_KLEIN__":
+                    _revert_flux2_optimal_settings(settings)
+                    st.info("🔄 Switched from Flux2: Reverted to standard settings")
                 settings["model_path"] = ""
             elif sel == "Flux2 Klein (auto-detected)":
                 if settings.get("model_path") != "__FLUX2_KLEIN__":
@@ -159,7 +184,11 @@ def render_generate_page():
                     _apply_flux2_optimal_settings(settings)
                     st.info("⚡ Flux2 Klein selected: Auto-applied optimal settings")
             else:
-                settings["model_path"] = mapping.get(sel, sel)
+                target_path = mapping.get(sel, sel)
+                if settings.get("model_path") == "__FLUX2_KLEIN__" and target_path != "__FLUX2_KLEIN__":
+                    _revert_flux2_optimal_settings(settings)
+                    st.info("🔄 Switched from Flux2: Reverted to standard settings")
+                settings["model_path"] = target_path
 
             settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
 
@@ -228,7 +257,7 @@ def render_generate_page():
             settings["batch_size"] = st.number_input("Batch Size (images per batch)", min_value=1, max_value=10, value=settings.get("batch_size", 1), key="batch_size_input", disabled=controls_disabled, help="Number of images processed together per internal batch.")
 
 
-        with st.expander("⚡ Sampling & Scheduling", expanded=False):
+        with st.expander("⚡ Sampling & Scheduling"):
             st.markdown("**Scheduler & Sampler Settings**")
 
             scheduler_options = {
@@ -319,17 +348,24 @@ def render_generate_page():
                 except Exception:
                     pass
 
-        with st.expander("✨ Enhancements", expanded=False):
+        with st.expander("✨ Enhancements"):
             settings["hiresfix"] = st.checkbox("HiRes Fix", value=settings["hiresfix"], disabled=controls_disabled)
             settings["adetailer"] = st.checkbox("ADetailer", value=settings["adetailer"], disabled=controls_disabled)
             settings["enhance_prompt"] = st.checkbox("Enhance Prompt", value=settings["enhance_prompt"], disabled=controls_disabled)
             settings["stable_fast"] = st.checkbox("Stable Fast", value=settings["stable_fast"], disabled=controls_disabled)
 
-        with st.expander("🔧 Advanced", expanded=False):
+        with st.expander("🔧 Advanced"):
             settings["reuse_seed"] = st.checkbox("Reuse Seed", value=settings["reuse_seed"], disabled=controls_disabled)
             settings["enable_preview"] = st.checkbox("Live Preview", value=settings["enable_preview"], disabled=controls_disabled)
 
-        with st.expander("🔬 Multi-scale", expanded=False):
+        with st.expander("🔬 Multi-scale"):
+            settings["enable_multiscale"] = st.checkbox(
+                "Enable Multi-scale", 
+                value=settings.get("enable_multiscale", False), 
+                help="Start generation at lower resolution and upscale during sampling for speedup",
+                disabled=controls_disabled
+            )
+            
             preset_options = {
                 "quality": "Quality - Best image quality with intermittent full-res",
                 "balanced": "Balanced - Good quality and performance",
@@ -353,7 +389,7 @@ def render_generate_page():
                 settings["multiscale_custom"] = False
                 settings["multiscale_preset"] = selected_preset
 
-        with st.expander("⚡ DeepCache Acceleration", expanded=False):
+        with st.expander("⚡ DeepCache Acceleration"):
             st.markdown("**DeepCache** speeds up generation by reusing U-Net features (2-3x faster with minimal quality loss)")
             settings["deepcache_enabled"] = st.checkbox("Enable DeepCache", value=settings.get("deepcache_enabled", False), help="Enable DeepCache acceleration for faster generation", disabled=controls_disabled)
 
@@ -367,7 +403,7 @@ def render_generate_page():
                 with col2:
                     settings["deepcache_end_step"] = st.number_input("End Step", min_value=0, max_value=1000, value=settings.get("deepcache_end_step", 1000), help="Stop applying DeepCache at this step", disabled=controls_disabled)
 
-        with st.expander("🎯 CFG-Free Sampling", expanded=False):
+        with st.expander("🎯 CFG-Free Sampling"):
             st.markdown("**CFG-Free Sampling** gradually reduces CFG to 0 in later steps for faster generation with minimal quality impact")
             settings["cfg_free_enabled"] = st.checkbox(
                 "Enable CFG-Free Sampling",
@@ -388,7 +424,7 @@ def render_generate_page():
                 )
                 st.info(f"💡 CFG will remain at full strength until {settings['cfg_free_start_percent']:.0f}% of steps, then gradually reduce to 0")
 
-        with st.expander("🔀 Token Merging (ToMe)", expanded=False):
+        with st.expander("🔀 Token Merging (ToMe)"):
             st.markdown("**Token Merging** reduces computation by merging similar tokens (20-60% speedup)")
             settings["tome_enabled"] = st.checkbox(
                 "Enable Token Merging",
@@ -455,7 +491,7 @@ def render_generate_page():
 
                 st.info(f"💡 ToMe will merge ~{settings['tome_ratio']*100:.0f}% of similar tokens for speedup")
 
-        with st.expander("⚡ Advanced CFG Optimizations", expanded=False):
+        with st.expander("⚡ Advanced CFG Optimizations"):
             st.caption("Note: Batched CFG (8% speedup) is always enabled by default")
             
             settings["dynamic_cfg_rescaling"] = st.checkbox(
@@ -513,7 +549,7 @@ def render_generate_page():
                 )
                 st.info("💡 Adaptive noise can optimize step allocation based on image complexity")
 
-        with st.expander("💾 VRAM & Cache", expanded=False):
+        with st.expander("💾 VRAM & Cache"):
             settings["keep_models_loaded"] = st.checkbox("Keep Models in VRAM", value=settings["keep_models_loaded"], disabled=controls_disabled)
 
             if st.button("Clear Model Cache", disabled=controls_disabled):

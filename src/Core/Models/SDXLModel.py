@@ -94,6 +94,12 @@ class SDXLModel(AbstractModel):
         
         return self
     
+    def get_model_object(self, name: str) -> Any:
+        """Get an attribute from the underlying model."""
+        if self.model:
+            return self.model.get_model_object(name)
+        return None
+
     def encode_prompt(
         self,
         prompt: str | list[str],

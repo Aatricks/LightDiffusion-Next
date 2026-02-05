@@ -780,11 +780,7 @@ class Flux2KleinModel(AbstractModel):
                 samples_tensor = latents
             
             # Use the Flux2 latent format
-            flux2_latent_format = self.get_model_object("latent_format")
-            
-            # Apply process_latent_out (undo scale/shift from sampling)
-            # For Flux2, this is identity (no scale/shift)
-            samples_tensor = flux2_latent_format.process_out(samples_tensor)
+            # Apply process_latent_out (undo scale/shift from sampling) is now handled by KSAMPLER
             
             # Decode with VAE
             decoder = VariationalAE.VAEDecode()

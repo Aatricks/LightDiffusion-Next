@@ -288,7 +288,7 @@ class VAE:
 
 
 class VAEDecode:
-    def decode(self, vae, samples, flux=False):
+    def decode(self, vae, samples, flux=None):
         return (vae.decode(samples["samples"], flux=flux),)
 
 
