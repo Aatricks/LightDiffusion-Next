@@ -152,6 +152,9 @@ class SD15Model(AbstractModel):
         ctx: "PipelineContext",
         positive: Any,
         negative: Any,
+        latent_image: Optional[Any] = None,
+        start_step: Optional[int] = None,
+        last_step: Optional[int] = None,
     ) -> dict:
         """Generate latents using the sampler.
         
@@ -159,6 +162,9 @@ class SD15Model(AbstractModel):
             ctx: Pipeline context with generation parameters
             positive: Positive conditioning
             negative: Negative conditioning
+            latent_image: Optional existing latent to continue from
+            start_step: Optional step to start sampling from
+            last_step: Optional step to stop sampling at
             
         Returns:
             Dictionary with 'samples' key containing generated latents
@@ -171,16 +177,20 @@ class SD15Model(AbstractModel):
             from src.Utilities import Latent
             from src.hidiffusion import msw_msa_attention
             
-            # Create empty latent
-            latent_gen = Latent.EmptyLatentImage()
-            latent = latent_gen.generate(
-                width=ctx.generation.width,
-                height=ctx.generation.height,
-                batch_size=ctx.generation.batch,
-            )[0]
-            
-            # Add seeds for deterministic noise
-            latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
+            # Use provided latent or create empty one
+            if latent_image is not None:
+                latent = latent_image
+            else:
+                # Create empty latent
+                latent_gen = Latent.EmptyLatentImage()
+                latent = latent_gen.generate(
+                    width=ctx.generation.width,
+                    height=ctx.generation.height,
+                    batch_size=ctx.generation.batch,
+                )[0]
+                
+                # Add seeds for deterministic noise
+                latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
             
             # Apply HiDiffusion optimization only for very high resolutions
             if ctx.generation.width > 2048 or ctx.generation.height > 2048:
@@ -206,6 +216,8 @@ class SD15Model(AbstractModel):
                 positive=positive,
                 negative=negative,
                 latent_image=latent,
+                start_step=start_step,
+                last_step=last_step,
                 enable_multiscale=ctx.sampling.enable_multiscale,
                 multiscale_factor=ctx.sampling.multiscale_factor,
                 multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,

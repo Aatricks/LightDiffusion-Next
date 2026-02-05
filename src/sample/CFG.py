@@ -87,7 +87,7 @@ class CFGGuider:
         self.cfg_free_enabled = enabled
         self.cfg_free_start_percent = max(0.0, min(100.0, start_percent))
         if enabled:
-            print(f"✓ CFG-Free sampling ACTIVE: CFG will reduce to 0 starting at {start_percent:.0f}% of steps")
+            print(f"CFG-Free sampling ACTIVE: CFG will reduce to 0 starting at {start_percent:.0f}% of steps")
 
     def _update_cfg_for_sigma(self, sigma):
         """Update CFG based on current sigma for CFG-free sampling."""

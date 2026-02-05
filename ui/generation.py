@@ -203,6 +203,8 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             dynamic_cfg_target_scale=settings.get("dynamic_cfg_target_scale", 7.0),
                             adaptive_noise_enabled=settings.get("adaptive_noise_enabled", False),
                             adaptive_noise_method=settings.get("adaptive_noise_method", "complexity"),
+                            refiner_model_path=settings.get("refiner_model_path", None) if settings.get("refiner_model_path") else None,
+                            refiner_switch_step=int(settings.get("refiner_switch_step", 20)) if settings.get("refiner_model_path") else None,
                             **multiscale_params,
                         )
 

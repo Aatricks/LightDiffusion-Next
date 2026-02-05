@@ -85,6 +85,8 @@ def get_default_settings():
         "keep_models_loaded": True,
         "multiscale_preset": "quality",
         "enable_preview": True,  # New setting for real-time preview
+        "refiner_model_path": "",
+        "refiner_switch_step": 20,
     }
 
 
@@ -339,6 +341,8 @@ def generate_images_with_preview(
     multiscale_fullres_end: int = 8,
     keep_models_loaded: bool = True,
     enable_preview: bool = True,
+    refiner_model_path: str = "",
+    refiner_switch_step: int = 20,
     progress=gr.Progress(),
 ):
     """Generate images with real-time preview updates in the main gallery"""
@@ -378,6 +382,8 @@ def generate_images_with_preview(
             multiscale_fullres_end=multiscale_fullres_end,
             keep_models_loaded=keep_models_loaded,
             enable_preview=enable_preview,
+            refiner_model_path=refiner_model_path,
+            refiner_switch_step=refiner_switch_step,
         )
 
         # Set model persistence preference
@@ -423,6 +429,8 @@ def generate_images_with_preview(
                 multiscale_factor=multiscale_factor,
                 multiscale_fullres_start=multiscale_fullres_start,
                 multiscale_fullres_end=multiscale_fullres_end,
+                refiner_model_path=refiner_model_path if refiner_model_path else None,
+                refiner_switch_step=int(refiner_switch_step) if refiner_model_path else None,
             )
 
         # Start generation in background thread
@@ -705,6 +713,23 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                                 label="Full-Res End Steps",
                             )
 
+                    # Refiner settings
+                    with gr.Accordion("SDXL Refiner Settings", open=False):
+                        refiner_model_path = gr.Textbox(
+                            label="Refiner Model Path",
+                            placeholder="e.g. ./include/checkpoints/sd_xl_refiner_1.0.safetensors",
+                            value=saved_settings.get("refiner_model_path", ""),
+                            info="Path to the SDXL refiner model. If empty, refiner is disabled."
+                        )
+                        refiner_switch_step = gr.Slider(
+                            minimum=0,
+                            maximum=150,
+                            value=saved_settings.get("refiner_switch_step", 15),
+                            step=1,
+                            label="Refiner Switch Step",
+                            info="Step at which to switch from base model to refiner"
+                        )
+
                     # Make input image visible only when img2img is enabled
                     img2img_enabled.change(
                         fn=lambda x: gr.update(visible=x),
@@ -848,6 +873,8 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             multiscale_fullres_end,
             keep_models_loaded,
             enable_preview,
+            refiner_model_path,
+            refiner_switch_step,
         ],
         outputs=gallery,
     )
@@ -878,6 +905,8 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         keep_models_loaded_val,
         multiscale_preset_val,
         enable_preview_val,
+        refiner_model_path_val,
+        refiner_switch_step_val,
     ):
         update_settings(
             prompt=prompt_val,
@@ -904,6 +933,8 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             keep_models_loaded=keep_models_loaded_val,
             multiscale_preset=multiscale_preset_val,
             enable_preview=enable_preview_val,
+            refiner_model_path=refiner_model_path_val,
+            refiner_switch_step=refiner_switch_step_val,
         )
 
     # Connect all UI components to auto-save
@@ -932,6 +963,8 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         keep_models_loaded,
         multiscale_preset,
         enable_preview,
+        refiner_model_path,
+        refiner_switch_step,
     ]
 
     for component in ui_components:

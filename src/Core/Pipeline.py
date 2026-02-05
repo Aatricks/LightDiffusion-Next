@@ -13,6 +13,7 @@ Architecture:
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Union
 
@@ -80,18 +81,27 @@ class Pipeline:
         """
         self._check_interrupt()
         
-        # 1. Load model
+        # 1. Load base model
         model = self._load_model(ctx)
         
-        # 2. Apply optimizations
+        # 2. Apply optimizations to base model
         self._apply_optimizations(ctx, model)
         
-        # 3. Encode prompts
+        # 3. Encode prompts for base model
         positive, negative = self._encode_prompts(ctx, model)
         ctx.positive_cond = positive
         ctx.negative_cond = negative
         
-        # 4. Generate for each seed
+        # 4. Handle refiner preparation if enabled
+        refiner_model = None
+        ref_positive, ref_negative = None, None
+        use_refiner = bool(ctx.generation.refiner_model_path and ctx.generation.refiner_switch_step is not None)
+        
+        if use_refiner:
+            print(f"Refiner enabled: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
+            # We don't load it yet to save VRAM, but we need to know if we should unload base later
+        
+        # 5. Generate for each seed
         from src.FileManaging import ImageSaver
         saver = ImageSaver.SaveImage()
         
@@ -99,20 +109,67 @@ class Pipeline:
             self._check_interrupt()
             ctx.seed = seed
             
-            # Generate latents
-            latents = model.generate(ctx, positive, negative)
+            # Stage 1: Base model generation
+            if use_refiner:
+                steps_for_base = ctx.generation.refiner_switch_step
+                print(f"Stage 1: Running Base model ({steps_for_base}/{ctx.sampling.steps} steps)...")
+                latents = model.generate(
+                    ctx, positive, negative, 
+                    last_step=ctx.generation.refiner_switch_step
+                )
+            else:
+                latents = model.generate(ctx, positive, negative)
+            
             ctx.current_latents = latents["samples"]
             
-            # Apply HiresFix if enabled
+            # Stage 2: Refiner model generation
+            if use_refiner:
+                self._check_interrupt()
+                
+                # Load refiner model (this will unload base model if necessary)
+                refiner_model = self._load_refiner_model(ctx)
+                self._apply_optimizations(ctx, refiner_model)
+                
+                # Encode prompts for refiner (it has different CLIP)
+                ref_positive, ref_negative = self._encode_prompts(ctx, refiner_model)
+                
+                # Disable multi-scale for refiner pass (always)
+                orig_ms = ctx.sampling.enable_multiscale
+                ctx.sampling.enable_multiscale = False
+                
+                steps_for_refiner = ctx.sampling.steps - ctx.generation.refiner_switch_step
+                print(f"Stage 2: Running Refiner model ({steps_for_refiner}/{ctx.sampling.steps} steps)...")
+                latents = refiner_model.generate(
+                    ctx, ref_positive, ref_negative,
+                    latent_image=latents,
+                    start_step=ctx.generation.refiner_switch_step
+                )
+                ctx.current_latents = latents["samples"]
+                ctx.sampling.enable_multiscale = orig_ms
+                
+                # If we have more seeds, we'll need to reload base model in the next iteration
+                # _load_model handles this automatically
+            
+            # 6. Post-processing
+            
+            # Apply HiresFix if enabled (uses the model currently loaded, which might be refiner!)
+            # Note: Usually HiresFix is done with the base model for better consistency,
+            # but some people like refining the hires pass too.
+            current_model = refiner_model if use_refiner else model
+            
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
-                latents = HiresFix.apply(latents, ctx, model, positive, negative)
+                # HiresFix might need base model prompts if it was trained on them
+                hf_pos = ref_positive if use_refiner and ref_positive else positive
+                hf_neg = ref_negative if use_refiner and ref_negative else negative
+                
+                latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg)
                 ctx.current_latents = latents["samples"]
             
             self._check_interrupt()
             
-            # Decode to image
-            image = model.decode(ctx.current_latents)
+            # Decode to image (uses VAE from current model)
+            image = current_model.decode(ctx.current_latents)
             ctx.current_image = image
             
             # Apply AutoHDR if enabled
@@ -123,7 +180,7 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, model, negative)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, hf_neg)
             else:
                 # Save the image
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -376,6 +433,49 @@ class Pipeline:
         self._model = model
         return model
     
+    def _load_refiner_model(self, ctx: Context) -> AbstractModel:
+        """Load the refiner model for this context.
+        
+        Optimized to reuse existing loaded model if it matches the refiner path.
+        """
+        path = ctx.generation.refiner_model_path
+        if not path:
+            raise ValueError("refiner_model_path is required for refiner pass")
+            
+        # 1. Determine target model type
+        from src.Core.Models.ModelFactory import detect_model_type
+        target_type = detect_model_type(path)
+        
+        # 2. Check if current model can be reused
+        if self._model is not None and self._model.is_loaded:
+            if self._model.model_path == path:
+                logger.info(f"Reusing currently loaded model as refiner")
+                return self._model
+            
+            # 3. Different model requested: UNLOAD OLD ONE FIRST to free VRAM
+            logger.info(f"Unloading current model to load refiner {target_type}")
+            self._model.unload()
+            # self._model = None # Don't set to None yet, we'll replace it
+            
+            # Also clear the global model cache
+            try:
+                from src.Device.ModelCache import clear_model_cache
+                clear_model_cache()
+            except Exception:
+                pass
+            
+            # Force cleanup
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+        
+        # 4. Create and load new model instance
+        model = self.model_factory(model_path=path)
+        model.load()
+        self._model = model
+        return model
+
     def _apply_optimizations(self, ctx: Context, model: AbstractModel) -> None:
         """Apply all configured optimizations to the model."""
         # LoRA - only if model supports it and matches default LoRA type

@@ -64,6 +64,8 @@ class GenerationConfig:
     batch: int = 1
     number: int = 1
     model_path: Optional[str] = None
+    refiner_model_path: Optional[str] = None
+    refiner_switch_step: Optional[int] = None
     stable_fast: bool = False
     autohdr: bool = True
 
@@ -211,6 +213,8 @@ class Context:
             "height": str(self.generation.height),
             "hires_fix": str(self.features.hires_fix),
             "adetailer": str(self.features.adetailer),
+            "refiner_model": str(self.generation.refiner_model_path or "None"),
+            "refiner_switch": str(self.generation.refiner_switch_step or "None"),
         }
         if extra:
             meta.update(extra)
@@ -234,6 +238,8 @@ class Context:
         ctx.generation.batch = kwargs.get("batch", 1)
         ctx.generation.number = kwargs.get("number", 1)
         ctx.generation.model_path = kwargs.get("model_path")
+        ctx.generation.refiner_model_path = kwargs.get("refiner_model_path")
+        ctx.generation.refiner_switch_step = kwargs.get("refiner_switch_step")
         ctx.generation.stable_fast = kwargs.get("stable_fast", False)
         ctx.generation.autohdr = kwargs.get("autohdr", True)
         
@@ -275,17 +281,21 @@ class Context:
         
         # Handle multiscale preset
         preset = kwargs.get("multiscale_preset")
-        if preset:
+        if preset and preset != "disabled":
             try:
                 from src.sample.multiscale_presets import get_preset_parameters
                 params = get_preset_parameters(preset)
-                ctx.sampling.enable_multiscale = params["enable_multiscale"]
-                ctx.sampling.multiscale_factor = params["multiscale_factor"]
-                ctx.sampling.multiscale_fullres_start = params["multiscale_fullres_start"]
-                ctx.sampling.multiscale_fullres_end = params["multiscale_fullres_end"]
-                ctx.sampling.multiscale_intermittent_fullres = params["multiscale_intermittent_fullres"]
+                # Only overwrite if explicitly enabled in kwargs or if not specified
+                if kwargs.get("enable_multiscale") is not False:
+                    ctx.sampling.enable_multiscale = params["enable_multiscale"]
+                    ctx.sampling.multiscale_factor = params["multiscale_factor"]
+                    ctx.sampling.multiscale_fullres_start = params["multiscale_fullres_start"]
+                    ctx.sampling.multiscale_fullres_end = params["multiscale_fullres_end"]
+                    ctx.sampling.multiscale_intermittent_fullres = params["multiscale_intermittent_fullres"]
             except Exception:
                 pass
+        elif preset == "disabled":
+            ctx.sampling.enable_multiscale = False
         
         # Regenerate seeds after setting reuse_seed
         ctx._generate_seeds()

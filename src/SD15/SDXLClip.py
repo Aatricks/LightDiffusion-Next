@@ -246,3 +246,24 @@ class SDXLRefinerClipModel(SDClip.SD1ClipModel):
         super().__init__(
             device=device, dtype=dtype, clip_name="g", clip_model=SDXLClipG, model_options=model_options
         )
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Override load_state_dict to handle common SDXL mismatches."""
+        filtered_sd = {}
+        for k, v in state_dict.items():
+            # Handle logit_scale shape mismatch
+            if "logit_scale" in k and k in self.state_dict():
+                expected_shape = self.state_dict()[k].shape
+                if v.shape != expected_shape and v.numel() == 1 and len(expected_shape) == 1:
+                    filtered_sd[k] = v.reshape(expected_shape)
+                    continue
+            # Skip position_ids if they cause mismatches (Refiner often doesn't need them if embeddings.weight is present)
+            if "position_ids" in k:
+                continue
+            filtered_sd[k] = v
+        
+        return super().load_state_dict(filtered_sd, strict=strict)
+
+    def load_sd(self, sd):
+        """Load state dict and route to G model."""
+        return self.clip_g.load_sd(sd)

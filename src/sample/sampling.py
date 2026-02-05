@@ -289,7 +289,7 @@ class KSampler:
         if last_step is not None and last_step < len(sigmas) - 1:
             sigmas = sigmas[:last_step + 1]
             if force_full_denoise: sigmas[-1] = 0
-        if start_step is not None and start_step < len(sigmas) - 1:
+        if start_step is not None and start_step < len(sigmas):
             sigmas = sigmas[start_step:]
         if start_step is not None and start_step >= len(sigmas) - 1:
             return latent_image if latent_image is not None else torch.zeros_like(noise)
@@ -378,7 +378,7 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
     if last_step is not None and last_step < len(sigmas) - 1:
         sigmas = sigmas[:last_step + 1]
         if force_full_denoise: sigmas[-1] = 0
-    if start_step is not None and start_step < len(sigmas) - 1:
+    if start_step is not None and start_step < len(sigmas):
         sigmas = sigmas[start_step:]
 
     # Use provided model_options or default to model's own

@@ -26,6 +26,8 @@ def get_default_settings():
         # Generation Modes
         # Model selection
         "model_path": "",
+        "refiner_model_path": "",
+        "refiner_switch_step": 15,
         "img2img_mode": False,
 
         # Image Input (Img2Img)

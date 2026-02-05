@@ -209,6 +209,35 @@ def render_generate_page():
                         settings["input_image_path"] = img_path
                         st.image(uploaded_file, caption="Input Image", width='stretch')
 
+        with st.expander("🖼️ SDXL Refiner", expanded=False):
+            # Same model list for refiner
+            ref_model_options = ["None"] + display_names
+            
+            current_ref = settings.get("refiner_model_path", "")
+            if current_ref:
+                current_ref_name = os.path.basename(current_ref)
+            else:
+                current_ref_name = "None"
+            
+            try:
+                ref_idx = ref_model_options.index(current_ref_name)
+            except Exception:
+                ref_idx = 0
+            
+            ref_sel = st.selectbox("Refiner Model", options=ref_model_options, index=ref_idx, disabled=controls_disabled)
+            if ref_sel == "None":
+                settings["refiner_model_path"] = ""
+            else:
+                settings["refiner_model_path"] = mapping.get(ref_sel, ref_sel)
+            
+            settings["refiner_switch_step"] = st.slider(
+                "Refiner Switch Step",
+                min_value=0,
+                max_value=settings.get("steps", 150),
+                value=settings.get("refiner_switch_step", 20),
+                disabled=controls_disabled or not settings["refiner_model_path"]
+            )
+
         with st.expander("📝 Prompt & Text", expanded=True):
             prompt = st.text_area("Prompt", value=settings["prompt"], height=100, key="prompt_input", disabled=controls_disabled)
             settings["prompt"] = prompt

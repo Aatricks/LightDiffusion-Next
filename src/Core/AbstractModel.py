@@ -148,6 +148,9 @@ class AbstractModel(ABC):
         ctx: "PipelineContext",
         positive: Any,
         negative: Any,
+        latent_image: Optional[Any] = None,
+        start_step: Optional[int] = None,
+        last_step: Optional[int] = None,
     ) -> dict:
         """Generate latents using the sampler.
         

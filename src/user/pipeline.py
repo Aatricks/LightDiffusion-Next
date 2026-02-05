@@ -92,6 +92,9 @@ def pipeline(
     adaptive_noise_method: str = "complexity",
     # Img2img
     img2img_image: str | None = None,
+    # Refiner
+    refiner_model_path: str | None = None,
+    refiner_switch_step: int | None = None,
     # Batched mode
     per_sample_info: list | None = None,
 ) -> dict:
@@ -187,6 +190,8 @@ def pipeline(
         adaptive_noise_enabled=adaptive_noise_enabled,
         adaptive_noise_method=adaptive_noise_method,
         img2img_image=img2img_image,
+        refiner_model_path=refiner_model_path,
+        refiner_switch_step=refiner_switch_step,
     )
     
     # Handle prompt enhancement
