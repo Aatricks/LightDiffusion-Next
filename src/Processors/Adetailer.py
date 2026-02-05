@@ -200,6 +200,13 @@ class Adetailer:
             saved_images.append(saved_body)
             
             # ===== FACE PASS =====
+            # Check for interrupt before starting the next pass
+            from src.user import app_instance
+            app = getattr(app_instance, "app", None)
+            if app and getattr(app, "interrupt_flag", False):
+                logger.info("Adetailer: Interrupt requested, skipping Face pass")
+                return body_image[0] if body_image.shape[0] == 1 else body_image, saved_images
+
             # Load face detector
             face_detector = detector_provider.doit(model_name="face_yolov9c.pt")[0]
             

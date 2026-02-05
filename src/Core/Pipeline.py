@@ -105,6 +105,7 @@ class Pipeline:
             
             # Apply HiresFix if enabled
             if HiresFix.is_enabled(ctx):
+                self._check_interrupt()
                 latents = HiresFix.apply(latents, ctx, model, positive, negative)
                 ctx.current_latents = latents["samples"]
             
@@ -116,10 +117,12 @@ class Pipeline:
             
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
+                self._check_interrupt()
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
+                self._check_interrupt()
                 ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, model, negative)
             else:
                 # Save the image

@@ -156,6 +156,13 @@ class DetailerForEach:
             model = DifferentialDiffusion().apply(model)[0]
 
         for i, seg in enumerate(segs[1]):
+            # Check for interrupt before each segment
+            from src.user import app_instance
+            app = getattr(app_instance, "app", None)
+            if app and getattr(app, "interrupt_flag", False):
+                print(f"Detailer: Interrupt requested, stopping at segment {i}")
+                break
+
             cropped_image = tensor_util.to_tensor(AD_util.crop_ndarray4(image.cpu().numpy(), seg.crop_region))
             mask = tensor_util.tensor_gaussian_blur_mask(tensor_util.to_tensor(seg.cropped_mask), feather)
             if (seg.cropped_mask == 0).all().item():
@@ -208,6 +215,13 @@ class DetailerForEachTest(DetailerForEach):
             print(f"ADetailer: Processing {batch_size} images in batch separately")
             results = [[], [], [], [], []]
             for i in range(batch_size):
+                # Check for interrupt before each batch item
+                from src.user import app_instance
+                app = getattr(app_instance, "app", None)
+                if app and getattr(app, "interrupt_flag", False):
+                    print(f"ADetailer: Interrupt requested, stopping at batch item {i}")
+                    break
+
                 enhanced, cropped, enh, enh_alpha, cnet, _ = DetailerForEach.do_detail(
                     image[i:i+1], segs, model, clip, vae, guide_size, guide_size_for, max_size, seed + i, steps,
                     cfg, sampler_name, scheduler, positive, negative, denoise, feather, noise_mask, force_inpaint,
