@@ -312,43 +312,57 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
         if preview_container and settings["enable_preview"]:
             try:
                 current_previews = app_instance.app.get_latest_previews()
-                # Only update the UI if we have new preview images
-                if current_previews and current_previews.get("paths") and current_previews.get("timestamp", 0) > last_preview_time:
-                    recent = current_previews["paths"]
+                # Only update the UI if we have new preview data
+                if current_previews and current_previews.get("timestamp", 0) > last_preview_time:
+                    # Prefer in-memory base64 if available, fallback to paths
+                    base64_images = current_previews.get("base64", [])
+                    recent_paths = current_previews.get("paths", [])
+                    
                     step = current_previews.get("step", 0)
                     total = current_previews.get("total_steps", 0)
                     
                     # Update timestamp to avoid redundant renders
                     last_preview_time = current_previews["timestamp"]
                     
-                    with preview_container.container():
-                        # Display progress header
-                        if total > 0:
-                            st.caption(f"🎨 Generating... Step {step}/{total}")
-                        
-                        # Determine optimal grid layout
-                        num_images = len(recent)
-                        if num_images == 4:
-                            cols_count = 2
-                        elif num_images >= 7:
-                            cols_count = 4
-                        elif num_images >= 5:
-                            cols_count = 3
-                        else:
-                            cols_count = min(3, num_images) or 1
+                    if base64_images or recent_paths:
+                        with preview_container.container():
+                            # Display progress header
+                            if total > 0:
+                                st.caption(f"🎨 Generating... Step {step}/{total}")
                             
-                        cols = st.columns(cols_count)
-                        for i, pth in enumerate(recent):
-                            try:
-                                with Image.open(pth) as img_prev:
-                                    cols_for_preview = cols_count or 1
-                                    tile_w = max(64, int(ui_full_w / cols_for_preview))
-                                    # Preserve the preview's real aspect ratio to avoid stretching
-                                    orig_w, orig_h = img_prev.size if getattr(img_prev, 'size', None) else (tile_w, tile_w)
-                                    tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
-                                    render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
-                            except Exception:
-                                pass
+                            display_items = base64_images if base64_images else recent_paths
+                            num_images = len(display_items)
+                            
+                            # Determine optimal grid layout
+                            if num_images == 4:
+                                cols_count = 2
+                            elif num_images >= 7:
+                                cols_count = 4
+                            elif num_images >= 5:
+                                cols_count = 3
+                            else:
+                                cols_count = min(3, num_images) or 1
+                                
+                            cols = st.columns(cols_count)
+                            for i, item in enumerate(display_items):
+                                try:
+                                    if item.startswith("data:image"):
+                                        # Direct base64 rendering
+                                        html = f"""
+                                        <div class="ld-responsive-image" style="--ld-display-width: {ui_full_w // cols_count}px; --ld-display-height: auto;">
+                                            <img src="{item}" alt="Preview" style="width: 100%; border-radius: 8px;">
+                                        </div>
+                                        """
+                                        cols[i % cols_count].markdown(html, unsafe_allow_html=True)
+                                    else:
+                                        # Legacy path-based rendering
+                                        with Image.open(item) as img_prev:
+                                            tile_w = max(64, int(ui_full_w / cols_count))
+                                            orig_w, orig_h = img_prev.size if getattr(img_prev, "size", None) else (tile_w, tile_w)
+                                            tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
+                                            render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
+                                except Exception:
+                                    pass
             except Exception:
                 pass
 

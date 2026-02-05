@@ -16,6 +16,7 @@ class ModelCache:
         self._cached_clip: Optional[Any] = None
         self._cached_vae: Optional[Any] = None
         self._cached_model_patcher: Optional[Any] = None
+        self._cached_taesd: Dict[Tuple[int, bool], Any] = {}
         self._cached_conditions: Dict[str, Any] = {}
         self._last_checkpoint_path: Optional[str] = None
         self._keep_models_loaded: bool = True
@@ -24,6 +25,14 @@ class ModelCache:
         # Prefetching support
         self._prefetched_state_dict: Optional[dict] = None
         self._prefetched_path: Optional[str] = None
+
+    def cache_taesd(self, channels: int, flux: bool, model: Any) -> None:
+        """Cache a TAESD model instance"""
+        self._cached_taesd[(channels, flux)] = model
+
+    def get_taesd(self, channels: int, flux: bool) -> Optional[Any]:
+        """Get a cached TAESD model instance"""
+        return self._cached_taesd.get((channels, flux))
 
     def set_prefetched_model(self, path: str, state_dict: dict) -> None:
         """Store a prefetched state dict in CPU RAM"""
@@ -136,6 +145,7 @@ class ModelCache:
         self._cached_clip = None
         self._cached_vae = None
         self._cached_model_patcher = None
+        self._cached_taesd.clear()
         self._cached_conditions.clear()
         self._last_checkpoint_path = None
         self._loaded_models_list.clear()

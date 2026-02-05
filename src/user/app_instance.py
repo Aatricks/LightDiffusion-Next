@@ -5,7 +5,7 @@ App instance for managing UI state and real-time previews
 import os
 import threading
 import time
-from typing import List
+from typing import List, Any
 from PIL import Image
 
 
@@ -17,6 +17,7 @@ class AppInstance:
         self.preview_dir = os.path.join(".", "output", "preview")
         self.preview_lock = threading.Lock()
         self.preview_files = []
+        self.preview_base64 = []  # In-memory base64 strings
         self.last_preview_time = 0
         self.current_step = 0
         self.total_steps = 0
@@ -26,96 +27,80 @@ class AppInstance:
         # Create preview directory
         os.makedirs(self.preview_dir, exist_ok=True)
 
-    def update_image(self, images: List[Image.Image], step: int = 0, total_steps: int = 0):
-        """Update the gallery with preview images in real-time"""
+    def update_image(self, images: List[Any], step: int = 0, total_steps: int = 0):
+        """Update the gallery with preview images in real-time.
+        
+        Args:
+            images: List of PIL.Image or base64 strings
+            step: Current step
+            total_steps: Total steps
+        """
         with self.preview_lock:
-            # Clear old preview files
-            self.clear_preview_files()
-
-            # Save new preview images with timestamp
-            self.preview_files = []
+            # Update metadata
             self.current_step = step
             self.total_steps = total_steps
-            timestamp = int(time.time() * 1000)  # milliseconds for uniqueness
-
-            for i, img in enumerate(images):
-                preview_path = os.path.join(
-                    self.preview_dir, f"preview_{timestamp}_{i}.png"
-                )
-                # Resize to a reasonable preview size for performance
-                preview_img = img.copy()
-                preview_img.thumbnail((512, 512), Image.Resampling.LANCZOS)
-                preview_img.save(preview_path)
-                self.preview_files.append(preview_path)
-
+            timestamp = int(time.time() * 1000)
             self.last_preview_time = timestamp
+            
+            # Store in-memory
+            new_previews = []
+            for img in images:
+                if isinstance(img, str) and img.startswith("data:image"):
+                    new_previews.append(img)
+                elif hasattr(img, "save"): # PIL Image
+                    try:
+                        import io
+                        import base64
+                        buffered = io.BytesIO()
+                        # Use WEBP for smaller memory footprint if possible, fallback to PNG
+                        img.save(buffered, format="WEBP", quality=80)
+                        img_str = base64.b64encode(buffered.getvalue()).decode()
+                        new_previews.append(f"data:image/webp;base64,{img_str}")
+                    except Exception:
+                        try:
+                            buffered = io.BytesIO()
+                            img.save(buffered, format="PNG")
+                            img_str = base64.b64encode(buffered.getvalue()).decode()
+                            new_previews.append(f"data:image/png;base64,{img_str}")
+                        except Exception:
+                            pass
+            
+            self.preview_base64 = new_previews
 
     def get_latest_previews(self):
         """Get the latest preview images and metadata"""
         with self.preview_lock:
             try:
-                paths = []
-                if self.preview_files:
-                    # Return existing file paths if they exist
-                    paths = [path for path in self.preview_files if os.path.exists(path)]
-                
                 return {
-                    "paths": paths,
+                    "paths": [], # Deprecated path-based previews
+                    "base64": self.preview_base64,
                     "step": self.current_step,
                     "total_steps": self.total_steps,
                     "timestamp": self.last_preview_time
                 }
             except Exception as e:
                 print(f"Error loading preview images: {e}")
-                return {"paths": [], "step": 0, "total_steps": 0, "timestamp": 0}
+                return {"paths": [], "base64": [], "step": 0, "total_steps": 0, "timestamp": 0}
 
     def clear_preview_files(self):
-        """Clear temporary preview files"""
-        for file_path in list(self.preview_files):
-            if not os.path.exists(file_path):
-                try:
-                    self.preview_files.remove(file_path)
-                except Exception:
-                    pass
-                continue
-            # Try a few times to remove the file in case an Image handle
-            # is still being closed by another thread/process (common on
-            # Windows). If we cannot remove after retries, skip it.
-            removed = False
-            for attempt in range(3):
-                try:
-                    os.remove(file_path)
-                    removed = True
-                    break
-                except PermissionError:
-                    time.sleep(0.05)
-                except Exception as e:
-                    print(f"Error removing preview file {file_path}: {e}")
-                    break
-            try:
-                if removed:
-                    self.preview_files.remove(file_path)
-            except Exception:
-                pass
+        """Clear temporary preview data"""
+        with self.preview_lock:
+            self.preview_base64 = []
+            self.preview_files = []
 
     def cleanup_all_previews(self):
-        """Cleanup all preview files in the directory"""
-        # Remove all preview files with a short retry on PermissionError to
-        # reduce noisy 'file is used by another process' errors on Windows.
+        """Cleanup all preview files in the directory and clear memory"""
+        self.clear_preview_files()
         try:
-            for filename in os.listdir(self.preview_dir):
-                if filename.startswith("preview_") and filename.endswith(".png"):
-                    file_path = os.path.join(self.preview_dir, filename)
-                    for attempt in range(3):
+            if os.path.exists(self.preview_dir):
+                for filename in os.listdir(self.preview_dir):
+                    if filename.startswith("preview_") and filename.endswith((".png", ".webp")):
+                        file_path = os.path.join(self.preview_dir, filename)
                         try:
                             if os.path.exists(file_path):
                                 os.remove(file_path)
-                            break
-                        except PermissionError:
-                            time.sleep(0.05)
-                        except Exception as e:
-                            print(f"Error cleaning up preview file {file_path}: {e}")
-                            break
+                        except Exception:
+                            pass
         except Exception as e:
             print(f"Error cleaning up preview directory: {e}")
 

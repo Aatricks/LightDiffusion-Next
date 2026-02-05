@@ -272,7 +272,7 @@ class TAESD(nn.Module):
         return (self.taesd_encoder(x * 0.5 + 0.5) / self.vae_scale) + self.vae_shift
 
 
-_taesd_cache = {}
+from src.Device.ModelCache import get_model_cache
 
 def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_steps: int = 0):
     """#### Preview the batched latent tensors as images.
@@ -285,18 +285,23 @@ def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_step
     """
     if app_instance.app.previewer_var.get() is True:
         latent_channels = x.shape[1]
+        cache = get_model_cache()
         
         # If we have TAESD model for these channels, use it (4 for SD, 16 for Flux1)
         if latent_channels in (4, 16):
-            cache_key = (latent_channels, flux)
-            if cache_key in _taesd_cache:
-                taesd_instance = _taesd_cache[cache_key]
-            else:
+            taesd_instance = cache.get_taesd(latent_channels, flux)
+            if taesd_instance is None:
                 taesd_instance = TAESD(latent_channels=latent_channels)
-                taesd_instance.to(x.device)
-                _taesd_cache[cache_key] = taesd_instance
+                # Use same dtype as latents for efficiency
+                taesd_instance.to(x.device, dtype=x.dtype)
+                cache.cache_taesd(latent_channels, flux, taesd_instance)
+            elif next(taesd_instance.parameters()).device != x.device or next(taesd_instance.parameters()).dtype != x.dtype:
+                taesd_instance.to(x.device, dtype=x.dtype)
 
             with torch.no_grad():
+                # Optimization for large batches: only preview up to 4 images
+                if x.shape[0] > 4:
+                    x = x[:4]
                 decoded_batch = taesd_instance.decode(x)
 
             if flux:
@@ -312,8 +317,10 @@ def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_step
             factors = torch.tensor(flux2_format.latent_rgb_factors, device=x.device, dtype=x.dtype)
             bias = torch.tensor(flux2_format.latent_rgb_factors_bias, device=x.device, dtype=x.dtype)
             
-            # x is [B, 32, H, W], factors is [32, 3]
-            # Output should be [B, 3, H, W]
+            # Optimization for large batches
+            if x.shape[0] > 4:
+                x = x[:4]
+                
             with torch.no_grad():
                 # [B, 32, H, W] -> [B, H, W, 32]
                 x_permuted = x.permute(0, 2, 3, 1)
@@ -334,6 +341,9 @@ def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_step
         for i in range(decoded_np.shape[0]):
             img_data = np.transpose(decoded_np[i], (1, 2, 0))
             img = Image.fromarray(img_data, mode='RGB')
+            # Reduce preview size for faster base64 conversion and lower bandwidth
+            if img.width > 512 or img.height > 512:
+                img.thumbnail((512, 512), Image.Resampling.NEAREST) # Fast resize
             images.append(img)
 
         # Update display with all images
