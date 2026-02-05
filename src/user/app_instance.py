@@ -17,7 +17,8 @@ class AppInstance:
         self.preview_dir = os.path.join(".", "output", "preview")
         self.preview_lock = threading.Lock()
         self.preview_files = []
-        self.preview_base64 = []  # In-memory base64 strings
+        self.preview_images = []  # Store PIL images directly
+        self.preview_base64_cache = []  # Cached base64 strings
         self.last_preview_time = 0
         self.current_step = 0
         self.total_steps = 0
@@ -42,38 +43,53 @@ class AppInstance:
             timestamp = int(time.time() * 1000)
             self.last_preview_time = timestamp
             
-            # Store in-memory
-            new_previews = []
-            for img in images:
-                if isinstance(img, str) and img.startswith("data:image"):
-                    new_previews.append(img)
-                elif hasattr(img, "save"): # PIL Image
-                    try:
-                        import io
-                        import base64
-                        buffered = io.BytesIO()
-                        # Use WEBP for smaller memory footprint if possible, fallback to PNG
-                        img.save(buffered, format="WEBP", quality=80)
-                        img_str = base64.b64encode(buffered.getvalue()).decode()
-                        new_previews.append(f"data:image/webp;base64,{img_str}")
-                    except Exception:
-                        try:
-                            buffered = io.BytesIO()
-                            img.save(buffered, format="PNG")
-                            img_str = base64.b64encode(buffered.getvalue()).decode()
-                            new_previews.append(f"data:image/png;base64,{img_str}")
-                        except Exception:
-                            pass
-            
-            self.preview_base64 = new_previews
+            # Store images (or strings) directly to avoid conversion overhead in sampling loop
+            self.preview_images = images
+            # Invalidate base64 cache
+            self.preview_base64_cache = []
+
+    def get_preview_metadata(self):
+        """Lightweight check for preview updates"""
+        with self.preview_lock:
+            return {
+                "step": self.current_step,
+                "total_steps": self.total_steps,
+                "timestamp": self.last_preview_time,
+                "has_images": len(self.preview_images) > 0
+            }
 
     def get_latest_previews(self):
-        """Get the latest preview images and metadata"""
+        """Get the latest preview images and metadata. Converts to base64 lazily."""
         with self.preview_lock:
             try:
+                # Lazy conversion to base64 if not already cached
+                if self.preview_images and not self.preview_base64_cache:
+                    new_previews = []
+                    for img in self.preview_images:
+                        if isinstance(img, str) and img.startswith("data:image"):
+                            new_previews.append(img)
+                        elif hasattr(img, "save"): # PIL Image
+                            try:
+                                import io
+                                import base64
+                                buffered = io.BytesIO()
+                                # Use WEBP for smaller memory footprint and faster transfer
+                                img.save(buffered, format="WEBP", quality=80)
+                                img_str = base64.b64encode(buffered.getvalue()).decode()
+                                new_previews.append(f"data:image/webp;base64,{img_str}")
+                            except Exception:
+                                try:
+                                    buffered = io.BytesIO()
+                                    img.save(buffered, format="PNG")
+                                    img_str = base64.b64encode(buffered.getvalue()).decode()
+                                    new_previews.append(f"data:image/png;base64,{img_str}")
+                                except Exception:
+                                    pass
+                    self.preview_base64_cache = new_previews
+
                 return {
                     "paths": [], # Deprecated path-based previews
-                    "base64": self.preview_base64,
+                    "base64": self.preview_base64_cache,
                     "step": self.current_step,
                     "total_steps": self.total_steps,
                     "timestamp": self.last_preview_time

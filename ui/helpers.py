@@ -102,45 +102,70 @@ def image_to_base64(image: Image.Image, format="PNG") -> str:
 
 
 def render_responsive_image(image, target_display_size, placeholder=None):
-    """Render a PIL image (or numpy array) into a streamlit placeholder using CSS variables."""
-    if isinstance(image, (list, tuple)) or hasattr(image, 'shape') and not isinstance(image, Image.Image):
-        try:
-            image = Image.fromarray(np.array(image))
-        except Exception:
-            # If conversion fails, try to let PIL handle it
-            image = Image.fromarray(image)
-
-    display_w, display_h = target_display_size
-    # Choose resampling constant depending on Pillow version
-    resample = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
-    # Resize the image to fit inside the target display box while preserving
-    # the original aspect ratio. This avoids stretching images when the
-    # UI-specified width/height don't match the actual image's aspect.
-    try:
-        orig_w, orig_h = image.size
-    except Exception:
-        orig_w, orig_h = display_w, display_h
-
-    if orig_w <= 0 or orig_h <= 0:
-        # Fallback: if image reports invalid size use the target box.
-        resized_w, resized_h = display_w, display_h
+    """Render an image into a streamlit placeholder using CSS variables.
+    
+    Args:
+        image: PIL Image, numpy array, or base64 data URL string
+        target_display_size: (width, height) tuple
+        placeholder: Optional streamlit placeholder
+    """
+    if isinstance(image, str) and image.startswith("data:image"):
+        # Direct base64 rendering
+        display_w, display_h = target_display_size
+        img_b64_full = image # It already contains "data:image/..."
     else:
-        # Compute the largest size that fits within the target box
-        scale = min(float(display_w) / orig_w, float(display_h) / orig_h)
-        # Allow scaling up or down but preserve ratio. If you prefer to avoid
-        # upscaling, clamp scale = min(scale, 1.0).
-        resized_w = max(1, int(round(orig_w * scale)))
-        resized_h = max(1, int(round(orig_h * scale)))
+        # Standard PIL/Numpy rendering
+        if isinstance(image, (list, tuple)) or hasattr(image, 'shape') and not isinstance(image, Image.Image):
+            try:
+                image = Image.fromarray(np.array(image))
+            except Exception:
+                # If conversion fails, try to let PIL handle it
+                image = Image.fromarray(image)
 
-    if (resized_w, resized_h) != image.size:
+        display_w, display_h = target_display_size
+        # Choose resampling constant depending on Pillow version
+        resample = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
+        # Resize the image to fit inside the target display box while preserving
+        # the original aspect ratio. This avoids stretching images when the
+        # UI-specified width/height don't match the actual image's aspect.
         try:
-            display_image = image.resize((resized_w, resized_h), resample)
+            orig_w, orig_h = image.size
         except Exception:
-            display_image = image.copy()
-    else:
-        display_image = image
+            orig_w, orig_h = display_w, display_h
 
-    img_b64 = image_to_base64(display_image)
+        if orig_w <= 0 or orig_h <= 0:
+            # Fallback: if image reports invalid size use the target box.
+            resized_w, resized_h = display_w, display_h
+        else:
+            # Compute the largest size that fits within the target box
+            scale = min(float(display_w) / orig_w, float(display_h) / orig_h)
+            # Allow scaling up or down but preserve ratio. If you prefer to avoid
+            # upscaling, clamp scale = min(scale, 1.0).
+            resized_w = max(1, int(round(orig_w * scale)))
+            resized_h = max(1, int(round(orig_h * scale)))
+
+        if (resized_w, resized_h) != image.size:
+            try:
+                display_image = image.resize((resized_w, resized_h), resample)
+            except Exception:
+                display_image = image.copy()
+        else:
+            display_image = image
+
+        # Determine best format for base64
+        format = "PNG"
+        if hasattr(display_image, "mode") and display_image.mode == "RGB":
+            # For RGB previews, WEBP is often smaller/faster
+            format = "WEBP"
+            
+        img_b64 = image_to_base64(display_image, format=format)
+        img_b64_full = f"data:image/{format.lower()};base64,{img_b64}"
+
+    html = f"""
+    <div class="ld-responsive-image" style="--ld-display-width: {display_w}px; --ld-display-height: {display_h}px;">
+        <img src="{img_b64_full}" alt="Generated Image">
+    </div>
+    """
     html = f"""
     <div class="ld-responsive-image" style="--ld-display-width: {display_w}px; --ld-display-height: {display_h}px;">
         <img src="data:image/png;base64,{img_b64}" alt="Generated Image">

@@ -308,61 +308,69 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                 status_placeholder.warning("⏹️ Stopping generation...")
             break
 
-        current_previews = None
+        # Optimization: Use lightweight metadata check first
+        preview_meta = {}
+        try:
+            preview_meta = app_instance.app.get_preview_metadata()
+        except Exception:
+            pass
+            
         if preview_container and settings["enable_preview"]:
             try:
-                current_previews = app_instance.app.get_latest_previews()
-                # Only update the UI if we have new preview data
-                if current_previews and current_previews.get("timestamp", 0) > last_preview_time:
-                    # Prefer in-memory base64 if available, fallback to paths
-                    base64_images = current_previews.get("base64", [])
-                    recent_paths = current_previews.get("paths", [])
+                # Only fetch full previews if timestamp has changed
+                if preview_meta.get("timestamp", 0) > last_preview_time:
+                    current_previews = app_instance.app.get_latest_previews()
                     
-                    step = current_previews.get("step", 0)
-                    total = current_previews.get("total_steps", 0)
-                    
-                    # Update timestamp to avoid redundant renders
-                    last_preview_time = current_previews["timestamp"]
-                    
-                    if base64_images or recent_paths:
-                        with preview_container.container():
-                            # Display progress header
-                            if total > 0:
-                                st.caption(f"🎨 Generating... Step {step}/{total}")
-                            
-                            display_items = base64_images if base64_images else recent_paths
-                            num_images = len(display_items)
-                            
-                            # Determine optimal grid layout
-                            if num_images == 4:
-                                cols_count = 2
-                            elif num_images >= 7:
-                                cols_count = 4
-                            elif num_images >= 5:
-                                cols_count = 3
-                            else:
-                                cols_count = min(3, num_images) or 1
+                    if current_previews and current_previews.get("timestamp", 0) > last_preview_time:
+                        # Prefer in-memory base64 if available, fallback to paths
+                        base64_images = current_previews.get("base64", [])
+                        recent_paths = current_previews.get("paths", [])
+                        
+                        step = current_previews.get("step", 0)
+                        total = current_previews.get("total_steps", 0)
+                        
+                        # Update timestamp to avoid redundant renders
+                        last_preview_time = current_previews["timestamp"]
+                        
+                        if base64_images or recent_paths:
+                            with preview_container.container():
+                                # Display progress header
+                                if total > 0:
+                                    st.caption(f"🎨 Generating... Step {step}/{total}")
                                 
-                            cols = st.columns(cols_count)
-                            for i, item in enumerate(display_items):
-                                try:
-                                    if item.startswith("data:image"):
-                                        # Direct base64 rendering
-                                        html = f"""
-                                        <div class="ld-responsive-image" style="--ld-display-width: {ui_full_w // cols_count}px; --ld-display-height: auto;">
-                                            <img src="{item}" alt="Preview" style="width: 100%; border-radius: 8px;">
-                                        </div>
-                                        """
-                                        cols[i % cols_count].markdown(html, unsafe_allow_html=True)
-                                    else:
-                                        # Legacy path-based rendering
-                                        with Image.open(item) as img_prev:
-                                            tile_w = max(64, int(ui_full_w / cols_count))
-                                            orig_w, orig_h = img_prev.size if getattr(img_prev, "size", None) else (tile_w, tile_w)
-                                            tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
-                                            render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
-                                except Exception:
-                                    pass
+                                display_items = base64_images if base64_images else recent_paths
+                                num_images = len(display_items)
+                                
+                                # Determine optimal grid layout
+                                if num_images == 4:
+                                    cols_count = 2
+                                elif num_images >= 7:
+                                    cols_count = 4
+                                elif num_images >= 5:
+                                    cols_count = 3
+                                else:
+                                    cols_count = min(3, num_images) or 1
+                                    
+                                cols = st.columns(cols_count)
+                                for i, item in enumerate(display_items):
+                                    try:
+                                        if item.startswith("data:image"):
+                                            # Direct base64 rendering
+                                            html = f"""
+                                            <div class="ld-responsive-image" style="--ld-display-width: {ui_full_w // cols_count}px; --ld-display-height: auto;">
+                                                <img src="{item}" alt="Preview" style="width: 100%; border-radius: 8px;">
+                                            </div>
+                                            """
+                                            cols[i % cols_count].markdown(html, unsafe_allow_html=True)
+                                        else:
+                                            # Legacy path-based rendering
+                                            with Image.open(item) as img_prev:
+                                                tile_w = max(64, int(ui_full_w / cols_count))
+                                                orig_w, orig_h = img_prev.size if getattr(img_prev, "size", None) else (tile_w, tile_w)
+                                                tile_h = max(64, int(tile_w * (orig_h / (orig_w or 1))))
+                                                render_responsive_image(img_prev, (tile_w, tile_h), cols[i % cols_count])
+                                    except Exception:
+                                        pass
             except Exception:
                 pass
 
@@ -371,15 +379,17 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
             # Update status bar with both elapsed time and step progress if available
             p_text = f"🎨 Generating — {elapsed:.1f}s"
             
-            # Reuse current_previews if we just fetched it, otherwise fetch now
-            if current_previews is None:
+            # Use metadata if we have it, otherwise fallback
+            if preview_meta and preview_meta.get("total_steps", 0) > 0:
+                p_text += f" (Step {preview_meta['step']}/{preview_meta['total_steps']})"
+            elif status_bar is not None:
+                # Try full fetch only if metadata failed or is missing info
                 try:
                     current_previews = app_instance.app.get_latest_previews()
+                    if current_previews and current_previews.get("total_steps", 0) > 0:
+                        p_text += f" (Step {current_previews['step']}/{current_previews['total_steps']})"
                 except Exception:
                     pass
-            
-            if current_previews and current_previews.get("total_steps", 0) > 0:
-                p_text += f" (Step {current_previews['step']}/{current_previews['total_steps']})"
 
             if status_bar is not None:
                 status_bar.markdown(f"<div class=\"ld-status-bar\">{p_text}</div>", unsafe_allow_html=True)
