@@ -301,6 +301,92 @@ class Pipeline:
         ctx.save_seed()
         return ctx
     
+    def run_controlnet(self, ctx: Context) -> Context:
+        """Run ControlNet-style generation using Canny edges + img2img.
+        
+        This uses edge detection to preserve structure while allowing
+        color and content changes via high-denoise img2img.
+        
+        Args:
+            ctx: Context with controlnet_model, img2img_image set
+            
+        Returns:
+            Context with generated images
+        """
+        from src.Processors import ControlNet as CNProcessor
+        from src.FileManaging import ImageSaver
+        from PIL import Image
+        import numpy as np
+        
+        self._check_interrupt()
+        
+        # Validate inputs
+        if not ctx.features.img2img_image:
+            raise ValueError("No input image provided for ControlNet")
+        
+        model = self._load_model(ctx)
+        self._apply_optimizations(ctx, model)
+        
+        # Load and preprocess input image
+        img_path = ctx.features.img2img_image
+        img = Image.open(img_path)
+        img = img.resize((ctx.generation.width, ctx.generation.height), Image.Resampling.LANCZOS)
+        
+        # Convert to tensor [B, H, W, C]
+        img_array = np.array(img.convert("RGB"))
+        img_tensor = torch.from_numpy(img_array).float().cpu() / 255.0
+        if img_tensor.dim() == 3:
+            img_tensor = img_tensor.unsqueeze(0)
+        
+        # Apply preprocessor (Canny edge detection by default)
+        control_image = CNProcessor.ControlNetProcessor.preprocess_image(
+            img_tensor,
+            preprocessor=ctx.features.controlnet_type,
+        )
+        
+        strength = ctx.features.controlnet_strength
+        logger.info(f"ControlNet-style: {ctx.features.controlnet_type} edges, strength={strength}")
+        
+        # Encode prompts
+        positive, negative = self._encode_prompts(ctx, model)
+        
+        saver = ImageSaver.SaveImage()
+        
+        for seed in ctx.seeds[:ctx.generation.number]:
+            self._check_interrupt()
+            ctx.seed = seed
+            
+            # Use the Canny+img2img approach
+            latents, ctx = CNProcessor.apply_controlnet_to_img2img(
+                ctx, model, positive, negative,
+                control_image=control_image,
+                strength=strength,
+            )
+            ctx.current_latents = latents["samples"]
+            
+            # Decode to image
+            image = model.decode(ctx.current_latents)
+            ctx.current_image = image
+            
+            # Apply AutoHDR if enabled
+            if AutoHDRProcessor.is_enabled(ctx):
+                ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
+            
+            # Save with metadata
+            saver.save_images(
+                filename_prefix="LD-CN",
+                images=ctx.current_image,
+                prompt=str(ctx.prompt),
+                extra_pnginfo=ctx.build_metadata({
+                    "controlnet_style": "True",
+                    "controlnet_strength": str(strength),
+                    "controlnet_type": ctx.features.controlnet_type,
+                }),
+            )
+        
+        ctx.save_seed()
+        return ctx
+    
     def run_batched(self, ctx: Context, per_sample_info: list = None) -> dict:
         """Run batched multi-prompt generation.
         

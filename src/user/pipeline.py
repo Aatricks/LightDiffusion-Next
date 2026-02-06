@@ -96,6 +96,10 @@ def pipeline(
     # Refiner
     refiner_model_path: str | None = None,
     refiner_switch_step: int | None = None,
+    # ControlNet
+    controlnet_model: str | None = None,
+    controlnet_strength: float = 1.0,
+    controlnet_type: str = "canny",
     # Batched mode
     per_sample_info: list | None = None,
 ) -> dict:
@@ -194,6 +198,9 @@ def pipeline(
         img2img_denoise=img2img_denoise,
         refiner_model_path=refiner_model_path,
         refiner_switch_step=refiner_switch_step,
+        controlnet_model=controlnet_model,
+        controlnet_strength=controlnet_strength,
+        controlnet_type=controlnet_type,
     )
     
     # Handle prompt enhancement
@@ -240,7 +247,10 @@ def pipeline(
     pipeline_instance = get_default_pipeline()
     
     with torch.inference_mode():
-        if ctx.features.img2img:
+        if ctx.features.controlnet_model:
+            # ControlNet mode (uses input image for control, generates new content)
+            pipeline_instance.run_controlnet(ctx)
+        elif ctx.features.img2img:
             pipeline_instance.run_img2img(ctx)
         elif ctx.is_batched:
             return pipeline_instance.run_batched(ctx, per_sample_info)
