@@ -78,6 +78,7 @@ class FeatureFlags:
     enhance_prompt: bool = False
     img2img: bool = False
     img2img_image: Optional[str] = None
+    img2img_denoise: float = 0.75  # Denoising strength: 0=no change, 1=full generation
     reuse_seed: bool = False
 
 
@@ -282,6 +283,7 @@ class Context:
         ctx.features.enhance_prompt = kwargs.get("enhance_prompt", False)
         ctx.features.img2img = kwargs.get("img2img", False)
         ctx.features.img2img_image = kwargs.get("img2img_image")
+        ctx.features.img2img_denoise = kwargs.get("img2img_denoise", 0.75)
         ctx.features.reuse_seed = kwargs.get("reuse_seed", False)
         
         # Handle multiscale preset

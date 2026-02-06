@@ -200,6 +200,10 @@ class Pipeline:
     def run_img2img(self, ctx: Context) -> Context:
         """Run image-to-image generation pipeline.
         
+        Supports two modes:
+        1. Upscale mode: When target dimensions are larger than input (uses USDU)
+        2. Diffusion mode: True img2img with denoising strength (uses simple_img2img)
+        
         Args:
             ctx: Context with img2img_image set
             
@@ -208,37 +212,90 @@ class Pipeline:
         """
         from src.Processors import Img2Img
         from src.FileManaging import ImageSaver
+        from PIL import Image
+        import numpy as np
+        import torch
         
         self._check_interrupt()
         
         model = self._load_model(ctx)
         self._apply_optimizations(ctx, model)
         
-        # Higher LoRA strength for img2img - only if supported
-        if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
-            try:
-                model.apply_lora(self.default_lora[0], 2.0, 2.0)
-            except Exception as e:
-                logger.warning(f"LoRA failed: {e}")
-        
         positive, negative = self._encode_prompts(ctx, model)
         saver = ImageSaver.SaveImage()
+        
+        # Load input image to determine mode
+        img_path = ctx.features.img2img_image
+        if not img_path:
+            raise ValueError("No input image provided for img2img")
+        
+        img = Image.open(img_path)
+        input_w, input_h = img.size
+        target_w, target_h = ctx.generation.width, ctx.generation.height
+        
+        # Convert image to tensor [B, H, W, C]
+        img_array = np.array(img.convert("RGB"))
+        img_tensor = torch.from_numpy(img_array).float().cpu() / 255.0
+        if img_tensor.dim() == 3:
+            img_tensor = img_tensor.unsqueeze(0)
+        
+        # Determine mode: upscale if target is larger, otherwise diffusion
+        use_upscale = (target_w > input_w * 1.1) or (target_h > input_h * 1.1)
+        denoise = ctx.features.img2img_denoise
+        
+        logger.info(f"Img2Img: input={input_w}x{input_h}, target={target_w}x{target_h}, denoise={denoise:.2f}, mode={'upscale' if use_upscale else 'diffusion'}")
         
         for seed in ctx.seeds[:ctx.generation.number]:
             self._check_interrupt()
             ctx.seed = seed
             
-            result = Img2Img.apply(ctx, model, positive, negative)
-            ctx.current_image = result
+            if use_upscale:
+                # Use USDU upscaler (existing behavior)
+                # Higher LoRA strength for img2img upscaling
+                if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
+                    try:
+                        model.apply_lora(self.default_lora[0], 2.0, 2.0)
+                    except Exception as e:
+                        logger.warning(f"LoRA failed: {e}")
+                
+                result = Img2Img.apply(ctx, model, positive, negative, image_tensor=img_tensor, denoise=denoise)
+                ctx.current_image = result
+            else:
+                # True diffusion-based img2img with denoising strength
+                # Resize input image to target dimensions if different
+                if input_w != target_w or input_h != target_h:
+                    resized_img = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    img_array = np.array(resized_img.convert("RGB"))
+                    img_tensor = torch.from_numpy(img_array).float().cpu() / 255.0
+                    if img_tensor.dim() == 3:
+                        img_tensor = img_tensor.unsqueeze(0)
+                
+                # Run simple_img2img for true diffusion-based generation
+                latents = Img2Img.simple_img2img(
+                    ctx, model, positive, negative,
+                    image_tensor=img_tensor,
+                    denoise=denoise,
+                )
+                ctx.current_latents = latents["samples"]
+                
+                # Decode to image
+                image = model.decode(ctx.current_latents)
+                ctx.current_image = image
             
+            # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
+            # Save the image with metadata including denoise value
             saver.save_images(
                 filename_prefix="LD-I2I",
                 images=ctx.current_image,
                 prompt=str(ctx.prompt),
-                extra_pnginfo=ctx.build_metadata({"img2img": "True"}),
+                extra_pnginfo=ctx.build_metadata({
+                    "img2img": "True",
+                    "img2img_denoise": str(denoise),
+                    "img2img_mode": "upscale" if use_upscale else "diffusion",
+                }),
             )
         
         ctx.save_seed()

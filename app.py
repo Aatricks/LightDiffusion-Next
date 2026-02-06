@@ -74,6 +74,7 @@ def get_default_settings():
         "adetailer": False,
         "enhance_prompt": False,
         "img2img_enabled": False,
+        "img2img_denoise": 0.75,  # Denoising strength for img2img
         "stable_fast": False,
         "reuse_seed": False,
         "realistic_model": False,
@@ -331,6 +332,7 @@ def generate_images_with_preview(
     enhance_prompt: bool = False,
     img2img_enabled: bool = False,
     img2img_image: str = None,
+    img2img_denoise: float = 0.75,
     stable_fast: bool = False,
     reuse_seed: bool = False,
     realistic_model: bool = False,
@@ -420,6 +422,7 @@ def generate_images_with_preview(
                 adetailer=adetailer,
                 enhance_prompt=enhance_prompt,
                 img2img=img2img_enabled,
+                img2img_denoise=img2img_denoise,
                 stable_fast=stable_fast,
                 reuse_seed=reuse_seed,
                 autohdr=True,
@@ -662,6 +665,15 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                     img2img_image = gr.Image(
                         label="Input Image for img2img", visible=False
                     )
+                    img2img_denoise = gr.Slider(
+                        minimum=0.0,
+                        maximum=1.0,
+                        value=saved_settings.get("img2img_denoise", 0.75),
+                        step=0.05,
+                        label="Denoising Strength",
+                        info="0 = keep original, 1 = full generation",
+                        visible=False,
+                    )
 
                     # Multi-scale diffusion settings
                     with gr.Accordion("Multi-Scale Diffusion Settings", open=False):
@@ -730,11 +742,11 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
                             info="Step at which to switch from base model to refiner"
                         )
 
-                    # Make input image visible only when img2img is enabled
+                    # Make input image and denoise slider visible only when img2img is enabled
                     img2img_enabled.change(
-                        fn=lambda x: gr.update(visible=x),
+                        fn=lambda x: (gr.update(visible=x), gr.update(visible=x)),
                         inputs=[img2img_enabled],
-                        outputs=[img2img_image],
+                        outputs=[img2img_image, img2img_denoise],
                     )
 
                     # Handle preset changes
@@ -863,6 +875,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             enhance_prompt,
             img2img_enabled,
             img2img_image,
+            img2img_denoise,
             stable_fast,
             reuse_seed,
             realistic_model,
@@ -894,6 +907,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         adetailer_val,
         enhance_prompt_val,
         img2img_enabled_val,
+        img2img_denoise_val,
         stable_fast_val,
         reuse_seed_val,
         realistic_model_val,
@@ -922,6 +936,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
             adetailer=adetailer_val,
             enhance_prompt=enhance_prompt_val,
             img2img_enabled=img2img_enabled_val,
+            img2img_denoise=img2img_denoise_val,
             stable_fast=stable_fast_val,
             reuse_seed=reuse_seed_val,
             realistic_model=realistic_model_val,
@@ -952,6 +967,7 @@ with gr.Blocks(title="LightDiffusion Web UI") as demo:
         adetailer,
         enhance_prompt,
         img2img_enabled,
+        img2img_denoise,
         stable_fast,
         reuse_seed,
         realistic_model,

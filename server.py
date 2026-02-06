@@ -105,6 +105,7 @@ class GenerateRequest(BaseModel):
     enhance_prompt: bool = False
     img2img_enabled: bool = False
     img2img_image: Optional[str] = None
+    img2img_denoise: float = 0.75  # Denoising strength: 0=keep original, 1=full generation
     stable_fast: bool = False
     reuse_seed: bool = False
     realistic_model: bool = False
@@ -403,6 +404,7 @@ class GenerationBuffer:
             steps=first_req.steps,
             enhance_prompt=first_req.enhance_prompt,
             img2img=first_req.img2img_enabled,
+            img2img_denoise=first_req.img2img_denoise,
             stable_fast=first_req.stable_fast,
             reuse_seed=first_req.reuse_seed,
             autohdr=True,

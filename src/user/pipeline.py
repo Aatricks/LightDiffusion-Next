@@ -92,6 +92,7 @@ def pipeline(
     adaptive_noise_method: str = "complexity",
     # Img2img
     img2img_image: str | None = None,
+    img2img_denoise: float = 0.75,  # Denoising strength: 0=no change, 1=full gen
     # Refiner
     refiner_model_path: str | None = None,
     refiner_switch_step: int | None = None,
@@ -190,6 +191,7 @@ def pipeline(
         adaptive_noise_enabled=adaptive_noise_enabled,
         adaptive_noise_method=adaptive_noise_method,
         img2img_image=img2img_image,
+        img2img_denoise=img2img_denoise,
         refiner_model_path=refiner_model_path,
         refiner_switch_step=refiner_switch_step,
     )
