@@ -161,6 +161,7 @@ def apply_controlnet_to_img2img(
     control_image: torch.Tensor,
     strength: float = 1.0,
     original_image: Optional[torch.Tensor] = None,
+    last_step: Optional[int] = None,
 ) -> Tuple[torch.Tensor, Any]:
     """Apply ControlNet-style generation using img2img with edge guidance.
     
@@ -178,6 +179,7 @@ def apply_controlnet_to_img2img(
         control_image: Preprocessed control image (e.g., Canny edges)
         strength: How much to preserve structure (higher = more preservation)
         original_image: Original input image (required for proper guidance)
+        last_step: Optional step to stop at (for refiner handoff)
         
     Returns:
         Generated latents and context
@@ -208,6 +210,7 @@ def apply_controlnet_to_img2img(
         logger.info(
             f"ControlNet {'Flux' if is_flux or is_flux2 else 'SD'}: "
             f"strength={strength:.2f}, denoise={denoise:.2f}, edge_blend={edge_blend:.2f}"
+            + (f", last_step={last_step}" if last_step else "")
         )
     else:
         # Fallback: use edges only (not recommended)
@@ -223,6 +226,7 @@ def apply_controlnet_to_img2img(
         ctx, model, positive, negative,
         image_tensor=input_image,
         denoise=denoise,
+        last_step=last_step,
     )
     
     return latents, ctx

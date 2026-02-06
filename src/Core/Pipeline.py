@@ -284,16 +284,55 @@ class Pipeline:
                     if img_tensor.dim() == 3:
                         img_tensor = img_tensor.unsqueeze(0)
                 
+                # Check if refiner is enabled BEFORE running base model
+                use_refiner = bool(ctx.generation.refiner_model_path and ctx.generation.refiner_switch_step is not None)
+                base_last_step = ctx.generation.refiner_switch_step if use_refiner else None
+                
+                if use_refiner:
+                    print(f"Stage 1: Running Base model ({ctx.generation.refiner_switch_step}/{ctx.sampling.steps} steps)...")
+                
                 # Run simple_img2img for true diffusion-based generation
                 latents = Img2Img.simple_img2img(
                     ctx, model, positive, negative,
                     image_tensor=img_tensor,
                     denoise=denoise,
+                    last_step=base_last_step,
                 )
                 ctx.current_latents = latents["samples"]
                 
-                # Decode to image
-                image = model.decode(ctx.current_latents)
+                # Apply refiner if enabled
+                if use_refiner:
+                    self._check_interrupt()
+                    
+                    # Load refiner model
+                    refiner_model = self._load_refiner_model(ctx)
+                    self._apply_optimizations(ctx, refiner_model)
+                    
+                    # Encode prompts for refiner (it has different CLIP)
+                    ref_positive, ref_negative = self._encode_prompts(ctx, refiner_model)
+                    
+                    # Disable multi-scale for refiner pass
+                    orig_ms = ctx.sampling.enable_multiscale
+                    ctx.sampling.enable_multiscale = False
+                    
+                    steps_for_refiner = ctx.sampling.steps - ctx.generation.refiner_switch_step
+                    print(f"Img2Img Refiner: Running {steps_for_refiner}/{ctx.sampling.steps} steps...")
+                    refiner_latents = refiner_model.generate(
+                        ctx, ref_positive, ref_negative,
+                        latent_image=latents,
+                        start_step=ctx.generation.refiner_switch_step,
+                        disable_noise=True,
+                        callback=ctx.callback
+                    )
+                    ctx.current_latents = refiner_latents["samples"]
+                    ctx.sampling.enable_multiscale = orig_ms
+                    
+                    # Decode using refiner's VAE
+                    image = refiner_model.decode(ctx.current_latents)
+                else:
+                    # Decode to image using base model
+                    image = model.decode(ctx.current_latents)
+                
                 ctx.current_image = image
             
             # Apply AutoHDR if enabled
@@ -368,21 +407,63 @@ class Pipeline:
         
         is_flux2 = getattr(model.capabilities, "is_flux2", False)
         
+        # Check if refiner is enabled
+        use_refiner = bool(ctx.generation.refiner_model_path and ctx.generation.refiner_switch_step is not None)
+        if use_refiner:
+            print(f"Refiner enabled for ControlNet: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
+        
         for seed in ctx.seeds[:ctx.generation.number]:
             self._check_interrupt()
             ctx.seed = seed
             
             # Use the Canny+img2img approach, passing original image for blending
+            # When refiner is enabled, stop base model at refiner switch step
+            base_last_step = ctx.generation.refiner_switch_step if use_refiner else None
+            if use_refiner:
+                print(f"Stage 1: Running Base model ({ctx.generation.refiner_switch_step}/{ctx.sampling.steps} steps)...")
+            
             latents, ctx = CNProcessor.apply_controlnet_to_img2img(
                 ctx, model, positive, negative,
                 control_image=control_image,
                 strength=strength,
                 original_image=img_tensor,
+                last_step=base_last_step,
             )
             ctx.current_latents = latents["samples"]
             
-            # Decode to image
-            image = model.decode(ctx.current_latents)
+            # Apply refiner if enabled
+            if use_refiner:
+                self._check_interrupt()
+                
+                # Load refiner model
+                refiner_model = self._load_refiner_model(ctx)
+                self._apply_optimizations(ctx, refiner_model)
+                
+                # Encode prompts for refiner (it has different CLIP)
+                ref_positive, ref_negative = self._encode_prompts(ctx, refiner_model)
+                
+                # Disable multi-scale for refiner pass
+                orig_ms = ctx.sampling.enable_multiscale
+                ctx.sampling.enable_multiscale = False
+                
+                steps_for_refiner = ctx.sampling.steps - ctx.generation.refiner_switch_step
+                print(f"ControlNet Refiner: Running {steps_for_refiner}/{ctx.sampling.steps} steps...")
+                refiner_latents = refiner_model.generate(
+                    ctx, ref_positive, ref_negative,
+                    latent_image=latents,
+                    start_step=ctx.generation.refiner_switch_step,
+                    disable_noise=True,
+                    callback=ctx.callback
+                )
+                ctx.current_latents = refiner_latents["samples"]
+                ctx.sampling.enable_multiscale = orig_ms
+                
+                # Decode using refiner's VAE
+                image = refiner_model.decode(ctx.current_latents)
+            else:
+                # Decode to image using base model
+                image = model.decode(ctx.current_latents)
+            
             ctx.current_image = image
             
             # Apply AutoHDR if enabled

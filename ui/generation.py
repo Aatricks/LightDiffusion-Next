@@ -63,6 +63,14 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
         app_instance.app.clear_interrupt()
     except Exception:
         pass
+    
+    # Sync the preview enabled flag with the app instance so taesd_preview knows
+    # whether to generate previews during sampling
+    try:
+        app_instance.app.previewer_var.set(settings.get("enable_preview", True))
+    except Exception:
+        pass
+    
     set_keep_models_loaded(settings["keep_models_loaded"])
 
     try:

@@ -176,6 +176,7 @@ class Img2Img:
         negative: Any,
         image_tensor: torch.Tensor,
         denoise: float = 0.75,
+        last_step: Optional[int] = None,
     ) -> dict:
         """Simple image-to-image without upscaling.
         
@@ -189,6 +190,7 @@ class Img2Img:
             negative: Negative conditioning
             image_tensor: Input image tensor
             denoise: Denoising strength (0.0 = no change, 1.0 = full generation)
+            last_step: Optional step to stop at (for refiner handoff)
             
         Returns:
             Dictionary with 'samples' key containing generated latents
@@ -241,6 +243,8 @@ class Img2Img:
                 enable_multiscale=False if is_flux else ctx.sampling.enable_multiscale,
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                last_step=last_step,
+                callback=ctx.callback,  # Enable live previews during sampling
             )
             
             return result[0]
