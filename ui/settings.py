@@ -89,6 +89,11 @@ def get_default_settings():
         # Optimizations
         "prompt_cache_enabled": True,  # Cache CLIP embeddings (5-15% speedup)
 
+        # ControlNet
+        "controlnet_enabled": False,
+        "controlnet_strength": 1.0,
+        "controlnet_type": "canny",
+
         # Processors
         "autohdr": True,
 

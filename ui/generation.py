@@ -184,7 +184,6 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             stable_fast=settings.get("stable_fast", False),
                             reuse_seed=settings.get("reuse_seed", False),
                             autohdr=settings.get("autohdr", True),
-                            img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,
                             img2img_denoise=settings.get("img2img_denoise", 0.75) if settings.get("img2img_mode", False) else None,
                             deepcache_enabled=settings.get("deepcache_enabled", False),
                             deepcache_interval=settings.get("deepcache_interval", 3),
@@ -206,6 +205,11 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             adaptive_noise_method=settings.get("adaptive_noise_method", "complexity"),
                             refiner_model_path=settings.get("refiner_model_path", None) if settings.get("refiner_model_path") else None,
                             refiner_switch_step=int(settings.get("refiner_switch_step", 20)) if settings.get("refiner_model_path") else None,
+                            # ControlNet
+                            controlnet_model=settings.get("controlnet_type", "canny") if settings.get("controlnet_enabled") else None,
+                            controlnet_strength=settings.get("controlnet_strength", 1.0) if settings.get("controlnet_enabled") else 1.0,
+                            controlnet_type=settings.get("controlnet_type", "canny") if settings.get("controlnet_enabled") else "canny",
+                            img2img_image=settings.get("input_image_path") if (settings.get("img2img_mode") or settings.get("controlnet_enabled")) else None,
                             **multiscale_params,
                         )
 
@@ -441,7 +445,9 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
     generated_image_paths = []
 
     # Determine primary output directories to search based on mode
-    if settings["img2img_mode"]:
+    if settings.get("controlnet_enabled"):
+        primary_dirs = ["./output/ControlNet"]
+    elif settings["img2img_mode"]:
         primary_dirs = ["./output/Img2Img"]
     elif settings["adetailer"]:
         primary_dirs = ["./output/Adetailer", "./output/Classic", "./output/HiresFix"]

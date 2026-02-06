@@ -220,6 +220,60 @@ def render_generate_page():
                     help="0 = keep original image, 1 = full regeneration (like txt2img)"
                 )
 
+        with st.expander("🎛️ ControlNet", expanded=False):
+            settings["controlnet_enabled"] = st.checkbox(
+                "Enable ControlNet",
+                value=settings.get("controlnet_enabled", False),
+                disabled=controls_disabled,
+                help="Use edge detection to preserve image structure while changing content. Requires an input image."
+            )
+
+            if settings["controlnet_enabled"]:
+                # ControlNet requires an input image – share the same upload
+                # widget from img2img or allow a separate upload
+                if not settings.get("img2img_mode"):
+                    if controls_disabled:
+                        st.info("Image upload is disabled while generation is running.")
+                        if settings.get("input_image_path") and os.path.exists(settings.get("input_image_path")):
+                            try:
+                                st.image(settings.get("input_image_path"), caption="ControlNet Input", width='stretch')
+                            except Exception:
+                                pass
+                    else:
+                        cn_uploaded = st.file_uploader("Upload Control Image", type=["png", "jpg", "jpeg"], key="cn_upload")
+                        if cn_uploaded:
+                            cn_path = f"./output/uploaded_{cn_uploaded.name}"
+                            with open(cn_path, "wb") as f:
+                                f.write(cn_uploaded.getbuffer())
+                            settings["input_image_path"] = cn_path
+                            st.image(cn_uploaded, caption="Control Input", width='stretch')
+                else:
+                    st.info("Using the same input image from Img2Img mode.")
+
+                controlnet_types = {
+                    "canny": "Canny Edge Detection",
+                    "none": "None (use raw image)",
+                }
+                current_cn_type = settings.get("controlnet_type", "canny")
+                settings["controlnet_type"] = st.selectbox(
+                    "Preprocessor",
+                    options=list(controlnet_types.keys()),
+                    format_func=lambda x: controlnet_types[x],
+                    index=list(controlnet_types.keys()).index(current_cn_type) if current_cn_type in controlnet_types else 0,
+                    disabled=controls_disabled,
+                    help="Edge detection method used to extract structure from the input image."
+                )
+
+                settings["controlnet_strength"] = st.slider(
+                    "Control Strength",
+                    min_value=0.0,
+                    max_value=2.0,
+                    value=settings.get("controlnet_strength", 1.0),
+                    step=0.05,
+                    disabled=controls_disabled,
+                    help="How strongly the structure is preserved. Higher = more faithful to input, lower = more creative freedom."
+                )
+
         with st.expander("🖼️ SDXL Refiner", expanded=False):
             # Same model list for refiner
             ref_model_options = ["None"] + display_names

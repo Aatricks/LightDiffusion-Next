@@ -160,6 +160,7 @@ def apply_controlnet_to_img2img(
     negative,
     control_image: torch.Tensor,
     strength: float = 1.0,
+    original_image: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, Any]:
     """Apply ControlNet-style generation using img2img with edge guidance.
     

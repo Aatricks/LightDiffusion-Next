@@ -204,17 +204,13 @@ class Img2Img:
             is_flux = getattr(model.capabilities, "is_flux", False)
             is_flux2 = getattr(model.capabilities, "is_flux2", False)
             
-            # Encode image to latents
+            # Encode image to latents (pass flux flag for correct encoding)
             vae_encode = VariationalAE.VAEEncode()
-            latents = vae_encode.encode(vae=model.vae, pixels=image_tensor)[0]
-            
-            # For denoise >= 0.98, use empty latent to prevent input color bleeding
-            # The structure/composition hint is only from the noise schedule, not the actual latent values
-            if denoise >= 0.98:
-                # Create empty latent with same shape - only use input for shape determination
-                empty_samples = torch.zeros_like(latents["samples"])
-                latents = {"samples": empty_samples}
-                logger.debug("Using empty latent for high denoise (%.2f) to prevent color bleeding", denoise)
+            latents = vae_encode.encode(
+                vae=model.vae,
+                pixels=image_tensor,
+                flux=is_flux or is_flux2,
+            )[0]
             
             # Apply HiDiffusion optimizer (not for Flux)
             if not is_flux:

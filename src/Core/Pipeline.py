@@ -243,6 +243,20 @@ class Pipeline:
         use_upscale = (target_w > input_w * 1.1) or (target_h > input_h * 1.1)
         denoise = ctx.features.img2img_denoise
         
+        # Inject SDXL size conditioning if required
+        if getattr(model.capabilities, 'requires_size_conditioning', False):
+            for cond_list in [positive, negative]:
+                for cond_item in cond_list:
+                    if len(cond_item) > 1 and isinstance(cond_item[1], dict):
+                        cond_item[1].update({
+                            "width": target_w,
+                            "height": target_h,
+                            "crop_w": 0,
+                            "crop_h": 0,
+                            "target_width": target_w,
+                            "target_height": target_h,
+                        })
+        
         logger.info(f"Img2Img: input={input_w}x{input_h}, target={target_w}x{target_h}, denoise={denoise:.2f}, mode={'upscale' if use_upscale else 'diffusion'}")
         
         for seed in ctx.seeds[:ctx.generation.number]:
@@ -287,7 +301,7 @@ class Pipeline:
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
             # Save the image with metadata including denoise value
-            saver.save_images(
+            saver.save_images_async(
                 filename_prefix="LD-I2I",
                 images=ctx.current_image,
                 prompt=str(ctx.prompt),
@@ -352,15 +366,18 @@ class Pipeline:
         
         saver = ImageSaver.SaveImage()
         
+        is_flux2 = getattr(model.capabilities, "is_flux2", False)
+        
         for seed in ctx.seeds[:ctx.generation.number]:
             self._check_interrupt()
             ctx.seed = seed
             
-            # Use the Canny+img2img approach
+            # Use the Canny+img2img approach, passing original image for blending
             latents, ctx = CNProcessor.apply_controlnet_to_img2img(
                 ctx, model, positive, negative,
                 control_image=control_image,
                 strength=strength,
+                original_image=img_tensor,
             )
             ctx.current_latents = latents["samples"]
             
@@ -373,7 +390,7 @@ class Pipeline:
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
             # Save with metadata
-            saver.save_images(
+            saver.save_images_async(
                 filename_prefix="LD-CN",
                 images=ctx.current_image,
                 prompt=str(ctx.prompt),
