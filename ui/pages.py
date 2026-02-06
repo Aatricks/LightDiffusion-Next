@@ -30,6 +30,12 @@ def _apply_flux2_optimal_settings(settings: dict) -> None:
     settings["scheduler"] = "simple"
     settings["steps"] = 4
     
+    # Flux doesn't use negative prompts (like ComfyUI's ConditioningZeroOut)
+    # Save the current negative prompt before clearing so it can be restored
+    if settings.get("negative_prompt"):
+        st.session_state["saved_negative_prompt"] = settings["negative_prompt"]
+    settings["negative_prompt"] = ""
+    
     # Disable features incompatible with DiT architecture
     settings["multiscale_preset"] = "disabled"
     settings["multiscale_custom"] = False
@@ -40,6 +46,9 @@ def _apply_flux2_optimal_settings(settings: dict) -> None:
     settings["hiresfix"] = False
     settings["adetailer"] = False
     settings["stable_fast"] = False
+    
+    # Flux doesn't support SDXL refiner
+    settings["refiner_model_path"] = ""
     
     # Set default resolution if not already at Flux2 size
     if settings.get("width", 512) < 1024 or settings.get("height", 512) < 1024:
@@ -74,6 +83,97 @@ def _revert_flux2_optimal_settings(settings: dict) -> None:
             st.session_state.height_input = 512
         if "preset_selectbox" in st.session_state:
             st.session_state.preset_selectbox = "512x512 (SD1.5)"
+
+
+def _apply_sd15_optimal_settings(settings: dict) -> None:
+    """Apply optimal settings for SD1.5 models."""
+    # Sampling settings optimized for SD1.5
+    settings["cfg_scale"] = 7.0
+    settings["sampler"] = "dpmpp_sde_cfgpp"
+    settings["scheduler"] = "ays"
+    settings["steps"] = 20
+    
+    # Restore negative prompt if it was saved (when switching from Flux2)
+    if st.session_state.get("saved_negative_prompt") and not settings.get("negative_prompt"):
+        settings["negative_prompt"] = st.session_state["saved_negative_prompt"]
+    
+    # Multi-scale and acceleration available for SD1.5
+    settings["multiscale_preset"] = "balanced"
+    
+    # SD1.5 doesn't support SDXL refiner
+    settings["refiner_model_path"] = ""
+    
+    # Set default resolution for SD1.5
+    if settings.get("width", 512) >= 1024 or settings.get("height", 512) >= 1024:
+        settings["width"] = 512
+        settings["height"] = 512
+        if "width_input" in st.session_state:
+            st.session_state.width_input = 512
+        if "height_input" in st.session_state:
+            st.session_state.height_input = 512
+        if "preset_selectbox" in st.session_state:
+            st.session_state.preset_selectbox = "512x512 (SD1.5)"
+
+
+def _apply_sdxl_optimal_settings(settings: dict) -> None:
+    """Apply optimal settings for SDXL models."""
+    # Sampling settings optimized for SDXL
+    settings["cfg_scale"] = 7.0
+    settings["sampler"] = "euler"
+    settings["scheduler"] = "ays"
+    settings["steps"] = 25
+    
+    # Restore negative prompt if it was saved (when switching from Flux2)
+    if st.session_state.get("saved_negative_prompt") and not settings.get("negative_prompt"):
+        settings["negative_prompt"] = st.session_state["saved_negative_prompt"]
+    
+    # Multi-scale and acceleration available for SDXL
+    settings["multiscale_preset"] = "balanced"
+    
+    # Auto-configure SDXL refiner with switch at step 20
+    settings["refiner_switch_step"] = 20
+    
+    # Try to find an SDXL refiner model in the checkpoints
+    try:
+        from src.Core.Models.ModelFactory import list_available_models
+        available_map = list_available_models(return_mapping=True)
+        for display_name, full_path in available_map:
+            name_lower = display_name.lower()
+            if "refiner" in name_lower or ("sdxl" in name_lower and "refiner" in name_lower):
+                settings["refiner_model_path"] = full_path
+                break
+    except Exception:
+        pass
+    
+    # Set default resolution for SDXL (native 1024x1024)
+    if settings.get("width", 512) < 1024 or settings.get("height", 512) < 1024:
+        settings["width"] = 1024
+        settings["height"] = 1024
+        if "width_input" in st.session_state:
+            st.session_state.width_input = 1024
+        if "height_input" in st.session_state:
+            st.session_state.height_input = 1024
+        if "preset_selectbox" in st.session_state:
+            st.session_state.preset_selectbox = "1024x1024 (SDXL 1:1)"
+
+
+def _get_detected_model_type(model_path: str) -> str:
+    """Detect model type from model path.
+    
+    Returns:
+        'Flux2Klein', 'SDXL', or 'SD15'
+    """
+    if model_path == "__FLUX2_KLEIN__":
+        return "Flux2Klein"
+    
+    if not model_path:
+        return "SD15"  # Default to SD1.5
+    
+    try:
+        from src.Core.Models.ModelFactory import detect_model_type
+        return detect_model_type(model_path)
+    except Exception:
+        return "SD15"
 
 
 def render_generate_page():
@@ -173,22 +273,38 @@ def render_generate_page():
                 idx = 0
 
             sel = st.selectbox("Model", options=model_options, index=idx, disabled=controls_disabled)
+            
+            # Get previous model type for change detection
+            prev_model_path = settings.get("model_path", "")
+            prev_model_type = _get_detected_model_type(prev_model_path)
+            
             if sel == "Auto (use default)":
-                if settings.get("model_path") == "__FLUX2_KLEIN__":
-                    _revert_flux2_optimal_settings(settings)
-                    st.info("🔄 Switched from Flux2: Reverted to standard settings")
-                settings["model_path"] = ""
+                new_model_path = ""
+                new_model_type = "SD15"
             elif sel == "Flux2 Klein (auto-detected)":
-                if settings.get("model_path") != "__FLUX2_KLEIN__":
-                    settings["model_path"] = "__FLUX2_KLEIN__"
-                    _apply_flux2_optimal_settings(settings)
-                    st.info("⚡ Flux2 Klein selected: Auto-applied optimal settings")
+                new_model_path = "__FLUX2_KLEIN__"
+                new_model_type = "Flux2Klein"
             else:
-                target_path = mapping.get(sel, sel)
-                if settings.get("model_path") == "__FLUX2_KLEIN__" and target_path != "__FLUX2_KLEIN__":
-                    _revert_flux2_optimal_settings(settings)
-                    st.info("🔄 Switched from Flux2: Reverted to standard settings")
-                settings["model_path"] = target_path
+                new_model_path = mapping.get(sel, sel)
+                new_model_type = _get_detected_model_type(new_model_path)
+            
+            # Apply appropriate settings when model type changes
+            if new_model_path != prev_model_path:
+                settings["model_path"] = new_model_path
+                
+                if new_model_type != prev_model_type:
+                    if new_model_type == "Flux2Klein":
+                        _apply_flux2_optimal_settings(settings)
+                        st.info("Flux2 Klein selected: Auto-applied optimal settings (CFG 1.0, 4 steps, 1024px)")
+                    elif new_model_type == "SDXL":
+                        _apply_sdxl_optimal_settings(settings)
+                        st.info("SDXL model selected: Auto-applied optimal settings (1024px, CFG 7.0)")
+                    elif new_model_type == "SD15":
+                        _apply_sd15_optimal_settings(settings)
+                        st.info("SD1.5 model selected: Auto-applied optimal settings (512px, CFG 7.0)")
+            
+            # Store current model type in session state for other parts of the UI
+            st.session_state["current_model_type"] = new_model_type
 
             settings["img2img_mode"] = st.checkbox("Img2Img Mode", value=settings["img2img_mode"], disabled=controls_disabled)
 
@@ -274,40 +390,71 @@ def render_generate_page():
                     help="How strongly the structure is preserved. Higher = more faithful to input, lower = more creative freedom."
                 )
 
-        with st.expander("🖼️ SDXL Refiner", expanded=False):
-            # Same model list for refiner
-            ref_model_options = ["None"] + display_names
+        with st.expander("SDXL Refiner", expanded=False):
+            # Get current model type to determine if refiner should be enabled
+            current_model_type = st.session_state.get("current_model_type", "SD15")
+            is_sdxl_model = current_model_type == "SDXL"
             
-            current_ref = settings.get("refiner_model_path", "")
-            if current_ref:
-                current_ref_name = os.path.basename(current_ref)
-            else:
-                current_ref_name = "None"
-            
-            try:
-                ref_idx = ref_model_options.index(current_ref_name)
-            except Exception:
-                ref_idx = 0
-            
-            ref_sel = st.selectbox("Refiner Model", options=ref_model_options, index=ref_idx, disabled=controls_disabled)
-            if ref_sel == "None":
+            if not is_sdxl_model:
+                # Show info message when refiner is unavailable
+                if current_model_type == "Flux2Klein":
+                    st.info("Refiner is not available for Flux2 models. The refiner is an SDXL-specific feature.")
+                else:
+                    st.info("Refiner is not available for SD1.5 models. Select an SDXL model to use the refiner.")
+                
+                # Ensure refiner is disabled in settings
                 settings["refiner_model_path"] = ""
+                
+                # Show disabled controls for visual consistency
+                st.selectbox("Refiner Model", options=["None"], index=0, disabled=True)
+                st.slider(
+                    "Refiner Switch Step",
+                    min_value=0,
+                    max_value=settings.get("steps", 150),
+                    value=settings.get("refiner_switch_step", 20),
+                    disabled=True
+                )
             else:
-                settings["refiner_model_path"] = mapping.get(ref_sel, ref_sel)
-            
-            settings["refiner_switch_step"] = st.slider(
-                "Refiner Switch Step",
-                min_value=0,
-                max_value=settings.get("steps", 150),
-                value=settings.get("refiner_switch_step", 20),
-                disabled=controls_disabled or not settings["refiner_model_path"]
-            )
+                # SDXL model - refiner is available
+                ref_model_options = ["None"] + display_names
+                
+                current_ref = settings.get("refiner_model_path", "")
+                if current_ref:
+                    current_ref_name = os.path.basename(current_ref)
+                else:
+                    current_ref_name = "None"
+                
+                try:
+                    ref_idx = ref_model_options.index(current_ref_name)
+                except Exception:
+                    ref_idx = 0
+                
+                ref_sel = st.selectbox("Refiner Model", options=ref_model_options, index=ref_idx, disabled=controls_disabled)
+                if ref_sel == "None":
+                    settings["refiner_model_path"] = ""
+                else:
+                    settings["refiner_model_path"] = mapping.get(ref_sel, ref_sel)
+                
+                settings["refiner_switch_step"] = st.slider(
+                    "Refiner Switch Step",
+                    min_value=0,
+                    max_value=settings.get("steps", 150),
+                    value=settings.get("refiner_switch_step", 20),
+                    disabled=controls_disabled or not settings["refiner_model_path"]
+                )
 
-        with st.expander("📝 Prompt & Text", expanded=True):
+        with st.expander("Prompt & Text", expanded=True):
             prompt = st.text_area("Prompt", value=settings["prompt"], height=100, key="prompt_input", disabled=controls_disabled)
             settings["prompt"] = prompt
-            negative_prompt = st.text_area("Negative Prompt", value=settings["negative_prompt"], height=80, key="negative_prompt_input", disabled=controls_disabled)
-            settings["negative_prompt"] = negative_prompt
+            
+            # Disable negative prompt for Flux2 models (they don't use it)
+            is_flux2 = st.session_state.get("current_model_type") == "Flux2Klein"
+            if is_flux2:
+                st.info("Flux models do not use negative prompts.")
+                st.text_area("Negative Prompt", value="", height=80, key="negative_prompt_input", disabled=True)
+            else:
+                negative_prompt = st.text_area("Negative Prompt", value=settings["negative_prompt"], height=80, key="negative_prompt_input", disabled=controls_disabled)
+                settings["negative_prompt"] = negative_prompt
 
         with st.expander("📐 Dimensions & Batch", expanded=True):
             preset_options = ["Custom"] + list(PRESETS.keys())
