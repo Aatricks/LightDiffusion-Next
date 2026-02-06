@@ -164,13 +164,11 @@ def apply_controlnet_to_img2img(
 ) -> Tuple[torch.Tensor, Any]:
     """Apply ControlNet-style generation using img2img with edge guidance.
     
-    This is a simplified ControlNet alternative that:
-    1. Uses Canny edges as a visual guide
-    2. Runs img2img at high denoise (0.85-0.95)
-    3. Uses the edge image merged with noise as input
+    This simplified ControlNet uses edge detection + img2img with controlled denoise
+    to preserve input structure while allowing content changes.
     
-    For full ControlNet support, a proper ControlNet model integration
-    would be needed, but this achieves 80% of the effect.
+    Key insight: We need LOW denoise to preserve structure, and blend edges with
+    original image to provide both structure AND content guidance.
     
     Args:
         ctx: Pipeline context
@@ -179,23 +177,51 @@ def apply_controlnet_to_img2img(
         negative: Negative conditioning
         control_image: Preprocessed control image (e.g., Canny edges)
         strength: How much to preserve structure (higher = more preservation)
+        original_image: Original input image (required for proper guidance)
         
     Returns:
         Generated latents and context
     """
     from src.Processors.Img2Img import Img2Img
     
-    # Use the control image (edges) as input for img2img
-    # High denoise will regenerate content while edges guide structure
-    denoise = 1.0 - (strength * 0.3)  # strength 1.0 -> denoise 0.7
-    denoise = max(0.5, min(0.95, denoise))
+    # Detect model type
+    is_flux2 = getattr(model.capabilities, "is_flux2", False)
+    is_flux = getattr(model.capabilities, "is_flux", False)
     
-    logger.info(f"ControlNet-style generation: strength={strength}, denoise={denoise}")
+    # CRITICAL: Use LOW denoise to preserve input structure
+    # ControlNet should modify the image, not regenerate from scratch
+    if is_flux2 or is_flux:
+        # Flux: Don't use edges at all - they cause artifacts
+        # Just use original image with moderate denoise for structure preservation
+        denoise = 0.55 + (strength * 0.15)  # Range: 0.55-0.7
+        edge_blend = 0.0  # No edges for Flux - use original image only
+    else:
+        # SD1.5/SDXL: Balanced denoise - preserve structure but allow prompt changes
+        denoise = 0.45 + (strength * 0.2)  # Range: 0.45-0.65
+        # Blend: Balanced mix allowing both structure and color changes
+        edge_blend = strength * 0.3  # Range: 0.0-0.3 for edges
     
-    # Run img2img with the edge image as input
+    # Always blend edges with original for proper guidance
+    if original_image is not None:
+        # Blend: edges provide structure, original provides content/color reference
+        input_image = control_image * edge_blend + original_image * (1.0 - edge_blend)
+        logger.info(
+            f"ControlNet {'Flux' if is_flux or is_flux2 else 'SD'}: "
+            f"strength={strength:.2f}, denoise={denoise:.2f}, edge_blend={edge_blend:.2f}"
+        )
+    else:
+        # Fallback: use edges only (not recommended)
+        input_image = control_image
+        logger.warning("ControlNet: No original image provided, using edges only (may not work well)")
+        logger.info(
+            f"ControlNet {'Flux' if is_flux or is_flux2 else 'SD'}: "
+            f"strength={strength:.2f}, denoise={denoise:.2f}, edges only"
+        )
+    
+    # Run img2img with moderate denoise to preserve structure
     latents = Img2Img.simple_img2img(
         ctx, model, positive, negative,
-        image_tensor=control_image,
+        image_tensor=input_image,
         denoise=denoise,
     )
     
