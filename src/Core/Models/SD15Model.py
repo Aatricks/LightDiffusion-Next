@@ -5,14 +5,14 @@ AbstractModel and wraps the existing infrastructure.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import torch
 
 from src.Core.AbstractModel import AbstractModel, ModelCapabilities
 
 if TYPE_CHECKING:
-    from src.Core.PipelineContext import PipelineContext
+    from src.Core.Context import Context
 
 
 class SD15Model(AbstractModel):
@@ -149,13 +149,14 @@ class SD15Model(AbstractModel):
     
     def generate(
         self,
-        ctx: "PipelineContext",
+        ctx: "Context",
         positive: Any,
         negative: Any,
         latent_image: Optional[Any] = None,
         start_step: Optional[int] = None,
         last_step: Optional[int] = None,
         disable_noise: bool = False,
+        callback: Optional[Callable] = None,
     ) -> dict:
         """Generate latents using the sampler.
         
@@ -220,6 +221,7 @@ class SD15Model(AbstractModel):
                 start_step=start_step,
                 last_step=last_step,
                 disable_noise=disable_noise,
+                callback=callback or ctx.callback,
                 enable_multiscale=ctx.sampling.enable_multiscale,
                 multiscale_factor=ctx.sampling.multiscale_factor,
                 multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,

@@ -319,11 +319,8 @@ class KSampler:
                                multiscale_fullres_start, multiscale_fullres_end, multiscale_intermittent_fullres,
                                cfg_free_enabled, cfg_free_start_percent, batched_cfg, dynamic_cfg_rescaling,
                                dynamic_cfg_method, dynamic_cfg_percentile, dynamic_cfg_target_scale,
-                               adaptive_noise_enabled, adaptive_noise_method)
-        return sample(self.model, noise, positive, negative, cfg, self.device, ksampler(self.sampler_name, self.pipeline),
-                      sigmas, self.model_options, latent_image=latent_image, denoise_mask=denoise_mask, callback=callback,
-                      disable_pbar=disable_pbar, seed=seed, pipeline=self.pipeline, flux=flux,
-                      cfg_free_enabled=cfg_free_enabled, cfg_free_start_percent=cfg_free_start_percent)
+                               adaptive_noise_enabled, adaptive_noise_method, model_options=self.model_options, 
+                               callback=callback)
 
 
 MULTISCALE_SAMPLERS = ["dpmpp_sde_cfgpp", "euler_ancestral", "euler", "dpmpp_2m_cfgpp"]
@@ -479,7 +476,8 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
                     multiscale_fullres_end=8, multiscale_intermittent_fullres=False, cfg_free_enabled=False,
                     cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                     dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
-                    adaptive_noise_enabled=False, adaptive_noise_method="complexity", model_options=None):
+                    adaptive_noise_enabled=False, adaptive_noise_method="complexity", model_options=None,
+                    callback=None):
     
     # Auto-detect Flux/Flux2 to disable multi-scale
     model_sampling_obj = getattr(model.model, "model_sampling", None)
@@ -495,7 +493,8 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
     samples = sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negative, latent_image,
                       denoise=denoise, disable_noise=disable_noise, start_step=start_step, last_step=last_step,
                       force_full_denoise=force_full_denoise, noise_mask=latent.get("noise_mask"), seed=seed,
-                      pipeline=pipeline, flux=flux, flux2=flux2, enable_multiscale=enable_multiscale, multiscale_factor=multiscale_factor,
+                      pipeline=pipeline, flux=flux, flux2=flux2, callback=callback,
+                      enable_multiscale=enable_multiscale, multiscale_factor=multiscale_factor,
                       multiscale_fullres_start=multiscale_fullres_start, multiscale_fullres_end=multiscale_fullres_end,
                       multiscale_intermittent_fullres=multiscale_intermittent_fullres, cfg_free_enabled=cfg_free_enabled,
                       cfg_free_start_percent=cfg_free_start_percent, batched_cfg=batched_cfg,

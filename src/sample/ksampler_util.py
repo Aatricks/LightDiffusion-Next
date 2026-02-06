@@ -215,9 +215,22 @@ def calculate_sigmas(model_sampling, scheduler_name: str, steps: int,
         model_type = {"ays_sdxl": "SDXL", "ays_sd15": "SD15"}.get(scheduler_name)
         if not model_type:
             try:
-                config = getattr(getattr(model_sampling, 'model_config', None), 'unet_config', {})
-                model_type = "SDXL" if config.get('context_dim', 768) == 2048 else "SD15"
-            except: model_type = "SD15"
+                # Robust detection based on class name or config flags
+                cls_name = model_sampling.__class__.__name__.lower()
+                if "flux" in cls_name:
+                    model_type = "FLUX"
+                else:
+                    config = getattr(model_sampling, 'model_config', None)
+                    if config and getattr(config, 'is_flux', False):
+                        model_type = "FLUX"
+                    elif config and getattr(config, 'uses_dual_clip', False):
+                        model_type = "SDXL"
+                    else:
+                        # Fallback to context_dim check
+                        unet_config = getattr(config, 'unet_config', {})
+                        model_type = "SDXL" if unet_config.get('context_dim', 0) == 2048 else "SD15"
+            except: 
+                model_type = "SD15"
         return ays.ays_scheduler(model_sampling, steps, model_type)
     logging.error(f"Invalid scheduler: {scheduler_name}")
     return None

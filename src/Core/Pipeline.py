@@ -115,10 +115,11 @@ class Pipeline:
                 print(f"Stage 1: Running Base model ({steps_for_base}/{ctx.sampling.steps} steps)...")
                 latents = model.generate(
                     ctx, positive, negative, 
-                    last_step=ctx.generation.refiner_switch_step
+                    last_step=ctx.generation.refiner_switch_step,
+                    callback=ctx.callback
                 )
             else:
-                latents = model.generate(ctx, positive, negative)
+                latents = model.generate(ctx, positive, negative, callback=ctx.callback)
             
             ctx.current_latents = latents["samples"]
             
@@ -143,7 +144,8 @@ class Pipeline:
                     ctx, ref_positive, ref_negative,
                     latent_image=latents,
                     start_step=ctx.generation.refiner_switch_step,
-                    disable_noise=True
+                    disable_noise=True,
+                    callback=ctx.callback
                 )
                 ctx.current_latents = latents["samples"]
                 ctx.sampling.enable_multiscale = orig_ms

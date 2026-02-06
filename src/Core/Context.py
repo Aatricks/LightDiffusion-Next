@@ -8,7 +8,7 @@ holding all configuration and intermediate results.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 import random
 import time
 import torch
@@ -112,6 +112,9 @@ class Context:
     
     # Timing
     start_time: float = field(default_factory=time.time)
+    
+    # Callbacks
+    callback: Optional[Callable] = None
     
     # Default negative
     DEFAULT_NEGATIVE: str = (
@@ -267,9 +270,11 @@ class Context:
         ctx.sampling.deepcache_depth = kwargs.get("deepcache_depth", 2)
         ctx.sampling.deepcache_start_step = kwargs.get("deepcache_start_step", 0)
         ctx.sampling.deepcache_end_step = kwargs.get("deepcache_end_step", 1000)
-        ctx.sampling.tome_enabled = kwargs.get("tome_enabled", False)
         ctx.sampling.tome_ratio = kwargs.get("tome_ratio", 0.5)
         ctx.sampling.tome_max_downsample = kwargs.get("tome_max_downsample", 1)
+        
+        # Callbacks
+        ctx.callback = kwargs.get("callback")
         
         # Features
         ctx.features.hires_fix = kwargs.get("hires_fix", False)

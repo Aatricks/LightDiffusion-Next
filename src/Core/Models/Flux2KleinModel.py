@@ -14,7 +14,7 @@ File structure expected:
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import torch
 
@@ -719,6 +719,7 @@ class Flux2KleinModel(AbstractModel):
         start_step: Optional[int] = None,
         last_step: Optional[int] = None,
         disable_noise: bool = False,
+        callback: Optional[Callable] = None,
     ) -> dict:
         """Generate latents using the Flux2 sampler.
         
@@ -775,6 +776,7 @@ class Flux2KleinModel(AbstractModel):
                 start_step=start_step,
                 last_step=last_step,
                 disable_noise=disable_noise,
+                callback=callback or ctx.callback,
                 flux=True,  # Enable Flux sampling mode
                 flux2=True,  # Enable Flux2-specific resolution-aware scheduler (matches ComfyUI Flux2Scheduler)
                 enable_multiscale=enable_multiscale,  # Force disabled for Flux2

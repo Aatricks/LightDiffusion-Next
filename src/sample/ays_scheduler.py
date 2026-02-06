@@ -121,6 +121,10 @@ def ays_scheduler(
                 sigmas = lower_resampled * (1 - weight) + upper_resampled * weight
                 
             logging.debug(f"Interpolated AYS schedule for {model_type} @ {steps} steps")
+
+    # Final guard: Ensure we return exactly the requested number of steps
+    if len(sigmas) != steps + 1:
+        sigmas = resample_sigmas(sigmas, steps + 1)
     
     # Apply denoise factor if needed
     if denoise < 1.0:

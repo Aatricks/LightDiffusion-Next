@@ -209,6 +209,31 @@ def pipeline(
     # Save seed for future reuse
     _last_seed = ctx.seeds[-1] if ctx.seeds else ctx.seed
     
+    # Setup default callback for UI preview
+    def default_callback(args: dict):
+        from src.user import app_instance
+        from src.AutoEncoders import taesd
+        app_ref = getattr(app_instance, "app", None)
+        if app_ref is not None:
+            step = args.get("i", 0)
+            x0 = args.get("denoised")
+            total_steps = ctx.sampling.steps
+            
+            # Update progress tracker
+            if total_steps > 0:
+                app_ref.progress.set((step + 1) / total_steps)
+            
+            # Update preview (x0 is the denoised latent estimate)
+            if x0 is not None:
+                is_flux = x0.shape[1] in (16, 32)
+                # taesd_preview handles PIL conversion and calls app_ref.update_image
+                taesd.taesd_preview(x0, flux=is_flux, step=step, total_steps=total_steps)
+            else:
+                # Just update step info if no image is available
+                app_ref.update_image(app_ref.preview_images, step=step, total_steps=total_steps)
+            
+    ctx.callback = default_callback
+    
     # Run pipeline
     pipeline_instance = get_default_pipeline()
     

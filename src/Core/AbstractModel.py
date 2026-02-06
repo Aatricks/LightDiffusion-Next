@@ -7,12 +7,12 @@ can be used interchangeably.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import torch
 
 if TYPE_CHECKING:
-    from src.Core.PipelineContext import PipelineContext
+    from src.Core.Context import Context
 
 
 @dataclass
@@ -145,13 +145,14 @@ class AbstractModel(ABC):
     @abstractmethod
     def generate(
         self,
-        ctx: "PipelineContext",
+        ctx: "Context",
         positive: Any,
         negative: Any,
         latent_image: Optional[Any] = None,
         start_step: Optional[int] = None,
         last_step: Optional[int] = None,
         disable_noise: bool = False,
+        callback: Optional[Callable] = None,
     ) -> dict:
         """Generate latents using the sampler.
         
