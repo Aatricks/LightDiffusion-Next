@@ -185,6 +185,7 @@ def generate_images(settings, status_placeholder, gallery_placeholder, status_ba
                             reuse_seed=settings.get("reuse_seed", False),
                             autohdr=settings.get("autohdr", True),
                             img2img_image=settings.get("input_image_path") if settings.get("img2img_mode", False) else None,
+                            img2img_denoise=settings.get("img2img_denoise", 0.75) if settings.get("img2img_mode", False) else None,
                             deepcache_enabled=settings.get("deepcache_enabled", False),
                             deepcache_interval=settings.get("deepcache_interval", 3),
                             deepcache_depth=settings.get("deepcache_depth", 2),

@@ -208,6 +208,17 @@ def render_generate_page():
                             f.write(uploaded_file.getbuffer())
                         settings["input_image_path"] = img_path
                         st.image(uploaded_file, caption="Input Image", width='stretch')
+                
+                # Denoise slider for img2img (always shown when img2img_mode is on)
+                settings["img2img_denoise"] = st.slider(
+                    "Denoising Strength",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=settings.get("img2img_denoise", 0.75),
+                    step=0.05,
+                    disabled=controls_disabled,
+                    help="0 = keep original image, 1 = full regeneration (like txt2img)"
+                )
 
         with st.expander("🖼️ SDXL Refiner", expanded=False):
             # Same model list for refiner

@@ -29,6 +29,7 @@ def get_default_settings():
         "refiner_model_path": "",
         "refiner_switch_step": 15,
         "img2img_mode": False,
+        "img2img_denoise": 0.75,  # Denoising strength for img2img (0=keep original, 1=full generation)
 
         # Image Input (Img2Img)
         "input_image_path": "",
