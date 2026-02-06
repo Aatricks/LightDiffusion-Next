@@ -25,7 +25,7 @@ from src.Device import Device
 # Import modules that were previously lazy-loaded inside methods
 # This avoids KeyError: 'src' when running via uv run streamlit
 from src.NeuralNetwork.flux2.model import Flux2, Flux2Params
-from src.Model import ModelPatcher
+from src.Model.ModelPatcher import ModelPatcher
 from src.clip.KleinEncoder import KleinCLIP, Qwen3_4BModel
 from src.AutoEncoders import VariationalAE
 from src.sample import sampling
@@ -80,6 +80,10 @@ class Flux2KleinModel(AbstractModel):
         self._text_encoder_path = text_encoder_path
         self._vae_path = vae_path
         self._raw_model = None  # The raw Flux2 nn.Module
+        
+        # Device management
+        self.load_device = Device.get_torch_device()
+        self.offload_device = torch.device("cpu")
     
     def _create_capabilities(self) -> ModelCapabilities:
         """Create capabilities for Flux2 Klein model."""
@@ -170,11 +174,61 @@ class Flux2KleinModel(AbstractModel):
         
         try:
             # Load diffusion model
-            self.model = self._load_diffusion_model(diffusion_path)
+            # self.model = self._load_diffusion_model(diffusion_path) # Original line
             
-            # Load text encoder (Qwen3 via Klein)
+            # New FP8 loading logic
+            from src.NeuralNetwork.flux2.model import create_flux2_klein
+            from src.Device import Device
+            from src.FileManaging import Loader
+            
+            # Check for FP8 support and user preference/environment
+            use_fp8 = Device.is_fp8_supported(self.load_device)
+            # For 8GB cards, we force FP8 for Flux2 Klein 4B to avoid swapping
+            total_vram = Device.get_total_memory(self.load_device) / (1024**3)
+            if total_vram < 12.0: # If less than 12GB, FP8 is highly recommended for Flux
+                use_fp8 = use_fp8 and True
+            
+            dtype = torch.bfloat16 # Base weight dtype
+            
+            # Create model with detected config
+            config = self._detect_flux2_config(util.load_torch_file(diffusion_path, device=torch.device("cpu"))) # Load temporarily to detect config
+            params = Flux2Params(**config)
+            self.model = Flux2(params=params, dtype=dtype, device=torch.device("cpu")) # Create on CPU first
+            self.model.eval()
+            
+            # Attach config for compatibility
+            self._model_config = self._create_model_config() # Ensure _model_config is set
+            
+            # Load weights
+            sd = util.load_torch_file(diffusion_path, device=self.offload_device)
+            # Sanitize NaN values in weights (some Flux2 checkpoints have NaN biases)
+            nan_keys = []
+            for key, value in sd.items():
+                if isinstance(value, torch.Tensor) and torch.isnan(value).any():
+                    nan_keys.append(key)
+                    sd[key] = torch.where(torch.isnan(value), torch.zeros_like(value), value)
+            if nan_keys:
+                logger.warning(f"Sanitized NaN values in {len(nan_keys)} keys: {nan_keys[:5]}...")
+            
+            self.model.load_state_dict(sd, strict=False)
+            del sd
+            
+            self._raw_model = self.model # Store raw model
+            
+            # Create ModelPatcher
+            self.model = ModelPatcher(self.model, self.load_device, self.offload_device)
+            
+            # Apply FP8 quantization if supported and needed
+            if use_fp8:
+                logging.info("Flux2: Applying FP8 weight-only quantization to fit in VRAM")
+                self.model.weight_only_quantize(torch.float8_e4m3fn)
+                self.model.model_dtype = lambda: torch.float8_e4m3fn # Override
+            
+            # Load text encoder
             if text_encoder_path:
-                self.clip = self._load_klein_text_encoder(text_encoder_path)
+                self.clip = self._load_klein_text_encoder(text_encoder_path, quantize=use_fp8)
+                self._text_encoder = self.clip # For internal reference
+                self._tokenizer = self.clip.tokenizer
             else:
                 logger.warning("No Qwen3 text encoder found - prompt encoding may fail")
                 self.clip = None
@@ -412,32 +466,35 @@ class Flux2KleinModel(AbstractModel):
         
         return config
 
-    def _load_klein_text_encoder(self, path: str):
-        """Load the Klein (Qwen3 4B) text encoder.
+    def _load_klein_text_encoder(self, path: str, quantize: bool = False):
+        """Load the Klein (Qwen3-4B) text encoder.
         
         Args:
-            path: Path to Qwen3 text encoder safetensors
+            path: Path to text encoder safetensors
+            quantize: Whether to quantize weights to FP8
             
         Returns:
-            CLIP-compatible text encoder wrapper
+            KleinCLIP wrapper
         """
-        logger.info(f"Loading Klein text encoder (Qwen3): {path}")
+        logger.info(f"Loading Text Encoder: {path}")
+        from src.clip.KleinEncoder import KleinCLIP, KleinTokenizer, Qwen3_4BModel, get_ops
+        from src.Model.ModelPatcher import ModelPatcher
         
-        # Load state dict
-        sd = util.load_torch_file(path)
+        # Determine paths
+        sd_path = path
+        tokenizer_path = os.path.join(os.path.dirname(path), "qwen25_tokenizer")
+        if not os.path.exists(tokenizer_path):
+             tokenizer_path = None # Let KleinTokenizer find its default
+             
+        # Load weights
+        sd = util.load_torch_file(sd_path, device=torch.device("cpu"))
         
-        # Determine dtype
-        dtype = torch.float16
-        for k, v in sd.items():
-            if isinstance(v, torch.Tensor) and v.dtype in (torch.float16, torch.bfloat16):
-                dtype = v.dtype
-                break
-        
-        # Create model and load weights
-        load_device = Device.get_torch_device()
+        # Create model structure
+        # Base dtype is BF16
+        dtype = torch.bfloat16
         model = Qwen3_4BModel(dtype=dtype, device="cpu")
         
-        # Load state dict (handle potential key prefixes)
+        # Load state dict
         model_sd = {}
         for k, v in sd.items():
             if k.startswith("model."):
@@ -446,22 +503,22 @@ class Flux2KleinModel(AbstractModel):
                 model_sd[k] = v
         
         missing, unexpected = model.load_state_dict(model_sd, strict=False)
-        if missing:
-            logger.debug(f"Klein encoder missing keys: {len(missing)}")
-        if unexpected:
-            logger.debug(f"Klein encoder unexpected keys: {len(unexpected)}")
         
+        # Apply quantization BEFORE moving to offload device if requested
+        if quantize:
+            logger.info("Flux2KleinModel: Quantizing Klein (Qwen3-4B) to FP8")
+            # We must use ModelPatcher to correctly update comfy_cast_weights flags
+            te_patcher = ModelPatcher(model, self.load_device, self.offload_device)
+            te_patcher.weight_only_quantize(torch.float8_e4m3fn)
+            model = te_patcher.model
+
         # IMPORTANT: Keep model on CPU to save VRAM for diffusion model
-        # KleinCLIP will move it to GPU only during encoding
-        # This follows ComfyUI's approach of lazy model loading
-        offload_device = Device.text_encoder_offload_device()  # CPU
-        model = model.to(offload_device).to(dtype)
+        offload_device = Device.text_encoder_offload_device()
+        model = model.to(offload_device)
         
-        # Create CLIP wrapper - pass load_device so it knows where to move when encoding
-        clip = KleinCLIP(model=model, dtype=dtype, device=load_device, offload_device=offload_device)
-        
-        # Ensure embeddings directory exists
-        os.makedirs("./include/embeddings", exist_ok=True)
+        # Create wrapper
+        tokenizer = KleinTokenizer(tokenizer_path)
+        clip = KleinCLIP(tokenizer=tokenizer, model=model, dtype=dtype, device=self.load_device, offload_device=offload_device)
         
         return clip
 
@@ -658,6 +715,10 @@ class Flux2KleinModel(AbstractModel):
         ctx: "Context",
         positive: Any,
         negative: Any,
+        latent_image: Optional[Any] = None,
+        start_step: Optional[int] = None,
+        last_step: Optional[int] = None,
+        disable_noise: bool = False,
     ) -> dict:
         """Generate latents using the Flux2 sampler.
         
@@ -678,15 +739,17 @@ class Flux2KleinModel(AbstractModel):
                        f"You are currently using CFG {ctx.sampling.cfg}.")
         
         try:
-            # Create empty latent for Flux2
-            latent = self._create_flux2_latent(
-                ctx.width,
-                ctx.height,
-                ctx.generation.batch,
-            )
-            
-            # Add seeds for deterministic noise
-            latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
+            # Use provided latent or create empty one for Flux2
+            if latent_image is not None:
+                latent = latent_image
+            else:
+                latent = self._create_flux2_latent(
+                    ctx.width,
+                    ctx.height,
+                    ctx.generation.batch,
+                )
+                # Add seeds for deterministic noise
+                latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
             
             # CRITICAL: Force-disable multi-scale for Flux2 models
             # Multi-scale is designed for UNet architectures (SD1.5/SDXL) and
@@ -709,6 +772,9 @@ class Flux2KleinModel(AbstractModel):
                 positive=positive,
                 negative=negative,
                 latent_image=latent,
+                start_step=start_step,
+                last_step=last_step,
+                disable_noise=disable_noise,
                 flux=True,  # Enable Flux sampling mode
                 flux2=True,  # Enable Flux2-specific resolution-aware scheduler (matches ComfyUI Flux2Scheduler)
                 enable_multiscale=enable_multiscale,  # Force disabled for Flux2

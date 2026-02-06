@@ -155,6 +155,7 @@ class SD15Model(AbstractModel):
         latent_image: Optional[Any] = None,
         start_step: Optional[int] = None,
         last_step: Optional[int] = None,
+        disable_noise: bool = False,
     ) -> dict:
         """Generate latents using the sampler.
         
@@ -218,6 +219,7 @@ class SD15Model(AbstractModel):
                 latent_image=latent,
                 start_step=start_step,
                 last_step=last_step,
+                disable_noise=disable_noise,
                 enable_multiscale=ctx.sampling.enable_multiscale,
                 multiscale_factor=ctx.sampling.multiscale_factor,
                 multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,

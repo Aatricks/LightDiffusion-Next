@@ -128,6 +128,24 @@ class ModelPatcher:
         out_weight = self.calculate_weight(self.patches[key], temp_weight, key).to(weight.dtype)
         (util.copy_to_param if self.weight_inplace_update else util.set_attr_param)(self.model, key, out_weight)
 
+    def weight_only_quantize(self, dtype: torch.dtype = torch.float8_e4m3fn):
+        """Quantize all model weights to the target dtype (weight-only)."""
+        logging.info(f"Quantizing model weights to {dtype}")
+        with torch.no_grad():
+            for n, m in self.model.named_modules():
+                if hasattr(m, "weight") and m.weight is not None:
+                    # Don't quantize small tensors or non-float weights
+                    if m.weight.numel() > 4096 and m.weight.is_floating_point():
+                        q_weight = m.weight.to(dtype)
+                        # We keep it as a Parameter so it can be used in forward
+                        m.weight = torch.nn.Parameter(q_weight, requires_grad=False)
+                        # Enable weight casting so it dequantizes to input dtype on the fly
+                        if hasattr(m, "comfy_cast_weights"):
+                            m.comfy_cast_weights = True
+                if hasattr(m, "bias") and m.bias is not None:
+                    # Biases are usually kept in higher precision
+                    pass
+
     def load(self, device_to=None, lowvram_model_memory=0, force_patch_weights=False, full_load=False):
         mem_counter, patch_counter, lowvram_counter = 0, 0, 0
         loading = sorted([(Device.module_size(m), n, m) for n, m in self.model.named_modules()

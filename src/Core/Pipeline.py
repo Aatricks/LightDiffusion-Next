@@ -142,7 +142,8 @@ class Pipeline:
                 latents = refiner_model.generate(
                     ctx, ref_positive, ref_negative,
                     latent_image=latents,
-                    start_step=ctx.generation.refiner_switch_step
+                    start_step=ctx.generation.refiner_switch_step,
+                    disable_noise=True
                 )
                 ctx.current_latents = latents["samples"]
                 ctx.sampling.enable_multiscale = orig_ms

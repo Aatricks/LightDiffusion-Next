@@ -82,52 +82,87 @@ class MultiscaleManager:
 
 
 class SamplerCallback:
-    """Handles progress, interruption, and preview."""
+    """Handles progress, interruption, and preview.
+    
+    Optimized for minimal per-step overhead:
+    - App reference cached once at init
+    - Fast path when app is None or in pipeline mode
+    - Preview checks minimized
+    """
+    
+    __slots__ = ('n_steps', 'pipeline', '_preview_lock', '_preview_thread', 
+                 '_app', '_has_app', '_preview_enabled', '_preview_interval')
     
     def __init__(self, n_steps: int, pipeline: bool = False):
         self.n_steps = n_steps
         self.pipeline = pipeline
         self._preview_lock = threading.Lock()
         self._preview_thread = None
+        
+        # Cache app reference once (avoid getattr chain every step)
+        self._app = getattr(app_instance, "app", None)
+        self._has_app = self._app is not None
+        
+        # Pre-compute preview settings
+        if self._has_app and not pipeline:
+            try:
+                self._preview_enabled = self._app.previewer_var.get()
+            except Exception:
+                self._preview_enabled = False
+            # Adaptive interval: at least 5 previews, max every 5 steps
+            self._preview_interval = min(5, max(1, n_steps // 5))
+        else:
+            self._preview_enabled = False
+            self._preview_interval = n_steps + 1  # Never trigger
     
     def check_interrupt(self) -> bool:
-        return getattr(getattr(app_instance, "app", None), "interrupt_flag", False)
+        """Fast interrupt check with cached app reference."""
+        if not self._has_app:
+            return False
+        return getattr(self._app, "interrupt_flag", False)
     
     def update_progress(self, step: int):
-        if not self.pipeline:
-            app = getattr(app_instance, "app", None)
-            if app:
-                app.progress.set(step / self.n_steps)
+        """Update progress bar (skipped in pipeline mode)."""
+        if self.pipeline or not self._has_app:
+            return
+        try:
+            self._app.progress.set(step / self.n_steps)
+        except Exception:
+            pass
     
     def preview(self, x: torch.Tensor, step: int):
-        app = getattr(app_instance, "app", None)
-        if app and app.previewer_var.get():
-            # Adaptive interval: at least 5 previews per generation, but at most every 5 steps
-            interval = min(5, max(1, self.n_steps // 5))
+        """Generate preview if enabled and at appropriate interval."""
+        if not self._preview_enabled:
+            return
+        
+        # Check if this is a significant step
+        is_significant = (step % self._preview_interval == 0) or (step == self.n_steps - 1)
+        if not is_significant:
+            return
+        
+        # Only start a new preview thread if the previous one is finished
+        if not self._preview_lock.acquire(blocking=False):
+            return
+        
+        try:
+            if self._preview_thread is not None and self._preview_thread.is_alive():
+                self._preview_lock.release()
+                return
             
-            # Also always preview the first and last few steps for better feedback
-            is_significant_step = (step % interval == 0) or (step == self.n_steps - 1)
+            def run_preview():
+                try:
+                    # If channels == 16, it's Flux1. Flux2 uses 128 channels.
+                    is_flux = (x.shape[1] == 16)
+                    taesd.taesd_preview(x.clone(), flux=is_flux, step=step, total_steps=self.n_steps)
+                finally:
+                    self._preview_lock.release()
             
-            if is_significant_step:
-                # Only start a new preview thread if the previous one is finished
-                if self._preview_lock.acquire(blocking=False):
-                    try:
-                        if self._preview_thread is None or not self._preview_thread.is_alive():
-                            def run_preview():
-                                try:
-                                    # If channels == 16, it's Flux1. Flux2 uses 128 channels and is currently skipped in taesd_preview.
-                                    is_flux = (x.shape[1] == 16)
-                                    taesd.taesd_preview(x.clone(), flux=is_flux, step=step, total_steps=self.n_steps)
-                                finally:
-                                    self._preview_lock.release()
-                            
-                            self._preview_thread = threading.Thread(target=run_preview)
-                            self._preview_thread.start()
-                        else:
-                            self._preview_lock.release()
-                    except Exception:
-                        if self._preview_lock.locked():
-                            self._preview_lock.release()
+            self._preview_thread = threading.Thread(target=run_preview)
+            self._preview_thread.start()
+        except Exception:
+            if self._preview_lock.locked():
+                self._preview_lock.release()
+
 
 
 def set_model_options_post_cfg_function(opts: dict, fn: Callable, disable_cfg1_optimization: bool = False) -> dict:
@@ -230,6 +265,7 @@ class EulerSampler(BaseSampler):
               n_steps, device, ms, cb, s_in, state, s_churn=0.0, s_tmin=0.0,
               s_tmax=float("inf"), s_noise=1.0, **kwargs):
         gamma_max = min(s_churn / n_steps, 2**0.5 - 1) if s_churn > 0 else 0
+        ms_active = ms.active
         
         for i in trange(n_steps, disable=disable):
             if cb.check_interrupt():
@@ -241,7 +277,7 @@ class EulerSampler(BaseSampler):
                 sigma_hat = sigmas[i] * (1 + gamma_max)
                 x = x + torch.randn_like(x) * s_noise * (sigma_hat**2 - sigmas[i]**2)**0.5
             
-            if ms.use_fullres(i):
+            if not ms_active or ms.use_fullres(i):
                 denoised = model(x, sigma_hat * s_in, **extra_args)
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigma_hat * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
@@ -262,13 +298,14 @@ class EulerAncestralSampler(BaseSampler):
               n_steps, device, ms, cb, s_in, state, eta=1.0, s_noise=1.0,
               noise_sampler=None, **kwargs):
         noise_sampler = noise_sampler or sampling_util.default_noise_sampler(x)
+        ms_active = ms.active
         
         for i in trange(n_steps, disable=disable):
             if cb.check_interrupt():
                 return x
             cb.update_progress(i)
             
-            if ms.use_fullres(i):
+            if not ms_active or ms.use_fullres(i):
                 denoised = model(x, sigmas[i] * s_in, **extra_args)
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigmas[i] * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
@@ -295,13 +332,14 @@ class DPMPP2MSampler(BaseSampler):
         sigma_steps = torch.exp(-t_steps)
         ratios = sigma_steps[1:] / sigma_steps[:-1]
         h_steps = t_steps[1:] - t_steps[:-1]
+        ms_active = ms.active
         
         for i in trange(n_steps, disable=disable):
             if cb.check_interrupt():
                 return x
             cb.update_progress(i)
             
-            if ms.use_fullres(i):
+            if not ms_active or ms.use_fullres(i):
                 denoised = model(x, sigmas[i] * s_in, **extra_args)
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigmas[i] * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
@@ -325,6 +363,7 @@ class DPMPPSDESampler(BaseSampler):
               noise_sampler=None, r=0.5, seed=None, **kwargs):
         sigma_fn = lambda t: (-t).exp()
         t_fn = lambda s: -s.log()
+        ms_active = ms.active
         
         if noise_sampler is None:
             sigmas_cpu = sigmas.cpu()
@@ -336,7 +375,7 @@ class DPMPPSDESampler(BaseSampler):
                 return x
             cb.update_progress(i)
             
-            if ms.use_fullres(i):
+            if not ms_active or ms.use_fullres(i):
                 denoised = model(x, sigmas[i] * s_in, **extra_args)
             else:
                 denoised = ms.upscale(model(ms.downscale(x), sigmas[i] * torch.ones((ms.downscale(x).shape[0],), device=device), **extra_args))
@@ -357,7 +396,7 @@ class DPMPPSDESampler(BaseSampler):
                 noise1 = noise_sampler(sigma_fn(t), sigma_fn(s)).to(device) * s_noise * su
                 x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * cfg_denoised + noise1
                 
-                if ms.use_fullres(i):
+                if not ms_active or ms.use_fullres(i):
                     denoised_2 = model(x_2, sigma_fn(s) * s_in, **extra_args)
                 else:
                     denoised_2 = ms.upscale(model(ms.downscale(x_2), sigma_fn(s) * torch.ones((ms.downscale(x_2).shape[0],), device=device), **extra_args))

@@ -690,6 +690,38 @@ def supports_cast(device, dtype) -> bool:
     return dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
+def is_fp8_supported(device=None) -> bool:
+    """Check if FP8 (float8_e4m3fn) is supported on the device."""
+    if device is None:
+        device = get_torch_device()
+    if not is_device_cuda(device):
+        return False
+    
+    # FP8 requires compute capability 8.9+ (Ada Lovelace) or 9.0+ (Hopper)
+    try:
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability(device)
+            if major >= 9:
+                return True
+            if major == 8 and minor >= 9:
+                return True
+    except:
+        pass
+    return False
+
+
+def cast_to_fp8(tensor: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
+    """Cast a tensor to FP8 (float8_e4m3fn)."""
+    if not hasattr(torch, "float8_e4m3fn"):
+        return tensor.to(torch.float16)  # Fallback
+    
+    # Scale if needed (scaling is often used for better precision in FP8)
+    if scale != 1.0:
+        tensor = tensor * scale
+        
+    return tensor.to(torch.float8_e4m3fn)
+
+
 def cast_to_device(tensor, device, dtype, copy: bool = False):
     non_blocking = not is_device_mps(device)
     can_cast = tensor.dtype in (torch.float32, torch.float16) or \

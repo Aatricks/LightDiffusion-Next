@@ -325,8 +325,8 @@ class Qwen3_4BModel(nn.Module):
         """
         batch_size, seq_len = input_ids.shape
         
-        # Embed tokens
-        hidden_states = self.embed_tokens(input_ids)
+        # Embed tokens - ensure output is at least bfloat16 for subsequent math
+        hidden_states = self.embed_tokens(input_ids).to(torch.bfloat16)
         
         # Get rotary embeddings
         cos, sin = self.rotary_emb(hidden_states, seq_len)

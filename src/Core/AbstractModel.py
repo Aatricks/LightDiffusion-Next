@@ -151,6 +151,7 @@ class AbstractModel(ABC):
         latent_image: Optional[Any] = None,
         start_step: Optional[int] = None,
         last_step: Optional[int] = None,
+        disable_noise: bool = False,
     ) -> dict:
         """Generate latents using the sampler.
         
