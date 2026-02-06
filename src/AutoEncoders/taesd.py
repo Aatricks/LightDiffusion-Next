@@ -304,10 +304,9 @@ def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_step
                     x = x[:4]
                 decoded_batch = taesd_instance.decode(x)
 
-            if flux:
-                decoded_batch = decoded_batch[:, [2, 1, 0], :, :].clamp(-1, 1).add(1.0).mul(0.5)
-            else:
-                decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
+            # Normalize to [0, 1] range for both SD and Flux
+            # Note: No channel swap needed - TAESD outputs RGB correctly for all models
+            decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
         
         # For Flux2 (32 channels), use RGB approximation since no TAESD exists for 32ch
         elif latent_channels == 32:
