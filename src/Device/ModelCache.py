@@ -12,15 +12,13 @@ class ModelCache:
     """Global model cache to keep models loaded in VRAM"""
 
     def __init__(self):
-        self._cached_models: Dict[str, Any] = {}
-        self._cached_clip: Optional[Any] = None
-        self._cached_vae: Optional[Any] = None
-        self._cached_model_patcher: Optional[Any] = None
+        self._cached_checkpoints: Dict[str, Tuple[Any, Any, Any]] = {}
         self._cached_taesd: Dict[Tuple[int, bool], Any] = {}
         self._cached_conditions: Dict[str, Any] = {}
         self._last_checkpoint_path: Optional[str] = None
         self._keep_models_loaded: bool = True
         self._loaded_models_list: List[Any] = []
+        self._max_cached_checkpoints: int = 3
         
         # Prefetching support
         self._prefetched_state_dict: Optional[dict] = None
@@ -69,11 +67,22 @@ class ModelCache:
         if not self._keep_models_loaded:
             return
 
+        # Limit cache size
+        if len(self._cached_checkpoints) >= self._max_cached_checkpoints and checkpoint_path not in self._cached_checkpoints:
+            # Remove oldest (first) entry
+            oldest_path = next(iter(self._cached_checkpoints))
+            old_patcher, _, _ = self._cached_checkpoints.pop(oldest_path)
+            try:
+                if oldest_path != checkpoint_path:
+                    logging.info(f"ModelCache: Evicting {oldest_path} to make room")
+                    if hasattr(old_patcher, "model_unload"):
+                        old_patcher.model_unload()
+            except Exception:
+                pass
+
         self._last_checkpoint_path = checkpoint_path
-        self._cached_model_patcher = model_patcher
-        self._cached_clip = clip
-        self._cached_vae = vae
-        logging.info(f"Cached checkpoint: {checkpoint_path}")
+        self._cached_checkpoints[checkpoint_path] = (model_patcher, clip, vae)
+        logging.info(f"Cached checkpoint: {checkpoint_path} (Total cached: {len(self._cached_checkpoints)})")
 
     def get_cached_checkpoint(
         self, checkpoint_path: str
@@ -82,14 +91,10 @@ class ModelCache:
         if not self._keep_models_loaded:
             return None
 
-        if (
-            self._last_checkpoint_path == checkpoint_path
-            and self._cached_model_patcher is not None
-            and self._cached_clip is not None
-            and self._cached_vae is not None
-        ):
+        if checkpoint_path in self._cached_checkpoints:
             logging.info(f"Using cached checkpoint: {checkpoint_path}")
-            return self._cached_model_patcher, self._cached_clip, self._cached_vae
+            self._last_checkpoint_path = checkpoint_path
+            return self._cached_checkpoints[checkpoint_path]
         return None
 
     def cache_sampling_models(self, models: List[Any]) -> None:
@@ -133,18 +138,14 @@ class ModelCache:
 
     def clear_cache(self) -> None:
         """Clear all cached models"""
-        if self._cached_model_patcher is not None:
+        for path, (model_patcher, _, _) in self._cached_checkpoints.items():
             try:
-                # Properly unload the cached models
-                if hasattr(self._cached_model_patcher, "model_unload"):
-                    self._cached_model_patcher.model_unload()
+                if hasattr(model_patcher, "model_unload"):
+                    model_patcher.model_unload()
             except Exception as e:
-                logging.warning(f"Error unloading cached model: {e}")
+                logging.warning(f"Error unloading cached model {path}: {e}")
 
-        self._cached_models.clear()
-        self._cached_clip = None
-        self._cached_vae = None
-        self._cached_model_patcher = None
+        self._cached_checkpoints.clear()
         self._cached_taesd.clear()
         self._cached_conditions.clear()
         self._last_checkpoint_path = None
@@ -166,9 +167,9 @@ class ModelCache:
             "total_vram": total_mem / (1024 * 1024 * 1024),  # GB
             "used_vram": used_mem / (1024 * 1024 * 1024),  # GB
             "free_vram": free_mem / (1024 * 1024 * 1024),  # GB
-            "cached_models": len(self._cached_models),
+            "cached_models": len(self._cached_checkpoints),
             "keep_loaded": self._keep_models_loaded,
-            "has_cached_checkpoint": self._cached_model_patcher is not None,
+            "has_cached_checkpoint": len(self._cached_checkpoints) > 0,
         }
 
 

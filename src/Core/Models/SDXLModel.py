@@ -228,8 +228,10 @@ class SDXLModel(AbstractModel):
             
             # Apply HiDiffusion optimization
             try:
+                # Clone model before patching to avoid persistent state
+                patch_model = self.model.clone()
                 hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-                optimized_model = hidiff.go(model_type="sdxl", model=self.model)[0]
+                optimized_model = hidiff.go(model_type="sdxl", model=patch_model)[0]
             except Exception:
                 optimized_model = self.model
             

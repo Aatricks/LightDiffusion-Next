@@ -43,7 +43,11 @@ class MultiscaleManager:
         self.config = config
         
         # Calculate scaled dimensions (multiples of 8)
-        self.active = config.enabled and 0.1 <= config.factor <= 1.0 and config.fullres_start >= 0 and config.fullres_end >= 0
+        # CRITICAL: Disable multi-scale for Flux (16 or 32 channels)
+        is_flux = shape[1] in (16, 32)
+        
+        self.active = config.enabled and 0.1 <= config.factor <= 1.0 and config.fullres_start >= 0 and config.fullres_end >= 0 and not is_flux
+        
         if self.active:
             self.scale_h = int(max(8, ((self.orig_h * config.factor) // 8) * 8))
             self.scale_w = int(max(8, ((self.orig_w * config.factor) // 8) * 8))
@@ -53,6 +57,8 @@ class MultiscaleManager:
         
         if self.active:
             print(f"Multi-scale: {self.orig_h}x{self.orig_w} -> {self.scale_h}x{self.scale_w}")
+        elif config.enabled and is_flux:
+            print("Multi-scale disabled: not compatible with Flux architecture")
         
         self._schedule = [self._should_fullres(i) for i in range(n_steps)]
     

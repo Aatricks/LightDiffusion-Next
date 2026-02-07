@@ -131,6 +131,7 @@ class TracedModuleCacheItem:
 
 class LazyTraceModule:
     traced_modules = {}
+    cuda_graph_modules = {}
 
     def __init__(self, config=None, patch_id=None, **kwargs_) -> None:
         self.config = config
@@ -144,7 +145,6 @@ class LazyTraceModule:
             enable_triton_reshape=config.enable_triton,
             memory_format=config.memory_format,
         )
-        self.cuda_graph_modules = {}
 
     def ts_compiler(
         self,

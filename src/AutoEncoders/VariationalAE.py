@@ -249,7 +249,7 @@ class VAE:
             out[i:i+batch] = self.process_output(self.first_stage_model.decode(s, flux=flux).to(self.output_device).float())
         return out.movedim(1, -1)
 
-    def decode_tiled(self, samples, tile_x=64, tile_y=64, overlap=16, flux=None):
+    def decode_tiled(self, samples, tile_x=256, tile_y=256, overlap=64, flux=None):
         if flux is None:
             flux = self.flux
         Device.load_models_gpu([self.patcher])

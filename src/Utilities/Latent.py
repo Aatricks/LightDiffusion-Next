@@ -208,8 +208,8 @@ class EmptyLatentImage:
     def __init__(self):
         self.device = Device.intermediate_device()
 
-    def generate(self, width: int, height: int, batch_size: int = 1) -> Tuple[Dict[str, torch.Tensor]]:
-        latent = torch.zeros([batch_size, 4, height // 8, width // 8], device=self.device)
+    def generate(self, width: int, height: int, batch_size: int = 1, channels: int = 4) -> Tuple[Dict[str, torch.Tensor]]:
+        latent = torch.zeros([batch_size, channels, height // 8, width // 8], device=self.device)
         return ({"samples": latent},)
 
 

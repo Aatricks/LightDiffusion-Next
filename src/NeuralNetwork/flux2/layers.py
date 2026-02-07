@@ -221,20 +221,37 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
 def apply_rope1(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
     """Apply rotary position embedding to a single tensor.
     
+    Correctly applies the 2x2 rotation matrix:
+    y1 = x1 * cos - x2 * sin
+    y2 = x1 * sin + x2 * cos
+    
     Args:
         x: Input tensor [batch, heads, seq, dim]
-        freqs_cis: Frequency tensor [..., dim//2, 2, 2]
+        freqs_cis: Frequency tensor [batch, 1, seq, dim//2, 2, 2]
         
     Returns:
         Rotated tensor [batch, heads, seq, dim]
     """
-    x_ = x.to(dtype=freqs_cis.dtype).reshape(*x.shape[:-1], -1, 1, 2)
+    # Reshape x to match RoPE components [batch, heads, seq, dim//2, 2]
+    x_reshaped = x.reshape(*x.shape[:-1], -1, 2)
     
-    # Apply rotation with in-place addcmul for speed (from ComfyUI)
-    x_out = freqs_cis[..., 0] * x_[..., 0]
-    x_out.addcmul_(freqs_cis[..., 1], x_[..., 1])
+    # Extract rotation matrix components
+    # freqs_cis is [..., dim//2, row, col]
+    # row 0: [cos, -sin]
+    # row 1: [sin, cos]
+    cos = freqs_cis[..., 0, 0]
+    msin = freqs_cis[..., 0, 1] # -sin
+    sin = freqs_cis[..., 1, 0]
     
-    return x_out.reshape(*x.shape).type_as(x)
+    x1 = x_reshaped[..., 0]
+    x2 = x_reshaped[..., 1]
+    
+    # Apply rotation
+    out1 = x1 * cos + x2 * msin
+    out2 = x1 * sin + x2 * cos
+    
+    # Combine and reshape back to original
+    return torch.stack([out1, out2], dim=-1).reshape(*x.shape).type_as(x)
 
 
 def apply_rope(q: torch.Tensor, k: torch.Tensor, pe: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

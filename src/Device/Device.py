@@ -301,14 +301,32 @@ def get_total_memory(dev: torch.device = None, torch_total_too: bool = False) ->
     return (mem_total, mem_torch) if torch_total_too else mem_total
 
 
+_FREE_MEM_CACHE = {}
+_FREE_MEM_CACHE_TTL = 0.1 # 100ms
+
 def get_free_memory(dev: torch.device = None, torch_free_too: bool = False) -> Union[int, Tuple[int, int]]:
+    global _FREE_MEM_CACHE
     dev = dev or get_torch_device()
+    
+    # Simple caching to avoid high frequency blocking calls in sampling loop
+    import time
+    now = time.time()
+    cache_key = (str(dev), torch_free_too)
+    if cache_key in _FREE_MEM_CACHE:
+        val, ts = _FREE_MEM_CACHE[cache_key]
+        if now - ts < _FREE_MEM_CACHE_TTL:
+            return val
+
     if hasattr(dev, "type") and dev.type in ("cpu", "mps"):
         mem = psutil.virtual_memory().available
-        return (mem, mem) if torch_free_too else mem
+        res = (mem, mem) if torch_free_too else mem
+        _FREE_MEM_CACHE[cache_key] = (res, now)
+        return res
     if directml_enabled:
         mem = 1024 ** 3
-        return (mem, mem) if torch_free_too else mem
+        res = (mem, mem) if torch_free_too else mem
+        _FREE_MEM_CACHE[cache_key] = (res, now)
+        return res
     if is_intel_xpu():
         stats = torch.xpu.memory_stats(dev)
         active = stats["active_bytes.all.current"]
@@ -316,13 +334,17 @@ def get_free_memory(dev: torch.device = None, torch_free_too: bool = False) -> U
         free_torch = reserved - active
         free_total = torch.xpu.get_device_properties(dev).total_memory - reserved + free_torch
     else:
+        # torch.cuda.mem_get_info is a blocking sync on many Windows drivers
         stats = torch.cuda.memory_stats(dev)
         active = stats["active_bytes.all.current"]
         reserved = stats["reserved_bytes.all.current"]
         free_cuda, _ = torch.cuda.mem_get_info(dev)
         free_torch = reserved - active
         free_total = free_cuda + free_torch
-    return (free_total, free_torch) if torch_free_too else free_total
+    
+    res = (free_total, free_torch) if torch_free_too else free_total
+    _FREE_MEM_CACHE[cache_key] = (res, now)
+    return res
 
 
 def soft_empty_cache(force: bool = False) -> None:

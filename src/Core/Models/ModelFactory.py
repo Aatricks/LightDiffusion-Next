@@ -247,18 +247,45 @@ def list_available_models(
     valid_extensions = (".safetensors", ".pt", ".pth")
     results = []
     
-    if not os.path.isdir(checkpoint_dir):
-        return results
-    
-    for ext in valid_extensions:
-        pattern = os.path.join(checkpoint_dir, f"*{ext}")
-        for filepath in glob.glob(pattern):
-            basename = os.path.basename(filepath)
-            if return_mapping:
-                results.append((basename, filepath))
-            else:
-                results.append(basename)
+    # Checkpoints
+    if os.path.isdir(checkpoint_dir):
+        for ext in valid_extensions:
+            pattern = os.path.join(checkpoint_dir, f"*{ext}")
+            for filepath in glob.glob(pattern):
+                basename = os.path.basename(filepath)
+                if return_mapping:
+                    results.append((basename, filepath))
+                else:
+                    results.append(basename)
+
+    # Flux2 Diffusion Models
+    if os.path.isdir(FLUX2_DIFFUSION_MODEL_DIR):
+        for ext in valid_extensions:
+            pattern = os.path.join(FLUX2_DIFFUSION_MODEL_DIR, f"*{ext}")
+            for filepath in glob.glob(pattern):
+                basename = os.path.basename(filepath)
+                if return_mapping:
+                    results.append((basename, filepath))
+                else:
+                    results.append(basename)
     
     # Sort alphabetically
     results.sort(key=lambda x: x[0].lower() if isinstance(x, tuple) else x.lower())
+    return results
+
+
+def list_available_controlnets(
+    controlnet_dir: str = "./include/controlnets/",
+) -> list[str]:
+    """List available ControlNet models."""
+    import glob
+    if not os.path.exists(controlnet_dir):
+        return []
+    
+    results = []
+    for ext in (".safetensors", ".pt", ".pth"):
+        for filepath in glob.glob(os.path.join(controlnet_dir, f"*{ext}")):
+            results.append(os.path.basename(filepath))
+    
+    results.sort(key=str.lower)
     return results

@@ -191,6 +191,12 @@ def calculate_sigmas(model_sampling, scheduler_name: str, steps: int,
     For Flux2 models, use the resolution-aware Flux2Scheduler when width/height are provided.
     This matches ComfyUI's behavior and is critical for image quality.
     """
+    # Robust Flux2 detection if flag not set
+    if not is_flux2 and model_sampling:
+        cls_name = model_sampling.__class__.__name__
+        if "ModelSamplingFlux2" in cls_name:
+            is_flux2 = True
+
     # Handle mock objects in tests
     if not isinstance(steps, int):
         try:

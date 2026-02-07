@@ -16,7 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.Device.ModelCache import get_model_cache
-from src.Core.Models.ModelFactory import list_available_models
+from src.Device.ModelCache import get_model_cache
+from src.Core.Models.ModelFactory import list_available_models, list_available_controlnets
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -104,16 +105,17 @@ class GenerateRequest(BaseModel):
     scheduler: str = "ays"
     sampler: str = "dpmpp_sde_cfgpp"
     steps: int = 20
-    hires_fix: bool = False
+    hiresfix: bool = False
     adetailer: bool = False
     enhance_prompt: bool = False
-    img2img_enabled: bool = False
+    img2img_mode: bool = False
     img2img_image: Optional[str] = None
     img2img_denoise: float = 0.75  # Denoising strength: 0=keep original, 1=full generation
     stable_fast: bool = False
     reuse_seed: bool = False
     realistic_model: bool = False
-    multiscale_enabled: bool = True
+    enable_multiscale: bool = False
+    multiscale_preset: Optional[str] = "balanced"
     multiscale_intermittent: bool = True
     multiscale_factor: float = 0.5
     multiscale_fullres_start: int = 10
@@ -135,12 +137,35 @@ class GenerateRequest(BaseModel):
     dynamic_cfg_target_scale: float = 7.0
     adaptive_noise_enabled: bool = False
     adaptive_noise_method: str = "complexity"
-    # Optional extras (may not be used by the current pipeline but accepted)
+    # Guidance
+    cfg_scale: float = 7.0
     guidance_scale: Optional[float] = None
     seed: Optional[int] = None  # If provided >=0 we will reuse it
+    
+    # Model Selection
+    model_path: Optional[str] = None
+    refiner_model_path: Optional[str] = None
+    refiner_switch_step: Optional[int] = None
+
+    # ControlNet
+    controlnet_enabled: bool = False
+    controlnet_model: Optional[str] = None
+    controlnet_strength: float = 1.0
+    controlnet_type: str = "canny"
 
 
 app = FastAPI(title="LightDiffusion Server", version="1.0.0")
+
+
+@app.get("/api/controlnets")
+async def get_controlnets():
+    """List available ControlNet models."""
+    try:
+        models = list_available_controlnets()
+        return {"models": models}
+    except Exception as e:
+        logger.exception("Failed to list controlnets")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.on_event("startup")
@@ -261,25 +286,39 @@ class GenerationBuffer:
 
     def _signature_for(self, req: GenerateRequest) -> tuple:
         # Grouping signature - requests must match these to be batched
+        
+        # Detect model type to determine if refiner is relevant
+        from src.Core.Models.ModelFactory import detect_model_type
+        is_sdxl = (detect_model_type(req.model_path) == "SDXL")
+        
         return (
+            str(req.model_path),  # Model must match
             bool(req.realistic_model),
             int(req.width),
             int(req.height),
             bool(req.stable_fast),
-            bool(req.img2img_enabled),
+            bool(req.img2img_mode),
             str(req.scheduler),
             str(req.sampler),
             int(req.steps),
             # Treat multiscale options as batch-level — mixing them may
             # change the sampling schedule and therefore cannot be
             # safely combined into a single forward pass.
-            bool(req.multiscale_enabled),
+            bool(req.enable_multiscale),
             bool(req.multiscale_intermittent),
             float(req.multiscale_factor),
             int(req.multiscale_fullres_start),
             int(req.multiscale_fullres_end),
             # VRAM retention flags are also batch level
             bool(req.keep_models_loaded),
+            # ControlNet (must match)
+            bool(req.controlnet_enabled),
+            str(req.controlnet_model),
+            float(req.controlnet_strength),
+            str(req.controlnet_type),
+            # Refiner (must match only if it will actually be used)
+            str(req.refiner_model_path) if is_sdxl else "",
+            (int(req.refiner_switch_step) if req.refiner_switch_step is not None else -1) if is_sdxl else -1,
             # Note: hires_fix, adetailer, and enable_preview remain intentionally 
             # NOT part of this signature because they are executed per-sample
             # (or as side-effects) after or during a shared forward pass.
@@ -399,7 +438,7 @@ class GenerationBuffer:
                         "request_id": p.request_id,
                         "filename_prefix": f"LD-REQ-{p.request_id}",
                         "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
-                        "hires_fix": bool(p.req.hires_fix),
+                        "hires_fix": bool(p.req.hiresfix),
                         "adetailer": bool(p.req.adetailer),
                     }
                 )
@@ -415,16 +454,20 @@ class GenerationBuffer:
             scheduler=first_req.scheduler,
             sampler=first_req.sampler,
             steps=first_req.steps,
+            cfg_scale=first_req.cfg_scale if first_req.guidance_scale is None else first_req.guidance_scale,
             enhance_prompt=first_req.enhance_prompt,
-            img2img=first_req.img2img_enabled,
+            img2img=first_req.img2img_mode,
             img2img_denoise=first_req.img2img_denoise,
             stable_fast=first_req.stable_fast,
             reuse_seed=first_req.reuse_seed,
             autohdr=True,
             realistic_model=first_req.realistic_model,
+            model_path=first_req.model_path,
+            refiner_model_path=first_req.refiner_model_path,
+            refiner_switch_step=first_req.refiner_switch_step,
             negative_prompt=[p.req.negative_prompt or "" for p in items for _ in range(max(1, p.req.num_images))],
-            multiscale_preset=None,
-            enable_multiscale=first_req.multiscale_enabled,
+            multiscale_preset=first_req.multiscale_preset,
+            enable_multiscale=first_req.enable_multiscale,
             multiscale_factor=first_req.multiscale_factor,
             multiscale_fullres_start=first_req.multiscale_fullres_start,
             multiscale_fullres_end=first_req.multiscale_fullres_end,
@@ -444,6 +487,10 @@ class GenerationBuffer:
             dynamic_cfg_target_scale=first_req.dynamic_cfg_target_scale,
             adaptive_noise_enabled=first_req.adaptive_noise_enabled,
             adaptive_noise_method=first_req.adaptive_noise_method,
+            # ControlNet
+            controlnet_model=first_req.controlnet_model if first_req.controlnet_enabled else None,
+            controlnet_strength=first_req.controlnet_strength,
+            controlnet_type=first_req.controlnet_type,
             # Add callback for WebSocket preview broadcasting
             callback=make_server_callback(first_req.steps),
         )
@@ -749,10 +796,15 @@ def sync_broadcast_preview(
         if step % 5 == 0:
             logger.info(f"Broadcasting preview step {step}/{total_steps}")
             
-        asyncio.run_coroutine_threadsafe(
+        future = asyncio.run_coroutine_threadsafe(
             broadcast_preview(step, total_steps, images, message_type),
             _main_event_loop
         )
+        # Wait for broadcast to complete to ensure ordering
+        try:
+            future.result(timeout=0.5)
+        except Exception:
+            pass # Don't block generation on slow clients
     except Exception as e:
         logger.error(f"Preview broadcast failed: {e}")
         pass  # Don't let preview errors affect generation
@@ -778,17 +830,17 @@ def make_server_callback(total_steps: int):
         images_b64 = None
         if is_broadcast_step:
             try:
-                # prefer denoised, fallback to x
-                latents = args.get("denoised")
-                if latents is None:
-                    latents = args.get("x")
+                # prefer denoised, fallback to x ONLY if early step
+                latents_tensor = args.get("denoised")
+                if latents_tensor is None and step < 5:
+                    latents_tensor = args.get("x")
                 
-                if latents is not None:
+                if latents_tensor is not None:
                     # Detect flux from shape (Flux has 16 or 32 channels)
                     # This is a heuristic, ideal would be to pass it in args
-                    is_flux = (latents.shape[1] == 16 or latents.shape[1] == 32)
+                    is_flux = (latents_tensor.shape[1] == 16 or latents_tensor.shape[1] == 32)
                     
-                    pil_images = decode_latents_to_images(latents, flux=is_flux)
+                    pil_images = decode_latents_to_images(latents_tensor, flux=is_flux)
                     
                     images_b64 = []
                     for img in pil_images:
@@ -916,7 +968,7 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         return s if len(s) <= n else s[:n] + "…"
 
     log.debug(
-        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hires_fix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
+        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hiresfix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
         req.width,
         req.height,
         req.num_images,
@@ -924,14 +976,14 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         req.scheduler,
         req.sampler,
         req.steps,
-        req.hires_fix,
+        req.hiresfix,
         req.adetailer,
         req.enhance_prompt,
-        req.img2img_enabled,
+        req.img2img_mode,
         req.stable_fast,
         reuse_seed,
         req.realistic_model,
-        req.multiscale_enabled,
+        req.enable_multiscale,
         req.multiscale_intermittent,
         req.multiscale_factor,
         req.multiscale_fullres_start,
@@ -961,10 +1013,21 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
 
 @app.get("/api/models")
 async def list_models() -> List[Dict[str, str]]:
-    """List available models."""
+    """List available models with type detection."""
     try:
+        # Local import to avoid circular dependency if relevant, though usually top-level is fine
+        from src.Core.Models.ModelFactory import list_available_models, detect_model_type
+        
         models = list_available_models(return_mapping=True)
-        return [{"name": name, "path": path, "type": "checkpoint"} for name, path in models]
+        results = []
+        for name, path in models:
+            try:
+                mtype = detect_model_type(path)
+            except Exception as e:
+                logger.warning(f"Failed to detect type for {name}: {e}")
+                mtype = "SD15"
+            results.append({"name": name, "path": path, "type": mtype})
+        return results
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
