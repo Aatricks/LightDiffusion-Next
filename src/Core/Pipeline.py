@@ -555,6 +555,7 @@ class Pipeline:
             multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
             cfg_free_enabled=ctx.sampling.cfg_free_enabled,
             cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+            callback=ctx.callback,
         )
         
         # Decode all
@@ -611,7 +612,7 @@ class Pipeline:
                 "seed": str(ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed),
                 "prompt": prompts[i],
             })
-            saved = saver.save_images(prefix, [final], prompts[i], meta)
+            saved = saver.save_images([final], prefix, prompts[i], meta)
             results.setdefault(req_id, []).extend(
                 saved.get("ui", {}).get("images", [saved])
             )

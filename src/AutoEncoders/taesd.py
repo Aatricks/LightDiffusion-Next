@@ -274,6 +274,61 @@ class TAESD(nn.Module):
 
 from src.Device.ModelCache import get_model_cache
 
+
+def decode_latents_to_images(x: torch.Tensor, flux: bool = False) -> list[Image.Image]:
+    """Decode latents to PIL images using TAESD or approximation."""
+    latent_channels = x.shape[1]
+    cache = get_model_cache()
+    
+    images = []
+    decoded_batch = None
+    
+    # If we have TAESD model for these channels, use it (4 for SD, 16 for Flux1)
+    if latent_channels in (4, 16):
+        taesd_instance = cache.get_taesd(latent_channels, flux)
+        if taesd_instance is None:
+            taesd_instance = TAESD(latent_channels=latent_channels)
+            # Use same dtype as latents for efficiency
+            taesd_instance.to(x.device, dtype=x.dtype)
+            cache.cache_taesd(latent_channels, flux, taesd_instance)
+        elif next(taesd_instance.parameters()).device != x.device or next(taesd_instance.parameters()).dtype != x.dtype:
+            taesd_instance.to(x.device, dtype=x.dtype)
+
+        with torch.no_grad():
+            # Optimization for large batches: only preview up to 4 images
+            if x.shape[0] > 4:
+                x = x[:4]
+            decoded_batch = taesd_instance.decode(x)
+
+        # Normalize to [0, 1] range for both SD and Flux
+        # Note: No channel swap needed - TAESD outputs RGB correctly for all models
+        decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
+    
+    # For Flux2 (32 channels), use RGB approximation since no TAESD exists for 32ch
+    elif latent_channels == 32:
+        pass # TODO: Implement Flux2 approximation if needed (complex dependency on src.Utilities.Latent)
+    
+    else:
+        return [] # Unsupported channels
+
+    if decoded_batch is not None:
+        # Optimization: Use non_blocking=True for CPU transfer to avoid GPU stall
+        decoded_np = (decoded_batch.mul(255.0).to("cpu", dtype=torch.uint8, non_blocking=True).numpy())
+        
+        # Use simple transpose and PIL conversion
+        # decoded_np is [B, C, H, W] -> [B, H, W, C]
+        decoded_np = np.transpose(decoded_np, (0, 2, 3, 1))
+        
+        for i in range(decoded_np.shape[0]):
+            img = Image.fromarray(decoded_np[i], mode='RGB')
+            # Reduce preview size for faster base64 conversion and lower bandwidth
+            if img.width > 512 or img.height > 512:
+                img.thumbnail((512, 512), Image.Resampling.NEAREST)
+            images.append(img)
+            
+    return images
+
+
 def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_steps: int = 0):
     """#### Preview the batched latent tensors as images.
 
@@ -284,66 +339,10 @@ def taesd_preview(x: torch.Tensor, flux: bool = False, step: int = 0, total_step
         - `total_steps` (int): Total number of steps.
     """
     if app_instance.app.previewer_var.get() is True:
-        latent_channels = x.shape[1]
-        cache = get_model_cache()
-        
-        # If we have TAESD model for these channels, use it (4 for SD, 16 for Flux1)
-        if latent_channels in (4, 16):
-            taesd_instance = cache.get_taesd(latent_channels, flux)
-            if taesd_instance is None:
-                taesd_instance = TAESD(latent_channels=latent_channels)
-                # Use same dtype as latents for efficiency
-                taesd_instance.to(x.device, dtype=x.dtype)
-                cache.cache_taesd(latent_channels, flux, taesd_instance)
-            elif next(taesd_instance.parameters()).device != x.device or next(taesd_instance.parameters()).dtype != x.dtype:
-                taesd_instance.to(x.device, dtype=x.dtype)
+        try:
+            images = decode_latents_to_images(x, flux)
+            if images:
+                app_instance.app.update_image(images, step=step, total_steps=total_steps)
+        except Exception:
+            pass
 
-            with torch.no_grad():
-                # Optimization for large batches: only preview up to 4 images
-                if x.shape[0] > 4:
-                    x = x[:4]
-                decoded_batch = taesd_instance.decode(x)
-
-            # Normalize to [0, 1] range for both SD and Flux
-            # Note: No channel swap needed - TAESD outputs RGB correctly for all models
-            decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
-        
-        # For Flux2 (32 channels), use RGB approximation since no TAESD exists for 32ch
-        elif latent_channels == 32:
-            # Use RGB factors from Flux2 latent format
-            from src.Utilities import Latent
-            flux2_format = Latent.Flux2()
-            factors = torch.tensor(flux2_format.latent_rgb_factors, device=x.device, dtype=x.dtype)
-            bias = torch.tensor(flux2_format.latent_rgb_factors_bias, device=x.device, dtype=x.dtype)
-            
-            # Optimization for large batches
-            if x.shape[0] > 4:
-                x = x[:4]
-                
-            with torch.no_grad():
-                # [B, 32, H, W] -> [B, H, W, 32]
-                x_permuted = x.permute(0, 2, 3, 1)
-                # Matrix multiply: [B, H, W, 32] @ [32, 3] -> [B, H, W, 3]
-                decoded_batch = x_permuted @ factors + bias
-                # [B, H, W, 3] -> [B, 3, H, W]
-                decoded_batch = decoded_batch.permute(0, 3, 1, 2)
-                # Normalize and clamp
-                decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
-        
-        else:
-            return # Unsupported channels
-
-        # Optimization: Use non_blocking=True for CPU transfer to avoid GPU stall
-        decoded_np = (decoded_batch.mul(255.0).to("cpu", dtype=torch.uint8, non_blocking=True).numpy())
-        
-        images = []
-        for i in range(decoded_np.shape[0]):
-            img_data = np.transpose(decoded_np[i], (1, 2, 0))
-            img = Image.fromarray(img_data, mode='RGB')
-            # Reduce preview size for faster base64 conversion and lower bandwidth
-            if img.width > 512 or img.height > 512:
-                img.thumbnail((512, 512), Image.Resampling.NEAREST) # Fast resize
-            images.append(img)
-
-        # Update display with all images
-        app_instance.app.update_image(images, step=step, total_steps=total_steps)

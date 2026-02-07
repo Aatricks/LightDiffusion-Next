@@ -227,6 +227,11 @@ class Context:
                 else:
                     model_type = "SD15"
         
+        # Calculate timing metrics
+        elapsed = time.time() - self.start_time
+        steps = self.sampling.steps
+        avg_iters = steps / elapsed if elapsed > 0 else 0
+        
         meta = {
             "prompt": str(self.prompt),
             "negative_prompt": str(self.negative_prompt),
@@ -244,6 +249,8 @@ class Context:
             "adetailer": str(self.features.adetailer),
             "refiner_model": str(self.generation.refiner_model_path or "None"),
             "refiner_switch": str(self.generation.refiner_switch_step or "None"),
+            "generation_duration": f"{elapsed:.3f}",
+            "avg_iters_per_s": f"{avg_iters:.3f}",
         }
         if extra:
             meta.update(extra)

@@ -17,6 +17,7 @@ Usage:
 import logging
 import os
 import random
+from typing import Callable
 
 import torch
 
@@ -102,6 +103,8 @@ def pipeline(
     controlnet_type: str = "canny",
     # Batched mode
     per_sample_info: list | None = None,
+    # External callback
+    callback: Callable | None = None,
 ) -> dict:
     """Run the LightDiffusion pipeline.
 
@@ -219,10 +222,13 @@ def pipeline(
     _last_seed = ctx.seeds[-1] if ctx.seeds else ctx.seed
     
     # Setup default callback for UI preview
+    # Setup default callback for UI preview
     def default_callback(args: dict):
         from src.user import app_instance
         from src.AutoEncoders import taesd
         app_ref = getattr(app_instance, "app", None)
+        
+        # Streamlit/Gradio UI preview
         if app_ref is not None:
             step = args.get("i", 0)
             x0 = args.get("denoised")
@@ -240,6 +246,13 @@ def pipeline(
             else:
                 # Just update step info if no image is available
                 app_ref.update_image(app_ref.preview_images, step=step, total_steps=total_steps)
+        
+        # Chain external callback if provided
+        if callback is not None:
+            try:
+                callback(args)
+            except Exception:
+                pass
             
     ctx.callback = default_callback
     

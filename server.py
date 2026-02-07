@@ -3,16 +3,20 @@ from __future__ import annotations
 import base64
 import glob
 import os
+import io
+from src.AutoEncoders.taesd import decode_latents_to_images
 
 # Ensure we can import pipeline from this repo
 import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.Device.ModelCache import get_model_cache
+from src.Core.Models.ModelFactory import list_available_models
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -137,6 +141,15 @@ class GenerateRequest(BaseModel):
 
 
 app = FastAPI(title="LightDiffusion Server", version="1.0.0")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Capture event loop reference and start background worker."""
+    global _main_event_loop
+    _main_event_loop = asyncio.get_running_loop()
+    await _generation_buffer.start()
+    logger.info("Server startup complete, event loop captured for preview broadcasting")
 
 
 # Batching buffer -----------------------------------------------------------
@@ -431,6 +444,8 @@ class GenerationBuffer:
             dynamic_cfg_target_scale=first_req.dynamic_cfg_target_scale,
             adaptive_noise_enabled=first_req.adaptive_noise_enabled,
             adaptive_noise_method=first_req.adaptive_noise_method,
+            # Add callback for WebSocket preview broadcasting
+            callback=make_server_callback(first_req.steps),
         )
 
         # Toggle preview state for the duration of the pipeline call
@@ -487,9 +502,17 @@ class GenerationBuffer:
                 # Build full paths and encode
                 b64_list = []
                 for entry in selected:
-                    path = os.path.join("./output", entry.get("subfolder", ""), entry.get("filename", ""))
+                    filename = entry.get("filename", "")
+                    path = os.path.join("./output", entry.get("subfolder", ""), filename)
                     try:
-                        b64_list.append(_encode_png_to_base64(path))
+                        b64_data = _encode_png_to_base64(path)
+                        mime_type = "image/png"
+                        if filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
+                            mime_type = "image/jpeg"
+                        elif filename.lower().endswith(".webp"):
+                            mime_type = "image/webp"
+                        
+                        b64_list.append(f"data:{mime_type};base64,{b64_data}")
                     except Exception as e:
                         logger.exception("Failed to read image for request %s: %s", p.request_id, e)
 
@@ -691,6 +714,176 @@ def _find_images_since(start_ts: float) -> List[str]:
     logger.debug("%d images modified since %.3f", len(recent), start_ts)
     return recent
 
+# WebSocket preview endpoint for real-time streaming
+_preview_clients: List[WebSocket] = []
+_main_event_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def sync_broadcast_preview(
+    step: int,
+    total_steps: int,
+    images: Optional[List[str]] = None,
+    message_type: str = "preview"
+):
+    """Synchronous wrapper to broadcast preview from pipeline thread.
+    
+    This function can be called from the pipeline callback running in a
+    thread pool executor. It schedules the async broadcast on the main
+    event loop.
+    """
+
+    global _main_event_loop
+    
+    # logger.info(f"debug: sync_broadcast_preview step={step}")
+    
+    if not _preview_clients:
+        if step % 10 == 0:
+            logger.debug("No preview clients connected, skipping broadcast")
+        return
+    
+    if _main_event_loop is None:
+        logger.error("Main event loop is None! Cannot broadcast preview.")
+        return
+    
+    try:
+        if step % 5 == 0:
+            logger.info(f"Broadcasting preview step {step}/{total_steps}")
+            
+        asyncio.run_coroutine_threadsafe(
+            broadcast_preview(step, total_steps, images, message_type),
+            _main_event_loop
+        )
+    except Exception as e:
+        logger.error(f"Preview broadcast failed: {e}")
+        pass  # Don't let preview errors affect generation
+
+
+def make_server_callback(total_steps: int):
+    """Create a pipeline callback that broadcasts progress via WebSocket.
+    
+    Args:
+        total_steps: Total number of sampling steps
+        
+    Returns:
+        Callback function compatible with pipeline
+    """
+    def callback(args):
+        # Extract step info from args dict
+        step = args.get("i", 0)
+        
+        # Only process images on broadcast steps to save compute
+        # Broadcast every 5 steps or last step
+        is_broadcast_step = (step % 5 == 0) or (step == total_steps - 1)
+        
+        images_b64 = None
+        if is_broadcast_step:
+            try:
+                # prefer denoised, fallback to x
+                latents = args.get("denoised")
+                if latents is None:
+                    latents = args.get("x")
+                
+                if latents is not None:
+                    # Detect flux from shape (Flux has 16 or 32 channels)
+                    # This is a heuristic, ideal would be to pass it in args
+                    is_flux = (latents.shape[1] == 16 or latents.shape[1] == 32)
+                    
+                    pil_images = decode_latents_to_images(latents, flux=is_flux)
+                    
+                    images_b64 = []
+                    for img in pil_images:
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="JPEG", quality=70)
+                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        images_b64.append(f"data:image/jpeg;base64,{img_str}")
+            except Exception as e:
+                logger.error(f"Preview generation failed: {e}")
+                pass
+
+        # Broadcast progress update with images
+        sync_broadcast_preview(step, total_steps, images=images_b64, message_type="preview" if images_b64 else "progress")
+    
+    return callback
+
+
+@app.websocket("/ws/preview")
+async def websocket_preview(websocket: WebSocket):
+    """WebSocket endpoint for real-time preview streaming.
+    
+    Clients receive JSON messages with:
+    - type: "preview" | "progress" | "complete" | "error"
+    - step: Current step number
+    - total_steps: Total number of steps
+    - timestamp: Unix timestamp
+    - images: List of base64 encoded preview images (for "preview" type)
+    """
+    await websocket.accept()
+    _preview_clients.append(websocket)
+    logger.info("WebSocket client connected to /ws/preview (total: %d)", len(_preview_clients))
+    
+    try:
+        # Keep connection alive and listen for close
+        while True:
+            try:
+                # Wait for any message (ping/pong or close)
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                # Echo back to confirm alive
+                await websocket.send_json({"type": "pong", "timestamp": time.time()})
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                try:
+                    await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                except Exception:
+                    break
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.debug("WebSocket connection error: %s", e)
+    finally:
+        if websocket in _preview_clients:
+            _preview_clients.remove(websocket)
+        logger.info("WebSocket client disconnected (remaining: %d)", len(_preview_clients))
+
+
+async def broadcast_preview(
+    step: int,
+    total_steps: int,
+    images: Optional[List[str]] = None,
+    message_type: str = "preview"
+):
+    """Broadcast preview update to all connected WebSocket clients.
+    
+    Args:
+        step: Current step number
+        total_steps: Total number of steps
+        images: Optional list of base64-encoded images
+        message_type: Type of message (preview, progress, complete, error)
+    """
+    if not _preview_clients:
+        return
+    
+    payload = {
+        "type": message_type,
+        "step": step,
+        "total_steps": total_steps,
+        "timestamp": time.time(),
+    }
+    
+    if images:
+        payload["images"] = images
+    
+    # Send to all clients, removing any that fail
+    disconnected = []
+    for client in _preview_clients:
+        try:
+            await client.send_json(payload)
+        except Exception:
+            disconnected.append(client)
+    
+    for client in disconnected:
+        if client in _preview_clients:
+            _preview_clients.remove(client)
+
 
 @app.post("/api/generate")
 async def generate(req: GenerateRequest) -> Dict[str, Any]:
@@ -764,6 +957,45 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
     return result
 
     # Background worker will have returned the final result for this request.
+
+
+@app.get("/api/models")
+async def list_models() -> List[Dict[str, str]]:
+    """List available models."""
+    try:
+        models = list_available_models(return_mapping=True)
+        return [{"name": name, "path": path, "type": "checkpoint"} for name, path in models]
+    except Exception as e:
+        logger.error(f"Failed to list models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/interrupt")
+async def interrupt_generation():
+    """Interrupt current generation."""
+    # Logic to interrupt generation
+    # We need to signal the pipeline to stop
+    # The pipeline checks app_instance.app.interrupt_flag
+    
+    if _app_instance and hasattr(_app_instance, "app") and _app_instance.app:
+        _app_instance.app.request_interrupt()
+        logger.info("Interrupt requested via API")
+        return {"status": "interrupted"}
+    else:
+        logger.error("Cannot interrupt: app_instance not available")
+        raise HTTPException(status_code=503, detail="App instance not available")
+
+
+
+
+
+# Mount frontend if build exists
+frontend_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+    logger.info(f"Serving frontend from {frontend_dist}")
+else:
+    logger.warning(f"Frontend build not found at {frontend_dist}. Run 'npm run build' in frontend directory.")
 
 
 if __name__ == "__main__":
