@@ -162,36 +162,72 @@ def load_generated_images():
 
 
 def load_all_generated_images():
-    """Load all generated images from output folders for history view"""
-    image_files = glob.glob("./output/**/*.png", recursive=True)
-
-    if not image_files:
-        return [], "No images found in output folders."
-
-    # Sort files by modification time in descending order (newest first)
-    image_files.sort(key=os.path.getmtime, reverse=True)
-
-    images = []
-    for file_path in image_files:
-        try:
-            img = Image.open(file_path)
-            # Store the image with metadata
-            img.info = {
-                "path": file_path,
-                "filename": os.path.basename(file_path),
-                "folder": os.path.basename(os.path.dirname(file_path)),
-                "modified": datetime.datetime.fromtimestamp(
-                    os.path.getmtime(file_path)
-                ).strftime("%Y-%m-%d %H:%M:%S"),
-                "size": f"{img.size[0]}x{img.size[1]}",
-            }
-            images.append(img)
-        except Exception as e:
-            print(f"Error loading image {file_path}: {e}")
-            continue
-
-    info_text = f"Found {len(images)} images in history."
-    return images, info_text
+    """Load all generated images from output folders for history view using HistoryManager."""
+    try:
+        from src.FileManaging.HistoryManager import get_history_manager
+        
+        manager = get_history_manager()
+        entries = manager.load(use_cache=True)
+        
+        if not entries:
+            return [], "No images found in history. Try scanning output folders."
+        
+        images = []
+        for entry in entries:
+            file_path = entry.image_path
+            if file_path and os.path.exists(file_path):
+                try:
+                    img = Image.open(file_path)
+                    # Store history metadata on the image for info display
+                    img.info = {
+                        "path": file_path,
+                        "filename": os.path.basename(file_path),
+                        "folder": os.path.basename(os.path.dirname(file_path)),
+                        "modified": entry.timestamp,
+                        "size": f"{entry.width}x{entry.height}" if entry.width and entry.height else "Unknown",
+                        "prompt": entry.prompt,
+                        "seed": entry.seed,
+                        "model_type": entry.model_type,
+                        "sampler": entry.sampler,
+                        "steps": entry.steps,
+                        "cfg": entry.cfg,
+                    }
+                    images.append(img)
+                except Exception as e:
+                    print(f"Error loading image {file_path}: {e}")
+                    continue
+        
+        info_text = f"Found {len(images)} images in history."
+        return images, info_text
+    except Exception as e:
+        print(f"Error loading history: {e}")
+        # Fallback to glob-based scanning
+        image_files = glob.glob("./output/**/*.png", recursive=True)
+        
+        if not image_files:
+            return [], "No images found in output folders."
+        
+        image_files.sort(key=os.path.getmtime, reverse=True)
+        
+        images = []
+        for file_path in image_files:
+            try:
+                img = Image.open(file_path)
+                img.info = {
+                    "path": file_path,
+                    "filename": os.path.basename(file_path),
+                    "folder": os.path.basename(os.path.dirname(file_path)),
+                    "modified": datetime.datetime.fromtimestamp(
+                        os.path.getmtime(file_path)
+                    ).strftime("%Y-%m-%d %H:%M:%S"),
+                    "size": f"{img.size[0]}x{img.size[1]}",
+                }
+                images.append(img)
+            except Exception as e:
+                print(f"Error loading image {file_path}: {e}")
+                continue
+        
+        return images, f"Found {len(images)} images in history."
 
 
 def get_image_info(evt: gr.SelectData):
@@ -204,16 +240,37 @@ def get_image_info(evt: gr.SelectData):
         if evt.index < len(images):
             img = images[evt.index]
             info = img.info
-            return f"""**Image Information:**
-- **Filename:** {info.get("filename", "Unknown")}
-- **Folder:** {info.get("folder", "Unknown")}
-- **Size:** {info.get("size", "Unknown")}
-- **Modified:** {info.get("modified", "Unknown")}
-- **Path:** {info.get("path", "Unknown")}"""
+            
+            # Build info text with available metadata
+            lines = ["**Image Information:**"]
+            lines.append(f"- **Filename:** {info.get('filename', 'Unknown')}")
+            lines.append(f"- **Folder:** {info.get('folder', 'Unknown')}")
+            lines.append(f"- **Size:** {info.get('size', 'Unknown')}")
+            lines.append(f"- **Modified:** {info.get('modified', 'Unknown')}")
+            
+            # Generation metadata (from HistoryManager)
+            if info.get('prompt'):
+                prompt_preview = info['prompt'][:100] + "..." if len(info.get('prompt', '')) > 100 else info['prompt']
+                lines.append(f"- **Prompt:** {prompt_preview}")
+            if info.get('seed'):
+                lines.append(f"- **Seed:** {info['seed']}")
+            if info.get('model_type'):
+                lines.append(f"- **Model:** {info['model_type']}")
+            if info.get('sampler'):
+                lines.append(f"- **Sampler:** {info['sampler']}")
+            if info.get('steps'):
+                lines.append(f"- **Steps:** {info['steps']}")
+            if info.get('cfg'):
+                lines.append(f"- **CFG:** {info['cfg']}")
+            
+            lines.append(f"- **Path:** {info.get('path', 'Unknown')}")
+            
+            return "\n".join(lines)
         else:
             return "Image index out of range."
     except Exception as e:
         return f"Error getting image info: {e}"
+
 
 
 def delete_selected_image(evt: gr.SelectData):

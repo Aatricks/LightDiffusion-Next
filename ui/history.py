@@ -1,114 +1,66 @@
-import os
-import json
-import glob
-import time
-import re
-import streamlit as st
-from PIL import Image
+"""
+History module - thin wrapper delegating to HistoryManager.
 
+Maintains backward compatibility with existing UI code while
+using the centralized HistoryManager for all operations.
+"""
+
+import os
+import streamlit as st
+from typing import Optional, List, Dict, Any
+
+from src.FileManaging.HistoryManager import (
+    HistoryManager,
+    HistoryEntry,
+    sanitize_seed_for_display,
+    get_history_manager,
+)
+
+# Legacy file path - keep for reference
 HISTORY_FILE = "./webui_history.json"
 
-
-def sanitize_seed_for_display(seed_value):
-    """Return a safe seed string or None if the value looks like a tensor/image dump."""
-    if seed_value is None:
-        return None
-    if isinstance(seed_value, (int, float)):
-        return str(int(seed_value))
-    if isinstance(seed_value, str):
-        s = seed_value.strip()
-        # If the value is clearly a dump (tensor, list, multiline or huge)
-        # avoid returning the full content to the UI. As a helpful fallback
-        # try to extract a numeric token (common when a seed is embedded in
-        # a larger string). This keeps the compact, user-friendly seed in
-        # the Details view while preserving the full raw metadata in the
-        # hidden JSON blob.
-        if "tensor(" in s.lower() or "[" in s or "\n" in s or len(s) > 240:
-            # Try to salvage a numeric-looking substring (at least 4 digits)
-            m = re.search(r"(\d{4,})", s)
-            if m:
-                return m.group(0)
-            return None
-        return s
-    return None
+# Singleton manager instance
+_manager: Optional[HistoryManager] = None
 
 
-def load_history():
-    """Load generation history from disk, sanitizing any large seed dumps."""
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                changed = False
-                for e in saved:
-                    if isinstance(e, dict):
-                        if 'seed' in e:
-                            sanitized = sanitize_seed_for_display(e.get('seed'))
-                            if sanitized != e.get('seed'):
-                                e['seed'] = sanitized
-                                changed = True
-                        png_meta = e.get('png_metadata') or {}
-                        # Preserve PNG metadata as-is; however, if the top-
-                        # level `seed` is missing or was removed by
-                        # sanitization, try to populate a friendly top-level
-                        # seed using the PNG's embedded value so the Details
-                        # view shows a concise identifier.
-                        if not e.get('seed') and isinstance(png_meta, dict) and png_meta.get('seed'):
-                            try:
-                                e['seed'] = sanitize_seed_for_display(png_meta.get('seed'))
-                                changed = True
-                            except Exception:
-                                pass
-                        # Normalize stored width/height values. If they are
-                        # strings or missing, try to convert or read from the
-                        # image file so the UI can rely on accurate dimensions
-                        # for thumbnail sizing.
-                        w = e.get('width')
-                        h = e.get('height')
-                        normalized = False
-                        try:
-                            if isinstance(w, str) and w.isdigit():
-                                e['width'] = int(w)
-                                normalized = True
-                            if isinstance(h, str) and h.isdigit():
-                                e['height'] = int(h)
-                                normalized = True
-                        except Exception:
-                            pass
-
-                        if (e.get('width') is None or e.get('height') is None) and isinstance(e.get('image_path'), str):
-                            try:
-                                if os.path.exists(e['image_path']):
-                                    with Image.open(e['image_path']) as _img:
-                                        iw, ih = _img.size
-                                        if iw and ih:
-                                            e['width'] = iw
-                                            e['height'] = ih
-                                            normalized = True
-                            except Exception:
-                                pass
-
-                        if normalized:
-                            changed = True
-                if changed:
-                    try:
-                        save_history(saved)
-                    except Exception:
-                        pass
-                return saved
-        except Exception as e:
-            try:
-                st.warning(f"Could not load history: {e}")
-            except Exception:
-                pass
-    return []
+def _get_manager() -> HistoryManager:
+    """Get or create the HistoryManager singleton."""
+    global _manager
+    if _manager is None:
+        _manager = get_history_manager()
+    return _manager
 
 
-def save_history(history):
-    """Save generation history to disk."""
+def load_history() -> List[Dict[str, Any]]:
+    """
+    Load generation history from disk.
+    
+    Returns:
+        List of history entry dictionaries (for backward compatibility).
+    """
+    manager = _get_manager()
     try:
-        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
+        entries = manager.load(use_cache=True)
+        return [e.to_dict() for e in entries]
+    except Exception as e:
+        try:
+            st.warning(f"Could not load history: {e}")
+        except Exception:
+            pass
+        return []
+
+
+def save_history(history: List[Dict[str, Any]]) -> None:
+    """
+    Save generation history to disk.
+    
+    Args:
+        history: List of history entry dictionaries.
+    """
+    manager = _get_manager()
+    try:
+        entries = [manager._normalize_entry(item) for item in history]
+        manager.save(entries)
     except Exception as e:
         try:
             st.error(f"Could not save history: {e}")
@@ -116,211 +68,150 @@ def save_history(history):
             pass
 
 
-def add_to_history(image_paths, settings):
-    """Add generated image file paths to the persistent history store."""
-    history = load_history()
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    for img_path in image_paths:
-        if not os.path.exists(img_path):
-            continue
-
-        png_meta = {}
-        width = None
-        height = None
+def add_to_history(image_paths: List[str], settings: Dict[str, Any]) -> None:
+    """
+    Add generated image file paths to the persistent history store.
+    
+    Args:
+        image_paths: List of paths to generated images.
+        settings: Generation settings dictionary.
+    """
+    manager = _get_manager()
+    try:
+        manager.add_from_image_paths(image_paths, settings)
+    except Exception as e:
         try:
-            with Image.open(img_path) as _img:
-                png_meta = getattr(_img, "info", {}) or {}
-                try:
-                    width, height = _img.size
-                except Exception:
-                    width, height = None, None
-        except Exception:
-            png_meta = {}
-            width, height = None, None
-
-        # Keep the PNG metadata raw so it can be inspected in the
-        # 'All metadata' view. Compute a sanitized seed string for the
-        # top-level display separately so the Details section remains
-        # compact and user-friendly.
-        seed_meta = sanitize_seed_for_display(png_meta.get('seed'))
-
-        png_prompt = png_meta.get('prompt')
-        png_negative = png_meta.get('negative_prompt')
-
-        entry = {
-            "timestamp": timestamp,
-            "image_path": img_path,
-            "prompt": png_prompt if png_prompt not in (None, "") else settings.get("prompt", ""),
-            "negative_prompt": png_negative if png_negative not in (None, "") else settings.get("negative_prompt", ""),
-            # Record the actual file dimensions — ensures thumbnails match the file
-            "width": width,
-            "height": height,
-            "batch_size": settings.get("batch_size"),
-                # Record model type if available from PNG metadata
-                'model_type': png_meta.get('model_type'),
-                'model_path': png_meta.get('model_path'),
-            "seed": seed_meta,
-            "sampler": png_meta.get("sampler"),
-            "steps": png_meta.get("steps"),
-            "generation_duration": None,
-            "avg_iters_per_s": None,
-            "cfg": png_meta.get("cfg"),
-            "scheduler": png_meta.get("scheduler"),
-            "denoise": png_meta.get("denoise"),
-            "png_metadata": png_meta,
-        }
-
-        try:
-            gd = png_meta.get("generation_duration")
-            if gd is not None:
-                try:
-                    entry["generation_duration"] = float(gd)
-                except Exception:
-                    try:
-                        entry["generation_duration"] = float(str(gd).rstrip('s'))
-                    except Exception:
-                        entry["generation_duration"] = None
+            st.warning(f"Could not add to history: {e}")
         except Exception:
             pass
 
-        try:
-            ai = png_meta.get("avg_iters_per_s")
-            if ai is not None:
-                try:
-                    entry["avg_iters_per_s"] = float(ai)
-                except Exception:
-                    try:
-                        entry["avg_iters_per_s"] = float(str(ai).rstrip('s'))
-                    except Exception:
-                        entry["avg_iters_per_s"] = None
-        except Exception:
-            pass
 
-        history.insert(0, entry)
-
-    history = history[:100]
-    save_history(history)
-
-
-def clear_history():
+def clear_history() -> None:
     """Remove all history and delete associated image files."""
-    history = load_history()
-    for entry in history:
-        img_path = entry.get("image_path")
-        if img_path and os.path.exists(img_path):
-            try:
-                os.remove(img_path)
-            except Exception as e:
-                try:
-                    st.warning(f"Could not delete {os.path.basename(img_path)}: {e}")
-                except Exception:
-                    pass
-    save_history([])
+    manager = _get_manager()
+    try:
+        manager.clear(delete_files=True)
+    except Exception as e:
+        try:
+            st.error(f"Could not clear history: {e}")
+        except Exception:
+            pass
 
 
-def scan_output_folders():
-    """Scan common output folders and build a history list of found PNGs."""
-    output_dirs = [
-        "./output/Classic",
-        "./output/HiresFix",
-        "./output/Img2Img",
-        "./output/Adetailer",
-    ]
-
-    all_images = []
-    for output_dir in output_dirs:
-        if os.path.exists(output_dir):
-            images = glob.glob(f"{output_dir}/*.png")
-            all_images.extend(images)
-
-    all_images = sorted(all_images, key=os.path.getmtime, reverse=True)
-    existing_history = load_history()
-    existing_paths = {entry['image_path']: entry for entry in existing_history}
-
-    new_history = []
-    for img_path in all_images[:100]:
-        if img_path in existing_paths:
-            new_history.append(existing_paths[img_path])
-        else:
-            try:
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(img_path)))
-                with Image.open(img_path) as img:
-                    width, height = img.size
-                    png_meta = getattr(img, 'info', {}) or {}
-
-                entry = {
-                    'timestamp': timestamp,
-                    'image_path': img_path,
-                    'prompt': png_meta.get('prompt', '(prompt not available)'),
-                    'negative_prompt': png_meta.get('negative_prompt', ''),
-                    # Preserve the discovered image's actual dimensions so that
-                    # the UI can scale thumbnails correctly.
-                    'width': width,
-                    'height': height,
-                    'batch_size': png_meta.get('batch_size'),
-                    # Record model type/path when available in PNG metadata
-                    'model_type': png_meta.get('model_type'),
-                    'model_path': png_meta.get('model_path'),
-                    'seed': sanitize_seed_for_display(png_meta.get('seed')),
-                    'sampler': png_meta.get('sampler'),
-                    'steps': png_meta.get('steps'),
-                    'generation_duration': None,
-                    'avg_iters_per_s': None,
-                    'cfg': png_meta.get('cfg'),
-                    'scheduler': png_meta.get('scheduler'),
-                    'denoise': png_meta.get('denoise'),
-                    'png_metadata': png_meta,
-                }
-
-                try:
-                    gd = png_meta.get('generation_duration')
-                    if gd is not None:
-                        try:
-                            entry['generation_duration'] = float(gd)
-                        except Exception:
-                            try:
-                                entry['generation_duration'] = float(str(gd).rstrip('s'))
-                            except Exception:
-                                entry['generation_duration'] = None
-                except Exception:
-                    pass
-
-                try:
-                    ai = png_meta.get('avg_iters_per_s')
-                    if ai is not None:
-                        try:
-                            entry['avg_iters_per_s'] = float(ai)
-                        except Exception:
-                            try:
-                                entry['avg_iters_per_s'] = float(str(ai).rstrip('s'))
-                            except Exception:
-                                entry['avg_iters_per_s'] = None
-                except Exception:
-                    pass
-
-                new_history.append(entry)
-            except Exception:
-                pass
-
-    save_history(new_history)
-    return new_history
+def scan_output_folders() -> List[Dict[str, Any]]:
+    """
+    Scan common output folders and build a history list of found PNGs.
+    
+    Returns:
+        List of history entry dictionaries.
+    """
+    manager = _get_manager()
+    try:
+        entries = manager.scan_output_folders()
+        return [e.to_dict() for e in entries]
+    except Exception as e:
+        try:
+            st.warning(f"Could not scan output folders: {e}")
+        except Exception:
+            pass
+        return []
 
 
-def delete_history_entry(entry_index):
-    history = load_history()
-    if 0 <= entry_index < len(history):
-        entry = history[entry_index]
-        img_path = entry['image_path']
-        if img_path and os.path.exists(img_path):
-            try:
-                os.remove(img_path)
-            except Exception as e:
-                try:
-                    st.error(f"Could not delete image file: {e}")
-                except Exception:
-                    pass
-        history.pop(entry_index)
-        save_history(history)
-        return True
-    return False
+def delete_history_entry(entry_index: int) -> bool:
+    """
+    Delete a history entry by index.
+    
+    Args:
+        entry_index: Index of the entry to delete.
+        
+    Returns:
+        True if deletion was successful.
+    """
+    manager = _get_manager()
+    try:
+        return manager.delete_entry(entry_index)
+    except Exception as e:
+        try:
+            st.error(f"Could not delete history entry: {e}")
+        except Exception:
+            pass
+        return False
+
+
+# =========================================================================
+# New Search and Filter API
+# =========================================================================
+
+def search_history(
+    keyword: Optional[str] = None,
+    model_type: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Search and filter history entries.
+    
+    Args:
+        keyword: Search in prompt/negative_prompt (case-insensitive).
+        model_type: Filter by model type (SD15, SDXL, Flux, etc.).
+        date_from: Filter entries from this date (YYYY-MM-DD).
+        date_to: Filter entries until this date (YYYY-MM-DD).
+        
+    Returns:
+        Filtered list of history entry dictionaries.
+    """
+    manager = _get_manager()
+    try:
+        entries = manager.search(
+            keyword=keyword,
+            model_type=model_type,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return [e.to_dict() for e in entries]
+    except Exception:
+        return []
+
+
+def get_available_model_types() -> List[str]:
+    """
+    Get list of model types present in history.
+    
+    Returns:
+        Sorted list of unique model type strings.
+    """
+    manager = _get_manager()
+    try:
+        return manager.get_model_types()
+    except Exception:
+        return []
+
+
+def get_history_date_range() -> tuple:
+    """
+    Get the date range of entries in history.
+    
+    Returns:
+        Tuple of (min_date, max_date) as YYYY-MM-DD strings, or (None, None).
+    """
+    manager = _get_manager()
+    try:
+        return manager.get_date_range()
+    except Exception:
+        return (None, None)
+
+
+# Re-export for backward compatibility
+__all__ = [
+    "sanitize_seed_for_display",
+    "load_history",
+    "save_history",
+    "add_to_history",
+    "clear_history",
+    "scan_output_folders",
+    "delete_history_entry",
+    "search_history",
+    "get_available_model_types",
+    "get_history_date_range",
+    "HISTORY_FILE",
+]

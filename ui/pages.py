@@ -19,6 +19,9 @@ from ui.history import (
     delete_history_entry,
     load_history,
     scan_output_folders,
+    search_history,
+    get_available_model_types,
+    get_history_date_range,
 )
 
 
@@ -912,11 +915,57 @@ def render_history_page():
             clear_history()
             st.rerun()
 
-    # Load history
-    history = load_history()
+    # Search and Filter UI with auto-search (no Enter needed)
+    with st.expander("🔍 Search & Filter", expanded=False):
+        filter_cols = st.columns([2, 1, 1, 1])
+        with filter_cols[0]:
+            # Use on_change to trigger immediate search without Enter key
+            def on_search_change():
+                """Callback when search text changes - triggers rerun for live search."""
+                pass  # The session state update happens automatically
+            
+            search_keyword = st.text_input(
+                "Search prompt",
+                key="history_search_keyword",
+                placeholder="Type to search...",
+                on_change=on_search_change,
+                label_visibility="collapsed"
+            )
+            st.caption("🔍 Search prompts (live)")
+        with filter_cols[1]:
+            model_types = [""] + get_available_model_types()
+            selected_model = st.selectbox(
+                "Model type",
+                options=model_types,
+                format_func=lambda x: "All models" if x == "" else x,
+                key="history_filter_model"
+            )
+        with filter_cols[2]:
+            date_from = st.date_input(
+                "From date",
+                value=None,
+                key="history_date_from"
+            )
+        with filter_cols[3]:
+            date_to = st.date_input(
+                "To date",
+                value=None,
+                key="history_date_to"
+            )
+
+    # Apply filters
+    if search_keyword or selected_model or date_from or date_to:
+        history = search_history(
+            keyword=search_keyword if search_keyword else None,
+            model_type=selected_model if selected_model else None,
+            date_from=str(date_from) if date_from else None,
+            date_to=str(date_to) if date_to else None,
+        )
+    else:
+        history = load_history()
 
     with col3:
-        st.text(f"Total: {len(history)}")
+        st.text(f"Showing: {len(history)}")
 
     if not history:
         st.info("No generation history yet. Create some images or click 'Scan Folders' to find existing ones!")

@@ -210,6 +210,23 @@ class Context:
     
     def build_metadata(self, extra: dict = None) -> dict:
         """Build PNG metadata dictionary."""
+        # Detect model type from path
+        model_type = "Unknown"
+        model_path = self.generation.model_path or "None"
+        if model_path and model_path != "None":
+            try:
+                from src.Core.Models.ModelFactory import detect_model_type
+                model_type = detect_model_type(model_path)
+            except Exception:
+                # Fallback to simple detection
+                path_lower = model_path.lower()
+                if "xl" in path_lower or "sdxl" in path_lower:
+                    model_type = "SDXL"
+                elif "flux" in path_lower:
+                    model_type = "Flux2Klein"
+                else:
+                    model_type = "SD15"
+        
         meta = {
             "prompt": str(self.prompt),
             "negative_prompt": str(self.negative_prompt),
@@ -218,8 +235,11 @@ class Context:
             "steps": str(self.sampling.steps),
             "cfg": str(self.sampling.cfg),
             "scheduler": self.sampling.scheduler,
+            "denoise": str(self.sampling.denoise),
             "width": str(self.generation.width),
             "height": str(self.generation.height),
+            "model_path": str(model_path),
+            "model_type": model_type,
             "hires_fix": str(self.features.hires_fix),
             "adetailer": str(self.features.adetailer),
             "refiner_model": str(self.generation.refiner_model_path or "None"),
