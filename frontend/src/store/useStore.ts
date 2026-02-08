@@ -32,8 +32,8 @@ export const useStore = create<AppState>((set) => ({
         steps: 20,
         cfg_scale: 7.0,
         seed: -1,
-        scheduler: "karras",
-        sampler: "dpmpp_2m_cfgpp",
+        scheduler: "ays",
+        sampler: "dpmpp_sde_cfgpp",
         model_path: "", // Default empty, user must select
         refiner_model_path: "",
         refiner_switch_step: 15,

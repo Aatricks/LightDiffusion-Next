@@ -1,7 +1,7 @@
 import { Button, NumberInput, Select, Stack, Textarea, Switch, Group, Collapse, Box, Text, Accordion } from '@mantine/core';
 import { useStore } from '../store/useStore';
 import { generateImage, interruptGeneration, listModels, listControlNets } from '../api/client';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCaretDown, IconCaretRight } from '@tabler/icons-react';
 import { ImageInput } from './ImageInput';
@@ -11,9 +11,40 @@ export function GenerationSettings() {
     const [openedAdvanced, { toggle: toggleAdvanced }] = useDisclosure(false);
 
     useEffect(() => {
-        listModels().then(setModels).catch(console.error);
+        listModels().then(models => {
+            setModels(models);
+            // Automatically select the first model if none is currently selected
+            // We use the store's current state directly to avoid dependency loop
+            const currentSettings = useStore.getState().settings;
+            if (!currentSettings.model_path && models.length > 0) {
+                const defaultModel = models.find(m => m.name.toLowerCase().includes("dreamshaper")) || models[0];
+                const updates: any = { model_path: defaultModel.path };
+                
+                if (defaultModel.type === "Flux2Klein") {
+                    updates.width = 1024;
+                    updates.height = 1024;
+                    updates.sampler = "euler";
+                    updates.scheduler = "simple";
+                    updates.steps = 4;
+                    updates.cfg_scale = 1.0;
+                } else if (defaultModel.type === "SDXL") {
+                    updates.width = 1024;
+                    updates.height = 1024;
+                    updates.sampler = "euler";
+                    updates.scheduler = "simple";
+                    updates.steps = 25;
+                } else {
+                    updates.width = 512;
+                    updates.height = 512;
+                    updates.sampler = "dpmpp_2m";
+                    updates.scheduler = "karras";
+                    updates.steps = 20;
+                }
+                setSettings(updates);
+            }
+        }).catch(console.error);
         listControlNets().then(res => setControlNets(res.models)).catch(console.error);
-    }, [setModels, setControlNets]);
+    }, [setModels, setControlNets, setSettings]);
 
     const handleGenerate = async () => {
         if (status === 'generating') {
@@ -40,8 +71,8 @@ export function GenerationSettings() {
         }
     };
 
-    const modelOptions = availableModels.map(m => ({ value: m.path, label: m.name }));
-    const controlNetOptions = availableControlNets.map(m => ({ value: m, label: m }));
+    const modelOptions = useMemo(() => availableModels.map(m => ({ value: m.path, label: m.name })), [availableModels]);
+    const controlNetOptions = useMemo(() => availableControlNets.map(m => ({ value: m, label: m })), [availableControlNets]);
     const currentModel = availableModels.find(m => m.path === settings.model_path);
     const caps = currentModel?.capabilities;
 
@@ -52,6 +83,8 @@ export function GenerationSettings() {
                 placeholder="Select model"
                 data={modelOptions}
                 value={settings.model_path}
+                nothingFoundMessage="No models found"
+                maxDropdownHeight={400}
                 onChange={(v) => {
                     if (!v) {
                         setSettings({ model_path: "" });
@@ -102,7 +135,6 @@ export function GenerationSettings() {
                     }
                     setSettings(updates);
                 }}
-                searchable
             />
 
             <Textarea
@@ -199,7 +231,12 @@ export function GenerationSettings() {
                                     <Group grow>
                                         <Select
                                             label="Sampler"
-                                            data={["dpmpp_2m", "dpmpp_sde", "dpmpp_sde_cfgpp", "euler", "euler_ancestral"]}
+                                            data={[
+                                                "dpmpp_2m", "dpmpp_2m_cfgpp", 
+                                                "dpmpp_sde", "dpmpp_sde_cfgpp", 
+                                                "euler", "euler_cfgpp",
+                                                "euler_ancestral", "euler_ancestral_cfgpp"
+                                            ]}
                                             value={settings.sampler}
                                             onChange={(v) => setSettings({ sampler: v || "dpmpp_sde_cfgpp" })}
                                         />
@@ -253,6 +290,7 @@ export function GenerationSettings() {
                                         clearable
                                         data={modelOptions}
                                         value={settings.refiner_model_path}
+                                        nothingFoundMessage="No models found"
                                         onChange={(v) => setSettings({ refiner_model_path: v || "" })}
                                         disabled={availableModels.find(m => m.path === settings.model_path)?.type !== "SDXL"}
                                     />
@@ -312,6 +350,7 @@ export function GenerationSettings() {
                                                 placeholder="Select model"
                                                 data={controlNetOptions}
                                                 value={settings.controlnet_model}
+                                                nothingFoundMessage="No ControlNet models found"
                                                 onChange={(v) => setSettings({ controlnet_model: v || undefined })}
                                             />
                                             <Text size="sm">Control Image (uses Img2Img input)</Text>
