@@ -82,7 +82,7 @@ def sample_with_custom_noise(model, add_noise, noise_seed, cfg, positive, negati
     if noise_mask is not None:
         noise_mask = noise_mask.to(device)
     samples = sampling.sample_custom(model, noise, cfg, sampler, sigmas, positive, negative, latent,
-        noise_mask=noise_mask, disable_pbar=not util.PROGRESS_BAR_ENABLED, seed=noise_seed, pipeline=pipeline)
+        noise_mask=noise_mask, callback=callback, disable_pbar=not util.PROGRESS_BAR_ENABLED, seed=noise_seed, pipeline=pipeline)
     out["samples"] = samples.to(Device.intermediate_device())
     return out, out
 
@@ -98,11 +98,11 @@ def separated_sample(model, add_noise, seed, steps, cfg, sampler_name, scheduler
 
 def ksampler_wrapper(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise,
                      refiner_ratio=None, refiner_model=None, refiner_clip=None, refiner_positive=None, refiner_negative=None,
-                     sigma_factor=1.0, noise=None, scheduler_func=None, pipeline=False):
+                     sigma_factor=1.0, noise=None, callback=None, scheduler_func=None, pipeline=False):
     advanced_steps = math.floor(steps / denoise)
     return separated_sample(model, True, seed, advanced_steps, cfg, sampler_name, scheduler, positive, negative,
         latent_image, advanced_steps - steps, advanced_steps - steps + steps, False,
-        sigma_ratio=sigma_factor, noise=noise, scheduler_func=scheduler_func, pipeline=pipeline)
+        sigma_ratio=sigma_factor, noise=noise, callback=callback, scheduler_func=scheduler_func, pipeline=pipeline)
 
 
 def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max_size, bbox, seed, steps, cfg,
@@ -110,7 +110,7 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
                    wildcard_opt=None, wildcard_opt_concat_mode=None, detailer_hook=None, refiner_ratio=None,
                    refiner_model=None, refiner_clip=None, refiner_positive=None, refiner_negative=None,
                    control_net_wrapper=None, cycle=1, inpaint_model=False, noise_mask_feather=0,
-                   scheduler_func=None, pipeline=False):
+                   callback=None, scheduler_func=None, pipeline=False):
     if noise_mask is not None:
         noise_mask = tensor_util.tensor_gaussian_blur_mask(noise_mask, noise_mask_feather).squeeze(3)
     h, w = image.shape[1], image.shape[2]
@@ -132,7 +132,7 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     for i in range(cycle):
         refined_latent = ksampler_wrapper(model, seed + i, steps, cfg, sampler_name, scheduler, positive, negative,
             refined_latent, denoise, refiner_ratio, refiner_model, refiner_clip, refiner_positive, refiner_negative,
-            noise=None, scheduler_func=scheduler_func, pipeline=pipeline)
+            noise=None, callback=callback, scheduler_func=scheduler_func, pipeline=pipeline)
     try:
         refined_image = vae.decode(refined_latent["samples"])
     except Exception:
@@ -146,7 +146,7 @@ class DetailerForEach:
                   sampler_name, scheduler, positive, negative, denoise, feather, noise_mask, force_inpaint,
                   wildcard_opt=None, detailer_hook=None, refiner_ratio=None, refiner_model=None, refiner_clip=None,
                   refiner_positive=None, refiner_negative=None, cycle=1, inpaint_model=False, noise_mask_feather=0,
-                  scheduler_func_opt=None, pipeline=False):
+                  callback=None, scheduler_func_opt=None, pipeline=False):
         image = image.clone()
         enhanced_alpha_list, enhanced_list, cropped_list, cnet_pil_list, new_segs = [], [], [], [], []
         segs = AD_util.segs_scale_match(segs, image.shape)
@@ -184,7 +184,7 @@ class DetailerForEach:
                 detailer_hook=detailer_hook, refiner_ratio=refiner_ratio, refiner_model=refiner_model, refiner_clip=refiner_clip,
                 refiner_positive=refiner_positive, refiner_negative=refiner_negative, control_net_wrapper=seg.control_net_wrapper,
                 cycle=cycle, inpaint_model=inpaint_model, noise_mask_feather=noise_mask_feather,
-                scheduler_func=scheduler_func_opt, pipeline=pipeline)
+                callback=callback, scheduler_func=scheduler_func_opt, pipeline=pipeline)
 
             if enhanced_image is not None:
                 image = image.cpu()
@@ -211,7 +211,7 @@ class DetailerForEachTest(DetailerForEach):
     def doit(self, image, segs, model, clip, vae, guide_size, guide_size_for, max_size, seed, steps, cfg,
              sampler_name, scheduler, positive, negative, denoise, feather, noise_mask, force_inpaint,
              wildcard, detailer_hook=None, cycle=1, inpaint_model=False, noise_mask_feather=0,
-             scheduler_func_opt=None, pipeline=False):
+             callback=None, scheduler_func_opt=None, pipeline=False):
         if len(image.shape) == 4 and image.shape[0] > 1:
             batch_size = image.shape[0]
             results = [[], [], [], [], []]
@@ -227,7 +227,7 @@ class DetailerForEachTest(DetailerForEach):
                     image[i:i+1], segs, model, clip, vae, guide_size, guide_size_for, max_size, seed + i, steps,
                     cfg, sampler_name, scheduler, positive, negative, denoise, feather, noise_mask, force_inpaint,
                     wildcard, detailer_hook, cycle=cycle, inpaint_model=inpaint_model,
-                    noise_mask_feather=noise_mask_feather, scheduler_func_opt=scheduler_func_opt, pipeline=pipeline)
+                    noise_mask_feather=noise_mask_feather, callback=callback, scheduler_func_opt=scheduler_func_opt, pipeline=pipeline)
                 results[0].append(enhanced)
                 results[1].extend(cropped)
                 results[2].extend(enh)
@@ -239,5 +239,5 @@ class DetailerForEachTest(DetailerForEach):
             image, segs, model, clip, vae, guide_size, guide_size_for, max_size, seed, steps, cfg, sampler_name,
             scheduler, positive, negative, denoise, feather, noise_mask, force_inpaint, wildcard, detailer_hook,
             cycle=cycle, inpaint_model=inpaint_model, noise_mask_feather=noise_mask_feather,
-            scheduler_func_opt=scheduler_func_opt, pipeline=pipeline)
+            callback=callback, scheduler_func_opt=scheduler_func_opt, pipeline=pipeline)
         return enhanced, cropped, enh, enh_alpha, [empty_pil_tensor()]

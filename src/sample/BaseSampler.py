@@ -294,7 +294,7 @@ class EulerSampler(BaseSampler):
             
             x = x + util.to_d(x, sigma_hat, cfg_denoised) * (sigmas[i + 1] - sigma_hat)
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 
@@ -326,7 +326,7 @@ class EulerAncestralSampler(BaseSampler):
                 x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
             
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 
@@ -358,7 +358,7 @@ class DPMPP2MSampler(BaseSampler):
             x = ratios[i] * x - torch.expm1(-h_steps[i]) * cfg_denoised
             
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 
@@ -418,7 +418,7 @@ class DPMPPSDESampler(BaseSampler):
             
             state.update(denoised, None)
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 

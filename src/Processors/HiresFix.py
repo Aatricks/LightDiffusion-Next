@@ -6,7 +6,7 @@ to enhance detail at higher resolutions.
 
 import logging
 import random
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Callable
 
 import torch
 
@@ -39,6 +39,7 @@ class HiresFix:
         scale: float = None,
         denoise: float = None,
         steps: int = None,
+        callback: Optional[Callable] = None,
     ) -> dict:
         """Apply high-resolution fix to latents.
         
@@ -51,6 +52,7 @@ class HiresFix:
             scale: Upscale factor (default: 2.0)
             denoise: Denoising strength (default: 0.45)
             steps: Number of sampling steps (default: 50% of original)
+            callback: Optional callback for live previews
             
         Returns:
             Dictionary with upscaled and refined latents
@@ -151,6 +153,7 @@ class HiresFix:
                 enable_multiscale=False,
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                callback=callback,
             )
             
             logger.info("HiresFix: completed successfully")
@@ -170,6 +173,7 @@ class HiresFix:
         positive: Any,
         negative: Any,
         scale: float = None,
+        callback: Optional[Callable] = None,
     ) -> torch.Tensor:
         """Apply high-resolution fix starting from a decoded image.
         
@@ -182,6 +186,7 @@ class HiresFix:
             positive: Positive conditioning
             negative: Negative conditioning
             scale: Upscale factor
+            callback: Optional callback for live previews
             
         Returns:
             Enhanced image tensor
@@ -203,6 +208,7 @@ class HiresFix:
                 positive=positive,
                 negative=negative,
                 scale=scale,
+                callback=callback,
             )
             
             # Decode back to image

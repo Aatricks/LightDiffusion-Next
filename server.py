@@ -549,6 +549,13 @@ class GenerationBuffer:
                 # Build full paths and encode
                 b64_list = []
                 for entry in selected:
+                    if isinstance(entry, list):
+                        # Safeguard against nested lists if any processor still returns them
+                        entry = entry[0] if entry else {}
+                    
+                    if not isinstance(entry, dict):
+                        continue
+                        
                     filename = entry.get("filename", "")
                     path = os.path.join("./output", entry.get("subfolder", ""), filename)
                     try:
@@ -781,8 +788,6 @@ def sync_broadcast_preview(
 
     global _main_event_loop
     
-    # logger.info(f"debug: sync_broadcast_preview step={step}")
-    
     if not _preview_clients:
         if step % 10 == 0:
             logger.debug("No preview clients connected, skipping broadcast")
@@ -793,7 +798,7 @@ def sync_broadcast_preview(
         return
     
     try:
-        if step % 5 == 0:
+        if step % 5 == 0 or step == total_steps - 1:
             logger.info(f"Broadcasting preview step {step}/{total_steps}")
             
         future = asyncio.run_coroutine_threadsafe(
@@ -822,10 +827,11 @@ def make_server_callback(total_steps: int):
     def callback(args):
         # Extract step info from args dict
         step = args.get("i", 0)
+        curr_total_steps = args.get("total_steps", total_steps)
         
         # Only process images on broadcast steps to save compute
         # Broadcast every 5 steps or last step
-        is_broadcast_step = (step % 5 == 0) or (step == total_steps - 1)
+        is_broadcast_step = (step % 5 == 0) or (step == curr_total_steps - 1)
         
         images_b64 = None
         if is_broadcast_step:
@@ -853,7 +859,7 @@ def make_server_callback(total_steps: int):
                 pass
 
         # Broadcast progress update with images
-        sync_broadcast_preview(step, total_steps, images=images_b64, message_type="preview" if images_b64 else "progress")
+        sync_broadcast_preview(step, curr_total_steps, images=images_b64, message_type="preview" if images_b64 else "progress")
     
     return callback
 

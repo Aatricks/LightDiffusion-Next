@@ -35,11 +35,10 @@ def segs_bitwise_and_mask(segs: tuple, mask: torch.Tensor) -> tuple:
 
     for seg in segs[1]:
         cropped_mask = (seg.cropped_mask * 255).astype(np.uint8)
-        crop_region = seg.crop_region
+        # Ensure crop region coordinates are integers
+        x1, y1, x2, y2 = map(int, seg.crop_region)
 
-        cropped_mask2 = mask[
-            crop_region[1] : crop_region[3], crop_region[0] : crop_region[2]
-        ]
+        cropped_mask2 = mask[y1:y2, x1:x2]
 
         new_mask = np.bitwise_and(cropped_mask.astype(np.uint8), cropped_mask2)
         new_mask = new_mask.astype(np.float32) / 255.0

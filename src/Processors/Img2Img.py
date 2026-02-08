@@ -5,7 +5,7 @@ using the Ultimate SD Upscale approach.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Callable
 
 import numpy as np
 import torch
@@ -46,6 +46,7 @@ class Img2Img:
         image_tensor: torch.Tensor = None,
         upscale_by: float = None,
         denoise: float = None,
+        callback: Optional[Callable] = None,
     ) -> torch.Tensor:
         """Apply image-to-image transformation.
         
@@ -58,6 +59,7 @@ class Img2Img:
             image_tensor: Input image tensor [B, H, W, C] or [H, W, C]
             upscale_by: Upscale factor (default: 2)
             denoise: Denoising strength (default: 0.3)
+            callback: Optional callback for live previews
             
         Returns:
             Processed image tensor
@@ -137,6 +139,7 @@ class Img2Img:
                 vae=model.vae,
                 upscale_model=upscale_model,
                 pipeline=True,
+                callback=callback or ctx.callback,
             )
             
             logger.info("Img2Img: completed successfully")

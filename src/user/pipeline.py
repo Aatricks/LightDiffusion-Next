@@ -232,7 +232,7 @@ def pipeline(
         if app_ref is not None:
             step = args.get("i", 0)
             x0 = args.get("denoised")
-            total_steps = ctx.sampling.steps
+            total_steps = args.get("total_steps", ctx.sampling.steps)
             
             # Update progress tracker
             if total_steps > 0:

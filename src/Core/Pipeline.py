@@ -175,7 +175,7 @@ class Pipeline:
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
                 # HiresFix might need base model prompts if it was trained on them
-                latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg)
+                latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg, callback=ctx.callback)
                 ctx.current_latents = latents["samples"]
             
             self._check_interrupt()
@@ -192,7 +192,7 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, negative=hf_neg)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, negative=hf_neg, callback=ctx.callback)
             else:
                 # Save the image
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -281,7 +281,7 @@ class Pipeline:
                     except Exception as e:
                         logger.warning(f"LoRA failed: {e}")
                 
-                result = Img2Img.apply(ctx, model, positive, negative, image_tensor=img_tensor, denoise=denoise)
+                result = Img2Img.apply(ctx, model, positive, negative, image_tensor=img_tensor, denoise=denoise, callback=ctx.callback)
                 ctx.current_image = result
             else:
                 # True diffusion-based img2img with denoising strength
@@ -359,7 +359,7 @@ class Pipeline:
                 # Use refiner model and prompts if it was used
                 cur_model = refiner_model if (not use_upscale and use_refiner) else model
                 cur_neg = ref_negative if (not use_upscale and use_refiner) else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg, callback=ctx.callback)
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -508,7 +508,7 @@ class Pipeline:
                 # Use refiner model and prompts if it was used
                 cur_model = refiner_model if use_refiner else model
                 cur_neg = ref_negative if use_refiner else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg, callback=ctx.callback)
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -804,11 +804,13 @@ class Pipeline:
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
                     final, saved = Adetailer.apply(
                         final, single_ctx, model, 
-                        negative=[negative[i]] if isinstance(negative, list) else negative
+                        negative=[negative[i]] if isinstance(negative, list) else negative,
+                        callback=ctx.callback
                     )
-                    results.setdefault(req_id, []).extend(
-                        s.get("ui", {}).get("images", [s]) for s in saved
-                    )
+                    for s in saved:
+                        results.setdefault(req_id, []).extend(
+                            s.get("ui", {}).get("images", [s])
+                        )
                 except Exception as e:
                     logger.warning(f"Batch adetailer failed: {e}")
             
