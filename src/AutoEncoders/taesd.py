@@ -196,6 +196,13 @@ class TAESD(nn.Module):
             )
         if decoder_path is not None:
             sd = util.load_torch_file(decoder_path, safe_load=True)
+            
+            # Load top-level shift/scale parameters if they exist in the checkpoint
+            if "vae_shift" in sd:
+                self.vae_shift.data.copy_(sd["vae_shift"])
+            if "vae_scale" in sd:
+                self.vae_scale.data.copy_(sd["vae_scale"])
+                
             # Fix for Flux taef1 checkpoint structure
             if any(k.startswith("decoder.layers.") for k in sd.keys()):
                 new_sd = {}
@@ -213,7 +220,9 @@ class TAESD(nn.Module):
                             pass
                 self.taesd_decoder.load_state_dict(new_sd)
             else:
-                self.taesd_decoder.load_state_dict(sd)
+                # Filter out top-level parameters before loading into decoder
+                decoder_sd = {k: v for k, v in sd.items() if k not in ["vae_shift", "vae_scale"]}
+                self.taesd_decoder.load_state_dict(decoder_sd)
 
     @staticmethod
     def scale_latents(x: torch.Tensor) -> torch.Tensor:
@@ -276,7 +285,18 @@ from src.Device.ModelCache import get_model_cache
 
 
 def decode_latents_to_images(x: torch.Tensor, flux: bool = False) -> list[Image.Image]:
-    """Decode latents to PIL images using TAESD or approximation."""
+    """Decode latents to PIL images using TAESD or approximation.
+    
+    Includes robustness checks for NaN/Inf and out-of-range values that
+    can otherwise cause black preview images.
+    """
+    if x is None:
+        return []
+        
+    # Robustness: Handle NaNs and extreme values that cause black images
+    if torch.isnan(x).any() or torch.isinf(x).any():
+        x = torch.nan_to_num(x, nan=0.0, posinf=10.0, neginf=-10.0)
+    
     latent_channels = x.shape[1]
     cache = get_model_cache()
     
@@ -298,7 +318,11 @@ def decode_latents_to_images(x: torch.Tensor, flux: bool = False) -> list[Image.
             # Optimization for large batches: only preview up to 4 images
             if x.shape[0] > 4:
                 x = x[:4]
-            decoded_batch = taesd_instance.decode(x)
+            
+            # Robustness: Clamp latents to a reasonable range for the decoder
+            # Standard TAESD expects latents roughly in [-5, 5] to [-10, 10] range
+            x_clamped = torch.clamp(x, -12.0, 12.0)
+            decoded_batch = taesd_instance.decode(x_clamped)
 
         # Normalize to [0, 1] range for both SD and Flux
         # Note: No channel swap needed - TAESD outputs RGB correctly for all models
@@ -306,13 +330,32 @@ def decode_latents_to_images(x: torch.Tensor, flux: bool = False) -> list[Image.
     
     # For Flux2 (32 channels), use RGB approximation since no TAESD exists for 32ch
     elif latent_channels == 32:
-        pass # TODO: Implement Flux2 approximation if needed (complex dependency on src.Utilities.Latent)
+        try:
+            from src.Utilities import Latent
+            lf = Latent.Flux2()
+            factors = torch.tensor(lf.latent_rgb_factors, device=x.device, dtype=x.dtype)
+            bias = torch.tensor(lf.latent_rgb_factors_bias, device=x.device, dtype=x.dtype)
+            
+            # Simple linear preview: [B, 32, H, W] @ [32, 3] -> [B, 3, H, W]
+            with torch.no_grad():
+                if x.shape[0] > 4:
+                    x = x[:4]
+                
+                # Permute for matmul: [B, H, W, 32] @ [32, 3]
+                x_perm = x.permute(0, 2, 3, 1)
+                decoded_batch = torch.matmul(x_perm, factors) + bias
+                # Back to [B, 3, H, W]
+                decoded_batch = decoded_batch.permute(0, 3, 1, 2).clamp(0, 1)
+        except Exception:
+            return []
     
     else:
         return [] # Unsupported channels
 
     if decoded_batch is not None:
         # Optimization: Use non_blocking=True for CPU transfer to avoid GPU stall
+        # Final safety: ensure no NaNs survived to this point (uint8 cast of NaN is 0)
+        decoded_batch = torch.nan_to_num(decoded_batch, nan=0.0)
         decoded_np = (decoded_batch.mul(255.0).to("cpu", dtype=torch.uint8, non_blocking=True).numpy())
         
         # Use simple transpose and PIL conversion

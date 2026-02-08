@@ -314,6 +314,7 @@ class Pipeline:
                     image_tensor=img_tensor,
                     denoise=denoise,
                     last_step=base_last_step,
+                    callback=ctx.callback,
                 )
                 ctx.current_latents = latents["samples"]
                 
@@ -463,6 +464,7 @@ class Pipeline:
                 strength=strength,
                 original_image=img_tensor,
                 last_step=base_last_step,
+                callback=ctx.callback,
             )
             ctx.current_latents = latents["samples"]
             
@@ -790,6 +792,7 @@ class Pipeline:
                         single_latent, single_ctx, model,
                         [positive[i]] if isinstance(positive, list) else positive,
                         [negative[i]] if isinstance(negative, list) else negative,
+                        callback=ctx.callback,
                     )
                     final = model.decode(hires["samples"])[0]
                     if AutoHDRProcessor.is_enabled(ctx):

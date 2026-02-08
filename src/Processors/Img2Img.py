@@ -180,6 +180,7 @@ class Img2Img:
         image_tensor: torch.Tensor,
         denoise: float = 0.75,
         last_step: Optional[int] = None,
+        callback: Optional[Callable] = None,
     ) -> dict:
         """Simple image-to-image without upscaling.
         
@@ -247,7 +248,7 @@ class Img2Img:
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
                 last_step=last_step,
-                callback=ctx.callback,  # Enable live previews during sampling
+                callback=callback or ctx.callback,  # Enable live previews during sampling
             )
             
             return result[0]

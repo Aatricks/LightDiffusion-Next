@@ -24,3 +24,4 @@ GEMINI.md
 logs/
 *.log
 package-lock.json
+.github
