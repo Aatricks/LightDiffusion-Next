@@ -1012,21 +1012,50 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
 
 
 @app.get("/api/models")
-async def list_models() -> List[Dict[str, str]]:
-    """List available models with type detection."""
+async def list_models() -> List[Dict[str, Any]]:
+    """List available models with type detection and capabilities."""
     try:
-        # Local import to avoid circular dependency if relevant, though usually top-level is fine
-        from src.Core.Models.ModelFactory import list_available_models, detect_model_type
+        from src.Core.Models.ModelFactory import list_available_models, detect_model_type, create_model
         
         models = list_available_models(return_mapping=True)
         results = []
         for name, path in models:
             try:
+                # We create a temporary instance to get capabilities without full loading
+                # detect_model_type is fast
                 mtype = detect_model_type(path)
+                
+                # Get capabilities from the model class
+                # ModelFactory.create_model returns an uninitialized instance
+                model_instance = create_model(model_path=path, model_type=mtype)
+                caps = model_instance.capabilities
+                
+                # Convert capabilities dataclass to dict
+                cap_dict = {
+                    "supports_hires_fix": caps.supports_hires_fix,
+                    "supports_img2img": caps.supports_img2img,
+                    "supports_controlnet": caps.supports_controlnet,
+                    "supports_inpainting": caps.supports_inpainting,
+                    "supports_stable_fast": caps.supports_stable_fast,
+                    "supports_deepcache": caps.supports_deepcache,
+                    "supports_tome": caps.supports_tome,
+                    "preferred_resolution": caps.preferred_resolution,
+                }
+                
+                results.append({
+                    "name": name, 
+                    "path": path, 
+                    "type": mtype,
+                    "capabilities": cap_dict
+                })
             except Exception as e:
-                logger.warning(f"Failed to detect type for {name}: {e}")
-                mtype = "SD15"
-            results.append({"name": name, "path": path, "type": mtype})
+                logger.warning(f"Failed to detect type/caps for {name}: {e}")
+                results.append({
+                    "name": name, 
+                    "path": path, 
+                    "type": "SD15",
+                    "capabilities": {}
+                })
         return results
     except Exception as e:
         logger.error(f"Failed to list models: {e}")

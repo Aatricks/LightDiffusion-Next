@@ -63,8 +63,13 @@ def tensor_paste(
     _, h1, w1, _ = image1.shape
     _, h2, w2, _ = image2.shape
     w, h = min(w1, x + w2) - x, min(h1, y + h2) - y
-    mask = mask[:, :h, :w, :]
-    image1[:, y:y+h, x:x+w, :] = (1 - mask) * image1[:, y:y+h, x:x+w, :] + mask * image2[:, :h, :w, :]
+    
+    # Ensure all tensors are on the same device as image1
+    device = image1.device
+    mask = mask[:, :h, :w, :].to(device)
+    image2 = image2[:, :h, :w, :].to(device)
+    
+    image1[:, y:y+h, x:x+w, :] = (1 - mask) * image1[:, y:y+h, x:x+w, :] + mask * image2
 
 
 def tensor_convert_rgba(image: torch.Tensor, prefer_copy: bool = True) -> torch.Tensor:

@@ -60,10 +60,22 @@ export interface GenerationResponse {
     info?: string;
 }
 
+export interface ModelCapabilities {
+    supports_hires_fix: boolean;
+    supports_img2img: boolean;
+    supports_controlnet: boolean;
+    supports_inpainting: boolean;
+    supports_stable_fast: boolean;
+    supports_deepcache: boolean;
+    supports_tome: boolean;
+    preferred_resolution: number;
+}
+
 export interface ModelInfo {
     path: string;
     name: string;
     type: string;
+    capabilities: ModelCapabilities;
 }
 
 export interface PreviewMessage {

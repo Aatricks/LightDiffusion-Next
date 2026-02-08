@@ -60,7 +60,7 @@ def ksampler2(sampler_name, total_sigmas, extra_options={}, inpaint_options={}, 
                 kwargs["noise_sampler"] = noise_sampler
             return samplers.sample_dpmpp_2m_sde(model, x, sigmas, pipeline=pipeline, **kwargs)
         return sampling.KSAMPLER(sample_dpmpp_sde, extra_options, inpaint_options)
-    return sampling.sampler_object(sampler_name, pipeline=pipeline, extra_options=extra_options)
+    return sampling.ksampler(sampler_name, pipeline=pipeline, extra_options=extra_options)
 
 
 class Noise_RandomNoise:
@@ -173,6 +173,8 @@ class DetailerForEach:
             seg_seed = seed + i if seg_seed is None else seg_seed
 
             def crop_cond(cond_list):
+                if cond_list is None:
+                    return None
                 return [[c, {k: crop_condition_mask(v, image, seg.crop_region) if k == "mask" else v for k, v in d.items()}] for c, d in cond_list]
 
             orig_cropped_image = cropped_image.clone()
@@ -212,7 +214,6 @@ class DetailerForEachTest(DetailerForEach):
              scheduler_func_opt=None, pipeline=False):
         if len(image.shape) == 4 and image.shape[0] > 1:
             batch_size = image.shape[0]
-            print(f"ADetailer: Processing {batch_size} images in batch separately")
             results = [[], [], [], [], []]
             for i in range(batch_size):
                 # Check for interrupt before each batch item

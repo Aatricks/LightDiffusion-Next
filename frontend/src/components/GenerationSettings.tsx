@@ -42,6 +42,8 @@ export function GenerationSettings() {
 
     const modelOptions = availableModels.map(m => ({ value: m.path, label: m.name }));
     const controlNetOptions = availableControlNets.map(m => ({ value: m, label: m }));
+    const currentModel = availableModels.find(m => m.path === settings.model_path);
+    const caps = currentModel?.capabilities;
 
     return (
         <Stack gap="md" p="xs">
@@ -86,6 +88,16 @@ export function GenerationSettings() {
                             updates.sampler = "dpmpp_2m";
                             updates.scheduler = "karras";
                             updates.steps = 20;
+                        }
+                        
+                        // Disable features not supported by new model
+                        if (selectedModel.capabilities) {
+                            if (!selectedModel.capabilities.supports_hires_fix) updates.hiresfix = false;
+                            if (!selectedModel.capabilities.supports_img2img) updates.img2img_mode = false;
+                            if (!selectedModel.capabilities.supports_controlnet) updates.controlnet_enabled = false;
+                            if (!selectedModel.capabilities.supports_stable_fast) updates.stable_fast = false;
+                            if (!selectedModel.capabilities.supports_deepcache) updates.deepcache_enabled = false;
+                            if (!selectedModel.capabilities.supports_tome) updates.tome_enabled = false;
                         }
                     }
                     setSettings(updates);
@@ -210,6 +222,7 @@ export function GenerationSettings() {
                                         label="High Res Fix"
                                         checked={settings.hiresfix}
                                         onChange={(e) => setSettings({ hiresfix: e.currentTarget.checked })}
+                                        disabled={caps && !caps.supports_hires_fix}
                                     />
                                     <Switch
                                         label="ADetailer"
@@ -262,6 +275,7 @@ export function GenerationSettings() {
                                         label="Enable Img2Img"
                                         checked={settings.img2img_mode}
                                         onChange={(e) => setSettings({ img2img_mode: e.currentTarget.checked })}
+                                        disabled={caps && !caps.supports_img2img}
                                     />
                                     {settings.img2img_mode && (
                                         <ImageInput
@@ -289,6 +303,7 @@ export function GenerationSettings() {
                                         label="Enable ControlNet"
                                         checked={settings.controlnet_enabled}
                                         onChange={(e) => setSettings({ controlnet_enabled: e.currentTarget.checked })}
+                                        disabled={caps && !caps.supports_controlnet}
                                     />
                                     {settings.controlnet_enabled && (
                                         <>
@@ -331,13 +346,28 @@ export function GenerationSettings() {
                             <Accordion.Control>Performance & Optimizations</Accordion.Control>
                             <Accordion.Panel>
                                 <Stack gap="xs">
-                                    <Switch label="Stable Fast" checked={settings.stable_fast} onChange={(e) => setSettings({ stable_fast: e.currentTarget.checked })} />
+                                    <Switch
+                                        label="Stable Fast"
+                                        checked={settings.stable_fast}
+                                        onChange={(e) => setSettings({ stable_fast: e.currentTarget.checked })}
+                                        disabled={caps && !caps.supports_stable_fast}
+                                    />
                                     <Switch label="Keep Models Loaded" checked={settings.keep_models_loaded} onChange={(e) => setSettings({ keep_models_loaded: e.currentTarget.checked })} />
                                     <Switch label="Reuse Seed" checked={settings.reuse_seed} onChange={(e) => setSettings({ reuse_seed: e.currentTarget.checked })} />
 
                                     <Group mt="xs">
-                                        <Switch label="DeepCache" checked={settings.deepcache_enabled} onChange={(e) => setSettings({ deepcache_enabled: e.currentTarget.checked })} />
-                                        <Switch label="ToMe" checked={settings.tome_enabled} onChange={(e) => setSettings({ tome_enabled: e.currentTarget.checked })} />
+                                        <Switch
+                                            label="DeepCache"
+                                            checked={settings.deepcache_enabled}
+                                            onChange={(e) => setSettings({ deepcache_enabled: e.currentTarget.checked })}
+                                            disabled={caps && !caps.supports_deepcache}
+                                        />
+                                        <Switch
+                                            label="ToMe"
+                                            checked={settings.tome_enabled}
+                                            onChange={(e) => setSettings({ tome_enabled: e.currentTarget.checked })}
+                                            disabled={caps && !caps.supports_tome}
+                                        />
                                     </Group>
                                 </Stack>
                             </Accordion.Panel>

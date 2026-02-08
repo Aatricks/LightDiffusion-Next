@@ -168,12 +168,13 @@ class Pipeline:
             # but some people like refining the hires pass too.
             current_model = refiner_model if use_refiner else model
             
+            # Define prompts for post-processors (HiresFix, Adetailer)
+            hf_pos = ref_positive if use_refiner and ref_positive else positive
+            hf_neg = ref_negative if use_refiner and ref_negative else negative
+            
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
                 # HiresFix might need base model prompts if it was trained on them
-                hf_pos = ref_positive if use_refiner and ref_positive else positive
-                hf_neg = ref_negative if use_refiner and ref_negative else negative
-                
                 latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg)
                 ctx.current_latents = latents["samples"]
             
@@ -191,7 +192,7 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, hf_neg)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, negative=hf_neg)
             else:
                 # Save the image
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -300,6 +301,8 @@ class Pipeline:
                     ctx.generation.refiner_switch_step is not None and
                     0 < ctx.generation.refiner_switch_step < ctx.sampling.steps
                 )
+                refiner_model = None
+                ref_negative = None
                 base_last_step = ctx.generation.refiner_switch_step if use_refiner else None
                 
                 if use_refiner:
@@ -349,6 +352,15 @@ class Pipeline:
                 
                 ctx.current_image = image
             
+            # Apply Adetailer if enabled
+            from src.Processors import Adetailer
+            if Adetailer.is_enabled(ctx):
+                self._check_interrupt()
+                # Use refiner model and prompts if it was used
+                cur_model = refiner_model if (not use_upscale and use_refiner) else model
+                cur_neg = ref_negative if (not use_upscale and use_refiner) else negative
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg)
+
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
@@ -429,6 +441,9 @@ class Pipeline:
             ctx.generation.refiner_switch_step is not None and
             0 < ctx.generation.refiner_switch_step < ctx.sampling.steps
         )
+        refiner_model = None
+        ref_negative = None
+        
         if use_refiner:
             print(f"Refiner enabled for ControlNet: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
         
@@ -486,6 +501,15 @@ class Pipeline:
             
             ctx.current_image = image
             
+            # Apply Adetailer if enabled
+            from src.Processors import Adetailer
+            if Adetailer.is_enabled(ctx):
+                self._check_interrupt()
+                # Use refiner model and prompts if it was used
+                cur_model = refiner_model if use_refiner else model
+                cur_neg = ref_negative if use_refiner else negative
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg)
+
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
@@ -778,7 +802,10 @@ class Pipeline:
                 try:
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
-                    final, saved = Adetailer.apply(final, single_ctx, model, negative)
+                    final, saved = Adetailer.apply(
+                        final, single_ctx, model, 
+                        negative=[negative[i]] if isinstance(negative, list) else negative
+                    )
                     results.setdefault(req_id, []).extend(
                         s.get("ui", {}).get("images", [s]) for s in saved
                     )
