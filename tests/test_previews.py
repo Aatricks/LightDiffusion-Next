@@ -7,7 +7,9 @@ import time
 import subprocess
 import sys
 import os
+import pytest
 
+@pytest.mark.asyncio
 async def test_preview():
     # Start the server
     server_process = subprocess.Popen([sys.executable, "server.py"])

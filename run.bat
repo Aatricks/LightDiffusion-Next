@@ -41,12 +41,13 @@ IF EXIST requirements.txt (
 )
 
 REM Launch the script
-echo Launching LightDiffusion with Streamlit UI...
+echo Launching LightDiffusion-Next...
 echo.
-echo To use Gradio UI instead, run: python app.py
-echo For verbose mode, run: streamlit run streamlit_app.py -- --verbose
+echo Modern Stack (React + FastAPI): Launching automatically...
+echo Access the UI at: http://localhost:5173
 echo.
-streamlit run streamlit_app.py --logger.level=error
+
+python server.py --frontend
 
 REM Deactivate the virtual environment
 deactivate

@@ -108,6 +108,9 @@ dependencies = [
     "streamlit",
     "triton-windows; sys_platform == 'win32'",
     "tomesd",
+    "websockets>=12.0",
+    "wsproto",
+    "pytest-asyncio",
 ]
 
 [project.optional-dependencies]

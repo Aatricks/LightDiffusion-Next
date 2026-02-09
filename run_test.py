@@ -6,11 +6,13 @@ import os
 import base64
 import signal
 
+import sys
+
 def test_server():
     print("Starting server...")
     # Start server in a new process group to avoid being killed by window-CLOSE
     server_proc = subprocess.Popen(
-        [r".\.venv\Scripts\python.exe", "server.py"],
+        [sys.executable, "server.py"],
         stdout=open("server_test_stdout.log", "w"),
         stderr=open("server_test_stderr.log", "w"),
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP

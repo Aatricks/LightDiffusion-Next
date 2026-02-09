@@ -1098,5 +1098,42 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
+    import argparse
+    import subprocess
+    import signal
 
-    uvicorn.run("server:app", host="0.0.0.0", port=7861, reload=False)
+    parser = argparse.ArgumentParser(description="LightDiffusion Server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=7861, help="Port to bind to")
+    parser.add_argument("--frontend", action="store_true", help="Launch the frontend development server")
+    args = parser.parse_args()
+
+    frontend_proc = None
+    if args.frontend:
+        frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+        if os.path.exists(frontend_dir):
+            logger.info("Launching frontend development server...")
+            try:
+                # Use shell=True for windows to find npm
+                frontend_proc = subprocess.Popen(
+                    ["npm", "run", "dev"],
+                    cwd=frontend_dir,
+                    shell=True
+                )
+                logger.info("Frontend development server launched")
+            except Exception as e:
+                logger.error(f"Failed to launch frontend: {e}")
+        else:
+            logger.warning(f"Frontend directory not found at {frontend_dir}")
+
+    try:
+        uvicorn.run("server:app", host=args.host, port=args.port, reload=False, ws="websockets")
+    finally:
+        if frontend_proc:
+            logger.info("Shutting down frontend development server...")
+            if sys.platform == "win32":
+                # On Windows, we need to kill the process tree because shell=True creates a cmd.exe wrapper
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(frontend_proc.pid)], capture_output=True)
+            else:
+                frontend_proc.terminate()
+            logger.info("Frontend development server shut down")

@@ -14,10 +14,8 @@
 __pycache__
 .venv
 !HomeImage.png
-*.txt
 .jules/bolt.md
 uv.lock
-.gitignore
 webui_history.json
 GEMINI.md
 .history_backups
@@ -25,3 +23,5 @@ logs/
 *.log
 package-lock.json
 .github
+node_modules/
+frontend/node_modules/

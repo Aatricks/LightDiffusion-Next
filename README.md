@@ -113,11 +113,27 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 
 1. Download a release or clone this repository.
 2. Run `run.bat` in a terminal.
-3. The Streamlit UI will launch automatically at `http://localhost:8501`
+3. The modern React frontend will launch automatically at `http://localhost:5173` (proxied to the FastAPI backend at `http://localhost:7861`).
+
+**Recommended Launch Command:**
+```bash
+# Start both backend and frontend development server
+python server.py --frontend
+```
 
 **Alternative UIs:**
-- **Streamlit UI** (default): Modern, clean interface with better organization
-- **Gradio UI**: Run `python app.py` to use the original Gradio interface, mainly for huggingface spaces GPU compatibility.
+- **Streamlit UI**: Run `streamlit run streamlit_app.py` for the legacy clean interface.
+- **Gradio UI**: Run `python app.py` to use the original Gradio interface (mainly for HuggingFace Spaces).
+
+### 🌌 Flux Support
+
+LightDiffusion-Next now features first-class support for **Flux2 Klein**. To get started, you need to download the required model components (Diffusion Model, Text Encoder, and VAE).
+
+We provide a convenient script to handle this automatically:
+```bash
+python download_flux.py
+```
+This will download approximately 16GB of weights into the `include/` directory.
 
 ### 🐳 Docker Setup
 

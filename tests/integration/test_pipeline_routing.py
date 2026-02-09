@@ -57,6 +57,10 @@ def mock_all_heavy_dependencies(request):
     # Mock LoRA
     patches['lora_loader'] = patch('src.Model.LoRas.LoraLoader')
     
+    # Mock optimizations to ensure they return the model (allowing .called checks)
+    patches['sf_applier'] = patch('src.StableFast.StableFast.ApplyStableFastUnet')
+    patches['dc_applier'] = patch('src.WaveSpeed.deepcache_nodes.ApplyDeepCacheOnModel')
+    
     # Mock HiDiffusion
     patches['hidiff'] = patch('src.hidiffusion.msw_msa_attention.ApplyMSWMSAAttentionSimple')
     
@@ -86,8 +90,8 @@ def mock_all_heavy_dependencies(request):
     request.addfinalizer(teardown)
     
     # Configure default return values
-    mock_model_patcher = MagicMock()
-    mock_model_patcher.model = MagicMock()
+    from conftest import MockModelPatcher
+    mock_model_patcher = MockModelPatcher()
     mock_clip = MagicMock()
     mock_vae = MagicMock()
     
@@ -127,6 +131,10 @@ def mock_all_heavy_dependencies(request):
     # Mock image saver
     mocks['save_image'].return_value.save_images.return_value = {"ui": {"images": []}}
     mocks['save_image'].return_value.save_images_async = MagicMock()
+    
+    # Configure optimization appliers to return the mock model in a tuple
+    mocks['sf_applier'].return_value.apply_stable_fast.return_value = (mock_model_patcher,)
+    mocks['dc_applier'].return_value.patch.return_value = (mock_model_patcher,)
     
     yield mocks
 
@@ -372,37 +380,35 @@ class TestDeepCacheRouting:
         """deepcache_enabled=True should apply DeepCache patch."""
         from src.user.pipeline import pipeline
         
-        with patch('src.WaveSpeed.deepcache_nodes.ApplyDeepCacheOnModel') as mock_deepcache:
-            mock_deepcache.return_value.patch.return_value = (MagicMock(),)
-            
-            pipeline(
-                prompt="test",
-                w=512,
-                h=512,
-                deepcache_enabled=True,
-            )
-            
-            # DeepCache should be applied
-            assert mock_deepcache.return_value.patch.called, (
-                "DeepCache should be applied when deepcache_enabled=True"
-            )
+        pipeline(
+            prompt="test",
+            w=512,
+            h=512,
+            deepcache_enabled=True,
+        )
+        
+        # Verify the DeepCache applier was called
+        dc_applier = mock_all_heavy_dependencies['dc_applier']
+        assert dc_applier.return_value.patch.called, (
+            "DeepCache should be applied when deepcache_enabled=True"
+        )
     
     def test_deepcache_disabled_skips_patch(self, mock_all_heavy_dependencies):
         """deepcache_enabled=False should skip DeepCache patch."""
         from src.user.pipeline import pipeline
         
-        with patch('src.WaveSpeed.deepcache_nodes.ApplyDeepCacheOnModel') as mock_deepcache:
-            pipeline(
-                prompt="test",
-                w=512,
-                h=512,
-                deepcache_enabled=False,
-            )
-            
-            # DeepCache should NOT be applied
-            assert not mock_deepcache.return_value.patch.called, (
-                "DeepCache should NOT be applied when deepcache_enabled=False"
-            )
+        pipeline(
+            prompt="test",
+            w=512,
+            h=512,
+            deepcache_enabled=False,
+        )
+        
+        # Verify the DeepCache applier was NOT called
+        dc_applier = mock_all_heavy_dependencies['dc_applier']
+        assert not dc_applier.return_value.patch.called, (
+            "DeepCache should NOT be applied when deepcache_enabled=False"
+        )
 
 
 class TestStableFastRouting:
@@ -412,20 +418,18 @@ class TestStableFastRouting:
         """stable_fast=True should apply StableFast optimization."""
         from src.user.pipeline import pipeline
         
-        with patch('src.StableFast.StableFast.ApplyStableFastUnet') as mock_sf:
-            mock_sf.return_value.apply_stable_fast.return_value = (MagicMock(),)
-            
-            pipeline(
-                prompt="test",
-                w=512,
-                h=512,
-                stable_fast=True,
-            )
-            
-            # StableFast should be applied
-            assert mock_sf.return_value.apply_stable_fast.called, (
-                "StableFast should be applied when stable_fast=True"
-            )
+        pipeline(
+            prompt="test",
+            w=512,
+            h=512,
+            stable_fast=True,
+        )
+        
+        # Verify the StableFast applier was called
+        sf_applier = mock_all_heavy_dependencies['sf_applier']
+        assert sf_applier.return_value.apply_stable_fast.called, (
+            "StableFast should be applied when stable_fast=True"
+        )
 
 
 class TestBatchedPromptRouting:

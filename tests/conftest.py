@@ -38,6 +38,7 @@ class MockModelPatcher:
         self.model_type = model_type
         self.model = MagicMock()
         self.model.diffusion_model = MagicMock()
+        self.model.model_options = {}
         self.model.model_type = 0 # EPS
         self.model.model_sampling = MagicMock()
         self.model.model_sampling.sigma_min = 0.02
@@ -96,6 +97,16 @@ class MockModelPatcher:
     def remove_tome(self):
         """Mock ToMe removal."""
         pass
+
+    def apply_stable_fast(self, enable_cuda_graph: bool = True):
+        """Mock StableFast application."""
+        self.model.apply_stable_fast()
+        return self
+
+    def apply_deepcache(self, interval, depth, start, end):
+        """Mock DeepCache application."""
+        self.model.apply_deepcache()
+        return self
 
 
 class MockCLIP:

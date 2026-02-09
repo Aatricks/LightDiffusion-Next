@@ -1,5 +1,7 @@
 import glob
 import os
+import shutil
+from pathlib import Path
 
 from huggingface_hub import hf_hub_download
 
@@ -12,6 +14,8 @@ def CheckAndDownloadFlux2():
     - Qwen3 4B text encoder to ./include/text_encoder/
     - Flux VAE to ./include/vae/
     """
+    repo = "Comfy-Org/vae-text-encorder-for-flux-klein-4b"
+    
     # Check for diffusion model
     diffusion_dir = "./include/diffusion_model/"
     os.makedirs(diffusion_dir, exist_ok=True)
@@ -20,11 +24,21 @@ def CheckAndDownloadFlux2():
     if not flux2_models:
         print("Downloading Flux2 Klein diffusion model...")
         try:
-            hf_hub_download(
-                repo_id="Comfy-Org/vae-text-encorder-for-flux-klein-4b",
-                filename="split_files/diffusion_models/flux-2-klein-4b.safetensors",
+            filename = "split_files/diffusion_models/flux-2-klein-4b.safetensors"
+            path = hf_hub_download(
+                repo_id=repo,
+                filename=filename,
                 local_dir=diffusion_dir,
             )
+            # If it downloaded into a subfolder, move it up
+            if os.path.dirname(filename):
+                target = os.path.join(diffusion_dir, os.path.basename(filename))
+                if os.path.exists(path) and not os.path.exists(target):
+                    shutil.move(path, target)
+                    # Cleanup empty subfolders
+                    subfolder = os.path.join(diffusion_dir, filename.split('/')[0])
+                    if os.path.exists(subfolder):
+                        shutil.rmtree(subfolder)
         except Exception as e:
             print(f"Could not download Flux2 diffusion model: {e}")
     
@@ -36,12 +50,21 @@ def CheckAndDownloadFlux2():
     if not qwen_models:
         print("Downloading Qwen3 text encoder for Flux2 Klein...")
         try:
-            # Try to download Qwen text encoder weights
-            hf_hub_download(
-                repo_id="Comfy-Org/vae-text-encorder-for-flux-klein-4b",
-                filename="split_files/text_encoders/qwen_3_4b.safetensors", 
+            filename = "split_files/text_encoders/qwen_3_4b.safetensors"
+            path = hf_hub_download(
+                repo_id=repo,
+                filename=filename, 
                 local_dir=text_encoder_dir,
             )
+            # If it downloaded into a subfolder, move it up
+            if os.path.dirname(filename):
+                target = os.path.join(text_encoder_dir, os.path.basename(filename))
+                if os.path.exists(path) and not os.path.exists(target):
+                    shutil.move(path, target)
+                    # Cleanup empty subfolders
+                    subfolder = os.path.join(text_encoder_dir, filename.split('/')[0])
+                    if os.path.exists(subfolder):
+                        shutil.rmtree(subfolder)
         except Exception as e:
             print(f"Could not download Qwen text encoder: {e}")
     
@@ -53,11 +76,21 @@ def CheckAndDownloadFlux2():
     if not vae_models:
         print("Downloading Flux VAE...")
         try:
-            hf_hub_download(
-                repo_id="Comfy-Org/vae-text-encorder-for-flux-klein-4b",
-                filename="split_files/vae/flux2-vae.safetensors",
+            filename = "split_files/vae/flux2-vae.safetensors"
+            path = hf_hub_download(
+                repo_id=repo,
+                filename=filename,
                 local_dir=vae_dir,
             )
+            # If it downloaded into a subfolder, move it up
+            if os.path.dirname(filename):
+                target = os.path.join(vae_dir, os.path.basename(filename))
+                if os.path.exists(path) and not os.path.exists(target):
+                    shutil.move(path, target)
+                    # Cleanup empty subfolders
+                    subfolder = os.path.join(vae_dir, filename.split('/')[0])
+                    if os.path.exists(subfolder):
+                        shutil.rmtree(subfolder)
         except Exception as e:
             print(f"Could not download Flux VAE: {e}")
 
