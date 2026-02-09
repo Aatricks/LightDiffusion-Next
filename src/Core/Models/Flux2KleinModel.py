@@ -92,7 +92,7 @@ class Flux2KleinModel(AbstractModel):
             max_resolution=2048,
             preferred_resolution=1024,
             requires_resolution_multiple=16,  # Flux2 uses 16-pixel patches
-            supports_hires_fix=True,
+            supports_hires_fix=True, 
             supports_img2img=True,
             supports_inpainting=False,  # Not yet implemented for Flux2
             supports_controlnet=False,  # ControlNet support pending
@@ -242,6 +242,10 @@ class Flux2KleinModel(AbstractModel):
             
             # Store config for sampling
             self._model_config = self._create_model_config()
+            
+            # Attach model_sampling for sampler infrastructure
+            from src.sample import sampling
+            self.model.model_sampling = sampling.model_sampling(self._model_config, "flux2", flux=True, flux2=True)
             
             self._loaded = True
             logger.info(f"Flux2KleinModel: Successfully loaded all components")
@@ -561,7 +565,8 @@ class Flux2KleinModel(AbstractModel):
         
         # Create VAE using native implementation
         # Set flux=True if it's a Flux VAE (skips post_quant_conv)
-        vae = VariationalAE.VAE(sd=sd, flux=is_flux_vae)
+        # Use bfloat16 for better precision/memory balance on modern GPUs
+        vae = VariationalAE.VAE(sd=sd, flux=is_flux_vae, dtype=torch.bfloat16)
         
         return vae
     
@@ -677,22 +682,48 @@ class Flux2KleinModel(AbstractModel):
             
             # Use Klein encoder directly
             if isinstance(prompt, list):
-                prompt = prompt[0]  # Handle batch
-            
-            # Tokenize and encode positive
-            tokens = self.clip.tokenizer.tokenize_with_weights(prompt)
-            hidden_states, pooled, extra = self.clip.encode_token_weights(tokens)
+                # Encode each prompt in the batch
+                all_hidden = []
+                all_pooled = []
+                for p in prompt:
+                    tokens = self.clip.tokenizer.tokenize_with_weights(p)
+                    h, pol, _ = self.clip.encode_token_weights(tokens)
+                    all_hidden.append(h)
+                    # Handle cases where pooled output might be None (common in Klein/Qwen encoders)
+                    if pol is not None:
+                        all_pooled.append(pol)
+                
+                hidden_states = torch.cat(all_hidden, dim=0)
+                pooled = torch.cat(all_pooled, dim=0) if all_pooled else None
+            else:
+                # Single prompt
+                tokens = self.clip.tokenizer.tokenize_with_weights(prompt)
+                hidden_states, pooled, extra = self.clip.encode_token_weights(tokens)
             
             # Encode negative (or empty)
             neg_prompt = negative_prompt
             if neg_prompt:
                 if isinstance(neg_prompt, list):
-                    neg_prompt = neg_prompt[0]
-            else:
-                neg_prompt = ""  # Empty string for negative
+                    # We usually only need one negative for the whole batch or match batch size
+                    if len(neg_prompt) == 1:
+                        neg_prompt = neg_prompt[0]
+                    else:
+                        # Encode all negatives
+                        all_neg_hidden = []
+                        all_neg_pooled = []
+                        for np in neg_prompt:
+                            ntokens = self.clip.tokenizer.tokenize_with_weights(np)
+                            nh, npol, _ = self.clip.encode_token_weights(ntokens)
+                            all_neg_hidden.append(nh)
+                            if npol is not None:
+                                all_neg_pooled.append(npol)
+                        neg_hidden = torch.cat(all_neg_hidden, dim=0)
+                        neg_pooled = torch.cat(all_neg_pooled, dim=0) if all_neg_pooled else None
+                        neg_prompt = None # Mark as processed
             
-            neg_tokens = self.clip.tokenizer.tokenize_with_weights(neg_prompt)
-            neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
+            if neg_prompt is not None:
+                neg_tokens = self.clip.tokenizer.tokenize_with_weights(neg_prompt or "")
+                neg_hidden, neg_pooled, neg_extra = self.clip.encode_token_weights(neg_tokens)
             
             # Embeddings are already padded to 512 tokens by the tokenizer
             # Format as conditioning

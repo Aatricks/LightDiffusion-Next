@@ -3,16 +3,21 @@ from __future__ import annotations
 import base64
 import glob
 import os
+import io
+from src.AutoEncoders.taesd import decode_latents_to_images
 
 # Ensure we can import pipeline from this repo
 import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.Device.ModelCache import get_model_cache
+from src.Device.ModelCache import get_model_cache
+from src.Core.Models.ModelFactory import list_available_models, list_available_controlnets
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -100,15 +105,17 @@ class GenerateRequest(BaseModel):
     scheduler: str = "ays"
     sampler: str = "dpmpp_sde_cfgpp"
     steps: int = 20
-    hires_fix: bool = False
+    hiresfix: bool = False
     adetailer: bool = False
     enhance_prompt: bool = False
-    img2img_enabled: bool = False
+    img2img_mode: bool = False
     img2img_image: Optional[str] = None
+    img2img_denoise: float = 0.75  # Denoising strength: 0=keep original, 1=full generation
     stable_fast: bool = False
     reuse_seed: bool = False
     realistic_model: bool = False
-    multiscale_enabled: bool = True
+    enable_multiscale: bool = False
+    multiscale_preset: Optional[str] = "balanced"
     multiscale_intermittent: bool = True
     multiscale_factor: float = 0.5
     multiscale_fullres_start: int = 10
@@ -130,12 +137,44 @@ class GenerateRequest(BaseModel):
     dynamic_cfg_target_scale: float = 7.0
     adaptive_noise_enabled: bool = False
     adaptive_noise_method: str = "complexity"
-    # Optional extras (may not be used by the current pipeline but accepted)
+    # Guidance
+    cfg_scale: float = 7.0
     guidance_scale: Optional[float] = None
     seed: Optional[int] = None  # If provided >=0 we will reuse it
+    
+    # Model Selection
+    model_path: Optional[str] = None
+    refiner_model_path: Optional[str] = None
+    refiner_switch_step: Optional[int] = None
+
+    # ControlNet
+    controlnet_enabled: bool = False
+    controlnet_model: Optional[str] = None
+    controlnet_strength: float = 1.0
+    controlnet_type: str = "canny"
 
 
 app = FastAPI(title="LightDiffusion Server", version="1.0.0")
+
+
+@app.get("/api/controlnets")
+async def get_controlnets():
+    """List available ControlNet models."""
+    try:
+        models = list_available_controlnets()
+        return {"models": models}
+    except Exception as e:
+        logger.exception("Failed to list controlnets")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Capture event loop reference and start background worker."""
+    global _main_event_loop
+    _main_event_loop = asyncio.get_running_loop()
+    await _generation_buffer.start()
+    logger.info("Server startup complete, event loop captured for preview broadcasting")
 
 
 # Batching buffer -----------------------------------------------------------
@@ -247,25 +286,39 @@ class GenerationBuffer:
 
     def _signature_for(self, req: GenerateRequest) -> tuple:
         # Grouping signature - requests must match these to be batched
+        
+        # Detect model type to determine if refiner is relevant
+        from src.Core.Models.ModelFactory import detect_model_type
+        is_sdxl = (detect_model_type(req.model_path) == "SDXL")
+        
         return (
+            str(req.model_path),  # Model must match
             bool(req.realistic_model),
             int(req.width),
             int(req.height),
             bool(req.stable_fast),
-            bool(req.img2img_enabled),
+            bool(req.img2img_mode),
             str(req.scheduler),
             str(req.sampler),
             int(req.steps),
             # Treat multiscale options as batch-level — mixing them may
             # change the sampling schedule and therefore cannot be
             # safely combined into a single forward pass.
-            bool(req.multiscale_enabled),
+            bool(req.enable_multiscale),
             bool(req.multiscale_intermittent),
             float(req.multiscale_factor),
             int(req.multiscale_fullres_start),
             int(req.multiscale_fullres_end),
             # VRAM retention flags are also batch level
             bool(req.keep_models_loaded),
+            # ControlNet (must match)
+            bool(req.controlnet_enabled),
+            str(req.controlnet_model),
+            float(req.controlnet_strength),
+            str(req.controlnet_type),
+            # Refiner (must match only if it will actually be used)
+            str(req.refiner_model_path) if is_sdxl else "",
+            (int(req.refiner_switch_step) if req.refiner_switch_step is not None else -1) if is_sdxl else -1,
             # Note: hires_fix, adetailer, and enable_preview remain intentionally 
             # NOT part of this signature because they are executed per-sample
             # (or as side-effects) after or during a shared forward pass.
@@ -385,7 +438,7 @@ class GenerationBuffer:
                         "request_id": p.request_id,
                         "filename_prefix": f"LD-REQ-{p.request_id}",
                         "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
-                        "hires_fix": bool(p.req.hires_fix),
+                        "hires_fix": bool(p.req.hiresfix),
                         "adetailer": bool(p.req.adetailer),
                     }
                 )
@@ -401,15 +454,20 @@ class GenerationBuffer:
             scheduler=first_req.scheduler,
             sampler=first_req.sampler,
             steps=first_req.steps,
+            cfg_scale=first_req.cfg_scale if first_req.guidance_scale is None else first_req.guidance_scale,
             enhance_prompt=first_req.enhance_prompt,
-            img2img=first_req.img2img_enabled,
+            img2img=first_req.img2img_mode,
+            img2img_denoise=first_req.img2img_denoise,
             stable_fast=first_req.stable_fast,
             reuse_seed=first_req.reuse_seed,
             autohdr=True,
             realistic_model=first_req.realistic_model,
+            model_path=first_req.model_path,
+            refiner_model_path=first_req.refiner_model_path,
+            refiner_switch_step=first_req.refiner_switch_step,
             negative_prompt=[p.req.negative_prompt or "" for p in items for _ in range(max(1, p.req.num_images))],
-            multiscale_preset=None,
-            enable_multiscale=first_req.multiscale_enabled,
+            multiscale_preset=first_req.multiscale_preset,
+            enable_multiscale=first_req.enable_multiscale,
             multiscale_factor=first_req.multiscale_factor,
             multiscale_fullres_start=first_req.multiscale_fullres_start,
             multiscale_fullres_end=first_req.multiscale_fullres_end,
@@ -429,6 +487,12 @@ class GenerationBuffer:
             dynamic_cfg_target_scale=first_req.dynamic_cfg_target_scale,
             adaptive_noise_enabled=first_req.adaptive_noise_enabled,
             adaptive_noise_method=first_req.adaptive_noise_method,
+            # ControlNet
+            controlnet_model=first_req.controlnet_model if first_req.controlnet_enabled else None,
+            controlnet_strength=first_req.controlnet_strength,
+            controlnet_type=first_req.controlnet_type,
+            # Add callback for WebSocket preview broadcasting
+            callback=make_server_callback(first_req.steps),
         )
 
         # Toggle preview state for the duration of the pipeline call
@@ -485,9 +549,24 @@ class GenerationBuffer:
                 # Build full paths and encode
                 b64_list = []
                 for entry in selected:
-                    path = os.path.join("./output", entry.get("subfolder", ""), entry.get("filename", ""))
+                    if isinstance(entry, list):
+                        # Safeguard against nested lists if any processor still returns them
+                        entry = entry[0] if entry else {}
+                    
+                    if not isinstance(entry, dict):
+                        continue
+                        
+                    filename = entry.get("filename", "")
+                    path = os.path.join("./output", entry.get("subfolder", ""), filename)
                     try:
-                        b64_list.append(_encode_png_to_base64(path))
+                        b64_data = _encode_png_to_base64(path)
+                        mime_type = "image/png"
+                        if filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
+                            mime_type = "image/jpeg"
+                        elif filename.lower().endswith(".webp"):
+                            mime_type = "image/webp"
+                        
+                        b64_list.append(f"data:{mime_type};base64,{b64_data}")
                     except Exception as e:
                         logger.exception("Failed to read image for request %s: %s", p.request_id, e)
 
@@ -689,6 +768,180 @@ def _find_images_since(start_ts: float) -> List[str]:
     logger.debug("%d images modified since %.3f", len(recent), start_ts)
     return recent
 
+# WebSocket preview endpoint for real-time streaming
+_preview_clients: List[WebSocket] = []
+_main_event_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def sync_broadcast_preview(
+    step: int,
+    total_steps: int,
+    images: Optional[List[str]] = None,
+    message_type: str = "preview"
+):
+    """Synchronous wrapper to broadcast preview from pipeline thread.
+    
+    This function can be called from the pipeline callback running in a
+    thread pool executor. It schedules the async broadcast on the main
+    event loop.
+    """
+
+    global _main_event_loop
+    
+    if not _preview_clients:
+        if step % 10 == 0:
+            logger.debug("No preview clients connected, skipping broadcast")
+        return
+    
+    if _main_event_loop is None:
+        logger.error("Main event loop is None! Cannot broadcast preview.")
+        return
+    
+    try:
+        if step % 5 == 0 or step == total_steps - 1:
+            logger.info(f"Broadcasting preview step {step}/{total_steps}")
+            
+        future = asyncio.run_coroutine_threadsafe(
+            broadcast_preview(step, total_steps, images, message_type),
+            _main_event_loop
+        )
+        # Wait for broadcast to complete to ensure ordering
+        try:
+            future.result(timeout=0.5)
+        except Exception:
+            pass # Don't block generation on slow clients
+    except Exception as e:
+        logger.error(f"Preview broadcast failed: {e}")
+        pass  # Don't let preview errors affect generation
+
+
+def make_server_callback(total_steps: int):
+    """Create a pipeline callback that broadcasts progress via WebSocket.
+    
+    Args:
+        total_steps: Total number of sampling steps
+        
+    Returns:
+        Callback function compatible with pipeline
+    """
+    def callback(args):
+        # Extract step info from args dict
+        step = args.get("i", 0)
+        curr_total_steps = args.get("total_steps", total_steps)
+        
+        # Only process images on broadcast steps to save compute
+        # Broadcast every 5 steps or last step
+        is_broadcast_step = (step % 5 == 0) or (step == curr_total_steps - 1)
+        
+        images_b64 = None
+        if is_broadcast_step:
+            try:
+                # prefer denoised, fallback to x ONLY if early step
+                latents_tensor = args.get("denoised")
+                if latents_tensor is None and step < 5:
+                    latents_tensor = args.get("x")
+                
+                if latents_tensor is not None:
+                    # Detect flux from shape (Flux has 16 or 32 channels)
+                    # This is a heuristic, ideal would be to pass it in args
+                    is_flux = (latents_tensor.shape[1] == 16 or latents_tensor.shape[1] == 32)
+                    
+                    pil_images = decode_latents_to_images(latents_tensor, flux=is_flux)
+                    
+                    images_b64 = []
+                    for img in pil_images:
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="JPEG", quality=70)
+                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        images_b64.append(f"data:image/jpeg;base64,{img_str}")
+            except Exception as e:
+                logger.error(f"Preview generation failed: {e}")
+                pass
+
+        # Broadcast progress update with images
+        sync_broadcast_preview(step, curr_total_steps, images=images_b64, message_type="preview" if images_b64 else "progress")
+    
+    return callback
+
+
+@app.websocket("/ws/preview")
+async def websocket_preview(websocket: WebSocket):
+    """WebSocket endpoint for real-time preview streaming.
+    
+    Clients receive JSON messages with:
+    - type: "preview" | "progress" | "complete" | "error"
+    - step: Current step number
+    - total_steps: Total number of steps
+    - timestamp: Unix timestamp
+    - images: List of base64 encoded preview images (for "preview" type)
+    """
+    await websocket.accept()
+    _preview_clients.append(websocket)
+    logger.info("WebSocket client connected to /ws/preview (total: %d)", len(_preview_clients))
+    
+    try:
+        # Keep connection alive and listen for close
+        while True:
+            try:
+                # Wait for any message (ping/pong or close)
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                # Echo back to confirm alive
+                await websocket.send_json({"type": "pong", "timestamp": time.time()})
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                try:
+                    await websocket.send_json({"type": "ping", "timestamp": time.time()})
+                except Exception:
+                    break
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.debug("WebSocket connection error: %s", e)
+    finally:
+        if websocket in _preview_clients:
+            _preview_clients.remove(websocket)
+        logger.info("WebSocket client disconnected (remaining: %d)", len(_preview_clients))
+
+
+async def broadcast_preview(
+    step: int,
+    total_steps: int,
+    images: Optional[List[str]] = None,
+    message_type: str = "preview"
+):
+    """Broadcast preview update to all connected WebSocket clients.
+    
+    Args:
+        step: Current step number
+        total_steps: Total number of steps
+        images: Optional list of base64-encoded images
+        message_type: Type of message (preview, progress, complete, error)
+    """
+    if not _preview_clients:
+        return
+    
+    payload = {
+        "type": message_type,
+        "step": step,
+        "total_steps": total_steps,
+        "timestamp": time.time(),
+    }
+    
+    if images:
+        payload["images"] = images
+    
+    # Send to all clients, removing any that fail
+    disconnected = []
+    for client in _preview_clients:
+        try:
+            await client.send_json(payload)
+        except Exception:
+            disconnected.append(client)
+    
+    for client in disconnected:
+        if client in _preview_clients:
+            _preview_clients.remove(client)
+
 
 @app.post("/api/generate")
 async def generate(req: GenerateRequest) -> Dict[str, Any]:
@@ -721,7 +974,7 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         return s if len(s) <= n else s[:n] + "…"
 
     log.debug(
-        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hires_fix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
+        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hiresfix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
         req.width,
         req.height,
         req.num_images,
@@ -729,14 +982,14 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         req.scheduler,
         req.sampler,
         req.steps,
-        req.hires_fix,
+        req.hiresfix,
         req.adetailer,
         req.enhance_prompt,
-        req.img2img_enabled,
+        req.img2img_mode,
         req.stable_fast,
         reuse_seed,
         req.realistic_model,
-        req.multiscale_enabled,
+        req.enable_multiscale,
         req.multiscale_intermittent,
         req.multiscale_factor,
         req.multiscale_fullres_start,
@@ -762,6 +1015,85 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
     return result
 
     # Background worker will have returned the final result for this request.
+
+
+@app.get("/api/models")
+async def list_models() -> List[Dict[str, Any]]:
+    """List available models with type detection and capabilities."""
+    try:
+        from src.Core.Models.ModelFactory import list_available_models, detect_model_type, create_model
+        
+        models = list_available_models(return_mapping=True)
+        results = []
+        for name, path in models:
+            try:
+                # We create a temporary instance to get capabilities without full loading
+                # detect_model_type is fast
+                mtype = detect_model_type(path)
+                
+                # Get capabilities from the model class
+                # ModelFactory.create_model returns an uninitialized instance
+                model_instance = create_model(model_path=path, model_type=mtype)
+                caps = model_instance.capabilities
+                
+                # Convert capabilities dataclass to dict
+                cap_dict = {
+                    "supports_hires_fix": caps.supports_hires_fix,
+                    "supports_img2img": caps.supports_img2img,
+                    "supports_controlnet": caps.supports_controlnet,
+                    "supports_inpainting": caps.supports_inpainting,
+                    "supports_stable_fast": caps.supports_stable_fast,
+                    "supports_deepcache": caps.supports_deepcache,
+                    "supports_tome": caps.supports_tome,
+                    "preferred_resolution": caps.preferred_resolution,
+                }
+                
+                results.append({
+                    "name": name, 
+                    "path": path, 
+                    "type": mtype,
+                    "capabilities": cap_dict
+                })
+            except Exception as e:
+                logger.warning(f"Failed to detect type/caps for {name}: {e}")
+                results.append({
+                    "name": name, 
+                    "path": path, 
+                    "type": "SD15",
+                    "capabilities": {}
+                })
+        return results
+    except Exception as e:
+        logger.error(f"Failed to list models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/interrupt")
+async def interrupt_generation():
+    """Interrupt current generation."""
+    # Logic to interrupt generation
+    # We need to signal the pipeline to stop
+    # The pipeline checks app_instance.app.interrupt_flag
+    
+    if _app_instance and hasattr(_app_instance, "app") and _app_instance.app:
+        _app_instance.app.request_interrupt()
+        logger.info("Interrupt requested via API")
+        return {"status": "interrupted"}
+    else:
+        logger.error("Cannot interrupt: app_instance not available")
+        raise HTTPException(status_code=503, detail="App instance not available")
+
+
+
+
+
+# Mount frontend if build exists
+frontend_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+    logger.info(f"Serving frontend from {frontend_dist}")
+else:
+    logger.warning(f"Frontend build not found at {frontend_dist}. Run 'npm run build' in frontend directory.")
 
 
 if __name__ == "__main__":

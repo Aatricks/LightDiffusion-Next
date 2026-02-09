@@ -109,11 +109,29 @@ def rescale_size(width: int, height: int, target_res: int, tolerance=1) -> tuple
 def guess_model_type(model) -> ModelType | None:
     """Guess model type from latent format."""
     lf = model.get_model_object("latent_format")
+    if lf is None:
+        return None
+
+    # 1. Try explicit type checking (most reliable)
     try:
-        if isinstance(lf, Latent.SD15): return ModelType.SD15
-    except: pass
+        if isinstance(lf, Latent.SDXL) or isinstance(lf, Latent.SDXL_Playground_2_5):
+            return ModelType.SDXL
+        if isinstance(lf, Latent.SD15):
+            return ModelType.SD15
+    except Exception:
+        pass
+
+    # 2. Fallback to channel-based heuristics
     ch = getattr(lf, "latent_channels", None)
-    return ModelType.SD15 if ch == 4 else ModelType.SDXL if ch and ch >= 8 else None
+    if ch == 4:
+        # Default to SD15 for 4 channels if not explicitly SDXL
+        return ModelType.SD15
+    if ch == 8:
+        # Some SDXL implementations/VAEs use 8 channels
+        return ModelType.SDXL
+    
+    # 3. Exclude Flux/SD3 (16 or 32 channels) from UNet-specific HiDiffusion
+    return None
 
 
 def sigma_to_pct(ms, sigma):

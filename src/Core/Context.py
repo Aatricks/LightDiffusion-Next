@@ -78,7 +78,13 @@ class FeatureFlags:
     enhance_prompt: bool = False
     img2img: bool = False
     img2img_image: Optional[str] = None
+    img2img_denoise: float = 0.75  # Denoising strength: 0=no change, 1=full generation
     reuse_seed: bool = False
+    
+    # ControlNet settings
+    controlnet_model: Optional[str] = None  # Path to ControlNet model
+    controlnet_strength: float = 1.0  # Control strength (0-2)
+    controlnet_type: str = "canny"  # Preprocessor type: canny, none
 
 
 @dataclass
@@ -204,6 +210,28 @@ class Context:
     
     def build_metadata(self, extra: dict = None) -> dict:
         """Build PNG metadata dictionary."""
+        # Detect model type from path
+        model_type = "Unknown"
+        model_path = self.generation.model_path or "None"
+        if model_path and model_path != "None":
+            try:
+                from src.Core.Models.ModelFactory import detect_model_type
+                model_type = detect_model_type(model_path)
+            except Exception:
+                # Fallback to simple detection
+                path_lower = model_path.lower()
+                if "xl" in path_lower or "sdxl" in path_lower:
+                    model_type = "SDXL"
+                elif "flux" in path_lower:
+                    model_type = "Flux2Klein"
+                else:
+                    model_type = "SD15"
+        
+        # Calculate timing metrics
+        elapsed = time.time() - self.start_time
+        steps = self.sampling.steps
+        avg_iters = steps / elapsed if elapsed > 0 else 0
+        
         meta = {
             "prompt": str(self.prompt),
             "negative_prompt": str(self.negative_prompt),
@@ -212,12 +240,17 @@ class Context:
             "steps": str(self.sampling.steps),
             "cfg": str(self.sampling.cfg),
             "scheduler": self.sampling.scheduler,
+            "denoise": str(self.sampling.denoise),
             "width": str(self.generation.width),
             "height": str(self.generation.height),
+            "model_path": str(model_path),
+            "model_type": model_type,
             "hires_fix": str(self.features.hires_fix),
             "adetailer": str(self.features.adetailer),
             "refiner_model": str(self.generation.refiner_model_path or "None"),
             "refiner_switch": str(self.generation.refiner_switch_step or "None"),
+            "generation_duration": f"{elapsed:.3f}",
+            "avg_iters_per_s": f"{avg_iters:.3f}",
         }
         if extra:
             meta.update(extra)
@@ -282,7 +315,13 @@ class Context:
         ctx.features.enhance_prompt = kwargs.get("enhance_prompt", False)
         ctx.features.img2img = kwargs.get("img2img", False)
         ctx.features.img2img_image = kwargs.get("img2img_image")
+        ctx.features.img2img_denoise = kwargs.get("img2img_denoise", 0.75)
         ctx.features.reuse_seed = kwargs.get("reuse_seed", False)
+        
+        # ControlNet
+        ctx.features.controlnet_model = kwargs.get("controlnet_model")
+        ctx.features.controlnet_strength = kwargs.get("controlnet_strength", 1.0)
+        ctx.features.controlnet_type = kwargs.get("controlnet_type", "canny")
         
         # Handle multiscale preset
         preset = kwargs.get("multiscale_preset")

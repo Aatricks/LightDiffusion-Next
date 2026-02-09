@@ -287,6 +287,8 @@ class Flux2(nn.Module):
         control=None,
         transformer_options={},
         attn_mask=None,
+        img_h: int = None,
+        img_w: int = None,
     ) -> torch.Tensor:
         """Forward pass through the Flux2 model.
         
@@ -299,6 +301,8 @@ class Flux2(nn.Module):
             control: Optional control signals
             transformer_options: Dict with additional options
             attn_mask: Optional attention mask
+            img_h: Explicit height in pixels (optional)
+            img_w: Explicit width in pixels (optional)
             
         Returns:
             Output tensor of same shape as input img
@@ -315,26 +319,37 @@ class Flux2(nn.Module):
             # Input is [B, C, H, W]
             b, c, h_orig, w_orig = img.shape
             
-            # Auto-convert from VAE format if needed
+            # Use tensor shape by default
+            h, w = h_orig, w_orig
+            
+            # Auto-convert from VAE format if needed (32ch -> 128ch)
             if c == 32 and self.in_channels == 128:
                 img = self.latent_format.patchify_from_vae(img)
                 converted_from_vae = True
-                b, c, h, w = img.shape
-            else:
-                h, w = h_orig, w_orig
+                # Patches are 2x2 latents
+                h, w = img.shape[2], img.shape[3]
+            
+            # If explicit pixel dimensions were provided, they MUST be converted to tokens (16x16 pixels per token)
+            if img_h is not None and img_w is not None:
+                h, w = img_h // 16, img_w // 16
             
             # Pad to patch size (matches ComfyUI's pad_to_patch_size)
             img = self._pad_to_patch_size(img, self.patch_size)
-            _, _, h, w = img.shape
+            # Re-update h, w from padded shape if not using explicit pixel dims
+            if img_h is None:
+                _, _, h, w = img.shape
             
             img = self._patchify(img)
         else:
             # Assume already patchified [B, L, C]
             b = img.shape[0]
-            # Approximate H, W for img_ids
-            h = w = int(math.sqrt(img.shape[1] * self.patch_size * self.patch_size / self.in_channels))
-            h_orig = w_orig = h
-        
+            # Use explicit dimensions if provided, otherwise approximate
+            if img_h is not None and img_w is not None:
+                # Always convert pixel dimensions to tokens (16x16 pixels per token)
+                h, w = img_h // 16, img_w // 16
+            else:
+                h = w = int(math.sqrt(img.shape[1] * self.patch_size * self.patch_size / self.in_channels))
+            h_orig = w_orig = h        
         # Create position IDs for RoPE (number of axes matches axes_dim)
         # CRITICAL: Position IDs must ALWAYS be float32 for precision (matches ComfyUI)
         num_axes = len(self.params.axes_dim)
@@ -599,6 +614,10 @@ class Flux2(nn.Module):
         # Get attention mask for text conditioning (CRITICAL for padding masking)
         attention_mask = kwargs.get("attention_mask")
         
+        # Get explicit resolution if provided (important for accurate positional encoding)
+        img_h = transformer_options.get("img_h")
+        img_w = transformer_options.get("img_w")
+
         # Call forward
         output = self.forward(
             img=xc,
@@ -609,6 +628,8 @@ class Flux2(nn.Module):
             control=control,
             transformer_options=transformer_options,
             attn_mask=attention_mask,
+            img_h=img_h,
+            img_w=img_w,
         )
         
         return self.model_sampling.calculate_denoised(sigma, output.float(), x)

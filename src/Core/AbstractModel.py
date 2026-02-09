@@ -331,6 +331,10 @@ class AbstractModel(ABC):
         self.vae = None
         self._loaded = False
         
+        # Force garbage collection to release tensor references
+        import gc
+        gc.collect()
+        
         # Attempt to free GPU memory
         try:
             from src.Device import Device

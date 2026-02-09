@@ -17,6 +17,7 @@ Usage:
 import logging
 import os
 import random
+from typing import Callable
 
 import torch
 
@@ -92,11 +93,18 @@ def pipeline(
     adaptive_noise_method: str = "complexity",
     # Img2img
     img2img_image: str | None = None,
+    img2img_denoise: float = 0.75,  # Denoising strength: 0=no change, 1=full gen
     # Refiner
     refiner_model_path: str | None = None,
     refiner_switch_step: int | None = None,
+    # ControlNet
+    controlnet_model: str | None = None,
+    controlnet_strength: float = 1.0,
+    controlnet_type: str = "canny",
     # Batched mode
     per_sample_info: list | None = None,
+    # External callback
+    callback: Callable | None = None,
 ) -> dict:
     """Run the LightDiffusion pipeline.
 
@@ -190,8 +198,12 @@ def pipeline(
         adaptive_noise_enabled=adaptive_noise_enabled,
         adaptive_noise_method=adaptive_noise_method,
         img2img_image=img2img_image,
+        img2img_denoise=img2img_denoise,
         refiner_model_path=refiner_model_path,
         refiner_switch_step=refiner_switch_step,
+        controlnet_model=controlnet_model,
+        controlnet_strength=controlnet_strength,
+        controlnet_type=controlnet_type,
     )
     
     # Handle prompt enhancement
@@ -210,14 +222,17 @@ def pipeline(
     _last_seed = ctx.seeds[-1] if ctx.seeds else ctx.seed
     
     # Setup default callback for UI preview
+    # Setup default callback for UI preview
     def default_callback(args: dict):
         from src.user import app_instance
         from src.AutoEncoders import taesd
         app_ref = getattr(app_instance, "app", None)
+        
+        # Streamlit/Gradio UI preview
         if app_ref is not None:
             step = args.get("i", 0)
             x0 = args.get("denoised")
-            total_steps = ctx.sampling.steps
+            total_steps = args.get("total_steps", ctx.sampling.steps)
             
             # Update progress tracker
             if total_steps > 0:
@@ -231,6 +246,13 @@ def pipeline(
             else:
                 # Just update step info if no image is available
                 app_ref.update_image(app_ref.preview_images, step=step, total_steps=total_steps)
+        
+        # Chain external callback if provided
+        if callback is not None:
+            try:
+                callback(args)
+            except Exception:
+                pass
             
     ctx.callback = default_callback
     
@@ -238,7 +260,10 @@ def pipeline(
     pipeline_instance = get_default_pipeline()
     
     with torch.inference_mode():
-        if ctx.features.img2img:
+        if ctx.features.controlnet_model:
+            # ControlNet mode (uses input image for control, generates new content)
+            pipeline_instance.run_controlnet(ctx)
+        elif ctx.features.img2img:
             pipeline_instance.run_img2img(ctx)
         elif ctx.is_batched:
             return pipeline_instance.run_batched(ctx, per_sample_info)
@@ -288,8 +313,8 @@ if __name__ == "__main__":
     parser.add_argument("height", type=int, help="Image height")
     parser.add_argument("number", type=int, default=1, help="Number of images")
     parser.add_argument("batch", type=int, default=1, help="Batch size")
-    parser.add_argument("--scheduler", type=str, default="ays")
-    parser.add_argument("--sampler", type=str, default="dpmpp_sde_cfgpp")
+    parser.add_argument("--scheduler", type=str, default="karras")
+    parser.add_argument("--sampler", type=str, default="dpmpp_2m_cfgpp")
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--hires-fix", action="store_true")
     parser.add_argument("--adetailer", action="store_true")

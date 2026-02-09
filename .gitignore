@@ -20,3 +20,8 @@ uv.lock
 .gitignore
 webui_history.json
 GEMINI.md
+.history_backups
+logs/
+*.log
+package-lock.json
+.github

@@ -17,7 +17,7 @@ class UnsupportedModel(Exception):
 class StableDiffusionProcessing:
     """Container for SD processing parameters."""
     def __init__(self, init_img: Image.Image, model, positive, negative, vae, seed, steps, cfg,
-                 sampler_name, scheduler, denoise, upscale_by, uniform_tile_mode):
+                 sampler_name, scheduler, denoise, upscale_by, uniform_tile_mode, callback=None):
         self.init_images = [init_img]
         self.image_mask = None
         self.mask_blur = 0
@@ -29,6 +29,7 @@ class StableDiffusionProcessing:
         self.init_size = (init_img.width, init_img.height)
         self.upscale_by, self.uniform_tile_mode = upscale_by, uniform_tile_mode
         self.extra_generation_params = {}
+        self.callback = callback
 
 
 class Processed:
@@ -91,7 +92,7 @@ def process_images(p, pipeline=False):
     (samples,) = sampling.common_ksampler(p.model, p.seed, p.steps, p.cfg, p.sampler_name, p.scheduler,
                                           positive_cropped, negative_cropped, latent, denoise=p.denoise, 
                                           pipeline=pipeline, flux=is_flux, flux2=is_flux2,
-                                          model_options=model_options)
+                                          model_options=model_options, callback=p.callback)
     (decoded,) = VariationalAE.VAEDecode().decode(p.vae, samples)
 
     for i, tile_sampled in enumerate([image_util.tensor_to_pil(decoded, j) for j in range(len(decoded))]):
@@ -375,14 +376,14 @@ class UltimateSDUpscale:
     def upscale(self, image, model, positive, negative, vae, upscale_by, seed, steps, cfg, sampler_name,
                 scheduler, denoise, upscale_model, mode_type, tile_width, tile_height, mask_blur, tile_padding,
                 seam_fix_mode, seam_fix_denoise, seam_fix_mask_blur, seam_fix_width, seam_fix_padding,
-                force_uniform_tiles, pipeline=False):
+                force_uniform_tiles, pipeline=False, callback=None):
         USDU_upscaler.sd_upscalers[0] = USDU_upscaler.UpscalerData()
         USDU_upscaler.actual_upscaler = upscale_model
         USDU_upscaler.batch = [image_util.tensor_to_pil(image, i) for i in range(len(image))]
 
         sdprocessing = StableDiffusionProcessing(
             image_util.tensor_to_pil(image), model, positive, negative, vae, seed, steps, cfg,
-            sampler_name, scheduler, denoise, upscale_by, force_uniform_tiles)
+            sampler_name, scheduler, denoise, upscale_by, force_uniform_tiles, callback=callback)
 
         Script().run(
             p=sdprocessing, _=None, tile_width=tile_width, tile_height=tile_height, mask_blur=mask_blur,

@@ -197,8 +197,10 @@ class SD15Model(AbstractModel):
             # Apply HiDiffusion optimization only for very high resolutions
             if ctx.generation.width > 2048 or ctx.generation.height > 2048:
                 try:
+                    # Clone model before patching
+                    patch_model = self.model.clone()
                     hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-                    optimized_model = hidiff.go(model_type="sd15", model=self.model)[0]
+                    optimized_model = hidiff.go(model_type="sd15", model=patch_model)[0]
                 except Exception:
                     optimized_model = self.model
             else:

@@ -43,7 +43,11 @@ class MultiscaleManager:
         self.config = config
         
         # Calculate scaled dimensions (multiples of 8)
-        self.active = config.enabled and 0.1 <= config.factor <= 1.0 and config.fullres_start >= 0 and config.fullres_end >= 0
+        # CRITICAL: Disable multi-scale for Flux (16 or 32 channels)
+        is_flux = shape[1] in (16, 32)
+        
+        self.active = config.enabled and 0.1 <= config.factor <= 1.0 and config.fullres_start >= 0 and config.fullres_end >= 0 and not is_flux
+        
         if self.active:
             self.scale_h = int(max(8, ((self.orig_h * config.factor) // 8) * 8))
             self.scale_w = int(max(8, ((self.orig_w * config.factor) // 8) * 8))
@@ -53,6 +57,8 @@ class MultiscaleManager:
         
         if self.active:
             print(f"Multi-scale: {self.orig_h}x{self.orig_w} -> {self.scale_h}x{self.scale_w}")
+        elif config.enabled and is_flux:
+            print("Multi-scale disabled: not compatible with Flux architecture")
         
         self._schedule = [self._should_fullres(i) for i in range(n_steps)]
     
@@ -288,7 +294,7 @@ class EulerSampler(BaseSampler):
             
             x = x + util.to_d(x, sigma_hat, cfg_denoised) * (sigmas[i + 1] - sigma_hat)
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 
@@ -320,7 +326,7 @@ class EulerAncestralSampler(BaseSampler):
                 x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
             
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 
@@ -352,7 +358,7 @@ class DPMPP2MSampler(BaseSampler):
             x = ratios[i] * x - torch.expm1(-h_steps[i]) * cfg_denoised
             
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 
@@ -412,7 +418,7 @@ class DPMPPSDESampler(BaseSampler):
             
             state.update(denoised, None)
             if callback:
-                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised})
+                callback({"x": x, "i": i, "sigma": sigmas[i], "denoised": denoised, "total_steps": n_steps})
             cb.preview(x, i)
         return x
 

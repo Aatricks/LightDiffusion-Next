@@ -8,7 +8,7 @@ import logging
 import random
 import re
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Callable
 
 import numpy as np
 import torch
@@ -42,6 +42,7 @@ class Adetailer:
         model: "AbstractModel",
         positive: Any = None,
         negative: Any = None,
+        callback: Optional[Callable] = None,
     ) -> tuple[torch.Tensor, list[dict]]:
         """Apply automatic face and body enhancement.
         
@@ -51,6 +52,7 @@ class Adetailer:
             model: The loaded model instance
             positive: Optional positive conditioning (uses default if not provided)
             negative: Negative conditioning from original generation
+            callback: Optional callback for live previews
             
         Returns:
             Tuple of (enhanced_image, list_of_saved_intermediate_images_metadata)
@@ -171,6 +173,7 @@ class Adetailer:
                 positive=adetailer_positive,
                 negative=negative,
                 pipeline=True,
+                callback=callback,
             )
             
             # Extract enhanced body image
@@ -271,6 +274,7 @@ class Adetailer:
                 positive=adetailer_positive,
                 negative=negative,
                 pipeline=True,
+                callback=callback,
             )
             
             # Extract final enhanced image

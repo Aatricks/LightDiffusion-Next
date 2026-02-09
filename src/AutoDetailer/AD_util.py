@@ -85,13 +85,13 @@ def make_crop_region(w: int, h: int, bbox: List, crop_factor: float) -> List:
 
 def crop_ndarray2(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     """Crop 2D array [H,W]."""
-    x1, y1, x2, y2 = crop_region
+    x1, y1, x2, y2 = map(int, crop_region)
     return npimg[y1:y2, x1:x2]
 
 
 def crop_ndarray4(npimg: np.ndarray, crop_region: List) -> np.ndarray:
     """Crop 4D array [B,H,W,C]."""
-    x1, y1, x2, y2 = crop_region
+    x1, y1, x2, y2 = map(int, crop_region)
     return npimg[:, y1:y2, x1:x2, :]
 
 

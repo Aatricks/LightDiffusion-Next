@@ -85,17 +85,25 @@ class Pipeline:
         model = self._load_model(ctx)
         
         # 2. Apply optimizations to base model
-        self._apply_optimizations(ctx, model)
+        if not getattr(model.model, "model_options", {}).get("model_function_wrapper"):
+            self._apply_optimizations(ctx, model)
         
         # 3. Encode prompts for base model
         positive, negative = self._encode_prompts(ctx, model)
         ctx.positive_cond = positive
         ctx.negative_cond = negative
         
-        # 4. Handle refiner preparation if enabled
+        # 4. Handle refiner preparation if enabled (SDXL only)
         refiner_model = None
         ref_positive, ref_negative = None, None
-        use_refiner = bool(ctx.generation.refiner_model_path and ctx.generation.refiner_switch_step is not None)
+        
+        is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
+        use_refiner = bool(
+            is_sdxl and 
+            ctx.generation.refiner_model_path and 
+            ctx.generation.refiner_switch_step is not None and
+            0 < ctx.generation.refiner_switch_step < ctx.sampling.steps
+        )
         
         if use_refiner:
             print(f"Refiner enabled: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
@@ -160,13 +168,14 @@ class Pipeline:
             # but some people like refining the hires pass too.
             current_model = refiner_model if use_refiner else model
             
+            # Define prompts for post-processors (HiresFix, Adetailer)
+            hf_pos = ref_positive if use_refiner and ref_positive else positive
+            hf_neg = ref_negative if use_refiner and ref_negative else negative
+            
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
                 # HiresFix might need base model prompts if it was trained on them
-                hf_pos = ref_positive if use_refiner and ref_positive else positive
-                hf_neg = ref_negative if use_refiner and ref_negative else negative
-                
-                latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg)
+                latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg, callback=ctx.callback)
                 ctx.current_latents = latents["samples"]
             
             self._check_interrupt()
@@ -183,7 +192,7 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, hf_neg)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, negative=hf_neg, callback=ctx.callback)
             else:
                 # Save the image
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -200,6 +209,10 @@ class Pipeline:
     def run_img2img(self, ctx: Context) -> Context:
         """Run image-to-image generation pipeline.
         
+        Supports two modes:
+        1. Upscale mode: When target dimensions are larger than input (uses USDU)
+        2. Diffusion mode: True img2img with denoising strength (uses simple_img2img)
+        
         Args:
             ctx: Context with img2img_image set
             
@@ -208,37 +221,311 @@ class Pipeline:
         """
         from src.Processors import Img2Img
         from src.FileManaging import ImageSaver
+        from PIL import Image
+        import numpy as np
+        import torch
         
         self._check_interrupt()
         
         model = self._load_model(ctx)
         self._apply_optimizations(ctx, model)
         
-        # Higher LoRA strength for img2img - only if supported
-        if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
-            try:
-                model.apply_lora(self.default_lora[0], 2.0, 2.0)
-            except Exception as e:
-                logger.warning(f"LoRA failed: {e}")
-        
         positive, negative = self._encode_prompts(ctx, model)
         saver = ImageSaver.SaveImage()
+        
+        # Load input image to determine mode
+        img_path = ctx.features.img2img_image
+        if not img_path:
+            raise ValueError("No input image provided for img2img")
+        
+        img = Image.open(img_path)
+        input_w, input_h = img.size
+        target_w, target_h = ctx.generation.width, ctx.generation.height
+        
+        # Convert image to tensor [B, H, W, C]
+        img_array = np.array(img.convert("RGB"))
+        img_tensor = torch.from_numpy(img_array).float().cpu() / 255.0
+        if img_tensor.dim() == 3:
+            img_tensor = img_tensor.unsqueeze(0)
+        
+        # Determine mode: upscale if target is larger, otherwise diffusion
+        use_upscale = (target_w > input_w * 1.1) or (target_h > input_h * 1.1)
+        denoise = ctx.features.img2img_denoise
+        
+        # Inject SDXL size conditioning if required
+        if getattr(model.capabilities, 'requires_size_conditioning', False):
+            for cond_list in [positive, negative]:
+                for cond_item in cond_list:
+                    if len(cond_item) > 1 and isinstance(cond_item[1], dict):
+                        cond_item[1].update({
+                            "width": target_w,
+                            "height": target_h,
+                            "crop_w": 0,
+                            "crop_h": 0,
+                            "target_width": target_w,
+                            "target_height": target_h,
+                        })
+        
+        logger.info(f"Img2Img: input={input_w}x{input_h}, target={target_w}x{target_h}, denoise={denoise:.2f}, mode={'upscale' if use_upscale else 'diffusion'}")
         
         for seed in ctx.seeds[:ctx.generation.number]:
             self._check_interrupt()
             ctx.seed = seed
             
-            result = Img2Img.apply(ctx, model, positive, negative)
-            ctx.current_image = result
+            if use_upscale:
+                # Use USDU upscaler (existing behavior)
+                # Higher LoRA strength for img2img upscaling
+                if self.default_lora and getattr(model.capabilities, 'supports_lora', True):
+                    try:
+                        model.apply_lora(self.default_lora[0], 2.0, 2.0)
+                    except Exception as e:
+                        logger.warning(f"LoRA failed: {e}")
+                
+                result = Img2Img.apply(ctx, model, positive, negative, image_tensor=img_tensor, denoise=denoise, callback=ctx.callback)
+                ctx.current_image = result
+            else:
+                # True diffusion-based img2img with denoising strength
+                # Resize input image to target dimensions if different
+                if input_w != target_w or input_h != target_h:
+                    resized_img = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    img_array = np.array(resized_img.convert("RGB"))
+                    img_tensor = torch.from_numpy(img_array).float().cpu() / 255.0
+                    if img_tensor.dim() == 3:
+                        img_tensor = img_tensor.unsqueeze(0)
+                
+                # Check if refiner is enabled BEFORE running base model (SDXL only)
+                is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
+                use_refiner = bool(
+                    is_sdxl and 
+                    ctx.generation.refiner_model_path and 
+                    ctx.generation.refiner_switch_step is not None and
+                    0 < ctx.generation.refiner_switch_step < ctx.sampling.steps
+                )
+                refiner_model = None
+                ref_negative = None
+                base_last_step = ctx.generation.refiner_switch_step if use_refiner else None
+                
+                if use_refiner:
+                    print(f"Stage 1: Running Base model ({ctx.generation.refiner_switch_step}/{ctx.sampling.steps} steps)...")
+                
+                # Run simple_img2img for true diffusion-based generation
+                latents = Img2Img.simple_img2img(
+                    ctx, model, positive, negative,
+                    image_tensor=img_tensor,
+                    denoise=denoise,
+                    last_step=base_last_step,
+                    callback=ctx.callback,
+                )
+                ctx.current_latents = latents["samples"]
+                
+                # Apply refiner if enabled
+                if use_refiner:
+                    self._check_interrupt()
+                    
+                    # Load refiner model
+                    refiner_model = self._load_refiner_model(ctx)
+                    self._apply_optimizations(ctx, refiner_model)
+                    
+                    # Encode prompts for refiner (it has different CLIP)
+                    ref_positive, ref_negative = self._encode_prompts(ctx, refiner_model)
+                    
+                    # Disable multi-scale for refiner pass
+                    orig_ms = ctx.sampling.enable_multiscale
+                    ctx.sampling.enable_multiscale = False
+                    
+                    steps_for_refiner = ctx.sampling.steps - ctx.generation.refiner_switch_step
+                    print(f"Img2Img Refiner: Running {steps_for_refiner}/{ctx.sampling.steps} steps...")
+                    refiner_latents = refiner_model.generate(
+                        ctx, ref_positive, ref_negative,
+                        latent_image=latents,
+                        start_step=ctx.generation.refiner_switch_step,
+                        disable_noise=True,
+                        callback=ctx.callback
+                    )
+                    ctx.current_latents = refiner_latents["samples"]
+                    ctx.sampling.enable_multiscale = orig_ms
+                    
+                    # Decode using refiner's VAE
+                    image = refiner_model.decode(ctx.current_latents)
+                else:
+                    # Decode to image using base model
+                    image = model.decode(ctx.current_latents)
+                
+                ctx.current_image = image
             
+            # Apply Adetailer if enabled
+            from src.Processors import Adetailer
+            if Adetailer.is_enabled(ctx):
+                self._check_interrupt()
+                # Use refiner model and prompts if it was used
+                cur_model = refiner_model if (not use_upscale and use_refiner) else model
+                cur_neg = ref_negative if (not use_upscale and use_refiner) else negative
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg, callback=ctx.callback)
+
+            # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
-            saver.save_images(
+            # Save the image with metadata including denoise value
+            saver.save_images_async(
                 filename_prefix="LD-I2I",
                 images=ctx.current_image,
                 prompt=str(ctx.prompt),
-                extra_pnginfo=ctx.build_metadata({"img2img": "True"}),
+                extra_pnginfo=ctx.build_metadata({
+                    "img2img": "True",
+                    "img2img_denoise": str(denoise),
+                    "img2img_mode": "upscale" if use_upscale else "diffusion",
+                }),
+            )
+        
+        ctx.save_seed()
+        return ctx
+    
+    def run_controlnet(self, ctx: Context) -> Context:
+        """Run ControlNet-style generation using Canny edges + img2img.
+        
+        This uses edge detection to preserve structure while allowing
+        color and content changes via high-denoise img2img.
+        
+        Args:
+            ctx: Context with controlnet_model, img2img_image set
+            
+        Returns:
+            Context with generated images
+        """
+        from src.Processors import ControlNet as CNProcessor
+        from src.FileManaging import ImageSaver
+        from PIL import Image
+        import numpy as np
+        
+        self._check_interrupt()
+        
+        # Validate inputs
+        if not ctx.features.img2img_image:
+            raise ValueError("No input image provided for ControlNet")
+        
+        model = self._load_model(ctx)
+        self._apply_optimizations(ctx, model)
+        
+        # Load and preprocess input image
+        img_path = ctx.features.img2img_image
+        img = Image.open(img_path)
+        img = img.resize((ctx.generation.width, ctx.generation.height), Image.Resampling.LANCZOS)
+        
+        # Convert to tensor [B, H, W, C]
+        img_array = np.array(img.convert("RGB"))
+        img_tensor = torch.from_numpy(img_array).float().cpu() / 255.0
+        if img_tensor.dim() == 3:
+            img_tensor = img_tensor.unsqueeze(0)
+        
+        # Apply preprocessor (Canny edge detection by default)
+        control_image = CNProcessor.ControlNetProcessor.preprocess_image(
+            img_tensor,
+            preprocessor=ctx.features.controlnet_type,
+        )
+        
+        strength = ctx.features.controlnet_strength
+        logger.info(f"ControlNet-style: {ctx.features.controlnet_type} edges, strength={strength}")
+        
+        # Encode prompts
+        positive, negative = self._encode_prompts(ctx, model)
+        
+        saver = ImageSaver.SaveImage()
+        
+        is_flux2 = getattr(model.capabilities, "is_flux2", False)
+        
+        # Check if refiner is enabled (SDXL only)
+        is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
+        use_refiner = bool(
+            is_sdxl and 
+            ctx.generation.refiner_model_path and 
+            ctx.generation.refiner_switch_step is not None and
+            0 < ctx.generation.refiner_switch_step < ctx.sampling.steps
+        )
+        refiner_model = None
+        ref_negative = None
+        
+        if use_refiner:
+            print(f"Refiner enabled for ControlNet: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
+        
+        for seed in ctx.seeds[:ctx.generation.number]:
+            self._check_interrupt()
+            ctx.seed = seed
+            
+            # Use the Canny+img2img approach, passing original image for blending
+            # When refiner is enabled, stop base model at refiner switch step
+            base_last_step = ctx.generation.refiner_switch_step if use_refiner else None
+            if use_refiner:
+                print(f"Stage 1: Running Base model ({ctx.generation.refiner_switch_step}/{ctx.sampling.steps} steps)...")
+            
+            latents, ctx = CNProcessor.apply_controlnet_to_img2img(
+                ctx, model, positive, negative,
+                control_image=control_image,
+                strength=strength,
+                original_image=img_tensor,
+                last_step=base_last_step,
+                callback=ctx.callback,
+            )
+            ctx.current_latents = latents["samples"]
+            
+            # Apply refiner if enabled
+            if use_refiner:
+                self._check_interrupt()
+                
+                # Load refiner model
+                refiner_model = self._load_refiner_model(ctx)
+                self._apply_optimizations(ctx, refiner_model)
+                
+                # Encode prompts for refiner (it has different CLIP)
+                ref_positive, ref_negative = self._encode_prompts(ctx, refiner_model)
+                
+                # Disable multi-scale for refiner pass
+                orig_ms = ctx.sampling.enable_multiscale
+                ctx.sampling.enable_multiscale = False
+                
+                steps_for_refiner = ctx.sampling.steps - ctx.generation.refiner_switch_step
+                print(f"ControlNet Refiner: Running {steps_for_refiner}/{ctx.sampling.steps} steps...")
+                refiner_latents = refiner_model.generate(
+                    ctx, ref_positive, ref_negative,
+                    latent_image=latents,
+                    start_step=ctx.generation.refiner_switch_step,
+                    disable_noise=True,
+                    callback=ctx.callback
+                )
+                ctx.current_latents = refiner_latents["samples"]
+                ctx.sampling.enable_multiscale = orig_ms
+                
+                # Decode using refiner's VAE
+                image = refiner_model.decode(ctx.current_latents)
+            else:
+                # Decode to image using base model
+                image = model.decode(ctx.current_latents)
+            
+            ctx.current_image = image
+            
+            # Apply Adetailer if enabled
+            from src.Processors import Adetailer
+            if Adetailer.is_enabled(ctx):
+                self._check_interrupt()
+                # Use refiner model and prompts if it was used
+                cur_model = refiner_model if use_refiner else model
+                cur_neg = ref_negative if use_refiner else negative
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg, callback=ctx.callback)
+
+            # Apply AutoHDR if enabled
+            if AutoHDRProcessor.is_enabled(ctx):
+                ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
+            
+            # Save with metadata
+            saver.save_images_async(
+                filename_prefix="LD-CN",
+                images=ctx.current_image,
+                prompt=str(ctx.prompt),
+                extra_pnginfo=ctx.build_metadata({
+                    "controlnet_style": "True",
+                    "controlnet_strength": str(strength),
+                    "controlnet_type": ctx.features.controlnet_type,
+                }),
             )
         
         ctx.save_seed()
@@ -284,37 +571,196 @@ class Pipeline:
                 if len(entry) > 1 and isinstance(entry[1], dict):
                     entry[1]["batch_index"] = [i]
         
-        # Generate all latents
+        # Determine latent channels (SD1.5/SDXL=4, SD3/Flux1=16, Flux2=32)
+        latent_channels = 4
+        try:
+            lf = model.get_model_object("latent_format")
+            if lf and hasattr(lf, "latent_channels"):
+                latent_channels = lf.latent_channels
+        except Exception:
+            pass
+
+        # Architecture flags for sampler
+        is_flux = getattr(model.capabilities, "is_flux", False) or (latent_channels == 16)
+        is_flux2 = getattr(model.capabilities, "is_flux2", False) or (latent_channels == 32)
+
+        # Generate all latents with correct channel count
         latent_gen = Latent.EmptyLatentImage()
-        latent = latent_gen.generate(ctx.width, ctx.height, total_batch)[0]
+        latent = latent_gen.generate(ctx.width, ctx.height, total_batch, channels=latent_channels)[0]
         latent["seeds"] = ctx.seeds[:total_batch]
         
-        try:
-            hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-            opt_model = hidiff.go(model_type="auto", model=model.model)[0]
-        except Exception:
+        # Apply HiDiffusion (multiscale) if enabled
+        # CRITICAL: HiDiffusion MSW-MSA is for UNet (SD1.5/SDXL) only. 
+        # DiT models like Flux will suffer from tiling artifacts if patched.
+        is_flux_or_flux2 = is_flux or is_flux2
+        
+        if ctx.sampling.enable_multiscale and not is_flux_or_flux2:
+            try:
+                # Clone model before patching to avoid persistent state across batches
+                patch_model = model.model.clone()
+                hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+                opt_model = hidiff.go(model_type="auto", model=patch_model)[0]
+            except Exception as e:
+                logger.warning(f"Failed to apply HiDiffusion: {e}")
+                opt_model = model.model
+        else:
+            if ctx.sampling.enable_multiscale and is_flux_or_flux2:
+                logger.info("HiDiffusion disabled: not compatible with Flux architecture")
             opt_model = model.model
         
-        ksampler = sampling.KSampler()
-        batch_latents = ksampler.sample(
-            seed=None,
-            steps=ctx.sampling.steps,
-            cfg=ctx.sampling.cfg,
-            sampler_name=ctx.sampling.sampler,
-            scheduler=ctx.sampling.scheduler,
-            denoise=1.0,
-            pipeline=True,
-            model=opt_model,
-            positive=positive,
-            negative=negative,
-            latent_image=latent,
-            enable_multiscale=ctx.sampling.enable_multiscale,
-            multiscale_factor=ctx.sampling.multiscale_factor,
-            multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
-            multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
-            cfg_free_enabled=ctx.sampling.cfg_free_enabled,
-            cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+        # Determine if refiner is enabled (SDXL only)
+        is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
+        use_refiner = bool(
+            is_sdxl and 
+            ctx.generation.refiner_model_path and 
+            ctx.generation.refiner_switch_step is not None and
+            0 < ctx.generation.refiner_switch_step < ctx.sampling.steps
         )
+        
+        ksampler = sampling.KSampler()
+        
+        # Distilled Flux2 Klein safety defaults
+        # These models are extremely sensitive to CFG > 1.2 and work best with specific samplers
+        if is_flux2:
+            if ctx.sampling.cfg > 1.2:
+                logger.info(f"Flux2 Klein detected: capping CFG from {ctx.sampling.cfg} to 1.0 for distilled quality")
+                ctx.sampling.cfg = 1.0
+            if ctx.sampling.sampler not in ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_sde", "uni_pc"]:
+                logger.info(f"Flux2 Klein detected: switching sampler to 'euler' for compatibility")
+                ctx.sampling.sampler = "euler"
+        
+        if use_refiner:
+            print(f"Batched Refiner enabled: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
+            
+            # Stage 1: Base model generation
+            print(f"Stage 1: Running Base model ({ctx.generation.refiner_switch_step}/{ctx.sampling.steps} steps)...")
+            batch_latents = ksampler.sample(
+                seed=None,
+                steps=ctx.sampling.steps,
+                cfg=ctx.sampling.cfg,
+                sampler_name=ctx.sampling.sampler,
+                scheduler=ctx.sampling.scheduler,
+                denoise=1.0,
+                pipeline=True,
+                model=opt_model,
+                positive=positive,
+                negative=negative,
+                latent_image=latent,
+                last_step=ctx.generation.refiner_switch_step,
+                enable_multiscale=ctx.sampling.enable_multiscale,
+                multiscale_factor=ctx.sampling.multiscale_factor,
+                multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
+                multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
+                cfg_free_enabled=ctx.sampling.cfg_free_enabled,
+                cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                flux=is_flux,
+                flux2=is_flux2,
+                callback=ctx.callback,
+            )
+            
+            self._check_interrupt()
+            
+            # Stage 2: Refiner model generation
+            # Explicitly clear Stage 1 objects to free VRAM for refiner
+            import gc
+            if 'opt_model' in locals(): del opt_model
+            if 'positive' in locals(): del positive
+            if 'negative' in locals(): del negative
+            
+            # CRITICAL: The local variable 'model' still holds the Base model.
+            # We must unload it and delete the reference so refcount hits 0.
+            if 'model' in locals() and model is not None:
+                model.unload()
+                del model
+            
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
+            refiner_model = self._load_refiner_model(ctx)
+            # Skip optimizations if already applied (check model_function_wrapper)
+            if not getattr(refiner_model.model, "model_options", {}).get("model_function_wrapper"):
+                self._apply_optimizations(ctx, refiner_model)
+            
+            # Encode prompts for refiner
+            ref_positive, ref_negative = refiner_model.encode_prompt(prompts, negatives)
+            
+            # Re-apply batch routing to refiner conditioning if needed
+            if isinstance(ref_positive, list):
+                for i, entry in enumerate(ref_positive):
+                    if len(entry) > 1 and isinstance(entry[1], dict):
+                        entry[1]["batch_index"] = [i]
+            
+            # Apply resolution conditioning for SDXL refiner if required
+            if getattr(refiner_model.capabilities, 'requires_size_conditioning', False):
+                for cond_list in [ref_positive, ref_negative]:
+                    for cond_item in cond_list:
+                        if len(cond_item) > 1 and isinstance(cond_item[1], dict):
+                            cond_item[1].update({
+                                "width": ctx.generation.width,
+                                "height": ctx.generation.height,
+                                "crop_w": 0,
+                                "crop_h": 0,
+                                "target_width": ctx.generation.width,
+                                "target_height": ctx.generation.height,
+                            })
+
+            # HiDiffusion optimization for refiner: NEVER use multi-scale for refiner pass
+            opt_refy = refiner_model.model
+
+            # Disable multi-scale for refiner pass
+            orig_ms = ctx.sampling.enable_multiscale
+            ctx.sampling.enable_multiscale = False
+            
+            steps_for_refiner = ctx.sampling.steps - ctx.generation.refiner_switch_step
+            print(f"Stage 2: Running Refiner model ({steps_for_refiner}/{ctx.sampling.steps} steps)...")
+            
+            batch_latents = ksampler.sample(
+                seed=None,
+                steps=ctx.sampling.steps,
+                cfg=ctx.sampling.cfg,
+                sampler_name=ctx.sampling.sampler,
+                scheduler=ctx.sampling.scheduler,
+                denoise=1.0,
+                pipeline=True,
+                model=opt_refy,
+                positive=ref_positive,
+                negative=ref_negative,
+                latent_image=batch_latents[0],
+                start_step=ctx.generation.refiner_switch_step,
+                disable_noise=True,
+                callback=ctx.callback,
+                cfg_free_enabled=ctx.sampling.cfg_free_enabled,
+                cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+            )
+            ctx.sampling.enable_multiscale = orig_ms
+            # Use refiner for decoding
+            model = refiner_model 
+        else:
+            # Normal single-stage generation
+            batch_latents = ksampler.sample(
+                seed=None,
+                steps=ctx.sampling.steps,
+                cfg=ctx.sampling.cfg,
+                sampler_name=ctx.sampling.sampler,
+                scheduler=ctx.sampling.scheduler,
+                denoise=1.0,
+                pipeline=True,
+                model=opt_model,
+                positive=positive,
+                negative=negative,
+                latent_image=latent,
+                enable_multiscale=ctx.sampling.enable_multiscale,
+                multiscale_factor=ctx.sampling.multiscale_factor,
+                multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
+                multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
+                cfg_free_enabled=ctx.sampling.cfg_free_enabled,
+                cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                flux=is_flux,
+                flux2=is_flux2,
+                callback=ctx.callback,
+            )
         
         # Decode all
         images = model.decode(batch_latents[0]["samples"])
@@ -346,6 +792,7 @@ class Pipeline:
                         single_latent, single_ctx, model,
                         [positive[i]] if isinstance(positive, list) else positive,
                         [negative[i]] if isinstance(negative, list) else negative,
+                        callback=ctx.callback,
                     )
                     final = model.decode(hires["samples"])[0]
                     if AutoHDRProcessor.is_enabled(ctx):
@@ -358,10 +805,15 @@ class Pipeline:
                 try:
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
-                    final, saved = Adetailer.apply(final, single_ctx, model, negative)
-                    results.setdefault(req_id, []).extend(
-                        s.get("ui", {}).get("images", [s]) for s in saved
+                    final, saved = Adetailer.apply(
+                        final, single_ctx, model, 
+                        negative=[negative[i]] if isinstance(negative, list) else negative,
+                        callback=ctx.callback
                     )
+                    for s in saved:
+                        results.setdefault(req_id, []).extend(
+                            s.get("ui", {}).get("images", [s])
+                        )
                 except Exception as e:
                     logger.warning(f"Batch adetailer failed: {e}")
             
@@ -370,13 +822,27 @@ class Pipeline:
                 "seed": str(ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed),
                 "prompt": prompts[i],
             })
-            saved = saver.save_images(prefix, [final], prompts[i], meta)
+            saved = saver.save_images([final], prefix, prompts[i], meta)
             results.setdefault(req_id, []).extend(
                 saved.get("ui", {}).get("images", [saved])
             )
         
         return {"batched_results": results}
     
+    def _clear_model_patches(self, model: AbstractModel) -> None:
+        """Clear all patches from the model to ensure a clean state."""
+        if model and hasattr(model, "model") and model.model:
+            # Clear transformer patches (HiDiffusion, etc.)
+            if hasattr(model.model, "model_options"):
+                to = model.model.model_options.get("transformer_options", {})
+                if "patches" in to:
+                    logger.debug(f"Clearing {len(to['patches'])} patches from model")
+                    to["patches"] = {}
+            
+            # Clear Token Merging
+            if hasattr(model.model, "remove_tome"):
+                model.model.remove_tome()
+
     def _load_model(self, ctx: Context) -> AbstractModel:
         """Load the model for this context.
         
@@ -401,6 +867,7 @@ class Pipeline:
             
             if paths_match or (not path and types_match) or (path == "__FLUX2_KLEIN__" and target_type == "Flux2Klein" and types_match):
                 logger.info(f"Reusing currently loaded {current_type} model")
+                self._clear_model_patches(self._model)
                 return self._model
             
             # 3. Different model requested: UNLOAD OLD ONE FIRST to free VRAM
@@ -408,14 +875,9 @@ class Pipeline:
             self._model.unload()
             self._model = None
             
-            # Also clear the global model cache used by CheckpointLoader
-            try:
-                from src.Device.ModelCache import clear_model_cache
-                clear_model_cache()
-            except Exception:
-                pass
-            
             # Force cleanup to prevent memory pressure/stuttering during transition
+            import gc
+            gc.collect()
             import torch
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -453,6 +915,7 @@ class Pipeline:
         if self._model is not None and self._model.is_loaded:
             if self._model.model_path == path:
                 logger.info(f"Reusing currently loaded model as refiner")
+                self._clear_model_patches(self._model)
                 return self._model
             
             # 3. Different model requested: UNLOAD OLD ONE FIRST to free VRAM
@@ -460,14 +923,9 @@ class Pipeline:
             self._model.unload()
             # self._model = None # Don't set to None yet, we'll replace it
             
-            # Also clear the global model cache
-            try:
-                from src.Device.ModelCache import clear_model_cache
-                clear_model_cache()
-            except Exception:
-                pass
-            
             # Force cleanup
+            import gc
+            gc.collect()
             import torch
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

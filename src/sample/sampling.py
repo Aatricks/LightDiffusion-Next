@@ -301,11 +301,11 @@ class KSampler:
     def sample(self, model=None, seed=None, steps=None, cfg=None, sampler_name=None, scheduler=None,
                positive=None, negative=None, latent_image=None, denoise=None, start_step=None, last_step=None,
                force_full_denoise=False, noise_mask=None, callback=None, disable_pbar=False, disable_noise=False,
-               pipeline=False, flux=False, flux2=False, enable_multiscale=True, multiscale_factor=0.5,
+               pipeline=False, flux=False, flux2=False, enable_multiscale=False, multiscale_factor=0.5,
                multiscale_fullres_start=3, multiscale_fullres_end=8, multiscale_intermittent_fullres=False,
                cfg_free_enabled=False, cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
-               adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
+               adaptive_noise_enabled=False, adaptive_noise_method="complexity", model_options=None):
         if model is None:
             if latent_image is None:
                 raise ValueError("latent_image must be provided when using pre-initialized model")
@@ -313,13 +313,17 @@ class KSampler:
                                         force_full_denoise, noise_mask, None, callback, disable_pbar, seed, flux,
                                         cfg_free_enabled, cfg_free_start_percent),)
         latent = latent_image if isinstance(latent_image, dict) else {"samples": latent_image}
+        
+        # Use provided model_options if not empty, otherwise fallback to sampler's own
+        m_opts = model_options if (model_options is not None and len(model_options) > 0) else self.model_options
+        
         return common_ksampler(model, seed, steps, cfg, sampler_name or self.sampler_name, scheduler or self.scheduler,
                                positive, negative, latent, denoise or self.denoise, disable_noise, start_step, last_step,
                                force_full_denoise, pipeline or self.pipeline, flux, flux2, enable_multiscale, multiscale_factor,
                                multiscale_fullres_start, multiscale_fullres_end, multiscale_intermittent_fullres,
                                cfg_free_enabled, cfg_free_start_percent, batched_cfg, dynamic_cfg_rescaling,
                                dynamic_cfg_method, dynamic_cfg_percentile, dynamic_cfg_target_scale,
-                               adaptive_noise_enabled, adaptive_noise_method, model_options=self.model_options, 
+                               adaptive_noise_enabled, adaptive_noise_method, model_options=m_opts if m_opts else None, 
                                callback=callback)
 
 
@@ -329,7 +333,7 @@ MULTISCALE_SAMPLERS = ["dpmpp_sde_cfgpp", "euler_ancestral", "euler", "dpmpp_2m_
 def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0,
             disable_noise=False, start_step=None, last_step=None, force_full_denoise=False, noise_mask=None,
             sigmas=None, callback=None, disable_pbar=False, seed=None, pipeline=False, flux=False, flux2=False,
-            enable_multiscale=True, multiscale_factor=0.5, multiscale_fullres_start=3, multiscale_fullres_end=8,
+            enable_multiscale=False, multiscale_factor=0.5, multiscale_fullres_start=3, multiscale_fullres_end=8,
             multiscale_intermittent_fullres=False, cfg_free_enabled=False, cfg_free_start_percent=70.0,
             batched_cfg=True, dynamic_cfg_rescaling=False, dynamic_cfg_method="variance", dynamic_cfg_percentile=95,
             dynamic_cfg_target_scale=1.0, adaptive_noise_enabled=False, adaptive_noise_method="complexity",
@@ -337,6 +341,7 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
     
     # Auto-detect Flux/Flux2 to disable multi-scale (DiT architecture compatibility)
     model_sampling_obj = getattr(model.model, "model_sampling", None)
+    
     is_flux_sampling = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
     if flux or flux2 or is_flux_sampling:
         enable_multiscale = False
@@ -379,7 +384,15 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
         sigmas = sigmas[start_step:]
 
     # Use provided model_options or default to model's own
-    m_opts = model_options if model_options is not None else model.model_options
+    # FIX: Only use provided model_options if they actually contain something, 
+    # otherwise we might strip important model-level optimizations like StableFast or HiDiffusion
+    m_opts = (model_options if (model_options is not None and len(model_options) > 0) else model.model_options).copy()
+
+    # Pass explicit resolution to model (CRITICAL for Flux positional encoding)
+    if flux or flux2:
+        m_opts.setdefault("transformer_options", {})
+        m_opts["transformer_options"]["img_h"] = latent_image.shape[2] * 8
+        m_opts["transformer_options"]["img_w"] = latent_image.shape[3] * 8
 
     load_device = model.load_device
     if not isinstance(load_device, (torch.device, str)):
@@ -472,7 +485,7 @@ def sample_custom(model, noise, cfg, sampler, sigmas, positive, negative, latent
 
 def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent, denoise=1.0,
                     disable_noise=False, start_step=None, last_step=None, force_full_denoise=False, pipeline=False,
-                    flux=False, flux2=False, enable_multiscale=True, multiscale_factor=0.5, multiscale_fullres_start=3,
+                    flux=False, flux2=False, enable_multiscale=False, multiscale_factor=0.5, multiscale_fullres_start=3,
                     multiscale_fullres_end=8, multiscale_intermittent_fullres=False, cfg_free_enabled=False,
                     cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                     dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,

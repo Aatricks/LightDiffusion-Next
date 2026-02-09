@@ -5,7 +5,7 @@ using the Ultimate SD Upscale approach.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Callable
 
 import numpy as np
 import torch
@@ -46,6 +46,7 @@ class Img2Img:
         image_tensor: torch.Tensor = None,
         upscale_by: float = None,
         denoise: float = None,
+        callback: Optional[Callable] = None,
     ) -> torch.Tensor:
         """Apply image-to-image transformation.
         
@@ -58,6 +59,7 @@ class Img2Img:
             image_tensor: Input image tensor [B, H, W, C] or [H, W, C]
             upscale_by: Upscale factor (default: 2)
             denoise: Denoising strength (default: 0.3)
+            callback: Optional callback for live previews
             
         Returns:
             Processed image tensor
@@ -137,6 +139,7 @@ class Img2Img:
                 vae=model.vae,
                 upscale_model=upscale_model,
                 pipeline=True,
+                callback=callback or ctx.callback,
             )
             
             logger.info("Img2Img: completed successfully")
@@ -176,6 +179,8 @@ class Img2Img:
         negative: Any,
         image_tensor: torch.Tensor,
         denoise: float = 0.75,
+        last_step: Optional[int] = None,
+        callback: Optional[Callable] = None,
     ) -> dict:
         """Simple image-to-image without upscaling.
         
@@ -189,6 +194,7 @@ class Img2Img:
             negative: Negative conditioning
             image_tensor: Input image tensor
             denoise: Denoising strength (0.0 = no change, 1.0 = full generation)
+            last_step: Optional step to stop at (for refiner handoff)
             
         Returns:
             Dictionary with 'samples' key containing generated latents
@@ -204,9 +210,13 @@ class Img2Img:
             is_flux = getattr(model.capabilities, "is_flux", False)
             is_flux2 = getattr(model.capabilities, "is_flux2", False)
             
-            # Encode image to latents
+            # Encode image to latents (pass flux flag for correct encoding)
             vae_encode = VariationalAE.VAEEncode()
-            latents = vae_encode.encode(vae=model.vae, pixels=image_tensor)[0]
+            latents = vae_encode.encode(
+                vae=model.vae,
+                pixels=image_tensor,
+                flux=is_flux or is_flux2,
+            )[0]
             
             # Apply HiDiffusion optimizer (not for Flux)
             if not is_flux:
@@ -237,6 +247,8 @@ class Img2Img:
                 enable_multiscale=False if is_flux else ctx.sampling.enable_multiscale,
                 cfg_free_enabled=ctx.sampling.cfg_free_enabled,
                 cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                last_step=last_step,
+                callback=callback or ctx.callback,  # Enable live previews during sampling
             )
             
             return result[0]
