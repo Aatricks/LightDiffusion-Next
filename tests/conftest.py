@@ -44,6 +44,16 @@ class MockModelPatcher:
         self.model.model_sampling.sigma_min = 0.02
         self.model.model_sampling.sigma_max = 14.6
         self.model.model_sampling.sigmas = torch.linspace(0.02, 14.6, 1000)
+        # Provide a simple sigma function for tests that accepts tensor inputs
+        def _sigma(t):
+            # Ensure tensor input and return tensor of same shape filled with mean sigma
+            try:
+                t_t = torch.as_tensor(t)
+                mean_sigma = float(self.model.model_sampling.sigmas.mean())
+                return torch.full_like(t_t, mean_sigma, dtype=torch.float32)
+            except Exception:
+                return float(self.model.model_sampling.sigmas.mean())
+        self.model.model_sampling.sigma = _sigma
         self.model.model_sampling.timestep = lambda x: x * 1000
 
         # Ensure the inner mock model provides memory sizing helpers that match
