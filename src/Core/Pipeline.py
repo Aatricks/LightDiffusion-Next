@@ -194,14 +194,11 @@ class Pipeline:
                 self._check_interrupt()
                 ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, negative=hf_neg, callback=ctx.callback)
             else:
-                # Save the image
+                # Save the image synchronously so the server can reliably find it
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
-                saver.save_images_async(
-                    filename_prefix=prefix,
-                    images=ctx.current_image,
-                    prompt=str(ctx.prompt),
-                    extra_pnginfo=ctx.build_metadata(),
-                )
+                filename_prefix = f"{ctx.features.request_filename_prefix}_{prefix}" if ctx.features.request_filename_prefix else prefix
+                images = ctx.current_image if isinstance(ctx.current_image, list) else [ctx.current_image]
+                saver.save_images(images, filename_prefix=filename_prefix, prompt=str(ctx.prompt), extra_pnginfo=ctx.build_metadata())
         
         ctx.save_seed()
         return ctx
@@ -367,16 +364,15 @@ class Pipeline:
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
             # Save the image with metadata including denoise value
-            saver.save_images_async(
-                filename_prefix="LD-I2I",
-                images=ctx.current_image,
-                prompt=str(ctx.prompt),
-                extra_pnginfo=ctx.build_metadata({
-                    "img2img": "True",
-                    "img2img_denoise": str(denoise),
-                    "img2img_mode": "upscale" if use_upscale else "diffusion",
-                }),
-            )
+            filename_prefix = "LD-I2I"
+            if ctx.features.request_filename_prefix:
+                filename_prefix = f"{ctx.features.request_filename_prefix}_{filename_prefix}"
+            images = ctx.current_image if isinstance(ctx.current_image, list) else [ctx.current_image]
+            saver.save_images(images, filename_prefix=filename_prefix, prompt=str(ctx.prompt), extra_pnginfo=ctx.build_metadata({
+                "img2img": "True",
+                "img2img_denoise": str(denoise),
+                "img2img_mode": "upscale" if use_upscale else "diffusion",
+            }))
         
         ctx.save_seed()
         return ctx
@@ -517,16 +513,15 @@ class Pipeline:
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
             
             # Save with metadata
-            saver.save_images_async(
-                filename_prefix="LD-CN",
-                images=ctx.current_image,
-                prompt=str(ctx.prompt),
-                extra_pnginfo=ctx.build_metadata({
-                    "controlnet_style": "True",
-                    "controlnet_strength": str(strength),
-                    "controlnet_type": ctx.features.controlnet_type,
-                }),
-            )
+            filename_prefix = "LD-CN"
+            if ctx.features.request_filename_prefix:
+                filename_prefix = f"{ctx.features.request_filename_prefix}_{filename_prefix}"
+            images = ctx.current_image if isinstance(ctx.current_image, list) else [ctx.current_image]
+            saver.save_images(images, filename_prefix=filename_prefix, prompt=str(ctx.prompt), extra_pnginfo=ctx.build_metadata({
+                "controlnet_style": "True",
+                "controlnet_strength": str(strength),
+                "controlnet_type": ctx.features.controlnet_type,
+            }))
         
         ctx.save_seed()
         return ctx

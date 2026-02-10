@@ -111,6 +111,7 @@ def _run_model_per_chunk(model, x_in, timestep, input_x_list, c_list, batch_size
 
 def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
     """Calculate the condition batch."""
+    logging.debug("calc_cond_batch: model type %s, memory_required attr=%s", type(model), getattr(model, "memory_required", None))
     # Handle mock objects in tests
     if not isinstance(x_in, torch.Tensor):
         x_in = torch.zeros((1, 4, 8, 8))

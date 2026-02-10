@@ -4,6 +4,8 @@ import base64
 import glob
 import os
 import io
+import re
+import tempfile
 from src.AutoEncoders.taesd import decode_latents_to_images
 
 # Ensure we can import pipeline from this repo
@@ -473,6 +475,7 @@ class GenerationBuffer:
             multiscale_fullres_end=first_req.multiscale_fullres_end,
             multiscale_intermittent_fullres=first_req.multiscale_intermittent,
             img2img_image=first_req.img2img_image,
+            request_filename_prefix=f"LD-REQ-{items[0].request_id}",
             per_sample_info=per_sample_info,
             cfg_free_enabled=first_req.cfg_free_enabled,
             cfg_free_start_percent=first_req.cfg_free_start_percent,
@@ -750,6 +753,94 @@ def _encode_png_to_base64(path: str) -> str:
         raise HTTPException(status_code=500, detail=f"Failed to read generated image: {e if e else last_err}")
 
 
+def _save_img2img_image_to_file(value: Optional[str], max_size_bytes: int = 10 * 1024 * 1024) -> Optional[str]:
+    """Ensure img2img_image is a local file path.
+
+    Accepts either:
+    - an existing filesystem path (returned unchanged),
+    - a data URL (data:image/...;base64,...) which will be decoded and saved to the system temp directory, or
+    - a bare base64 string which will be decoded and saved.
+
+    Returns the path to the saved file, or None if no value was provided.
+    Raises HTTPException on invalid data or if the decoded payload exceeds max_size_bytes.
+    """
+    if not value:
+        return None
+
+    # If it's already a file path that exists, return as-is
+    if os.path.exists(value) and os.path.isfile(value):
+        return value
+
+    # Try to parse as a data URL or bare base64
+    b64_data = None
+    try:
+        if isinstance(value, str) and value.startswith("data:"):
+            # data:[<mediatype>][;base64],<data>
+            m = re.match(r"^data:(?P<mime>image/[^;]+);base64,(?P<b64>.+)$", value, flags=re.DOTALL)
+            if m:
+                b64_data = m.group("b64")
+            else:
+                # Fallback: find 'base64,' and take the rest
+                idx = value.find("base64,")
+                if idx != -1:
+                    b64_data = value[idx + len("base64,"):]
+        else:
+            # Possibly a raw base64 string; strip whitespace/newlines
+            s = re.sub(r"\s+", "", str(value))
+            if len(s) > 100 and re.fullmatch(r"[A-Za-z0-9+/=]+", s):
+                b64_data = s
+
+        if not b64_data:
+            raise HTTPException(status_code=400, detail="img2img_image must be a file path, a data URL, or a base64-encoded image")
+
+        decoded = base64.b64decode(b64_data)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 data for img2img_image")
+
+    # Enforce size limit
+    if len(decoded) > max_size_bytes:
+        raise HTTPException(status_code=413, detail=f"img2img_image too large (max {max_size_bytes // 1024} KB)")
+
+    # Try to detect format
+    try:
+        import imghdr
+
+        fmt = imghdr.what(None, decoded)
+    except Exception:
+        fmt = None
+
+    ext = None
+    if fmt:
+        ext = "jpg" if fmt == "jpeg" else fmt
+    else:
+        try:
+            from PIL import Image
+
+            img = Image.open(io.BytesIO(decoded))
+            fmt = img.format.lower() if img.format else "png"
+            ext = "jpg" if fmt == "jpeg" else fmt
+        except Exception:
+            ext = "png"
+
+    # Save to system temp directory
+    tmp_dir = tempfile.gettempdir()
+    os.makedirs(tmp_dir, exist_ok=True)
+    fname = f"img2img-{uuid.uuid4().hex[:8]}.{ext}"
+    path = os.path.join(tmp_dir, fname)
+    try:
+        with open(path, "wb") as f:
+            f.write(decoded)
+    except Exception as e:
+        logger.exception("Failed to write img2img upload to %s: %s", path, e)
+        raise HTTPException(status_code=500, detail="Failed to save img2img_image on server")
+
+    # Don't log the incoming base64 content
+    logger.info("Saved img2img image to %s", path)
+    return path
+
+
 def _list_existing_images() -> List[str]:
     exts = ["*.png", "*.jpg", "*.jpeg", "*.webp"]
     files: List[str] = []
@@ -1000,6 +1091,21 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         _truncate(req.negative_prompt or "", 200),
         bool(req.img2img_image),
     )
+
+    # If client provided an img2img image as a data URL or raw base64, decode and save
+    if req.img2img_image:
+        try:
+            saved_path = _save_img2img_image_to_file(req.img2img_image, max_size_bytes=10 * 1024 * 1024)
+            if saved_path and saved_path != req.img2img_image:
+                log.info("Img2Img upload received and written to %s", saved_path)
+                req.img2img_image = saved_path
+        except HTTPException:
+            # Propagate well-formed HTTP exceptions (bad payloads, too large, etc.)
+            raise
+        except Exception as e:
+            log.exception("Failed processing img2img_image: %s", e)
+            # Avoid echoing the raw base64 content into logs or responses
+            raise HTTPException(status_code=400, detail="Invalid img2img_image payload")
 
     # Enqueue the request for batched processing. The background worker will
     # perform the actual pipeline invocation and will restore any preview

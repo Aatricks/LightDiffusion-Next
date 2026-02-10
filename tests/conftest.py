@@ -45,10 +45,23 @@ class MockModelPatcher:
         self.model.model_sampling.sigma_max = 14.6
         self.model.model_sampling.sigmas = torch.linspace(0.02, 14.6, 1000)
         self.model.model_sampling.timestep = lambda x: x * 1000
-        
+
+        # Ensure the inner mock model provides memory sizing helpers that match
+        # what production model objects expose. This prevents MagicMock values
+        # from leaking into memory calculations during tests.
+        self.model.memory_required = lambda shape: 1024 * 1024 * 1024  # 1GB default for tests
+        self.model.model_memory_required = lambda device=None: 2 * 1024 * 1024 * 1024  # 2GB
+
+        # Provide a simple apply_model implementation that returns a real tensor
+        # with the same shape as the input to avoid propagation of MagicMock values
+        # into conditioning and sampling logic.
+        def _apply_model(input_x, timestep, **kwargs):
+            return torch.randn_like(input_x)
+        self.model.apply_model = _apply_model
+
         self.latent_format = MagicMock()
         self.latent_format.latent_channels = 4
-        
+
         self.patches = {}
         self.object_patches = {}
         self.weight_inplace_update = False
@@ -56,6 +69,9 @@ class MockModelPatcher:
         self.offload_device = torch.device("cpu")
         self.current_device = torch.device("cpu")
         self.model_options = {}
+        # Mirror important model attributes expected by Device and ModelPatcher
+        self.model.model_loaded_weight_memory = 0
+        self.model.model_lowvram = False
     
     def model_dtype(self):
         return torch.float16
@@ -65,6 +81,47 @@ class MockModelPatcher:
         
     def model_memory_required(self, device=None):
         return 2 * 1024 * 1024 * 1024 # 2GB
+
+    # ------------------------------------------------------------------
+    # Methods to emulate ModelPatcher behavior (used by Device and pipeline)
+    # ------------------------------------------------------------------
+    def model_size(self) -> int:
+        """Return the mocked total model size in bytes.
+
+        Default to 2GB to simulate a moderate-sized model for memory
+        calculations in tests.
+        """
+        return 2 * 1024 * 1024 * 1024  # 2GB
+
+    def loaded_size(self) -> int:
+        """Return the size of currently loaded weights.
+
+        Defaults to the tracked attribute on the inner mock model.
+        """
+        return getattr(self.model, "model_loaded_weight_memory", 0)
+
+    def model_patches_to(self, device):
+        """No-op in the mock; present for interface compatibility."""
+        self.current_device = device
+
+    def patch_model(self, device_to=None, patch_weights=True):
+        """Return the inner mock model to simulate patching behavior."""
+        return self.model
+
+    def unpatch_model(self, device_to=None, unpatch_weights=True):
+        """No-op unpatch in the mock."""
+        return
+
+    def partially_load(self, device_to, extra_memory=0):
+        """Simulate partially loading model weights into memory.
+
+        Increments the recorded loaded weight memory by up to extra_memory
+        but never exceeding the model's total mocked size.
+        """
+        prev = getattr(self.model, "model_loaded_weight_memory", 0)
+        add = min(extra_memory, max(0, self.model_size() - prev))
+        self.model.model_loaded_weight_memory = prev + add
+        return self.model.model_loaded_weight_memory - prev
         
     def get_model_object(self, name):
         if name == "model_sampling":
@@ -83,7 +140,16 @@ class MockModelPatcher:
         self.patches.update(patches)
     
     def get_model_object(self, name: str):
-        """Get a model object by name."""
+        """Get a model object by name.
+
+        This mirrors the behavior of the real ModelPatcher.get_model_object and
+        returns reasonable objects for names commonly used in tests.
+        """
+        if name == "model_sampling":
+            return self.model.model_sampling
+        if name == "latent_format":
+            return self.latent_format
+        # Fall back to attributes on the inner mock model
         return getattr(self.model, name, MagicMock())
     
     def set_model_option(self, key: str, value: Any):
@@ -145,9 +211,33 @@ class MockCLIP:
         pooled = torch.randn(1, embed_dim) if self.clip_type == "SDXL" else None
         return cond, pooled
 
+    def encode_from_tokens(self, tokens: Dict, return_pooled: bool = False):
+        """Encode directly from tokenized inputs.
+
+        This mirrors the interface used by CLIPTextEncode and the pipeline.
+        For tests we return random tensors with the expected shapes.
+        """
+        if self.clip_type == "SDXL":
+            embed_dim = 2048
+        else:
+            embed_dim = 768
+        cond = torch.randn(1, 77, embed_dim)
+        pooled = torch.randn(1, embed_dim) if self.clip_type == "SDXL" else None
+        return (cond, pooled) if return_pooled else cond
+
     def clone(self):
-        """Clone the CLIP model."""
-        return MockCLIP(self.clip_type)
+        """Clone the CLIP model, preserving layer index and other state."""
+        cloned = MockCLIP(self.clip_type)
+        cloned.layer_idx = self.layer_idx
+        return cloned
+
+    def clip_layer(self, stop_at_clip_layer: int):
+        """Set the CLIP layer used for skip/prompt settings (no-op for mocks)."""
+        # The real CLIP implementation changes internal behavior when internal
+        # layers are skipped. For testing we simply record the configured
+        # layer index so that code using this API can inspect it if needed.
+        self.layer_idx = stop_at_clip_layer
+        return None
 
 
 class MockVAE:
@@ -156,16 +246,28 @@ class MockVAE:
     def __init__(self, latent_channels: int = 4):
         self.latent_channels = latent_channels
         self.first_stage_model = MagicMock()
+        self.latent_channels = latent_channels
     
-    def encode(self, images: torch.Tensor) -> torch.Tensor:
-        """Encode images to latent space."""
-        batch, channels, height, width = images.shape
+    def encode(self, images: torch.Tensor, flux: bool = False, **kwargs) -> torch.Tensor:
+        """Encode images to latent space.
+
+        Accepts the same signature as the real VAE encode method (including
+        optional 'flux' flag) and returns a tensor of shape
+        [B, latent_channels, H/8, W/8].
+        """
+        # Convert shape to expected format in case caller passes CPU tensors
+        batch = images.shape[0]
+        height = images.shape[1]
+        width = images.shape[2]
         latent_h = height // 8
         latent_w = width // 8
         return torch.randn(batch, self.latent_channels, latent_h, latent_w)
     
-    def decode(self, latents: torch.Tensor) -> torch.Tensor:
-        """Decode latents to images."""
+    def decode(self, latents: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Decode latents to images.
+
+        Accepts extra kwargs for compatibility with different VAE implementations.
+        """
         batch, channels, latent_h, latent_w = latents.shape
         height = latent_h * 8
         width = latent_w * 8

@@ -80,6 +80,8 @@ class FeatureFlags:
     img2img_image: Optional[str] = None
     img2img_denoise: float = 0.75  # Denoising strength: 0=no change, 1=full generation
     reuse_seed: bool = False
+    # Server-provided request filename prefix for saving outputs (e.g., 'LD-REQ-<rid>')
+    request_filename_prefix: Optional[str] = None
     
     # ControlNet settings
     controlnet_model: Optional[str] = None  # Path to ControlNet model
@@ -317,6 +319,7 @@ class Context:
         ctx.features.img2img_image = kwargs.get("img2img_image")
         ctx.features.img2img_denoise = kwargs.get("img2img_denoise", 0.75)
         ctx.features.reuse_seed = kwargs.get("reuse_seed", False)
+        ctx.features.request_filename_prefix = kwargs.get("request_filename_prefix")
         
         # ControlNet
         ctx.features.controlnet_model = kwargs.get("controlnet_model")

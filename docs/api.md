@@ -70,7 +70,13 @@ Base64 strings represent PNG files with embedded metadata identical to the Strea
 
 ### Img2Img uploads
 
-When `img2img_enabled` is `true`, provide `img2img_image` as a Base64-encoded PNG (same format as outputs). Keep payloads under a few megabytes to avoid HTTP timeouts.
+When `img2img_enabled` is `true`, `img2img_image` may be provided as any of the following:
+
+- A local file path (e.g., `"tests/test.png"`)
+- A data URL (e.g., `"data:image/png;base64,<...>"`)
+- A raw Base64-encoded PNG string
+
+The server will decode data URLs and raw Base64 strings and save them to the system temporary directory before processing (default max upload size: 10 MB). Keep payloads under a few megabytes to avoid HTTP timeouts.
 
 ## Telemetry shape (`/api/telemetry`)
 

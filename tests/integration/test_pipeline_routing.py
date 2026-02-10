@@ -77,6 +77,14 @@ def mock_all_heavy_dependencies(request):
     
     # Start all patches
     mocks = {name: p.start() for name, p in patches.items()}
+
+    # Ensure the global model cache is cleared at the start of the fixture to avoid
+    # interaction with previously cached checkpoint entries from other tests.
+    try:
+        from src.Device.ModelCache import get_model_cache
+        get_model_cache().clear_cache()
+    except Exception:
+        pass
     
     def teardown():
         # Stop all patches in reverse order
@@ -86,6 +94,14 @@ def mock_all_heavy_dependencies(request):
             except Exception:
                 pass
         patch.stopall()
+
+        # Also clear the global model cache in teardown to ensure mocks that
+        # cached fake checkpoints don't leak into following tests.
+        try:
+            from src.Device.ModelCache import get_model_cache
+            get_model_cache().clear_cache()
+        except Exception:
+            pass
     
     request.addfinalizer(teardown)
     
