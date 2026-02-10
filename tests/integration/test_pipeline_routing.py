@@ -246,6 +246,59 @@ class TestHiresFixRouting:
             f"got {ksampler.return_value.sample.call_count}"
         )
 
+    def test_batched_hires_fix_with_refiner_sdxl(self, mock_all_heavy_dependencies):
+        """Batched hires_fix with SDXL refiner should call latent upscaling using refiner prompts."""
+        from src.user.pipeline import pipeline
+
+        pipeline(
+            prompt=["one"],
+            w=512,
+            h=512,
+            batch=1,
+            hires_fix=True,
+            per_sample_info=[{"hires_fix": True}],
+            refiner_model_path="refiner.safetensors",
+            refiner_switch_step=1,
+            model_path="my_sdxl_model.safetensors",
+        )
+
+        latent_upscale = mock_all_heavy_dependencies['latent_upscale']
+        assert latent_upscale.return_value.upscale.called, (
+            "Latent upscale should be called for batched hires_fix with refiner"
+        )
+
+    def test_batched_adetailer_with_refiner_sdxl(self, mock_all_heavy_dependencies):
+        """Batched adetailer with SDXL refiner should call Adetailer.apply without NameError."""
+        from src.user.pipeline import pipeline
+        from unittest.mock import patch
+
+        with patch('src.Processors.Adetailer.Adetailer.apply') as mock_adetail_apply:
+            mock_adetail_apply.return_value = (torch.rand(1, 512, 512, 3), [])
+            pipeline(
+                prompt=["one"],
+                w=512,
+                h=512,
+                batch=1,
+                adetailer=True,
+                per_sample_info=[{"adetailer": True}],
+            )
+            assert mock_adetail_apply.called, "Adetailer.apply should be called for batched adetailer with refiner"
+
+    def test_hires_fix_with_flux_model(self, mock_all_heavy_dependencies):
+        """HiresFix should work with Flux model (no refiner) and call upscale."""
+        from src.user.pipeline import pipeline
+
+        pipeline(
+            prompt="test",
+            w=512,
+            h=512,
+            hires_fix=True,
+            model_path="flux_model.safetensors",
+        )
+
+        latent_upscale = mock_all_heavy_dependencies['latent_upscale']
+        assert latent_upscale.return_value.upscale.called, "Latent upscale should be called for Flux model"
+
 
 class TestImg2ImgRouting:
     """Test img2img flag routing."""

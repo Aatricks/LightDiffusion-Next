@@ -85,7 +85,9 @@ class Pipeline:
         model = self._load_model(ctx)
         
         # 2. Apply optimizations to base model
-        if not getattr(model.model, "model_options", {}).get("model_function_wrapper"):
+        mo = getattr(model, 'model', None)
+        mo_opts = getattr(mo, 'model_options', {}) if mo is not None else {}
+        if not mo_opts.get("model_function_wrapper"):
             self._apply_optimizations(ctx, model)
         
         # 3. Encode prompts for base model
@@ -592,16 +594,17 @@ class Pipeline:
         if ctx.sampling.enable_multiscale and not is_flux_or_flux2:
             try:
                 # Clone model before patching to avoid persistent state across batches
-                patch_model = model.model.clone()
+                base_inner = getattr(model, 'model', model)
+                patch_model = base_inner.clone() if hasattr(base_inner, 'clone') else base_inner
                 hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
                 opt_model = hidiff.go(model_type="auto", model=patch_model)[0]
             except Exception as e:
                 logger.warning(f"Failed to apply HiDiffusion: {e}")
-                opt_model = model.model
+                opt_model = getattr(model, 'model', model)
         else:
             if ctx.sampling.enable_multiscale and is_flux_or_flux2:
                 logger.info("HiDiffusion disabled: not compatible with Flux architecture")
-            opt_model = model.model
+            opt_model = getattr(model, 'model', model)
         
         # Determine if refiner is enabled (SDXL only)
         is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
@@ -675,7 +678,9 @@ class Pipeline:
 
             refiner_model = self._load_refiner_model(ctx)
             # Skip optimizations if already applied (check model_function_wrapper)
-            if not getattr(refiner_model.model, "model_options", {}).get("model_function_wrapper"):
+            mo = getattr(refiner_model, 'model', None)
+            mo_opts = getattr(mo, 'model_options', {}) if mo is not None else {}
+            if not mo_opts.get("model_function_wrapper"):
                 self._apply_optimizations(ctx, refiner_model)
             
             # Encode prompts for refiner
@@ -702,7 +707,7 @@ class Pipeline:
                             })
 
             # HiDiffusion optimization for refiner: NEVER use multi-scale for refiner pass
-            opt_refy = refiner_model.model
+            opt_refy = getattr(refiner_model, 'model', refiner_model)
 
             # Disable multi-scale for refiner pass
             orig_ms = ctx.sampling.enable_multiscale
@@ -757,6 +762,14 @@ class Pipeline:
                 callback=ctx.callback,
             )
         
+        # Hires/Adetailer prompts - use refiner prompts if refiner was used
+        if use_refiner:
+            hf_pos = ref_positive
+            hf_neg = ref_negative
+        else:
+            hf_pos = positive
+            hf_neg = negative
+
         # Decode all
         images = model.decode(batch_latents[0]["samples"])
         
@@ -785,8 +798,8 @@ class Pipeline:
                     
                     hires = HiresFix.apply(
                         single_latent, single_ctx, model,
-                        [positive[i]] if isinstance(positive, list) else positive,
-                        [negative[i]] if isinstance(negative, list) else negative,
+                        [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos,
+                        [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
                         callback=ctx.callback,
                     )
                     final = model.decode(hires["samples"])[0]
@@ -802,7 +815,7 @@ class Pipeline:
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
                     final, saved = Adetailer.apply(
                         final, single_ctx, model, 
-                        negative=[negative[i]] if isinstance(negative, list) else negative,
+                        negative=[hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
                         callback=ctx.callback
                     )
                     for s in saved:
