@@ -455,6 +455,9 @@ class GenerationBuffer:
 
         # Prepare pipeline kwargs based on the shared signature (take from first)
         first_req = items[0].req
+        # Unique ID for this generation run; sent with every preview message
+        # so the frontend can discard stale previews from previous runs.
+        _gen_id = uuid.uuid4().hex[:12]
         pipeline_kwargs = dict(
             prompt=prompts,
             w=first_req.width,
@@ -507,7 +510,15 @@ class GenerationBuffer:
             # FP8 inference
             fp8_inference=first_req.fp8_inference,
             # Add callback for WebSocket preview broadcasting
-            callback=make_server_callback(first_req.steps),
+            callback=make_server_callback(first_req.steps, generation_id=_gen_id),
+        )
+
+        # Notify clients that a new generation is starting so they can
+        # discard stale previews from the previous run.
+        sync_broadcast_preview(
+            step=0, total_steps=first_req.steps,
+            message_type="generation_start",
+            generation_id=_gen_id,
         )
 
         # Toggle preview state for the duration of the pipeline call
@@ -908,7 +919,8 @@ def sync_broadcast_preview(
     step: int,
     total_steps: int,
     images: Optional[List[str]] = None,
-    message_type: str = "preview"
+    message_type: str = "preview",
+    generation_id: Optional[str] = None,
 ):
     """Synchronous wrapper to broadcast preview from pipeline thread.
     
@@ -933,7 +945,7 @@ def sync_broadcast_preview(
             logger.info(f"Broadcasting preview step {step}/{total_steps}")
             
         future = asyncio.run_coroutine_threadsafe(
-            broadcast_preview(step, total_steps, images, message_type),
+            broadcast_preview(step, total_steps, images, message_type, generation_id=generation_id),
             _main_event_loop
         )
         # Wait for broadcast to complete to ensure ordering
@@ -997,11 +1009,13 @@ def _restore_preview_settings(prev):
         pass
 
 
-def make_server_callback(total_steps: int):
+def make_server_callback(total_steps: int, generation_id: Optional[str] = None):
     """Create a pipeline callback that broadcasts progress via WebSocket.
     
     Args:
         total_steps: Total number of sampling steps
+        generation_id: Unique ID for this generation run, sent with every
+            preview message so the frontend can ignore stale previews.
         
     Returns:
         Callback function compatible with pipeline
@@ -1050,7 +1064,7 @@ def make_server_callback(total_steps: int):
                 pass
 
         # Broadcast progress update with images
-        sync_broadcast_preview(step, curr_total_steps, images=images_b64, message_type="preview" if images_b64 else "progress")
+        sync_broadcast_preview(step, curr_total_steps, images=images_b64, message_type="preview" if images_b64 else "progress", generation_id=generation_id)
     
     return callback
 
@@ -1098,7 +1112,8 @@ async def broadcast_preview(
     step: int,
     total_steps: int,
     images: Optional[List[str]] = None,
-    message_type: str = "preview"
+    message_type: str = "preview",
+    generation_id: Optional[str] = None,
 ):
     """Broadcast preview update to all connected WebSocket clients.
     
@@ -1107,6 +1122,7 @@ async def broadcast_preview(
         total_steps: Total number of steps
         images: Optional list of base64-encoded images
         message_type: Type of message (preview, progress, complete, error)
+        generation_id: Unique ID for this generation run
     """
     if not _preview_clients:
         return
@@ -1117,6 +1133,9 @@ async def broadcast_preview(
         "total_steps": total_steps,
         "timestamp": time.time(),
     }
+    
+    if generation_id:
+        payload["generation_id"] = generation_id
     
     if images:
         payload["images"] = images

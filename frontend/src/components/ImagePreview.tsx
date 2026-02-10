@@ -9,6 +9,7 @@ export function ImagePreview() {
     const { preview, setPreview, status, currentImage, setServerStatus } = useStore();
     const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
     const lastStepRef = useRef(-1);
+    const currentGenIdRef = useRef<string | null>(null);
 
     // Connect to WebSocket via Vite proxy or direct relative URL
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -18,24 +19,29 @@ export function ImagePreview() {
         try {
             const msg = JSON.parse(event.data) as PreviewMessage;
 
+            // Handle generation_start: adopt this generation's ID and reset state
+            if (msg.type === 'generation_start' && msg.generation_id) {
+                currentGenIdRef.current = msg.generation_id;
+                lastStepRef.current = -1;
+                setActivePreviewImage(null);
+                setPreview(null);
+                return;
+            }
+
+            // If this message has a generation_id, ignore it unless it matches
+            // the current generation. This prevents stale previews from a
+            // previous run from being displayed.
+            if (msg.generation_id && currentGenIdRef.current &&
+                msg.generation_id !== currentGenIdRef.current) {
+                return;
+            }
+
             // Enforce monotonic progress
             if (msg.step !== undefined) {
-                // Heuristic: Ignore high step counts at start (ghosts)
-                if (lastStepRef.current === -1 && msg.step > 2) {
+                if (msg.step < lastStepRef.current && msg.step !== 0) {
                     return;
                 }
-
-                if (msg.step < lastStepRef.current) {
-                    // Allow step 0 to reset if we missed a status change or it's a restart
-                    if (msg.step === 0) {
-                        lastStepRef.current = 0;
-                    } else {
-                        // Ignore out-of-order message
-                        return;
-                    }
-                } else {
-                    lastStepRef.current = msg.step;
-                }
+                lastStepRef.current = msg.step;
             }
 
             // Persist latest preview image locally immediately
@@ -63,6 +69,8 @@ export function ImagePreview() {
             // Reset step counter and clear old preview on new generation
             lastStepRef.current = -1;
             setActivePreviewImage(null);
+            // Don't reset currentGenIdRef here — the server's
+            // generation_start message will set it authoritatively.
         } else {
             lastStepRef.current = -1;
         }
@@ -72,6 +80,7 @@ export function ImagePreview() {
     useEffect(() => {
         if (status === 'idle') {
             setActivePreviewImage(null);
+            currentGenIdRef.current = null;
         }
     }, [status]);
 

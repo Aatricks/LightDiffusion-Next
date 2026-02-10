@@ -85,9 +85,10 @@ export interface ModelInfo {
 }
 
 export interface PreviewMessage {
-    type: "preview" | "progress" | "error";
+    type: "preview" | "progress" | "error" | "generation_start";
     step?: number;
     total_steps?: number;
     images?: string[]; // base64
     message?: string;
+    generation_id?: string;
 }

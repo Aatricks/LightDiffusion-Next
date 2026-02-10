@@ -258,13 +258,13 @@ class VAE:
             else:
                 compiled = torch.compile(
                     self.first_stage_model.decoder,
-                    mode="max-autotune",
+                    mode="max-autotune-no-cudagraphs",
                     fullgraph=False,
-                    dynamic=False,  # VAE shapes are fixed per resolution
+                    dynamic=True,  # Use symbolic shapes to avoid recompilation across decoder levels
                 )
                 if compiled is not self.first_stage_model.decoder:
                     self.first_stage_model.decoder = compiled
-                    logging.info("VAE decoder compiled with torch.compile (max-autotune)")
+                    logging.info("VAE decoder compiled with torch.compile (max-autotune-no-cudagraphs)")
         except Exception as e:
             logging.debug(f"VAE torch.compile skipped: {e}")
         self._compiled_decoder = True
@@ -283,13 +283,16 @@ class VAE:
         out = torch.empty((samples_in.shape[0], 3, samples_in.shape[2] * self.upscale_ratio,
                            samples_in.shape[3] * self.upscale_ratio), device=self.output_device)
         for i in range(0, samples_in.shape[0], batch):
-            # Optimization D: non-blocking transfers to overlap data movement with compute
+            # Optimization D: non-blocking transfers for CPU→GPU input (safe, same CUDA stream)
             s = samples_in[i:i+batch].to(self.vae_dtype, non_blocking=True).to(self.device, non_blocking=True)
             # Optimization C: ensure input is channels-last to match compiled model
             if s.is_cuda:
                 s = s.contiguous(memory_format=torch.channels_last)
             decoded = self.first_stage_model.decode(s, flux=flux)
-            out[i:i+batch] = self.process_output(decoded.to(self.output_device, non_blocking=True).float())
+            # Process output on GPU before transferring to CPU to avoid
+            # non-blocking GPU→CPU race condition (data not arrived yet).
+            decoded = self.process_output(decoded.float()).contiguous()
+            out[i:i+batch] = decoded.to(self.output_device)
         return out.movedim(1, -1)
 
     @torch.inference_mode()  # Optimization B
