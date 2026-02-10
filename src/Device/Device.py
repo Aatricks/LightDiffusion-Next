@@ -371,13 +371,18 @@ def enable_torch_compile(enabled: bool = True):
         logging.info("torch.compile enabled for model optimization")
 
 
-def compile_model(model: torch.nn.Module, mode: str = "reduce-overhead", 
+def compile_model(model: torch.nn.Module, mode: str = "max-autotune-no-cudagraphs", 
                   fullgraph: bool = False, dynamic: bool = True) -> torch.nn.Module:
     """Compile a model with torch.compile for faster inference.
     
+    Uses 'max-autotune-no-cudagraphs' by default. Avoid 'reduce-overhead'
+    as it enables CUDA graphs which cause assertion errors with dynamic
+    model state (LoRA patches, mixed dtypes, etc.).
+    
     Args:
         model: The model to compile
-        mode: Compilation mode - "reduce-overhead" (faster), "max-autotune" (optimal), "default"
+        mode: Compilation mode - "max-autotune-no-cudagraphs" (recommended),
+              "max-autotune", "default", or "reduce-overhead"
         fullgraph: Whether to compile the full graph
         dynamic: Whether to allow dynamic shapes
         

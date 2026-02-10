@@ -65,5 +65,14 @@ class TestPreviewPipeline(unittest.TestCase):
         self.app.update_image([img1], step=2, total_steps=10)
         self.assertEqual(self.app.preview_base64_cache, [])
 
+    def test_preview_format_and_quality(self):
+        # Ensure preview format and quality preferences are respected
+        img = Image.new('RGB', (64, 64), color='yellow')
+        self.app.preview_format = 'JPEG'
+        self.app.preview_quality = 85
+        self.app.update_image([img], step=1, total_steps=10)
+        previews = self.app.get_latest_previews()
+        self.assertTrue(previews['base64'][0].startswith('data:image/jpeg;base64,'))
+
 if __name__ == "__main__":
     unittest.main()

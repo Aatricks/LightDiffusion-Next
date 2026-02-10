@@ -28,6 +28,13 @@ class AppInstance:
         # Create preview directory
         os.makedirs(self.preview_dir, exist_ok=True)
 
+        # Preview rendering/config options (tunable)
+        self.preview_srgb = True  # apply sRGB curve to previews
+        self.preview_format = "WEBP"  # 'WEBP' or 'JPEG' or 'PNG'
+        self.preview_quality = 90  # quality for lossy formats (0-100)
+        self.preview_resample = "LANCZOS"  # resampling preference name
+        self.preview_apply_fast_autohdr = False  # lightweight autohdr for previews (disabled by default)
+
     def update_image(self, images: List[Any], step: int = 0, total_steps: int = 0):
         """Update the gallery with preview images in real-time.
         
@@ -73,18 +80,21 @@ class AppInstance:
                                 import io
                                 import base64
                                 buffered = io.BytesIO()
-                                # Use WEBP for smaller memory footprint and faster transfer
-                                img.save(buffered, format="WEBP", quality=80)
-                                img_str = base64.b64encode(buffered.getvalue()).decode()
-                                new_previews.append(f"data:image/webp;base64,{img_str}")
-                            except Exception:
+                                fmt = getattr(self, "preview_format", "WEBP")
+                                q = getattr(self, "preview_quality", 90)
                                 try:
+                                    img.save(buffered, format=fmt, quality=q)
+                                    mime = f"image/{fmt.lower()}"
+                                    img_str = base64.b64encode(buffered.getvalue()).decode()
+                                    new_previews.append(f"data:{mime};base64,{img_str}")
+                                except Exception:
+                                    # Fallback: lossless PNG if format not supported
                                     buffered = io.BytesIO()
                                     img.save(buffered, format="PNG")
                                     img_str = base64.b64encode(buffered.getvalue()).decode()
                                     new_previews.append(f"data:image/png;base64,{img_str}")
-                                except Exception:
-                                    pass
+                            except Exception:
+                                pass
                     self.preview_base64_cache = new_previews
 
                 return {

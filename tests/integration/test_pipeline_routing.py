@@ -299,6 +299,35 @@ class TestHiresFixRouting:
         latent_upscale = mock_all_heavy_dependencies['latent_upscale']
         assert latent_upscale.return_value.upscale.called, "Latent upscale should be called for Flux model"
 
+    def test_hires_fix_injects_size_conditioning_for_sdxl(self, mock_all_heavy_dependencies):
+        """HiresFix should inject width/height into prompt conditioning for SDXL models."""
+        from src.user.pipeline import pipeline
+        from conftest import MockCheckpointResult
+
+        # Force the loader to return an SDXL checkpoint to emulate SDXL behavior
+        mock_all_heavy_dependencies['load_model'].return_value = ("SDXL", MockCheckpointResult("SDXL").as_tuple())
+
+        pipeline(
+            prompt="test",
+            w=512,
+            h=512,
+            hires_fix=True,
+            model_path="my_sdxl_model.safetensors",
+        )
+
+        ksampler = mock_all_heavy_dependencies['ksampler']
+        # Inspect the last sampler call (hires pass)
+        assert ksampler.return_value.sample.call_count >= 2
+        last_call = ksampler.return_value.sample.call_args_list[-1]
+        kwargs = last_call.kwargs
+        positive = kwargs.get('positive')
+
+        # The conditioning metadata should include updated width/height for the hires pass
+        assert isinstance(positive, list)
+        meta = positive[0][1]
+        assert meta.get('width') == 1024
+        assert meta.get('height') == 1024
+
 
 class TestImg2ImgRouting:
     """Test img2img flag routing."""

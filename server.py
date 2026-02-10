@@ -124,6 +124,8 @@ class GenerateRequest(BaseModel):
     multiscale_fullres_end: int = 8
     keep_models_loaded: bool = True
     enable_preview: bool = False
+    # Preview fidelity for this request: 'low' | 'balanced' | 'high' (default: balanced)
+    preview_fidelity: str = "balanced"
     # CFG-free sampling parameters
     cfg_free_enabled: bool = False
     cfg_free_start_percent: float = 70.0
@@ -154,6 +156,12 @@ class GenerateRequest(BaseModel):
     controlnet_model: Optional[str] = None
     controlnet_strength: float = 1.0
     controlnet_type: str = "canny"
+
+    # torch.compile optimization (mutually exclusive with stable_fast)
+    torch_compile: bool = False
+    
+    # FP8 inference (auto-gated to supported hardware: Ada Lovelace+)
+    fp8_inference: bool = False
 
 
 app = FastAPI(title="LightDiffusion Server", version="1.0.0")
@@ -494,6 +502,10 @@ class GenerationBuffer:
             controlnet_model=first_req.controlnet_model if first_req.controlnet_enabled else None,
             controlnet_strength=first_req.controlnet_strength,
             controlnet_type=first_req.controlnet_type,
+            # torch.compile
+            torch_compile=first_req.torch_compile,
+            # FP8 inference
+            fp8_inference=first_req.fp8_inference,
             # Add callback for WebSocket preview broadcasting
             callback=make_server_callback(first_req.steps),
         )
@@ -501,12 +513,19 @@ class GenerationBuffer:
         # Toggle preview state for the duration of the pipeline call
         prev_preview_state = None
         prev_keep_models_loaded = None
+        prev_preview_settings = None
         try:
             try:
                 prev_preview_state = _app_instance.app.previewer_var.get()
                 _app_instance.app.previewer_var.set(bool(first_req.enable_preview))
             except Exception:
                 prev_preview_state = None
+
+            # Apply per-request preview fidelity overrides (format / quality / sRGB)
+            try:
+                prev_preview_settings = _apply_preview_fidelity_to_app(first_req)
+            except Exception:
+                prev_preview_settings = None
 
             # Respect per-group model cache directive: toggle "keep loaded"
             # so the sampling pipeline sees the requested caching behavior.
@@ -549,29 +568,45 @@ class GenerationBuffer:
                 if not selected:
                     p.future.set_exception(HTTPException(status_code=500, detail="No images produced"))
                     continue
-                # Build full paths and encode
+                
+                # Try to use in-memory byte buffer first (avoids disk I/O)
+                from src.FileManaging.ImageSaver import pop_image_bytes
+                buffered_images = pop_image_bytes(f"LD-REQ-{p.request_id}")
+                
                 b64_list = []
-                for entry in selected:
-                    if isinstance(entry, list):
-                        # Safeguard against nested lists if any processor still returns them
-                        entry = entry[0] if entry else {}
-                    
-                    if not isinstance(entry, dict):
-                        continue
-                        
-                    filename = entry.get("filename", "")
-                    path = os.path.join("./output", entry.get("subfolder", ""), filename)
-                    try:
-                        b64_data = _encode_png_to_base64(path)
+                if buffered_images:
+                    # Use in-memory bytes directly - zero disk reads
+                    for buf_filename, buf_subfolder, png_bytes in buffered_images[:max(1, p.req.num_images)]:
+                        b64_data = base64.b64encode(png_bytes).decode("utf-8")
                         mime_type = "image/png"
-                        if filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
+                        if buf_filename.lower().endswith((".jpg", ".jpeg")):
                             mime_type = "image/jpeg"
-                        elif filename.lower().endswith(".webp"):
+                        elif buf_filename.lower().endswith(".webp"):
                             mime_type = "image/webp"
-                        
                         b64_list.append(f"data:{mime_type};base64,{b64_data}")
-                    except Exception as e:
-                        logger.exception("Failed to read image for request %s: %s", p.request_id, e)
+                else:
+                    # Fallback to disk reads
+                    for entry in selected:
+                        if isinstance(entry, list):
+                            # Safeguard against nested lists if any processor still returns them
+                            entry = entry[0] if entry else {}
+                        
+                        if not isinstance(entry, dict):
+                            continue
+                            
+                        filename = entry.get("filename", "")
+                        path = os.path.join("./output", entry.get("subfolder", ""), filename)
+                        try:
+                            b64_data = _encode_png_to_base64(path)
+                            mime_type = "image/png"
+                            if filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
+                                mime_type = "image/jpeg"
+                            elif filename.lower().endswith(".webp"):
+                                mime_type = "image/webp"
+                            
+                            b64_list.append(f"data:{mime_type};base64,{b64_data}")
+                        except Exception as e:
+                            logger.exception("Failed to read image for request %s: %s", p.request_id, e)
 
                 if len(b64_list) == 0:
                     p.future.set_exception(HTTPException(status_code=500, detail="Failed to read generated images"))
@@ -580,6 +615,11 @@ class GenerationBuffer:
                 else:
                     p.future.set_result({"images": b64_list})
         finally:
+            try:
+                if prev_preview_settings is not None:
+                    _restore_preview_settings(prev_preview_settings)
+            except Exception:
+                pass
             try:
                 if prev_preview_state is not None:
                     _app_instance.app.previewer_var.set(prev_preview_state)
@@ -906,6 +946,57 @@ def sync_broadcast_preview(
         pass  # Don't let preview errors affect generation
 
 
+def _apply_preview_fidelity_to_app(req):
+    """Apply preview fidelity settings from a GenerateRequest into the global app.
+
+    Returns a dict with previous settings so callers can restore them later.
+    """
+    prev = {}
+    try:
+        # Only apply fidelity changes if previewing is enabled for this request.
+        if not getattr(req, "enable_preview", False):
+            return None
+
+        prev["preview_srgb"] = getattr(_app_instance.app, "preview_srgb", True)
+        prev["preview_format"] = getattr(_app_instance.app, "preview_format", "WEBP")
+        prev["preview_quality"] = getattr(_app_instance.app, "preview_quality", 90)
+        prev["preview_resample"] = getattr(_app_instance.app, "preview_resample", "LANCZOS")
+        prev["preview_apply_fast_autohdr"] = getattr(_app_instance.app, "preview_apply_fast_autohdr", False)
+
+        pfid = getattr(req, "preview_fidelity", "balanced") or "balanced"
+        # Map to a few conservative presets
+        if pfid == "low":
+            _app_instance.app.preview_srgb = True
+            _app_instance.app.preview_format = "WEBP"
+            _app_instance.app.preview_quality = 70
+        elif pfid == "high":
+            _app_instance.app.preview_srgb = True
+            _app_instance.app.preview_format = "PNG"
+            _app_instance.app.preview_quality = 100
+        else:
+            # balanced
+            _app_instance.app.preview_srgb = True
+            _app_instance.app.preview_format = "WEBP"
+            _app_instance.app.preview_quality = 90
+
+        return prev
+    except Exception:
+        return None
+
+
+def _restore_preview_settings(prev):
+    if not prev:
+        return
+    try:
+        _app_instance.app.preview_srgb = prev.get("preview_srgb", True)
+        _app_instance.app.preview_format = prev.get("preview_format", "WEBP")
+        _app_instance.app.preview_quality = prev.get("preview_quality", 90)
+        _app_instance.app.preview_resample = prev.get("preview_resample", "LANCZOS")
+        _app_instance.app.preview_apply_fast_autohdr = prev.get("preview_apply_fast_autohdr", False)
+    except Exception:
+        pass
+
+
 def make_server_callback(total_steps: int):
     """Create a pipeline callback that broadcasts progress via WebSocket.
     
@@ -942,9 +1033,18 @@ def make_server_callback(total_steps: int):
                     images_b64 = []
                     for img in pil_images:
                         buffered = io.BytesIO()
-                        img.save(buffered, format="JPEG", quality=70)
+                        fmt = getattr(_app_instance.app, "preview_format", "WEBP")
+                        q = getattr(_app_instance.app, "preview_quality", 90)
+                        try:
+                            img.save(buffered, format=fmt, quality=q)
+                            mime = f"image/{fmt.lower()}"
+                        except Exception:
+                            # Fallback to JPEG if preferred format is unsupported
+                            buffered = io.BytesIO()
+                            img.save(buffered, format="JPEG", quality=max(70, q))
+                            mime = "image/jpeg"
                         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        images_b64.append(f"data:image/jpeg;base64,{img_str}")
+                        images_b64.append(f"data:{mime};base64,{img_str}")
             except Exception as e:
                 logger.error(f"Preview generation failed: {e}")
                 pass

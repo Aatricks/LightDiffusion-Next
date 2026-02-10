@@ -1,0 +1,27 @@
+from fastapi.testclient import TestClient
+import server
+
+
+def test_generate_endpoint_forwards_preview_fidelity(monkeypatch):
+    captured = {}
+
+    async def fake_enqueue(pending):
+        # the pending request should have preview_fidelity forwarded
+        captured['preview_fidelity'] = pending.req.preview_fidelity
+        return {'image': 'data:image/png;base64,xyz'}
+
+    monkeypatch.setattr(server._generation_buffer, 'enqueue', fake_enqueue)
+    client = TestClient(server.app)
+
+    payload = {
+        'prompt': 'test',
+        'width': 512,
+        'height': 512,
+        'num_images': 1,
+        'preview_fidelity': 'high',
+        'enable_preview': True,
+    }
+
+    res = client.post('/api/generate', json=payload)
+    assert res.status_code == 200
+    assert captured.get('preview_fidelity') == 'high'

@@ -50,6 +50,8 @@ export const useStore = create<AppState>((set) => ({
         reuse_seed: false,
         keep_models_loaded: true,
         enable_preview: true,
+        // Default to the improved/balanced preview fidelity
+        preview_fidelity: 'balanced',
         enable_multiscale: false,
         multiscale_preset: "disabled",
         multiscale_factor: 0.5,
@@ -63,6 +65,8 @@ export const useStore = create<AppState>((set) => ({
         cfg_free_start_percent: 70.0,
         tome_enabled: false,
         tome_ratio: 0.5,
+        torch_compile: false,
+        fp8_inference: false,
     },
     availableModels: [],
     availableControlNets: [],

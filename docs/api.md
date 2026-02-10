@@ -45,6 +45,7 @@ uvicorn server:app --host 0.0.0.0 --port 7861
   "multiscale_fullres_end": 8,
   "keep_models_loaded": true,
   "enable_preview": false,
+  "preview_fidelity": "balanced",
   "guidance_scale": null,
   "seed": null
 }

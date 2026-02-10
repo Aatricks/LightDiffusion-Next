@@ -102,6 +102,10 @@ def pipeline(
     controlnet_model: str | None = None,
     controlnet_strength: float = 1.0,
     controlnet_type: str = "canny",
+    # torch.compile
+    torch_compile: bool = False,
+    # FP8 quantization
+    fp8_inference: bool = False,
     # Batched mode
     per_sample_info: list | None = None,
     # External callback
@@ -206,6 +210,8 @@ def pipeline(
         controlnet_model=controlnet_model,
         controlnet_strength=controlnet_strength,
         controlnet_type=controlnet_type,
+        torch_compile=torch_compile,
+        fp8_inference=fp8_inference,
     )
     
     # Handle prompt enhancement

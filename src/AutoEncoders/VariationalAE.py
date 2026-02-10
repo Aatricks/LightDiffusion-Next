@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from src.Model import ModelPatcher
 from src.Attention import Attention
 from src.AutoEncoders import ResBlock
@@ -69,7 +70,8 @@ class AutoencodingEngine(nn.Module):
 
 
 def nonlinearity(x):
-    return x * torch.sigmoid(x)
+    # Optimization E: Use fused SiLU kernel instead of x * sigmoid(x)
+    return F.silu(x)
 
 
 class Upsample(nn.Module):
@@ -230,9 +232,44 @@ class VAE:
         self.device = device or Device.vae_device()
         self.vae_dtype = dtype or Device.vae_dtype()
         self.first_stage_model.to(self.vae_dtype)
+
+        # Optimization C: Convert to channels-last memory format for faster Conv2d on GPU
+        try:
+            self.first_stage_model.to(memory_format=torch.channels_last)
+            logging.debug("VAE: channels-last memory format applied")
+        except Exception:
+            pass  # Silently fall back to default contiguous format
+
         self.output_device = Device.intermediate_device()
         self.patcher = ModelPatcher.ModelPatcher(self.first_stage_model, self.device, Device.vae_offload_device())
+        self._compiled_decoder = False
 
+    def _ensure_compiled(self):
+        """Optimization A: Compile the VAE decoder with torch.compile on first use.
+        
+        This bypasses the global TORCH_COMPILE_ENABLED gate since VAE compile
+        is always beneficial and independent of the diffusion model compile flag.
+        """
+        if self._compiled_decoder:
+            return
+        try:
+            if not hasattr(torch, 'compile'):
+                logging.debug("VAE torch.compile skipped: requires PyTorch 2.0+")
+            else:
+                compiled = torch.compile(
+                    self.first_stage_model.decoder,
+                    mode="max-autotune",
+                    fullgraph=False,
+                    dynamic=False,  # VAE shapes are fixed per resolution
+                )
+                if compiled is not self.first_stage_model.decoder:
+                    self.first_stage_model.decoder = compiled
+                    logging.info("VAE decoder compiled with torch.compile (max-autotune)")
+        except Exception as e:
+            logging.debug(f"VAE torch.compile skipped: {e}")
+        self._compiled_decoder = True
+
+    @torch.inference_mode()  # Optimization B: disable autograd overhead
     def decode(self, samples_in, flux=None):
         if flux is None:
             flux = self.flux
@@ -241,22 +278,37 @@ class VAE:
             return self.decode_tiled(samples_in, flux=flux)
         
         Device.load_models_gpu([self.patcher], memory_required=memory_used)
+        self._ensure_compiled()  # Optimization A
         batch = max(1, int(Device.get_free_memory(self.device) / memory_used))
         out = torch.empty((samples_in.shape[0], 3, samples_in.shape[2] * self.upscale_ratio,
                            samples_in.shape[3] * self.upscale_ratio), device=self.output_device)
         for i in range(0, samples_in.shape[0], batch):
-            s = samples_in[i:i+batch].to(self.vae_dtype).to(self.device)
-            out[i:i+batch] = self.process_output(self.first_stage_model.decode(s, flux=flux).to(self.output_device).float())
+            # Optimization D: non-blocking transfers to overlap data movement with compute
+            s = samples_in[i:i+batch].to(self.vae_dtype, non_blocking=True).to(self.device, non_blocking=True)
+            # Optimization C: ensure input is channels-last to match compiled model
+            if s.is_cuda:
+                s = s.contiguous(memory_format=torch.channels_last)
+            decoded = self.first_stage_model.decode(s, flux=flux)
+            out[i:i+batch] = self.process_output(decoded.to(self.output_device, non_blocking=True).float())
         return out.movedim(1, -1)
 
+    @torch.inference_mode()  # Optimization B
     def decode_tiled(self, samples, tile_x=256, tile_y=256, overlap=64, flux=None):
         if flux is None:
             flux = self.flux
         Device.load_models_gpu([self.patcher])
-        decode_fn = lambda s: self.first_stage_model.decode(s.to(self.device).to(self.vae_dtype), flux=flux).float()
+        self._ensure_compiled()  # Optimization A
+        def decode_fn(s):
+            # Optimization D: non-blocking transfers
+            t = s.to(self.device, non_blocking=True).to(self.vae_dtype, non_blocking=True)
+            # Optimization C: channels-last input
+            if t.is_cuda:
+                t = t.contiguous(memory_format=torch.channels_last)
+            return self.first_stage_model.decode(t, flux=flux).float()
         return self.process_output(util.tiled_scale(samples, decode_fn, tile_x, tile_y, overlap,
                                                      self.upscale_ratio, 3, self.output_device)).movedim(1, -1)
 
+    @torch.inference_mode()  # Optimization B
     def encode(self, pixel_samples, flux=None):
         if flux is None:
             flux = self.flux
@@ -271,15 +323,24 @@ class VAE:
                            pixel_samples.shape[2] // self.downscale_ratio,
                            pixel_samples.shape[3] // self.downscale_ratio), device=self.output_device)
         for i in range(0, pixel_samples.shape[0], batch):
-            p = self.process_input(pixel_samples[i:i+batch]).to(self.vae_dtype).to(self.device)
-            out[i:i+batch] = self.first_stage_model.encode(p, flux=flux).to(self.output_device).float()
+            # Optimization D: non-blocking transfers
+            p = self.process_input(pixel_samples[i:i+batch]).to(self.vae_dtype, non_blocking=True).to(self.device, non_blocking=True)
+            if p.is_cuda:
+                p = p.contiguous(memory_format=torch.channels_last)
+            out[i:i+batch] = self.first_stage_model.encode(p, flux=flux).to(self.output_device, non_blocking=True).float()
         return out
 
+    @torch.inference_mode()  # Optimization B
     def encode_tiled(self, pixel_samples, tile_x=512, tile_y=512, overlap=64, flux=None):
         if flux is None:
             flux = self.flux
         Device.load_models_gpu([self.patcher])
-        encode_fn = lambda s: self.first_stage_model.encode(self.process_input(s).to(self.device).to(self.vae_dtype), flux=flux).float()
+        def encode_fn(s):
+            # Optimization D: non-blocking transfers
+            t = self.process_input(s).to(self.device, non_blocking=True).to(self.vae_dtype, non_blocking=True)
+            if t.is_cuda:
+                t = t.contiguous(memory_format=torch.channels_last)
+            return self.first_stage_model.encode(t, flux=flux).float()
         return util.tiled_scale(pixel_samples, encode_fn, tile_x, tile_y, overlap,
                                 1.0 / self.downscale_ratio, self.latent_channels, self.output_device)
 

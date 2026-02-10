@@ -200,7 +200,7 @@ class Pipeline:
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
                 filename_prefix = f"{ctx.features.request_filename_prefix}_{prefix}" if ctx.features.request_filename_prefix else prefix
                 images = ctx.current_image if isinstance(ctx.current_image, list) else [ctx.current_image]
-                saver.save_images(images, filename_prefix=filename_prefix, prompt=str(ctx.prompt), extra_pnginfo=ctx.build_metadata())
+                saver.save_images(images, filename_prefix=filename_prefix, prompt=str(ctx.prompt), extra_pnginfo=ctx.build_metadata(), store_bytes_prefix=ctx.features.request_filename_prefix)
         
         ctx.save_seed()
         return ctx
@@ -374,7 +374,7 @@ class Pipeline:
                 "img2img": "True",
                 "img2img_denoise": str(denoise),
                 "img2img_mode": "upscale" if use_upscale else "diffusion",
-            }))
+            }), store_bytes_prefix=ctx.features.request_filename_prefix)
         
         ctx.save_seed()
         return ctx
@@ -523,7 +523,7 @@ class Pipeline:
                 "controlnet_style": "True",
                 "controlnet_strength": str(strength),
                 "controlnet_type": ctx.features.controlnet_type,
-            }))
+            }), store_bytes_prefix=ctx.features.request_filename_prefix)
         
         ctx.save_seed()
         return ctx
@@ -830,7 +830,7 @@ class Pipeline:
                 "seed": str(ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed),
                 "prompt": prompts[i],
             })
-            saved = saver.save_images([final], prefix, prompts[i], meta)
+            saved = saver.save_images([final], prefix, prompts[i], meta, store_bytes_prefix=prefix)
             results.setdefault(req_id, []).extend(
                 saved.get("ui", {}).get("images", [saved])
             )
@@ -882,6 +882,13 @@ class Pipeline:
             logger.info(f"Unloading {current_type} model to load {target_type}")
             self._model.unload()
             self._model = None
+            
+            # Clear prompt cache since the CLIP model is changing
+            try:
+                from src.Utilities.prompt_cache import clear_prompt_cache
+                clear_prompt_cache()
+            except Exception:
+                pass
             
             # Force cleanup to prevent memory pressure/stuttering during transition
             import gc
@@ -965,9 +972,26 @@ class Pipeline:
                 except Exception as e:
                     logger.warning(f"LoRA failed: {e}")
         
-        # StableFast
+        # StableFast and torch.compile are mutually exclusive
         if ctx.generation.stable_fast:
             model.apply_stable_fast(enable_cuda_graph=True)
+        elif ctx.generation.torch_compile:
+            model.apply_torch_compile()
+        
+        # FP8 quantization (hardware-gated, applies independently)
+        if ctx.generation.fp8_inference:
+            model.apply_fp8()
+        
+        # Token Merging (ToMe)
+        if ctx.sampling.tome_enabled and getattr(model.capabilities, 'supports_tome', True):
+            try:
+                if hasattr(model.model, 'apply_tome'):
+                    model.model.apply_tome(
+                        ratio=ctx.sampling.tome_ratio,
+                        max_downsample=ctx.sampling.tome_max_downsample,
+                    )
+            except Exception as e:
+                logger.warning(f"ToMe application failed: {e}")
         
         # DeepCache
         if ctx.sampling.deepcache_enabled:

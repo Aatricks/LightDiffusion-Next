@@ -27,6 +27,8 @@ export interface GenerationSettings {
     reuse_seed: boolean;
     keep_models_loaded: boolean;
     enable_preview: boolean;
+    // Preview fidelity for in-progress previews (low|balanced|high)
+    preview_fidelity?: 'low' | 'balanced' | 'high';
 
     // ControlNet
     controlnet_enabled: boolean;
@@ -52,6 +54,10 @@ export interface GenerationSettings {
     cfg_free_start_percent: number;
     tome_enabled: boolean;
     tome_ratio: number;
+    
+    // Compilation & quantization
+    torch_compile?: boolean;
+    fp8_inference?: boolean;
 }
 
 export interface GenerationResponse {

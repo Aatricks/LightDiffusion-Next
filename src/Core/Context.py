@@ -67,6 +67,8 @@ class GenerationConfig:
     refiner_model_path: Optional[str] = None
     refiner_switch_step: Optional[int] = None
     stable_fast: bool = False
+    torch_compile: bool = False
+    fp8_inference: bool = False
     autohdr: bool = True
 
 
@@ -279,6 +281,8 @@ class Context:
         ctx.generation.refiner_model_path = kwargs.get("refiner_model_path")
         ctx.generation.refiner_switch_step = kwargs.get("refiner_switch_step")
         ctx.generation.stable_fast = kwargs.get("stable_fast", False)
+        ctx.generation.torch_compile = kwargs.get("torch_compile", False)
+        ctx.generation.fp8_inference = kwargs.get("fp8_inference", False)
         ctx.generation.autohdr = kwargs.get("autohdr", True)
         
         # Sampling
@@ -305,6 +309,7 @@ class Context:
         ctx.sampling.deepcache_depth = kwargs.get("deepcache_depth", 2)
         ctx.sampling.deepcache_start_step = kwargs.get("deepcache_start_step", 0)
         ctx.sampling.deepcache_end_step = kwargs.get("deepcache_end_step", 1000)
+        ctx.sampling.tome_enabled = kwargs.get("tome_enabled", False)
         ctx.sampling.tome_ratio = kwargs.get("tome_ratio", 0.5)
         ctx.sampling.tome_max_downsample = kwargs.get("tome_max_downsample", 1)
         

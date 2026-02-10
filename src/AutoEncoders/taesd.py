@@ -326,7 +326,18 @@ def decode_latents_to_images(x: torch.Tensor, flux: bool = False) -> list[Image.
 
         # Normalize to [0, 1] range for both SD and Flux
         # Note: No channel swap needed - TAESD outputs RGB correctly for all models
-        decoded_batch = decoded_batch.add(1.0).mul(0.5).clamp(0, 1)
+        decoded_batch = decoded_batch.add(1.0).mul(0.5)
+        # Apply sRGB transfer to approximate final display appearance before
+        # converting to uint8. This helps previews better match final images.
+        try:
+            if getattr(app_instance.app, "preview_srgb", True):
+                from src.Utilities import color as color_utils
+                decoded_batch = color_utils.linear_to_srgb(decoded_batch)
+        except Exception:
+            # Non-fatal: fall back to simple clamp if anything goes wrong
+            decoded_batch = decoded_batch.clamp(0, 1)
+        finally:
+            decoded_batch = decoded_batch.clamp(0, 1)
     
     # For Flux2 (32 channels), use RGB approximation since no TAESD exists for 32ch
     elif latent_channels == 32:
@@ -366,7 +377,8 @@ def decode_latents_to_images(x: torch.Tensor, flux: bool = False) -> list[Image.
             img = Image.fromarray(decoded_np[i], mode='RGB')
             # Reduce preview size for faster base64 conversion and lower bandwidth
             if img.width > 512 or img.height > 512:
-                img.thumbnail((512, 512), Image.Resampling.NEAREST)
+                # Use higher-quality resampling for downsampling (LANCZOS)
+                img.thumbnail((512, 512), Image.Resampling.LANCZOS)
             images.append(img)
             
     return images

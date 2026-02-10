@@ -19,15 +19,34 @@ except ImportError:
 import torch
 import torch.nn.functional as F
 
+# Pre-computed padding targets for SageAttention supported dimensions
+# Maps dimension -> (target_dim, padding_amount) or None if no padding needed
+_SAGE_PAD_CACHE: dict[int, tuple[int, int] | None] = {}
+
+
+def _get_sage_padding(dim: int) -> tuple[int, int] | None:
+    """Get pre-computed padding target for a given dimension.
+    
+    Returns (target_dim, pad_amount) or None if no padding needed.
+    """
+    if dim not in _SAGE_PAD_CACHE:
+        if dim in (64, 96, 128):
+            _SAGE_PAD_CACHE[dim] = None  # No padding needed
+        elif dim < 64:
+            _SAGE_PAD_CACHE[dim] = (64, 64 - dim)
+        elif dim < 128:
+            _SAGE_PAD_CACHE[dim] = (128, 128 - dim)
+        else:
+            _SAGE_PAD_CACHE[dim] = None  # Unsupported, no padding
+    return _SAGE_PAD_CACHE[dim]
+
 
 def _pad_for_sage(q, k, v, dim):
     """Pad tensors to supported SageAttention dimensions (64, 96, 128)."""
-    if dim in [64, 96, 128]:
+    padding = _get_sage_padding(dim)
+    if padding is None:
         return q, k, v, dim
-    target = 64 if dim < 64 else 128 if dim < 128 else dim
-    if target > 128:
-        return q, k, v, dim  # No padding for unsupported dims
-    pad = target - dim
+    target, pad = padding
     return (F.pad(q, (0, pad)), F.pad(k, (0, pad)), F.pad(v, (0, pad)), dim)
 
 

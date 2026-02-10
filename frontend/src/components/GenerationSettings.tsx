@@ -276,6 +276,17 @@ export function GenerationSettings() {
                                         checked={settings.enable_preview}
                                         onChange={(e) => setSettings({ enable_preview: e.currentTarget.checked })}
                                     />
+                                    <Select
+                                        label="Preview Fidelity"
+                                        data={[
+                                            { value: 'low', label: 'Low (fast)' },
+                                            { value: 'balanced', label: 'Balanced (default)' },
+                                            { value: 'high', label: 'High (quality)' },
+                                        ]}
+                                        value={settings.preview_fidelity || 'balanced'}
+                                        onChange={(v) => setSettings({ preview_fidelity: v || 'balanced' })}
+                                        disabled={!settings.enable_preview}
+                                    />
                                 </Stack>
                             </Accordion.Panel>
                         </Accordion.Item>
@@ -390,6 +401,19 @@ export function GenerationSettings() {
                                         checked={settings.stable_fast}
                                         onChange={(e) => setSettings({ stable_fast: e.currentTarget.checked })}
                                         disabled={caps && !caps.supports_stable_fast}
+                                    />
+                                    <Switch
+                                        label="torch.compile"
+                                        description="Compile diffusion model for faster inference (mutually exclusive with Stable Fast)"
+                                        checked={settings.stable_fast ? false : (settings as any).torch_compile || false}
+                                        onChange={(e) => setSettings({ torch_compile: e.currentTarget.checked, stable_fast: e.currentTarget.checked ? false : settings.stable_fast } as any)}
+                                        disabled={settings.stable_fast}
+                                    />
+                                    <Switch
+                                        label="FP8 Inference"
+                                        description="Quantize weights to FP8 for lower VRAM usage (Ada Lovelace+ GPUs)"
+                                        checked={(settings as any).fp8_inference || false}
+                                        onChange={(e) => setSettings({ fp8_inference: e.currentTarget.checked } as any)}
                                     />
                                     <Switch label="Keep Models Loaded" checked={settings.keep_models_loaded} onChange={(e) => setSettings({ keep_models_loaded: e.currentTarget.checked })} />
                                     <Switch label="Reuse Seed" checked={settings.reuse_seed} onChange={(e) => setSettings({ reuse_seed: e.currentTarget.checked })} />

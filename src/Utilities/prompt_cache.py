@@ -34,16 +34,45 @@ def is_prompt_cache_enabled() -> bool:
     return _cache_enabled
 
 
-def get_prompt_hash(prompt: str) -> str:
-    """Generate a unique hash for a prompt.
+def get_prompt_hash(prompt: str) -> int:
+    """Generate a fast hash for a prompt.
+    
+    Uses Python's built-in hash() which is much faster than MD5
+    and sufficient for cache keying (not cryptographic).
     
     Args:
         prompt (str): The text prompt.
     
     Returns:
-        str: MD5 hash of the prompt.
+        int: Hash of the prompt.
     """
-    return hashlib.md5(prompt.encode('utf-8')).hexdigest()
+    return hash(prompt)
+
+
+def _get_clip_identity(clip) -> str:
+    """Get a stable identity string for a CLIP model instance.
+    
+    Uses the model's checkpoint path or class name instead of id(clip)
+    which changes when a model is reloaded at the same logical identity.
+    
+    Args:
+        clip: CLIP model instance.
+        
+    Returns:
+        str: Stable identity string.
+    """
+    # Try to get a stable path-based identifier
+    if hasattr(clip, 'model_path') and clip.model_path:
+        return f"clip:{clip.model_path}"
+    if hasattr(clip, 'patcher') and hasattr(clip.patcher, 'model_path'):
+        return f"clip:{clip.patcher.model_path}"
+    # Fall back to class name + parameter count for stability
+    try:
+        param_count = sum(p.numel() for p in clip.parameters() if hasattr(clip, 'parameters'))
+        return f"clip:{clip.__class__.__name__}:{param_count}"
+    except Exception:
+        # Last resort: use id() (not ideal but better than crashing)
+        return f"clip:id:{id(clip)}"
 
 
 # LRU cache with 128 slots (enough for typical session)
@@ -113,8 +142,8 @@ def get_cached_encoding(clip, prompt: str) -> tuple:
         return None
     
     prompt_hash = get_prompt_hash(prompt)
-    clip_id = id(clip)
-    cache_key = f"{clip_id}_{prompt_hash}"
+    clip_key = _get_clip_identity(clip)
+    cache_key = f"{clip_key}_{prompt_hash}"
     
     # Check if we have it cached
     if cache_key in _prompt_cache_dict:
@@ -146,8 +175,8 @@ def cache_encoding(clip, prompt: str, cond: torch.Tensor, pooled: torch.Tensor):
         return
     
     prompt_hash = get_prompt_hash(prompt)
-    clip_id = id(clip)
-    cache_key = f"{clip_id}_{prompt_hash}"
+    clip_key = _get_clip_identity(clip)
+    cache_key = f"{clip_key}_{prompt_hash}"
     
     # Don't cache if already present
     if cache_key in _prompt_cache_dict:

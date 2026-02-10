@@ -70,16 +70,22 @@ class HiresFix:
         
         # Use defaults if not specified
         scale = scale or cls.DEFAULT_SCALE
-        denoise = denoise or cls.DEFAULT_DENOISE
+        
+        # Use a hires-specific context for hires pass (centralizes defaults)
+        hires_ctx = ctx.with_hires_settings(scale)
         
         # Calculate steps - for Flux2 Klein (distilled), we can use fewer steps
         min_steps = 3 if is_flux2 else 10
-        steps = steps or max(min_steps, int(ctx.sampling.steps * cls.DEFAULT_STEPS_RATIO))
+        steps = steps or max(min_steps, int(hires_ctx.sampling.steps))
         
-        # Respect user CFG from context
-        hires_cfg = ctx.sampling.cfg
+        # Respect denoise default from hires context unless explicitly overridden
+        denoise = denoise or hires_ctx.sampling.denoise
+        
+        # For Flux models, prefer the user's cfg from the original context (pipeline caps apply elsewhere)
         if is_flux or is_flux2:
-            hires_cfg = 1.0
+            hires_cfg = ctx.sampling.cfg
+        else:
+            hires_cfg = hires_ctx.sampling.cfg
         
         try:
             # Import required modules
@@ -87,9 +93,9 @@ class HiresFix:
             from src.sample import sampling
             from src.hidiffusion import msw_msa_attention
             
-            # Calculate new dimensions
-            new_width = int(ctx.generation.width * scale)
-            new_height = int(ctx.generation.height * scale)
+            # Calculate new dimensions from hires context
+            new_width = int(hires_ctx.generation.width)
+            new_height = int(hires_ctx.generation.height)
             
             # Get model-specific downscale factor (e.g., 8 for SD, 16 for Flux)
             downscale_factor = 8
@@ -133,12 +139,41 @@ class HiresFix:
             
             # Create sampler and run hires pass
             ksampler = sampling.KSampler()
+
+            # If model requires resolution-aware conditioning (e.g., SDXL), adjust prompts/conds
+            try:
+                if getattr(model.capabilities, "requires_size_conditioning", False):
+                    # Re-encode prompts if raw text was provided
+                    def _is_encoded_list(obj):
+                        return isinstance(obj, (list, tuple)) and len(obj) > 0 and isinstance(obj[0], (list, tuple)) and isinstance(obj[0][1], dict)
+                    if isinstance(positive, (str, list)) and not _is_encoded_list(positive):
+                        positive, negative = model.encode_prompt(ctx.prompt, ctx.negative_prompt)
+                    # Recursively update width/height in any meta dicts
+                    def _update_meta(obj):
+                        if isinstance(obj, (list, tuple)):
+                            for item in obj:
+                                if isinstance(item, (list, tuple)) and len(item) > 1 and isinstance(item[1], dict):
+                                    item[1].update({
+                                        "width": new_width,
+                                        "height": new_height,
+                                        "crop_w": 0,
+                                        "crop_h": 0,
+                                        "target_width": new_width,
+                                        "target_height": new_height,
+                                    })
+                                else:
+                                    _update_meta(item)
+                    _update_meta(positive)
+                    _update_meta(negative)
+            except Exception:
+                pass
+
             hires_result = ksampler.sample(
                 seed=hires_seed,
                 steps=steps,
                 cfg=hires_cfg,
-                sampler_name=ctx.sampling.sampler,
-                scheduler=ctx.sampling.scheduler,
+                sampler_name=hires_ctx.sampling.sampler,
+                scheduler=hires_ctx.sampling.scheduler,
                 denoise=denoise,
                 model=optimized_model,
                 positive=positive,
@@ -151,8 +186,13 @@ class HiresFix:
                 # Multi-scale downscales during sampling, which defeats the purpose of hires fix
                 # and can introduce blurriness or artifacts.
                 enable_multiscale=False,
-                cfg_free_enabled=ctx.sampling.cfg_free_enabled,
-                cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                cfg_free_enabled=hires_ctx.sampling.cfg_free_enabled,
+                cfg_free_start_percent=hires_ctx.sampling.cfg_free_start_percent,
+                batched_cfg=hires_ctx.sampling.batched_cfg,
+                dynamic_cfg_rescaling=hires_ctx.sampling.dynamic_cfg_rescaling,
+                dynamic_cfg_method=hires_ctx.sampling.dynamic_cfg_method,
+                dynamic_cfg_percentile=hires_ctx.sampling.dynamic_cfg_percentile,
+                dynamic_cfg_target_scale=hires_ctx.sampling.dynamic_cfg_target_scale,
                 callback=callback,
             )
             

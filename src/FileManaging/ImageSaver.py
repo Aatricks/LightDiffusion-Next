@@ -1,3 +1,4 @@
+import io
 import os
 import threading
 import queue
@@ -6,6 +7,26 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 output_directory = "./output"
+
+# In-memory image buffer for API responses (avoids disk round-trip)
+# Maps request_filename_prefix -> list of (filename, subfolder, png_bytes)
+_image_bytes_buffer: dict[str, list[tuple[str, str, bytes]]] = {}
+_image_bytes_lock = threading.Lock()
+
+
+def store_image_bytes(prefix: str, filename: str, subfolder: str, data: bytes) -> None:
+    """Store image bytes in memory for later retrieval by the API server."""
+    with _image_bytes_lock:
+        _image_bytes_buffer.setdefault(prefix, []).append((filename, subfolder, data))
+
+
+def pop_image_bytes(prefix: str) -> list[tuple[str, str, bytes]]:
+    """Pop and return all stored image byte entries for a given prefix.
+    
+    Returns a list of (filename, subfolder, png_bytes) tuples.
+    """
+    with _image_bytes_lock:
+        return _image_bytes_buffer.pop(prefix, [])
 
 
 def get_output_directory() -> str:
@@ -95,6 +116,7 @@ class SaveImage:
         filename_prefix: str = "LD",
         prompt: str = None,
         extra_pnginfo: dict = None,
+        store_bytes_prefix: str | None = None,
     ) -> dict:
         """#### Save images to the output directory.
 
@@ -103,6 +125,8 @@ class SaveImage:
             - `filename_prefix` (str, optional): The filename prefix. Defaults to "LD".
             - `prompt` (str, optional): The prompt. Defaults to None.
             - `extra_pnginfo` (dict, optional): Additional PNG info. Defaults to None.
+            - `store_bytes_prefix` (str, optional): If set, also buffer PNG bytes in memory
+              under this key for zero-disk-IO API retrieval.
 
         #### Returns:
             - `dict`: The saved images information.
@@ -178,6 +202,12 @@ class SaveImage:
                         pnginfo=metadata,
                         compress_level=self.compress_level,
                     )
+                    # Buffer PNG bytes in memory for API responses (avoids re-read)
+                    if store_bytes_prefix:
+                        buf = io.BytesIO()
+                        img.save(buf, format="PNG", pnginfo=metadata, compress_level=self.compress_level)
+                        save_rel_bytes = os.path.relpath(save_path, "./output")
+                        store_image_bytes(store_bytes_prefix, file, save_rel_bytes, buf.getvalue())
                     # Return the actual subfolder relative to ./output so callers can locate files
                     save_rel = os.path.relpath(save_path, "./output")
                     results.append(
@@ -243,6 +273,12 @@ class SaveImage:
                 pnginfo=metadata,
                 compress_level=self.compress_level,
             )
+            # Buffer PNG bytes in memory for API responses (avoids re-read)
+            if store_bytes_prefix:
+                buf = io.BytesIO()
+                img.save(buf, format="PNG", pnginfo=metadata, compress_level=self.compress_level)
+                save_rel_bytes = os.path.relpath(save_path, "./output")
+                store_image_bytes(store_bytes_prefix, file, save_rel_bytes, buf.getvalue())
             # Return the actual subfolder relative to ./output so callers can locate files
             save_rel = os.path.relpath(save_path, "./output")
             results.append(

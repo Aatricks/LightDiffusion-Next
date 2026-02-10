@@ -220,6 +220,106 @@ class AbstractModel(ABC):
         
         return self
     
+    def apply_fp8(self) -> "AbstractModel":
+        """Apply FP8 quantization to the diffusion model weights.
+        
+        Hardware-gated: only applies on supported GPUs (Ada Lovelace 8.9+, Hopper 9.0+).
+        Reduces memory usage by ~50% vs FP16 with minimal quality impact.
+        
+        After casting weights to FP8, enables comfy_cast_weights on all affected
+        modules so that forward() uses cast_bias_weight() to upcast FP8 weights
+        to the input dtype at runtime, preventing dtype mismatch errors.
+        
+        Returns:
+            Self for method chaining
+        """
+        if not self._loaded:
+            raise RuntimeError("Model must be loaded before applying FP8")
+        
+        try:
+            from src.Device import Device
+            from src.cond.cast import CastWeightBiasOp
+            if not Device.is_fp8_supported():
+                import logging
+                logging.getLogger(__name__).info(
+                    "FP8 not supported on this GPU (requires compute capability 8.9+), skipping"
+                )
+                return self
+            
+            inner = getattr(self.model, 'model', self.model)
+            diff_model = getattr(inner, 'diffusion_model', None)
+            if diff_model is None:
+                import logging
+                logging.getLogger(__name__).warning("No diffusion_model found for FP8 quantization")
+                return self
+            
+            converted = 0
+            cast_enabled = 0
+            for name, module in diff_model.named_modules():
+                # Quantize weight parameters to FP8
+                if hasattr(module, 'weight') and module.weight is not None:
+                    w = module.weight
+                    if w.dtype in (torch.float16, torch.bfloat16, torch.float32) and w.ndim >= 2:
+                        module.weight.data = Device.cast_to_fp8(w.data)
+                        converted += 1
+                        # Enable runtime casting so forward() upcasts FP8→input dtype
+                        if isinstance(module, CastWeightBiasOp):
+                            module.comfy_cast_weights = True
+                            cast_enabled += 1
+            
+            import logging
+            logging.getLogger(__name__).info(
+                f"FP8 quantization applied to {converted} weight tensors, "
+                f"runtime casting enabled on {cast_enabled} modules"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"FP8 quantization failed: {e}")
+        
+        return self
+    
+    def apply_torch_compile(self, mode: str = "max-autotune-no-cudagraphs") -> "AbstractModel":
+        """Apply torch.compile optimization to the model.
+        
+        Uses 'max-autotune-no-cudagraphs' by default to get autotuning benefits
+        without CUDA graph fragility (which causes assertion errors with dynamic
+        model state like LoRA patches and mixed dtypes).
+        
+        Args:
+            mode: Compilation mode - 'max-autotune-no-cudagraphs' (recommended),
+                  'max-autotune', 'default', or 'reduce-overhead'
+            
+        Returns:
+            Self for method chaining
+        """
+        if not self._loaded:
+            raise RuntimeError("Model must be loaded before applying torch.compile")
+        
+        try:
+            from src.Device import Device
+            if not hasattr(torch, 'compile'):
+                import logging
+                logging.getLogger(__name__).warning("torch.compile requires PyTorch 2.0+, skipping")
+                return self
+            
+            Device.enable_torch_compile(True)
+            inner = getattr(self.model, 'model', self.model)
+            diff_model = getattr(inner, 'diffusion_model', None)
+            if diff_model is not None:
+                compiled = Device.compile_model(diff_model, mode=mode)
+                if compiled is not diff_model:
+                    inner.diffusion_model = compiled
+                    import logging
+                    logging.getLogger(__name__).info(f"torch.compile applied to diffusion model (mode={mode})")
+            else:
+                import logging
+                logging.getLogger(__name__).warning("No diffusion_model found for torch.compile")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"torch.compile optimization failed: {e}")
+        
+        return self
+    
     def apply_stable_fast(self, enable_cuda_graph: bool = True) -> "AbstractModel":
         """Apply StableFast optimization to the model.
         
