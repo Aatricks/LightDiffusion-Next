@@ -59,7 +59,7 @@ def tensor_paste(
     mask: torch.Tensor,
 ) -> None:
     """Paste image2 onto image1 at left_top position using mask."""
-    x, y = left_top
+    x, y = [int(round(c)) for c in left_top]
     _, h1, w1, _ = image1.shape
     _, h2, w2, _ = image2.shape
     w, h = min(w1, x + w2) - x, min(h1, y + h2) - y

@@ -271,11 +271,17 @@ class CLIPTextEncode:
             seq_len = 77
             embed_dim = 768
             try:
-                if getattr(clip, "clip_type", "SD15") == "SDXL":
+                # Detect SDXL by checking the condition tensor dimension if available
+                if isinstance(res, (tuple, list)) and len(res) > 0 and res[0].shape[-1] == 2048:
+                    embed_dim = 2048
+                elif getattr(clip, "clip_type", "SD15") == "SDXL":
                     embed_dim = 2048
             except Exception:
                 pass
-            return torch.randn(1, seq_len, embed_dim), None
+            
+            cond = torch.randn(1, seq_len, embed_dim) if not isinstance(res, torch.Tensor) else res
+            pooled = torch.zeros((1, embed_dim), device=cond.device, dtype=cond.dtype)
+            return cond, pooled
 
         if isinstance(text, (list, tuple)):
             out = []

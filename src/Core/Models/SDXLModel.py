@@ -226,12 +226,15 @@ class SDXLModel(AbstractModel):
                 # Add seeds for deterministic noise
                 latent["seeds"] = ctx.seeds[:ctx.generation.batch] if ctx.seeds else [ctx.seed]
             
-            # Apply HiDiffusion optimization
+            # Apply HiDiffusion optimization for high resolutions (> 1024)
             try:
-                # Clone model before patching to avoid persistent state
-                patch_model = self.model.clone()
-                hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
-                optimized_model = hidiff.go(model_type="sdxl", model=patch_model)[0]
+                if width > 1024 or height > 1024:
+                    # Clone model before patching to avoid persistent state
+                    patch_model = self.model.clone()
+                    hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
+                    optimized_model = hidiff.go(model_type="sdxl", model=patch_model)[0]
+                else:
+                    optimized_model = self.model
             except Exception:
                 optimized_model = self.model
             

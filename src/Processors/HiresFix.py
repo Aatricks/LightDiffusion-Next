@@ -24,7 +24,7 @@ class HiresFix:
     
     # Default settings
     DEFAULT_SCALE = 2.0
-    DEFAULT_DENOISE = 0.45
+    DEFAULT_DENOISE = 0.35
     DEFAULT_STEPS_RATIO = 0.5
     DEFAULT_CFG = 8
     

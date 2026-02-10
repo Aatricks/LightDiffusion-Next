@@ -175,7 +175,12 @@ def sdxl_pooled(args, noise_augmentor):
     if "unclip_conditioning" in args:
         z, _ = noise_augmentor(args["unclip_conditioning"].to(args["device"]), seed=args.get("seed", 0) - 10)
         return z[:, :1280]
-    return args["pooled_output"]
+    
+    pooled = args.get("pooled_output")
+    # Robustly handle wrapped CONDRegular objects from cond.py
+    if hasattr(pooled, "cond"):
+        return pooled.cond
+    return pooled
 
 
 class SDXLBase(BaseModel):

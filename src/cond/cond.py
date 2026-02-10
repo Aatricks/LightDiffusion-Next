@@ -60,12 +60,13 @@ def convert_cond(cond: list) -> list:
                 temp["cross_attn"] = cond_tensor
             except Exception:
                 pass
-        # Pass pooled_output as 'y' only if needed (e.g., Flux2 without extra_conds)
-        # For SDXL, extra_conds will handle this via encode_adm
+        # Pass pooled_output as 'y' or 'pooled_output' for SDXL/Flux
         pooled = temp.get("pooled_output")
         if pooled is not None:
             model_conds["y_pooled"] = CONDRegular(pooled)
-        # Pass attention_mask for Klein/Flux2 models to properly mask padding
+            model_conds["pooled_output"] = CONDRegular(pooled)
+        
+        # Pass attention_mask for Klein/Flux2 models
         attention_mask = temp.get("attention_mask")
         if attention_mask is not None:
             model_conds["attention_mask"] = CONDRegular(attention_mask)
@@ -317,7 +318,10 @@ def encode_model_conds(model_function, conds, noise, device, prompt_type, **kwar
 
         if len(noise.shape) >= 4:
             params["width"] = params.get("width", noise.shape[3] * downscale_factor)
-        params["height"] = params.get("height", noise.shape[2] * downscale_factor)
+            params["height"] = params.get("height", noise.shape[2] * downscale_factor)
+        else:
+            params["height"] = params.get("height", noise.shape[2] * downscale_factor)
+            
         params["prompt_type"] = params.get("prompt_type", prompt_type)
         params.update({k: v for k, v in kwargs.items() if k not in params})
 

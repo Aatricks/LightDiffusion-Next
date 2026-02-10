@@ -136,7 +136,8 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     try:
         refined_image = vae.decode(refined_latent["samples"])
     except Exception:
-        refined_image = vae.decode_tiled(refined_latent["samples"], tile_x=64, tile_y=64)
+        # Standard tile size for SDXL VAE to avoid artifacts
+        refined_image = vae.decode_tiled(refined_latent["samples"], tile_x=256, tile_y=256)
     return tensor_util.tensor_resize(refined_image, w, h).cpu(), None
 
 
@@ -175,7 +176,36 @@ class DetailerForEach:
             def crop_cond(cond_list):
                 if cond_list is None:
                     return None
-                return [[c, {k: crop_condition_mask(v, image, seg.crop_region) if k == "mask" else v for k, v in d.items()}] for c, d in cond_list]
+                
+                # Extract crop region coordinates
+                x1, y1, x2, y2 = [int(round(c)) for c in seg.crop_region]
+                img_h, img_w = [int(s) for s in image.shape[1:3]]
+                
+                res = []
+                for entry in cond_list:
+                    if isinstance(entry, (list, tuple)) and len(entry) > 1 and isinstance(entry[1], dict):
+                        new_dict = entry[1].copy()
+                        # Apply mask cropping if present
+                        if "mask" in new_dict:
+                            new_dict["mask"] = crop_condition_mask(new_dict["mask"], image, seg.crop_region)
+                        
+                        # CRITICAL: Preserve pooled_output for SDXL
+                        if "pooled_output" in entry[1]:
+                            new_dict["pooled_output"] = entry[1]["pooled_output"]
+                        
+                        # Inject SDXL size conditioning for the crop
+                        # SDXL expects global dimensions (typically 1024) and the crop offsets.
+                        new_dict["width"] = int(img_w)
+                        new_dict["height"] = int(img_h)
+                        new_dict["crop_w"] = int(x1)
+                        new_dict["crop_h"] = int(y1)
+                        new_dict["target_width"] = int(max(1024, img_w))
+                        new_dict["target_height"] = int(max(1024, img_h))
+                        
+                        res.append([entry[0], new_dict])
+                    else:
+                        res.append(entry)
+                return res
 
             orig_cropped_image = cropped_image.clone()
             enhanced_image, cnet_pils = enhance_detail(cropped_image, model, clip, vae, guide_size, guide_size_for_bbox,
