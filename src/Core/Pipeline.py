@@ -165,18 +165,18 @@ class Pipeline:
             
             # 6. Post-processing
             
-            # Apply HiresFix if enabled (uses the model currently loaded, which might be refiner!)
-            # Note: Usually HiresFix is done with the base model for better consistency,
-            # but some people like refining the hires pass too.
-            current_model = refiner_model if use_refiner else model
-            
-            # Define prompts for post-processors (HiresFix, Adetailer)
-            hf_pos = ref_positive if use_refiner and ref_positive else positive
-            hf_neg = ref_negative if use_refiner and ref_negative else negative
-            
+# Apply HiresFix if enabled. Prefer running hires pass with the base model
+            # and base prompts for consistency; using a refiner for the hires pass can
+            # introduce artifacts because its UNet/CLIP can differ from the base model.
+            current_model = model
+            # Prefer base prompts for hires pass (refiner prompts tend to mismatch)
+            hf_pos = positive
+            hf_neg = negative
+
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
-                # HiresFix might need base model prompts if it was trained on them
+                logger.info(f"HiresFix: using base model for hires pass (use_refiner={use_refiner})")
+                # HiresFix might still need base model prompts if it was trained on them
                 latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg, callback=ctx.callback)
                 ctx.current_latents = latents["samples"]
             

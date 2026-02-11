@@ -65,19 +65,30 @@ class HDREffects:
     def apply_hdr2(self, image, hdr_intensity=0.75, shadow_intensity=0.25, highlight_intensity=0.5, 
                    gamma_intensity=0.25, contrast=0.1, enhance_color=0.25):
         img = tensor2pil(image)
-        img_lab = ImageCms.profileToProfile(img, sRGB_profile, Lab_profile, outputMode='LAB')
-        luminance, a, b = img_lab.split()
-        lum_array = np.asarray(luminance, dtype=np.float32)
-        
-        shadows_adj = adjust_shadows_non_linear(luminance, shadow_intensity)
-        highlights_adj = adjust_highlights_non_linear(luminance, highlight_intensity)
-        merged = merge_adjustments_with_blend_modes(lum_array, shadows_adj, highlights_adj, 
-                                                     hdr_intensity, shadow_intensity, highlight_intensity)
-        gamma_corr = Image.fromarray(apply_gamma_correction(np.asarray(merged), gamma_intensity)).resize(a.size)
-        
-        adjusted_lab = Image.merge('LAB', (gamma_corr, a, b))
-        img_adjusted = ImageCms.profileToProfile(adjusted_lab, Lab_profile, sRGB_profile, outputMode='RGB')
-        img_adjusted = ImageEnhance.Contrast(img_adjusted).enhance(1 + contrast)
-        img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
-        
-        return pil2tensor(img_adjusted)
+        try:
+            # Preferred path using ICC profiles (Lab transform)
+            img_lab = ImageCms.profileToProfile(img, sRGB_profile, Lab_profile, outputMode='LAB')
+            luminance, a, b = img_lab.split()
+            lum_array = np.asarray(luminance, dtype=np.float32)
+            
+            shadows_adj = adjust_shadows_non_linear(luminance, shadow_intensity)
+            highlights_adj = adjust_highlights_non_linear(luminance, highlight_intensity)
+            merged = merge_adjustments_with_blend_modes(lum_array, shadows_adj, highlights_adj, 
+                                                         hdr_intensity, shadow_intensity, highlight_intensity)
+            gamma_corr = Image.fromarray(apply_gamma_correction(np.asarray(merged), gamma_intensity)).resize(a.size)
+            
+            adjusted_lab = Image.merge('LAB', (gamma_corr, a, b))
+            img_adjusted = ImageCms.profileToProfile(adjusted_lab, Lab_profile, sRGB_profile, outputMode='RGB')
+            img_adjusted = ImageEnhance.Contrast(img_adjusted).enhance(1 + contrast)
+            img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
+            return pil2tensor(img_adjusted)
+        except Exception as e:
+            # Fallback: some Pillow builds / platforms can't build the ICC transform
+            # (OSError: cannot build transform). Use a safe RGB-based approximation
+            # that adjusts contrast/color/brightness without relying on ImageCms.
+            import logging
+            logging.getLogger(__name__).warning(f"AutoHDR: profile transform failed ({e}); using RGB fallback")
+            img_adjusted = ImageEnhance.Contrast(img).enhance(1 + contrast)
+            img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
+            img_adjusted = ImageEnhance.Brightness(img_adjusted).enhance(1 + hdr_intensity * 0.1)
+            return pil2tensor(img_adjusted)
