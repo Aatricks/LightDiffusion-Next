@@ -60,11 +60,10 @@ def convert_cond(cond: list) -> list:
                 temp["cross_attn"] = cond_tensor
             except Exception:
                 pass
-        # Pass pooled_output as 'y' or 'pooled_output' for SDXL/Flux
+        # Pass pooled_output as 'y_pooled' for SDXL conditioning
         pooled = temp.get("pooled_output")
         if pooled is not None:
             model_conds["y_pooled"] = CONDRegular(pooled)
-            model_conds["pooled_output"] = CONDRegular(pooled)
         
         # Pass attention_mask for Klein/Flux2 models
         attention_mask = temp.get("attention_mask")
