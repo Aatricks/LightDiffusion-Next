@@ -20,7 +20,9 @@ def CheckAndDownloadFlux2():
     diffusion_dir = "./include/diffusion_model/"
     os.makedirs(diffusion_dir, exist_ok=True)
     
-    flux2_models = glob.glob(f"{diffusion_dir}*flux*") + glob.glob(f"{diffusion_dir}*klein*")
+    # Look for actual diffusion model files (safetensors, pt, pth) that match flux/klein names, including nested subdirectories
+    diffusion_candidates = glob.glob(os.path.join(diffusion_dir, "**", "*flux*"), recursive=True) + glob.glob(os.path.join(diffusion_dir, "**", "*klein*"), recursive=True)
+    flux2_models = [p for p in diffusion_candidates if os.path.isfile(p) and os.path.splitext(p)[1].lower() in (".safetensors", ".pt", ".pth")]
     if not flux2_models:
         print("Downloading Flux2 Klein diffusion model...")
         try:
@@ -46,7 +48,9 @@ def CheckAndDownloadFlux2():
     text_encoder_dir = "./include/text_encoder/"
     os.makedirs(text_encoder_dir, exist_ok=True)
     
-    qwen_models = glob.glob(f"{text_encoder_dir}*qwen*") + glob.glob(f"{text_encoder_dir}*klein*")
+    # Look for actual text encoder model files (safetensors, pt, pth) matching qwen/klein, including nested subdirs
+    qwen_candidates = glob.glob(os.path.join(text_encoder_dir, "**", "*qwen*"), recursive=True) + glob.glob(os.path.join(text_encoder_dir, "**", "*klein*"), recursive=True)
+    qwen_models = [p for p in qwen_candidates if os.path.isfile(p) and os.path.splitext(p)[1].lower() in (".safetensors", ".pt", ".pth")]
     if not qwen_models:
         print("Downloading Qwen3 text encoder for Flux2 Klein...")
         try:
