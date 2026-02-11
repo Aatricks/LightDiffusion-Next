@@ -141,7 +141,9 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     print(f"Detailer: segment upscale for ({bbox[2]-bbox[0]}, {bbox[3]-bbox[1]}) | crop region {w, h} x {upscale} -> {new_w, new_h}")
 
     upscaled_image = tensor_util.tensor_resize(image, new_w, new_h)
+    
     latent_image = to_latent_image(upscaled_image, vae)
+    
     if noise_mask is not None:
         latent_image["noise_mask"] = noise_mask
 
@@ -150,6 +152,7 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
         refined_latent = ksampler_wrapper(model, seed + i, steps, cfg, sampler_name, scheduler, positive, negative,
             refined_latent, denoise, refiner_ratio, refiner_model, refiner_clip, refiner_positive, refiner_negative,
             noise=None, callback=callback, scheduler_func=scheduler_func, pipeline=pipeline)
+    
     try:
         refined_image = vae.decode(refined_latent["samples"])
     except Exception:

@@ -326,11 +326,14 @@ class VAE:
                            pixel_samples.shape[2] // self.downscale_ratio,
                            pixel_samples.shape[3] // self.downscale_ratio), device=self.output_device)
         for i in range(0, pixel_samples.shape[0], batch):
-            # Optimization D: non-blocking transfers
+            # Optimization D: non-blocking transfers for CPU→GPU input (safe, same CUDA stream)
             p = self.process_input(pixel_samples[i:i+batch]).to(self.vae_dtype, non_blocking=True).to(self.device, non_blocking=True)
             if p.is_cuda:
                 p = p.contiguous(memory_format=torch.channels_last)
-            out[i:i+batch] = self.first_stage_model.encode(p, flux=flux).to(self.output_device, non_blocking=True).float()
+            # Process output on GPU before transferring to CPU to avoid
+            # non-blocking GPU→CPU race condition (data not arrived yet).
+            encoded = self.first_stage_model.encode(p, flux=flux).float()
+            out[i:i+batch] = encoded.to(self.output_device)
         return out
 
     @torch.inference_mode()  # Optimization B

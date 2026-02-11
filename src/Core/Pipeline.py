@@ -194,7 +194,22 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, positive=hf_pos, negative=hf_neg, callback=ctx.callback)
+                if use_refiner:
+                    # Reload base model for ADetailer - the refiner's UNet/CLIP
+                    # is not suited for text-guided crop enhancement
+                    ad_model = self._load_model(ctx)
+                    ad_pos, ad_neg = self._encode_prompts(ctx, ad_model)
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, ad_model,
+                        positive=ad_pos, negative=ad_neg,
+                        callback=ctx.callback
+                    )
+                else:
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, current_model,
+                        positive=hf_pos, negative=hf_neg,
+                        callback=ctx.callback
+                    )
             else:
                 # Save the image synchronously so the server can reliably find it
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -356,11 +371,22 @@ class Pipeline:
             from src.Processors import Adetailer
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                # Use refiner model and prompts if it was used
-                cur_model = refiner_model if (not use_upscale and use_refiner) else model
-                cur_pos = ref_positive if (not use_upscale and use_refiner) else positive
-                cur_neg = ref_negative if (not use_upscale and use_refiner) else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, positive=cur_pos, negative=cur_neg, callback=ctx.callback)
+                if not use_upscale and use_refiner:
+                    # Reload base model for ADetailer - the refiner's UNet/CLIP
+                    # is not suited for text-guided crop enhancement
+                    ad_model = self._load_model(ctx)
+                    ad_pos, ad_neg = self._encode_prompts(ctx, ad_model)
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, ad_model,
+                        positive=ad_pos, negative=ad_neg,
+                        callback=ctx.callback
+                    )
+                else:
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, model,
+                        positive=positive, negative=negative,
+                        callback=ctx.callback
+                    )
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -506,11 +532,22 @@ class Pipeline:
             from src.Processors import Adetailer
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                # Use refiner model and prompts if it was used
-                cur_model = refiner_model if use_refiner else model
-                cur_pos = ref_positive if use_refiner else positive
-                cur_neg = ref_negative if use_refiner else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, positive=cur_pos, negative=cur_neg, callback=ctx.callback)
+                if use_refiner:
+                    # Reload base model for ADetailer - the refiner's UNet/CLIP
+                    # is not suited for text-guided crop enhancement
+                    ad_model = self._load_model(ctx)
+                    ad_pos, ad_neg = self._encode_prompts(ctx, ad_model)
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, ad_model,
+                        positive=ad_pos, negative=ad_neg,
+                        callback=ctx.callback
+                    )
+                else:
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, model,
+                        positive=positive, negative=negative,
+                        callback=ctx.callback
+                    )
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -778,6 +815,26 @@ class Pipeline:
         if AutoHDRProcessor.is_enabled(ctx):
             images = AutoHDRProcessor.apply(images, ctx)
         
+        # If refiner was used, reload base model for ADetailer.
+        # The refiner's UNet/CLIP is optimized for short refinement passes,
+        # not for the text-guided crop enhancement that ADetailer performs.
+        ad_model = model
+        ad_pos = hf_pos
+        ad_neg = hf_neg
+        if use_refiner:
+            needs_adetailer = any(
+                (per_sample_info[j] if j < len(per_sample_info) else {}).get("adetailer", False)
+                for j in range(total_batch)
+            )
+            if needs_adetailer:
+                ad_model = self._load_model(ctx)
+                self._apply_optimizations(ctx, ad_model)
+                ad_pos, ad_neg = ad_model.encode_prompt(prompts, negatives)
+                if isinstance(ad_pos, list):
+                    for idx, entry in enumerate(ad_pos):
+                        if len(entry) > 1 and isinstance(entry[1], dict):
+                            entry[1]["batch_index"] = [idx]
+        
         # Process individually
         saver = ImageSaver.SaveImage()
         results = {}
@@ -816,9 +873,9 @@ class Pipeline:
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
                     final, saved = Adetailer.apply(
-                        final, single_ctx, model,
-                        positive=[hf_pos[i]] if isinstance(hf_pos, list) else hf_pos,
-                        negative=[hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
+                        final, single_ctx, ad_model,
+                        positive=[ad_pos[i]] if isinstance(ad_pos, list) else ad_pos,
+                        negative=[ad_neg[i]] if isinstance(ad_neg, list) else ad_neg,
                         callback=ctx.callback
                     )
                     for s in saved:
