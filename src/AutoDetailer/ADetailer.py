@@ -105,6 +105,19 @@ def ksampler_wrapper(model, seed, steps, cfg, sampler_name, scheduler, positive,
         sigma_ratio=sigma_factor, noise=noise, callback=callback, scheduler_func=scheduler_func, pipeline=pipeline)
 
 
+def _compute_detailer_resize(width, height, guide_size, max_size):
+    upscale = guide_size / min(width, height)
+    new_w, new_h = int(width * upscale), int(height * upscale)
+    if new_w > max_size or new_h > max_size:
+        upscale *= max_size / max(new_w, new_h)
+        new_w, new_h = int(width * upscale), int(height * upscale)
+    force_inpaint = False
+    if upscale <= 1.0 or new_w == 0 or new_h == 0:
+        force_inpaint = True
+        upscale, new_w, new_h = 1.0, width, height
+    return upscale, new_w, new_h, force_inpaint
+
+
 def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max_size, bbox, seed, steps, cfg,
                    sampler_name, scheduler, positive, negative, denoise, noise_mask, force_inpaint,
                    wildcard_opt=None, wildcard_opt_concat_mode=None, detailer_hook=None, refiner_ratio=None,
@@ -114,20 +127,16 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     if noise_mask is not None:
         noise_mask = tensor_util.tensor_gaussian_blur_mask(noise_mask, noise_mask_feather).squeeze(3)
     h, w = image.shape[1], image.shape[2]
-    upscale = guide_size / min(w, h)
-    new_w, new_h = int(w * upscale), int(h * upscale)
-    if new_w > max_size or new_h > max_size:
-        upscale *= max_size / max(new_w, new_h)
-        new_w, new_h = int(w * upscale), int(h * upscale)
-    if upscale <= 1.0 or new_w == 0 or new_h == 0:
+    upscale, new_w, new_h, force_inpaint = _compute_detailer_resize(w, h, guide_size, max_size)
+    if force_inpaint:
         print("Detailer: force inpaint")
-        upscale, new_w, new_h = 1.0, w, h
     print(f"Detailer: segment upscale for ({bbox[2]-bbox[0]}, {bbox[3]-bbox[1]}) | crop region {w, h} x {upscale} -> {new_w, new_h}")
 
     upscaled_image = tensor_util.tensor_resize(image, new_w, new_h)
     latent_image = to_latent_image(upscaled_image, vae)
     if noise_mask is not None:
         latent_image["noise_mask"] = noise_mask
+
     refined_latent = latent_image
     for i in range(cycle):
         refined_latent = ksampler_wrapper(model, seed + i, steps, cfg, sampler_name, scheduler, positive, negative,
@@ -138,6 +147,7 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     except Exception:
         # Standard tile size for SDXL VAE to avoid artifacts
         refined_image = vae.decode_tiled(refined_latent["samples"], tile_x=256, tile_y=256)
+
     return tensor_util.tensor_resize(refined_image, w, h).cpu(), None
 
 
@@ -173,13 +183,15 @@ class DetailerForEach:
             seg_seed, wildcard_item = wildcard_chooser.get(seg)
             seg_seed = seed + i if seg_seed is None else seg_seed
 
+            crop_h, crop_w = int(cropped_image.shape[1]), int(cropped_image.shape[2])
+            _, crop_new_w, crop_new_h, _ = _compute_detailer_resize(crop_w, crop_h, guide_size, max_size)
+
             def crop_cond(cond_list):
                 if cond_list is None:
                     return None
                 
                 # Extract crop region coordinates
                 x1, y1, x2, y2 = [int(round(c)) for c in seg.crop_region]
-                img_h, img_w = [int(s) for s in image.shape[1:3]]
                 
                 res = []
                 for entry in cond_list:
@@ -194,13 +206,13 @@ class DetailerForEach:
                             new_dict["pooled_output"] = entry[1]["pooled_output"]
                         
                         # Inject SDXL size conditioning for the crop
-                        # SDXL expects global dimensions (typically 1024) and the crop offsets.
-                        new_dict["width"] = int(img_w)
-                        new_dict["height"] = int(img_h)
-                        new_dict["crop_w"] = int(x1)
-                        new_dict["crop_h"] = int(y1)
-                        new_dict["target_width"] = int(max(1024, img_w))
-                        new_dict["target_height"] = int(max(1024, img_h))
+                        # Use crop-local dimensions to match the actual sampling resolution.
+                        new_dict["width"] = crop_new_w
+                        new_dict["height"] = crop_new_h
+                        new_dict["crop_w"] = 0
+                        new_dict["crop_h"] = 0
+                        new_dict["target_width"] = crop_new_w
+                        new_dict["target_height"] = crop_new_h
                         
                         res.append([entry[0], new_dict])
                     else:

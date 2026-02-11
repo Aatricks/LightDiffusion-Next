@@ -194,7 +194,7 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, negative=hf_neg, callback=ctx.callback)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, positive=hf_pos, negative=hf_neg, callback=ctx.callback)
             else:
                 # Save the image synchronously so the server can reliably find it
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -358,8 +358,9 @@ class Pipeline:
                 self._check_interrupt()
                 # Use refiner model and prompts if it was used
                 cur_model = refiner_model if (not use_upscale and use_refiner) else model
+                cur_pos = ref_positive if (not use_upscale and use_refiner) else positive
                 cur_neg = ref_negative if (not use_upscale and use_refiner) else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg, callback=ctx.callback)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, positive=cur_pos, negative=cur_neg, callback=ctx.callback)
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -507,8 +508,9 @@ class Pipeline:
                 self._check_interrupt()
                 # Use refiner model and prompts if it was used
                 cur_model = refiner_model if use_refiner else model
+                cur_pos = ref_positive if use_refiner else positive
                 cur_neg = ref_negative if use_refiner else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, negative=cur_neg, callback=ctx.callback)
+                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, positive=cur_pos, negative=cur_neg, callback=ctx.callback)
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -814,7 +816,8 @@ class Pipeline:
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
                     final, saved = Adetailer.apply(
-                        final, single_ctx, model, 
+                        final, single_ctx, model,
+                        positive=[hf_pos[i]] if isinstance(hf_pos, list) else hf_pos,
                         negative=[hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
                         callback=ctx.callback
                     )

@@ -82,12 +82,18 @@ class Adetailer:
             detector_provider = bbox.UltralyticsDetectorProvider()
             body_detector = detector_provider.doit(model_name="person_yolov8m-seg.pt")[0]
             
-            # Create CLIP encoder for adetailer-specific prompt
+            # Use original positive conditioning if provided (preserves SDXL pooled_output
+            # and semantic context). Otherwise, re-encode from user's actual prompt.
             cliptextencode = Clip.CLIPTextEncode()
-            adetailer_positive = cliptextencode.encode(
-                text=cls.DEFAULT_POSITIVE_PROMPT,
-                clip=model.clip,
-            )[0]
+            if positive is not None:
+                adetailer_positive = positive
+            else:
+                # Fall back to user's prompt from context for semantic consistency
+                prompt_text = ctx.prompt if isinstance(ctx.prompt, str) else str(ctx.prompt)
+                adetailer_positive = cliptextencode.encode(
+                    text=prompt_text,
+                    clip=model.clip,
+                )[0]
             
             # Initialize processors
             bbox_detector = bbox.BboxDetectorForEach()
@@ -100,6 +106,19 @@ class Adetailer:
             # Determine model flags
             is_flux = getattr(model.capabilities, "is_flux", False)
             is_flux2 = getattr(model.capabilities, "is_flux2", False)
+            
+            # SDXL-aware defaults for guide_size, max_size, and denoise
+            is_sdxl = not is_flux and not is_flux2
+            adetailer_guide_size = cls.DEFAULT_GUIDE_SIZE
+            adetailer_max_size = cls.DEFAULT_MAX_SIZE
+            adetailer_denoise = cls.DEFAULT_DENOISE
+            
+            if is_sdxl:
+                # SDXL models need larger crop regions and lower denoise
+                # to avoid destroying content in the masked area
+                adetailer_guide_size = 768
+                adetailer_max_size = 1024
+                adetailer_denoise = 0.35
             
             # Adjust parameters for Flux/distilled models
             adetailer_steps = cls.DEFAULT_STEPS
@@ -149,22 +168,22 @@ class Adetailer:
             # Apply body enhancement
             body_seed = random.randint(1, 2**63 - 1)
             body_result = detailer.doit(
-                guide_size=cls.DEFAULT_GUIDE_SIZE,
+                guide_size=adetailer_guide_size,
                 guide_size_for=False,
-                max_size=cls.DEFAULT_MAX_SIZE,
+                max_size=adetailer_max_size,
                 seed=body_seed,
                 steps=adetailer_steps,
                 cfg=adetailer_cfg,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=cls.DEFAULT_SCHEDULER,
-                denoise=cls.DEFAULT_DENOISE,
+                denoise=adetailer_denoise,
                 feather=5,
                 noise_mask=True,
                 force_inpaint=True,
                 wildcard="",
                 cycle=1,
                 inpaint_model=False,
-                noise_mask_feather=20,
+                noise_mask_feather=0,
                 image=image,
                 segs=combined_segs[0],
                 model=model.model,
@@ -250,22 +269,22 @@ class Adetailer:
             # Apply face enhancement
             face_seed = random.randint(1, 2**63 - 1)
             face_result = detailer.doit(
-                guide_size=cls.DEFAULT_GUIDE_SIZE,
+                guide_size=adetailer_guide_size,
                 guide_size_for=False,
-                max_size=cls.DEFAULT_MAX_SIZE,
+                max_size=adetailer_max_size,
                 seed=face_seed,
                 steps=adetailer_steps,
                 cfg=adetailer_cfg,
                 sampler_name=ctx.sampling.sampler,
                 scheduler=cls.DEFAULT_SCHEDULER,
-                denoise=cls.DEFAULT_DENOISE,
+                denoise=adetailer_denoise,
                 feather=5,
                 noise_mask=True,
                 force_inpaint=True,
                 wildcard="",
                 cycle=1,
                 inpaint_model=False,
-                noise_mask_feather=20,
+                noise_mask_feather=0,
                 image=body_image,
                 segs=face_combined_segs[0],
                 model=model.model,
