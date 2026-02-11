@@ -247,11 +247,20 @@ class AbstractModel(ABC):
                 return self
             
             inner = getattr(self.model, 'model', self.model)
+            # Try common diffusion submodule names, otherwise fall back to top-level module
             diff_model = getattr(inner, 'diffusion_model', None)
             if diff_model is None:
-                import logging
-                logging.getLogger(__name__).warning("No diffusion_model found for FP8 quantization")
-                return self
+                import torch.nn as nn
+                if isinstance(inner, nn.Module):
+                    diff_model = inner
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "No 'diffusion_model' submodule found; using top-level model for FP8 quantization"
+                    )
+                else:
+                    import logging
+                    logging.getLogger(__name__).warning("No diffusion_model found for FP8 quantization")
+                    return self
             
             converted = 0
             cast_enabled = 0
@@ -304,16 +313,34 @@ class AbstractModel(ABC):
             
             Device.enable_torch_compile(True)
             inner = getattr(self.model, 'model', self.model)
+            # Try to find a diffusion submodule; if missing, fall back to compiling the top-level module
             diff_model = getattr(inner, 'diffusion_model', None)
-            if diff_model is not None:
+            if diff_model is None:
+                import torch.nn as nn
+                if isinstance(inner, nn.Module):
+                    # Compile the top-level module for models without a diffusion wrapper (Flux2, etc.)
+                    compiled = Device.compile_model(inner, mode=mode)
+                    if compiled is not inner:
+                        # Try to assign the compiled model back to its container
+                        try:
+                            if hasattr(self.model, 'model'):
+                                self.model.model = compiled
+                            else:
+                                self.model = compiled
+                            import logging
+                            logging.getLogger(__name__).info(f"torch.compile applied to top-level model (mode={mode})")
+                        except Exception:
+                            import logging
+                            logging.getLogger(__name__).info(f"torch.compile returned a new object but could not reassign it; compiled object is available (mode={mode})")
+                else:
+                    import logging
+                    logging.getLogger(__name__).warning("No diffusion_model found for torch.compile")
+            else:
                 compiled = Device.compile_model(diff_model, mode=mode)
                 if compiled is not diff_model:
                     inner.diffusion_model = compiled
                     import logging
                     logging.getLogger(__name__).info(f"torch.compile applied to diffusion model (mode={mode})")
-            else:
-                import logging
-                logging.getLogger(__name__).warning("No diffusion_model found for torch.compile")
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"torch.compile optimization failed: {e}")
