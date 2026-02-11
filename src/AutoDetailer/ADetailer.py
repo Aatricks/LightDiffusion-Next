@@ -111,10 +111,18 @@ def _compute_detailer_resize(width, height, guide_size, max_size):
     if new_w > max_size or new_h > max_size:
         upscale *= max_size / max(new_w, new_h)
         new_w, new_h = int(width * upscale), int(height * upscale)
+    # Round dimensions to nearest multiple of 8 for VAE compatibility.
+    # Non-divisible-by-8 dimensions cause NaN in VAE encode when tiled
+    # encoding is used, because round(dim * 0.125) != dim // 8.
+    new_w = max(8, (new_w + 4) // 8 * 8)
+    new_h = max(8, (new_h + 4) // 8 * 8)
     force_inpaint = False
     if upscale <= 1.0 or new_w == 0 or new_h == 0:
         force_inpaint = True
         upscale, new_w, new_h = 1.0, width, height
+        # Also round when force inpaint to keep VAE compatibility
+        new_w = max(8, (new_w + 4) // 8 * 8)
+        new_h = max(8, (new_h + 4) // 8 * 8)
     return upscale, new_w, new_h, force_inpaint
 
 

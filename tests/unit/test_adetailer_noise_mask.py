@@ -4,6 +4,35 @@ from src.AutoDetailer import tensor_util
 import src.AutoDetailer.ADetailer as adetailer
 
 
+def test_compute_detailer_resize_rounds_to_multiple_of_8():
+    """Dimensions must be divisible by 8 to avoid VAE encode NaN."""
+    # Face crop: 135x157 with guide_size=768, max_size=1024
+    _, w, h, _ = adetailer._compute_detailer_resize(135, 157, 768, 1024)
+    assert w % 8 == 0, f"width {w} not divisible by 8"
+    assert h % 8 == 0, f"height {h} not divisible by 8"
+
+    # Body crop: 612x1024 with guide_size=768, max_size=1024
+    _, w, h, _ = adetailer._compute_detailer_resize(612, 1024, 768, 1024)
+    assert w % 8 == 0, f"width {w} not divisible by 8"
+    assert h % 8 == 0, f"height {h} not divisible by 8"
+
+    # Edge case: very small crop
+    _, w, h, _ = adetailer._compute_detailer_resize(7, 13, 768, 1024)
+    assert w % 8 == 0, f"width {w} not divisible by 8"
+    assert h % 8 == 0, f"height {h} not divisible by 8"
+    assert w >= 8 and h >= 8
+
+    # Exact multiples should stay the same
+    _, w, h, _ = adetailer._compute_detailer_resize(768, 1024, 768, 1024)
+    assert w % 8 == 0, f"width {w} not divisible by 8"
+    assert h % 8 == 0, f"height {h} not divisible by 8"
+
+    # Force inpaint case (crop larger than guide_size)
+    _, w, h, fi = adetailer._compute_detailer_resize(800, 900, 768, 1024)
+    assert w % 8 == 0, f"width {w} not divisible by 8"
+    assert h % 8 == 0, f"height {h} not divisible by 8"
+
+
 def test_enhance_detail_localizes_noise_to_mask(monkeypatch):
     image = torch.zeros((1, 8, 8, 3), dtype=torch.float32)
     mask = torch.zeros((8, 8), dtype=torch.float32)
