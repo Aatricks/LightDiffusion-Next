@@ -249,3 +249,128 @@ def test_apply_torch_compile_falls_back_to_top_level_model(caplog, monkeypatch):
 
     assert "No diffusion_model found for torch.compile" not in caplog.text
     assert compiled_called['count'] > 0, "Expected Device.compile_model to be invoked on the top-level module"
+
+
+def test_apply_torch_compile_registers_wrapper_when_compile_returns_callable(monkeypatch):
+    """If Device.compile_model returns a callable (not nn.Module), AbstractModel.apply_torch_compile
+    should attach the compiled callable to the module.forward while preserving the module object.
+    """
+    import torch
+    import logging
+    from src.Core.AbstractModel import AbstractModel, ModelCapabilities
+    from src.Model.ModelPatcher import ModelPatcher
+    import torch.nn as nn
+
+    if not hasattr(torch, 'compile'):
+        pytest.skip("torch.compile not available")
+
+    class DummyModel(AbstractModel):
+        def _create_capabilities(self):
+            return ModelCapabilities()
+
+        def load(self, model_path=None):
+            base = nn.Sequential(nn.Linear(4, 4, bias=False))
+            mp = ModelPatcher(base, load_device=torch.device('cpu'), offload_device=torch.device('cpu'))
+            self.model = mp
+            self._loaded = True
+            return self
+
+        def encode_prompt(self, prompt, negative_prompt="", clip_skip=-2):
+            return None, None
+
+        def generate(self, ctx, positive, negative, *args, **kwargs):
+            raise NotImplementedError
+
+        def decode(self, latents):
+            raise NotImplementedError
+
+    dummy = DummyModel()
+    dummy.load()
+
+    compiled_called = {'count': 0}
+
+    def fake_compiled(*args, **kwargs):
+        compiled_called['count'] += 1
+        for a in args:
+            if hasattr(a, 'shape'):
+                return a
+        return torch.zeros(1)
+
+    monkeypatch.setattr('src.Device.Device.compile_model', lambda model_obj, mode='max-autotune-no-cudagraphs': fake_compiled)
+
+    dummy.apply_torch_compile()
+
+    assert isinstance(dummy.model, ModelPatcher)
+    assert hasattr(dummy.model, 'model') and isinstance(dummy.model.model, nn.Module)
+    assert hasattr(dummy.model.model, '_compiled_fn')
+
+    inp = torch.randn(1, 4)
+    _ = dummy.model.model(inp)
+    assert compiled_called['count'] > 0
+
+    # Ensure latent_format access still works
+    from src.Utilities import Latent as LatentUtil
+    dummy.model.model.latent_format = LatentUtil.SD15()
+    from src.Utilities.Latent import fix_empty_latent_channels
+    out = fix_empty_latent_channels(dummy.model, torch.zeros((1, 4, 64, 64)))
+    assert isinstance(out, torch.Tensor)
+    assert out.shape[1] == dummy.model.model.latent_format.latent_channels
+
+
+def test_apply_torch_compile_attaches_compiled_forward_for_flux_like_module(monkeypatch):
+    """When compiling a Flux-like module (top-level with apply_model/forward signature),
+    the compiled callable should be attached to the module.forward and model.apply_model
+    should continue to accept Flux-style kwargs like `c_crossattn`.
+    """
+    import torch
+    import torch.nn as nn
+    from src.Core.AbstractModel import AbstractModel, ModelCapabilities
+    from src.Model.ModelPatcher import ModelPatcher
+
+    class FakeFluxModule(nn.Module):
+        def forward(self, img, txt=None, timesteps=None, y=None, guidance=None, control=None, transformer_options=None, attn_mask=None, img_h=None, img_w=None):
+            return img
+
+        def apply_model(self, x, t, c_concat=None, c_crossattn=None, control=None, transformer_options=None, **kwargs):
+            # Map to forward signature used by Flux-like models
+            return self.forward(img=x, txt=c_crossattn, timesteps=t, y=kwargs.get('y'),
+                                guidance=kwargs.get('guidance'), control=control, transformer_options=transformer_options,
+                                attn_mask=kwargs.get('attention_mask'), img_h=(transformer_options or {}).get('img_h'), img_w=(transformer_options or {}).get('img_w'))
+
+    class DummyModel(AbstractModel):
+        def _create_capabilities(self):
+            return ModelCapabilities(is_flux=True, is_flux2=True)
+
+        def load(self, model_path=None):
+            base = FakeFluxModule()
+            mp = ModelPatcher(base, load_device=torch.device('cpu'), offload_device=torch.device('cpu'))
+            self.model = mp
+            self._loaded = True
+            return self
+
+        def encode_prompt(self, prompt, negative_prompt="", clip_skip=-2):
+            return None, None
+
+        def generate(self, ctx, positive, negative, *args, **kwargs):
+            raise NotImplementedError
+
+        def decode(self, latents):
+            raise NotImplementedError
+
+    dummy = DummyModel()
+    dummy.load()
+
+    compiled_called = {'count': 0}
+
+    def fake_compiled(img, txt=None, timesteps=None, y=None, **kwargs):
+        compiled_called['count'] += 1
+        return img
+
+    monkeypatch.setattr('src.Device.Device.compile_model', lambda model_obj, mode='max-autotune-no-cudagraphs': fake_compiled)
+
+    dummy.apply_torch_compile()
+
+    # After compile, calling apply_model should route through compiled forward without error
+    out = dummy.model.model.apply_model(torch.randn(1, 128, 8, 8), torch.tensor([1.0]), c_crossattn=torch.randn(1, 10, 768), transformer_options={'img_h':128,'img_w':128})
+    assert compiled_called['count'] > 0
+    assert out.shape[0] == 1

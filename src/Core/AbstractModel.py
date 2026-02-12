@@ -321,14 +321,35 @@ class AbstractModel(ABC):
                     # Compile the top-level module for models without a diffusion wrapper (Flux2, etc.)
                     compiled = Device.compile_model(inner, mode=mode)
                     if compiled is not inner:
-                        # Try to assign the compiled model back to its container
+                        # If compile returns a Module we can safely replace the module.
                         try:
-                            if hasattr(self.model, 'model'):
-                                self.model.model = compiled
+                            import torch.nn as _nn
+                            if isinstance(compiled, _nn.Module):
+                                if hasattr(self.model, 'model'):
+                                    self.model.model = compiled
+                                else:
+                                    self.model = compiled
+                                import logging
+                                logging.getLogger(__name__).info(f"torch.compile applied to top-level model (mode={mode})")
+                            elif callable(compiled):
+                                # Preserve the original module instance but attach the compiled
+                                # callable to its forward method so attribute access (e.g. latent_format)
+                                # continues to work while runtime calls go through the compiled code.
+                                try:
+                                    import types
+                                    # attach compiled function to the inner module so forward calls use it
+                                    setattr(inner, '_compiled_fn', compiled)
+                                    def _compiled_forward(self, *args, **kwargs):
+                                        return self._compiled_fn(*args, **kwargs)
+                                    inner.forward = types.MethodType(_compiled_forward, inner)
+                                    import logging
+                                    logging.getLogger(__name__).info(f"torch.compile returned callable; attached compiled forward to top-level module (mode={mode})")
+                                except Exception:
+                                    import logging
+                                    logging.getLogger(__name__).warning("Failed to attach compiled callable to module.forward; leaving original module intact")
                             else:
-                                self.model = compiled
-                            import logging
-                            logging.getLogger(__name__).info(f"torch.compile applied to top-level model (mode={mode})")
+                                import logging
+                                logging.getLogger(__name__).info(f"torch.compile returned unexpected type {type(compiled)}; leaving original model intact")
                         except Exception:
                             import logging
                             logging.getLogger(__name__).info(f"torch.compile returned a new object but could not reassign it; compiled object is available (mode={mode})")
@@ -338,9 +359,35 @@ class AbstractModel(ABC):
             else:
                 compiled = Device.compile_model(diff_model, mode=mode)
                 if compiled is not diff_model:
-                    inner.diffusion_model = compiled
-                    import logging
-                    logging.getLogger(__name__).info(f"torch.compile applied to diffusion model (mode={mode})")
+                    # If compiled returned an nn.Module, replace the diffusion_model.
+                    import torch.nn as _nn
+                    if isinstance(compiled, _nn.Module):
+                        inner.diffusion_model = compiled
+                        import logging
+                        logging.getLogger(__name__).info(f"torch.compile applied to diffusion model (mode={mode})")
+                    elif callable(compiled):
+                        # Attach compiled callable to the diffusion_model.forward so callers
+                        # (e.g. model.apply_model) continue to operate with the same
+                        # argument mapping while using compiled execution.
+                        try:
+                            import types
+                            if hasattr(inner, 'diffusion_model'):
+                                dm = inner.diffusion_model
+                                setattr(dm, '_compiled_fn', compiled)
+                                def _compiled_forward(self, *args, **kwargs):
+                                    return self._compiled_fn(*args, **kwargs)
+                                dm.forward = types.MethodType(_compiled_forward, dm)
+                                import logging
+                                logging.getLogger(__name__).info(f"torch.compile returned callable for diffusion_model; attached compiled forward (mode={mode})")
+                            else:
+                                import logging
+                                logging.getLogger(__name__).info(f"torch.compile returned callable but no diffusion_model to attach to; compiled available (mode={mode})")
+                        except Exception:
+                            import logging
+                            logging.getLogger(__name__).warning("Failed to attach compiled callable to diffusion_model.forward")
+                    else:
+                        import logging
+                        logging.getLogger(__name__).info(f"torch.compile returned unexpected type {type(compiled)} for diffusion_model; leaving original module intact")
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"torch.compile optimization failed: {e}")
