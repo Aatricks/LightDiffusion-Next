@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { GenerationSettings, GenerationResponse, ModelInfo, SettingsSnapshot } from '../types';
+import type { GenerationSettings, GenerationResponse, ModelInfo, SettingsSnapshot, ImageMetadata } from '../types';
 
 const api = axios.create({
     baseURL: '/api', // Proxy handles redirection to localhost:7861

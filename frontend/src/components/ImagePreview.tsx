@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useStore } from '../store/useStore';
-import { Center, Image, Stack, Text, Progress, Paper, Group } from '@mantine/core';
+import { Center, Image, Stack, Text, Progress, Paper, Group, Button } from '@mantine/core';
 import { IconPhoto } from '@tabler/icons-react';
 import type { PreviewMessage } from '../types';
 
