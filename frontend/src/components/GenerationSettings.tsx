@@ -9,6 +9,7 @@ import { ImageInput } from './ImageInput';
 export function GenerationSettings() {
     const { settings, setSettings, status, setStatus, setCurrentImage, addToGallery, availableModels, setModels, setPreview, availableControlNets, setControlNets, settingsHistory, setSettingsHistory, appendSettingsSnapshot } = useStore();
     const [openedAdvanced, { toggle: toggleAdvanced }] = useDisclosure(false);
+    const [openedHistory, { toggle: toggleHistory }] = useDisclosure(false);
 
     useEffect(() => {
         listModels().then(models => {
@@ -259,39 +260,7 @@ export function GenerationSettings() {
                                         >
                                             Use last seed
                                         </Button>
-
-                                        <Button
-                                            variant="light"
-                                            onClick={async () => {
-                                                try {
-                                                    const res = await postSettingsSnapshot(settings, !!settings.persist_prompt_history);
-                                                    if (res && res.snapshot) {
-                                                        appendSettingsSnapshot(res.snapshot);
-                                                    }
-                                                } catch (err) {
-                                                    console.error('Failed to save settings to history', err);
-                                                }
-                                            }}
-                                        >
-                                            Save to history
-                                        </Button>
-
-                                        <Switch
-                                            label="Include prompt in server history (opt-in)"
-                                            checked={!!settings.persist_prompt_history}
-                                            onChange={(e) => setSettings({ persist_prompt_history: e.currentTarget.checked })}
-                                        />
                                     </Group>
-
-                                    <Select
-                                        label="Load from history"
-                                        placeholder="Select saved settings"
-                                        data={(settingsHistory || []).map(h => ({ value: h.id, label: new Date(h.ts * 1000).toLocaleString() }))}
-                                        onChange={(v) => {
-                                            const snap = (settingsHistory || []).find(s => s.id === v);
-                                            if (snap) setSettings(snap.settings as any);
-                                        }}
-                                    />
                                     <Group grow>
                                         <Select
                                             label="Sampler"
@@ -527,6 +496,48 @@ export function GenerationSettings() {
                     </Accordion>
                 </Collapse>
             </Box>
+
+            <Group onClick={toggleHistory} style={{ cursor: 'pointer' }} mb={5}>
+                {openedHistory ? <IconCaretDown size={16} /> : <IconCaretRight size={16} />}
+                <Text size="sm" fw={500}>Settings History</Text>
+            </Group>
+            <Collapse in={openedHistory}>
+                <Stack gap="xs" p="xs">
+                    <Group>
+                        <Button
+                            variant="light"
+                            onClick={async () => {
+                                try {
+                                    const res = await postSettingsSnapshot(settings, !!settings.persist_prompt_history);
+                                    if (res && res.snapshot) {
+                                        appendSettingsSnapshot(res.snapshot);
+                                    }
+                                } catch (err) {
+                                    console.error('Failed to save settings to history', err);
+                                }
+                            }}
+                        >
+                            Save to history
+                        </Button>
+
+                        <Switch
+                            label="Include prompt in server history (opt-in)"
+                            checked={!!settings.persist_prompt_history}
+                            onChange={(e) => setSettings({ persist_prompt_history: e.currentTarget.checked })}
+                        />
+                    </Group>
+
+                    <Select
+                        label="Load from history"
+                        placeholder="Select saved settings"
+                        data={(settingsHistory || []).map(h => ({ value: h.id, label: new Date(h.ts * 1000).toLocaleString() }))}
+                        onChange={(v) => {
+                            const snap = (settingsHistory || []).find(s => s.id === v);
+                            if (snap) setSettings(snap.settings as any);
+                        }}
+                    />
+                </Stack>
+            </Collapse>
 
         </Stack>
     );
