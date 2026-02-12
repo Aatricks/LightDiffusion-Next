@@ -25,7 +25,7 @@ As a refactored and improved version of the original [LightDiffusion repository]
 
 That's when the first version of LightDiffusion was born which only counted [3000 lines of code](https://github.com/LightDiffusion/LightDiffusion-original), only using Pytorch. With time, the [project](https://github.com/Aatrick/LightDiffusion) grew and became more complex, and the need for a refactor was evident. This is where **LightDiffusion-Next** comes in, with a more modular and maintainable codebase, and a plethora of new features and optimizations.
 
-📚 Learn more in the [official documentation](https://aatrick.github.io/LightDiffusion/).
+📚 Learn more in the [official documentation](https://aatricks.github.io/LightDiffusion-Next/)
 
 ---
 
