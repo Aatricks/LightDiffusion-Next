@@ -131,6 +131,47 @@ export function ImagePreview() {
                     </Center>
                 )}
 
+                {displayImage && (
+                    <Group position="right" mt="sm">
+                        <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={async () => {
+                                try {
+                                    // Lazy import to avoid circular deps
+                                    const { getImageMetadata } = await import('../api/client');
+                                    const res = await getImageMetadata(displayImage);
+                                    const meta = res?.metadata || {};
+                                    const updates: any = {};
+                                    if (meta.seed !== undefined) updates.seed = meta.seed;
+                                    if (meta.steps !== undefined) updates.steps = meta.steps;
+                                    if (meta.cfg_scale !== undefined) updates.cfg_scale = meta.cfg_scale;
+                                    if (meta.sampler) updates.sampler = meta.sampler;
+                                    if (meta.scheduler) updates.scheduler = meta.scheduler;
+                                    if (meta.model_path) updates.model_path = meta.model_path;
+                                    if (meta.width) updates.width = meta.width;
+                                    if (meta.height) updates.height = meta.height;
+                                    if (meta.prompt) updates.prompt = meta.prompt;
+                                    if (meta.negative_prompt) updates.negative_prompt = meta.negative_prompt;
+                                    const { setSettings, availableModels } = useStore.getState();
+                                    // warn if model is unknown locally
+                                    if (updates.model_path && !availableModels.find(m => m.path === updates.model_path)) {
+                                        console.warn('Imported model_path not available locally:', updates.model_path);
+                                    }
+                                    setSettings(updates);
+                                } catch (err) {
+                                    console.error('Failed to import metadata from image', err);
+                                    // lightweight feedback
+                                    // eslint-disable-next-line no-alert
+                                    alert('Failed to import settings from image');
+                                }
+                            }}
+                        >
+                            Import settings from image
+                        </Button>
+                    </Group>
+                )}
+
                 {isGenerating && (
                     <Stack gap="xs" mt="md">
                         <Group justify="space-between">

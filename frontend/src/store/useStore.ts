@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GenerationSettings, ModelInfo, PreviewMessage } from '../types';
+import type { GenerationSettings, ModelInfo, PreviewMessage, SettingsSnapshot } from '../types';
 
 interface AppState {
     settings: GenerationSettings;
@@ -10,6 +10,11 @@ interface AppState {
     gallery: string[]; // History of generated images
     preview: PreviewMessage | null;
     serverStatus: boolean; // Is server reachable?
+
+    // Settings history (for UI snapshots)
+    settingsHistory: SettingsSnapshot[];
+    setSettingsHistory: (arr: SettingsSnapshot[]) => void;
+    appendSettingsSnapshot: (snap: SettingsSnapshot) => void;
 
     setSettings: (settings: Partial<GenerationSettings>) => void;
     setModels: (models: ModelInfo[]) => void;
@@ -52,6 +57,8 @@ export const useStore = create<AppState>((set) => ({
         enable_preview: true,
         // Default to the improved/balanced preview fidelity
         preview_fidelity: 'balanced',
+        // By default do NOT persist prompts to server history (opt-in)
+        persist_prompt_history: false,
         enable_multiscale: false,
         multiscale_preset: "disabled",
         multiscale_factor: 0.5,
@@ -75,6 +82,11 @@ export const useStore = create<AppState>((set) => ({
     gallery: [],
     preview: null,
     serverStatus: false,
+
+    // Settings history
+    settingsHistory: [],
+    setSettingsHistory: (arr: SettingsSnapshot[]) => set({ settingsHistory: arr }),
+    appendSettingsSnapshot: (snap: SettingsSnapshot) => set((s) => ({ settingsHistory: [snap, ...s.settingsHistory] })),
 
     setSettings: (newSettings) => set((state) => ({ settings: { ...state.settings, ...newSettings } })),
     setModels: (models) => set({ availableModels: models }),

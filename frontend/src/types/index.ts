@@ -29,6 +29,23 @@ export interface GenerationSettings {
     enable_preview: boolean;
     // Preview fidelity for in-progress previews (low|balanced|high)
     preview_fidelity?: 'low' | 'balanced' | 'high';
+    // Persist prompt/negative_prompt to server history when user opts in
+    persist_prompt_history?: boolean;
+}
+
+export interface ImageMetadata {
+    prompt?: string;
+    negative_prompt?: string;
+    seed?: number;
+    steps?: number;
+    cfg_scale?: number;
+    sampler?: string;
+    scheduler?: string;
+    model_path?: string;
+    width?: number;
+    height?: number;
+    denoise?: number;
+
 
     // ControlNet
     controlnet_enabled: boolean;
@@ -64,6 +81,12 @@ export interface GenerationResponse {
     images?: string[]; // base64
     image?: string;    // single image base64
     info?: string;
+}
+
+export interface SettingsSnapshot {
+    id: string;
+    ts: number; // unix timestamp
+    settings: GenerationSettings;
 }
 
 export interface ModelCapabilities {

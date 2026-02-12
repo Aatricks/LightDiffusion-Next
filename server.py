@@ -183,6 +183,14 @@ async def startup_event():
     """Capture event loop reference and start background worker."""
     global _main_event_loop
     _main_event_loop = asyncio.get_running_loop()
+    # Migrate legacy include/last_seed.txt into the JSON settings store on startup
+    try:
+        from src.Core.SettingsStore import migrate_from_last_seed_txt
+        migrated_seed = migrate_from_last_seed_txt()
+        if migrated_seed is not None:
+            logger.info("Migrated legacy include/last_seed.txt -> last_seed=%s", migrated_seed)
+    except Exception:
+        logger.exception("Failed to migrate legacy last_seed.txt on startup")
     await _generation_buffer.start()
     logger.info("Server startup complete, event loop captured for preview broadcasting")
 
@@ -881,6 +889,135 @@ async def telemetry() -> Dict[str, Any]:
     }
 
 
+# Settings API ------------------------------------------------------------
+@app.get("/api/settings/last")
+async def api_get_last_settings():
+    """Return the last persisted seed (or null)."""
+    try:
+        from src.Core.SettingsStore import get_last_seed
+        seed = get_last_seed()
+        return {"seed": seed}
+    except Exception as e:
+        logger.exception("Failed to read last seed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/settings/history")
+async def api_get_settings_history():
+    """Return saved settings history (most-recent-first)."""
+    try:
+        from src.Core.SettingsStore import get_history
+        return {"history": get_history()}
+    except Exception as e:
+        logger.exception("Failed to read settings history: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/settings/history")
+async def api_post_settings_history(body: Dict[str, Any]):
+    """Append a settings snapshot to history.
+
+    Body: { settings: GenerationSettings, include_prompt: bool }
+    By default `include_prompt` is False and prompt/negative_prompt are NOT persisted.
+    """
+    try:
+        settings = body.get("settings")
+        if not settings:
+            raise HTTPException(status_code=400, detail="Missing 'settings' in request body")
+        include_prompt = bool(body.get("include_prompt", False))
+
+        if include_prompt:
+            stored = dict(settings)
+        else:
+            # Default sanitized/parameter-only snapshot for privacy
+            allowed = ["seed", "steps", "cfg_scale", "sampler", "scheduler", "model_path", "width", "height"]
+            stored = {k: settings[k] for k in allowed if k in settings}
+
+        from src.Core.SettingsStore import append_snapshot
+        snap = append_snapshot({"settings": stored})
+        return {"snapshot": snap}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to append settings history: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/images/metadata")
+async def api_post_image_metadata(body: Dict[str, Any]):
+    """Extract PNG metadata from a base64/data-URL image payload and return
+    a normalized metadata dictionary suitable for re-applying to UI settings.
+
+    Body: { image: "data:image/png;base64,..." } or { image: "<base64>" }
+    Returns: { metadata: { seed, steps, cfg_scale, sampler, scheduler, model_path, width, height, prompt?, negative_prompt? } }
+    """
+    try:
+        image_b64 = body.get("image")
+        if not image_b64:
+            raise HTTPException(status_code=400, detail="Missing 'image' in request body")
+
+        # Accept data URL or raw base64
+        b64_data = None
+        if isinstance(image_b64, str) and image_b64.startswith("data:"):
+            idx = image_b64.find("base64,")
+            if idx != -1:
+                b64_data = image_b64[idx + len("base64,"):]
+        elif isinstance(image_b64, str):
+            b64_data = image_b64.strip().replace("\n", "")
+
+        if not b64_data:
+            raise HTTPException(status_code=400, detail="Invalid image payload")
+
+        decoded = base64.b64decode(b64_data)
+
+        # Parse PNG metadata using PIL
+        from PIL import Image
+        img = Image.open(io.BytesIO(decoded))
+        info = img.info or {}
+
+        def _to_int(v):
+            try:
+                return int(v)
+            except Exception:
+                return None
+
+        def _to_float(v):
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        meta: Dict[str, Any] = {}
+        if "prompt" in info:
+            meta["prompt"] = info.get("prompt")
+        if "negative_prompt" in info:
+            meta["negative_prompt"] = info.get("negative_prompt")
+        if "seed" in info:
+            meta["seed"] = _to_int(info.get("seed"))
+        if "steps" in info:
+            meta["steps"] = _to_int(info.get("steps"))
+        # Context.build_metadata uses key 'cfg' for CFG value — map it to cfg_scale
+        if "cfg" in info:
+            meta["cfg_scale"] = _to_float(info.get("cfg"))
+        if "sampler" in info:
+            meta["sampler"] = info.get("sampler")
+        if "scheduler" in info:
+            meta["scheduler"] = info.get("scheduler")
+        if "model_path" in info:
+            meta["model_path"] = info.get("model_path")
+        if "width" in info:
+            meta["width"] = _to_int(info.get("width"))
+        if "height" in info:
+            meta["height"] = _to_int(info.get("height"))
+
+        return {"metadata": meta}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to decode image metadata: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _encode_png_to_base64(path: str) -> str:
     # Retry a few times in case the file is still being finalized on disk
     last_err: Optional[Exception] = None
@@ -1265,12 +1402,14 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         log.error("Pipeline import error: %s", _pipeline_import_error)
         raise HTTPException(status_code=500, detail=f"Pipeline import error: {_pipeline_import_error}")
 
-    # Optionally honor requested seed by writing include/last_seed.txt and enabling reuse
+    # Optionally honor requested seed by persisting it in SettingsStore and enabling reuse
     reuse_seed = req.reuse_seed
     if req.seed is not None and req.seed >= 0:
-        os.makedirs("./include", exist_ok=True)
-        with open(os.path.join("./include", "last_seed.txt"), "w", encoding="utf-8") as f:
-            f.write(str(int(req.seed)))
+        try:
+            from src.Core.SettingsStore import set_last_seed
+            set_last_seed(int(req.seed))
+        except Exception:
+            logger.exception("Failed to persist last seed to SettingsStore")
         reuse_seed = True
 
     # For buffered execution we pass request data into the queue; the

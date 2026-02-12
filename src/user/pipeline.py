@@ -35,12 +35,9 @@ def resolve_checkpoint_path(realistic_model: bool = False) -> str:
 from src.FileManaging import Downloader
 Downloader.CheckAndDownload()
 
-# Load last seed
-try:
-    with open(os.path.join("./include/", "last_seed.txt"), "r") as f:
-        _last_seed = int(f.read().strip())
-except Exception:
-    _last_seed = random.randint(1, 2**63 - 1)
+# Module-level cache for the last-used seed; load lazily to avoid
+# import-time circular dependencies with Core modules.
+_last_seed = None  # type: ignore | None
 
 
 def pipeline(
@@ -223,6 +220,14 @@ def pipeline(
     
     # Handle seed reuse
     if reuse_seed:
+        global _last_seed
+        if _last_seed is None:
+            try:
+                from src.Core.SettingsStore import get_last_seed
+                _ls = get_last_seed()
+                _last_seed = int(_ls) if (_ls is not None) else random.randint(1, 2**63 - 1)
+            except Exception:
+                _last_seed = random.randint(1, 2**63 - 1)
         ctx.seeds = [_last_seed] * ctx.total_images
         ctx.seed = _last_seed
     

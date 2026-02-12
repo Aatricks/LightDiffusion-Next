@@ -1,13 +1,13 @@
 import { Button, NumberInput, Select, Stack, Textarea, Switch, Group, Collapse, Box, Text, Accordion } from '@mantine/core';
 import { useStore } from '../store/useStore';
-import { generateImage, interruptGeneration, listModels, listControlNets } from '../api/client';
+import { generateImage, interruptGeneration, listModels, listControlNets, getLastSeed, getSettingsHistory, postSettingsSnapshot } from '../api/client';
 import { useEffect, useMemo } from 'react';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCaretDown, IconCaretRight } from '@tabler/icons-react';
 import { ImageInput } from './ImageInput';
 
 export function GenerationSettings() {
-    const { settings, setSettings, status, setStatus, setCurrentImage, addToGallery, availableModels, setModels, setPreview, availableControlNets, setControlNets } = useStore();
+    const { settings, setSettings, status, setStatus, setCurrentImage, addToGallery, availableModels, setModels, setPreview, availableControlNets, setControlNets, settingsHistory, setSettingsHistory, appendSettingsSnapshot } = useStore();
     const [openedAdvanced, { toggle: toggleAdvanced }] = useDisclosure(false);
 
     useEffect(() => {
@@ -44,7 +44,14 @@ export function GenerationSettings() {
             }
         }).catch(console.error);
         listControlNets().then(res => setControlNets(res.models)).catch(console.error);
-    }, [setModels, setControlNets, setSettings]);
+
+        // Load settings history for the UI
+        getSettingsHistory().then(res => {
+            if (res && Array.isArray(res.history)) setSettingsHistory(res.history);
+        }).catch(() => {
+            /* ignore */
+        });
+    }, [setModels, setControlNets, setSettings, setSettingsHistory]);
 
     const handleGenerate = async () => {
         if (status === 'generating') {
@@ -56,6 +63,14 @@ export function GenerationSettings() {
         setStatus('generating');
         setPreview(null); // Clear previous preview
         try {
+            // Auto-save a local client-side snapshot for quick restore/history
+            const localSnap = {
+                id: (Date.now().toString(36) + Math.random().toString(36).slice(2,8)),
+                ts: Math.floor(Date.now() / 1000),
+                settings: { ...settings }
+            };
+            appendSettingsSnapshot(localSnap);
+
             const res = await generateImage(settings);
             if (res.images && res.images.length > 0) {
                 setCurrentImage(res.images[0]);
@@ -222,11 +237,60 @@ export function GenerationSettings() {
                             <Accordion.Control>Sampling & Guidance</Accordion.Control>
                             <Accordion.Panel>
                                 <Stack gap="xs">
-                                    <NumberInput
-                                        label="Seed"
-                                        description="-1 for random"
-                                        value={settings.seed}
-                                        onChange={(v) => setSettings({ seed: Number(v) })}
+                                    <Group>
+                                        <NumberInput
+                                            label="Seed"
+                                            description="-1 for random"
+                                            value={settings.seed}
+                                            onChange={(v) => setSettings({ seed: Number(v) })}
+                                        />
+
+                                        <Button
+                                            variant="outline"
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await getLastSeed();
+                                                    const s = res?.seed ?? -1;
+                                                    setSettings({ seed: typeof s === 'number' ? s : -1 });
+                                                } catch (err) {
+                                                    console.error('Failed to fetch last seed', err);
+                                                }
+                                            }}
+                                        >
+                                            Use last seed
+                                        </Button>
+
+                                        <Button
+                                            variant="light"
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await postSettingsSnapshot(settings, !!settings.persist_prompt_history);
+                                                    if (res && res.snapshot) {
+                                                        appendSettingsSnapshot(res.snapshot);
+                                                    }
+                                                } catch (err) {
+                                                    console.error('Failed to save settings to history', err);
+                                                }
+                                            }}
+                                        >
+                                            Save to history
+                                        </Button>
+
+                                        <Switch
+                                            label="Include prompt in server history (opt-in)"
+                                            checked={!!settings.persist_prompt_history}
+                                            onChange={(e) => setSettings({ persist_prompt_history: e.currentTarget.checked })}
+                                        />
+                                    </Group>
+
+                                    <Select
+                                        label="Load from history"
+                                        placeholder="Select saved settings"
+                                        data={(settingsHistory || []).map(h => ({ value: h.id, label: new Date(h.ts * 1000).toLocaleString() }))}
+                                        onChange={(v) => {
+                                            const snap = (settingsHistory || []).find(s => s.id === v);
+                                            if (snap) setSettings(snap.settings as any);
+                                        }}
                                     />
                                     <Group grow>
                                         <Select

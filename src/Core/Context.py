@@ -13,6 +13,9 @@ import random
 import time
 import torch
 
+# Settings persistence (replaces legacy include/last_seed.txt)
+from src.Core.SettingsStore import get_last_seed, set_last_seed
+
 
 @dataclass
 class SamplingConfig:
@@ -146,8 +149,9 @@ class Context:
         
         if self.features.reuse_seed:
             try:
-                with open("./include/last_seed.txt", "r") as f:
-                    self.seed = int(f.read().strip())
+                ls = get_last_seed()
+                if ls is not None:
+                    self.seed = int(ls)
             except Exception:
                 pass
             self.seeds = [self.seed] * total
@@ -158,8 +162,7 @@ class Context:
     def save_seed(self) -> None:
         """Persist seed for reuse."""
         try:
-            with open("./include/last_seed.txt", "w") as f:
-                f.write(str(self.seeds[-1] if self.seeds else self.seed))
+            set_last_seed(int(self.seeds[-1] if self.seeds else self.seed))
         except Exception:
             pass
     
