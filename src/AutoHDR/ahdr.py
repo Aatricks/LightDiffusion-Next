@@ -1,13 +1,29 @@
 # Taken and adapted from https://github.com/SuperBeastsAI/ComfyUI-SuperBeasts
 
 import numpy as np
+import logging
 from PIL import Image, ImageEnhance, ImageCms
 import torch
 from torchvision.transforms.functional import to_pil_image, to_tensor as tv_to_tensor
 
+logger = logging.getLogger(__name__)
+
+# Detect LCMS availability at module import and cache result. Some Pillow builds
+# may not have liblcms2 available which causes ImageCms.profileToProfile to fail.
+def _check_lcms_available():
+    try:
+        img = Image.new('RGB', (1, 1))
+        ImageCms.profileToProfile(img, ImageCms.createProfile('sRGB'), ImageCms.createProfile('LAB'), outputMode='LAB')
+        return True
+    except Exception as e:
+        logger.warning("AutoHDR: LCMS profile transform not available; AutoHDR will use RGB fallback. Error: %s", e)
+        logger.debug("AutoHDR LCMS detection traceback", exc_info=True)
+        return False
+
 
 sRGB_profile = ImageCms.createProfile("sRGB")
 Lab_profile = ImageCms.createProfile("LAB")
+_HAVE_LCMS = _check_lcms_available()
 
 
 def tensor2pil(image: torch.Tensor) -> Image.Image:
@@ -65,6 +81,12 @@ class HDREffects:
     def apply_hdr2(self, image, hdr_intensity=0.75, shadow_intensity=0.25, highlight_intensity=0.5, 
                    gamma_intensity=0.25, contrast=0.1, enhance_color=0.25):
         img = tensor2pil(image)
+        # If LCMS is not available, skip ICC-based path and do the RGB fallback immediately.
+        if not _HAVE_LCMS:
+            img_adjusted = ImageEnhance.Contrast(img).enhance(1 + contrast)
+            img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
+            img_adjusted = ImageEnhance.Brightness(img_adjusted).enhance(1 + hdr_intensity * 0.1)
+            return pil2tensor(img_adjusted)
         try:
             # Preferred path using ICC profiles (Lab transform)
             img_lab = ImageCms.profileToProfile(img, sRGB_profile, Lab_profile, outputMode='LAB')
@@ -83,12 +105,8 @@ class HDREffects:
             img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
             return pil2tensor(img_adjusted)
         except Exception as e:
-            # Fallback: some Pillow builds / platforms can't build the ICC transform
-            # (OSError: cannot build transform). Use a safe RGB-based approximation
-            # that adjusts contrast/color/brightness without relying on ImageCms.
-            import logging
-            logging.getLogger(__name__).warning(f"AutoHDR: profile transform failed ({e}); using RGB fallback")
+            logger.exception("AutoHDR: profile transform failed; using RGB fallback")
             img_adjusted = ImageEnhance.Contrast(img).enhance(1 + contrast)
             img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
             img_adjusted = ImageEnhance.Brightness(img_adjusted).enhance(1 + hdr_intensity * 0.1)
-            return pil2tensor(img_adjusted)
+            return pil2tensor(img_adjusted) 
