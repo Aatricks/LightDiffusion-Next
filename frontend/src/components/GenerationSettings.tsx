@@ -1,15 +1,50 @@
-import { Button, NumberInput, Select, Stack, Textarea, Switch, Group, Collapse, Box, Text, Accordion } from '@mantine/core';
+import { Button, NumberInput, Select, Stack, Textarea, Switch, Group, Collapse, Box, Text, Accordion, rem } from '@mantine/core';
 import { useStore } from '../store/useStore';
-import { generateImage, interruptGeneration, listModels, listControlNets, getLastSeed, getSettingsHistory, postSettingsSnapshot } from '../api/client';
+import { generateImage, interruptGeneration, listModels, listControlNets, getLastSeed, postSettingsSnapshot, getImageMetadata } from '../api/client';
 import { useEffect, useMemo } from 'react';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCaretDown, IconCaretRight } from '@tabler/icons-react';
+import { IconCaretDown, IconCaretRight, IconUpload, IconPhoto, IconX } from '@tabler/icons-react';
 import { ImageInput } from './ImageInput';
+import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
 
 export function GenerationSettings() {
-    const { settings, setSettings, status, setStatus, setCurrentImage, addToGallery, availableModels, setModels, setPreview, availableControlNets, setControlNets, settingsHistory, setSettingsHistory, appendSettingsSnapshot } = useStore();
+    const { settings, setSettings, status, setStatus, setCurrentImage, addToGallery, availableModels, setModels, setPreview, availableControlNets, setControlNets, appendSettingsSnapshot } = useStore();
     const [openedAdvanced, { toggle: toggleAdvanced }] = useDisclosure(false);
     const [openedHistory, { toggle: toggleHistory }] = useDisclosure(false);
+
+    const handleImportSettings = async (files: File[]) => {
+        const file = files[0];
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const b64 = e.target?.result as string;
+            try {
+                const res = await getImageMetadata(b64);
+                const meta = res?.metadata || {};
+                const updates: any = {};
+                if (meta.seed !== undefined) updates.seed = meta.seed;
+                if (meta.steps !== undefined) updates.steps = meta.steps;
+                if (meta.cfg_scale !== undefined) updates.cfg_scale = meta.cfg_scale;
+                if (meta.sampler) updates.sampler = meta.sampler;
+                if (meta.scheduler) updates.scheduler = meta.scheduler;
+                if (meta.model_path) updates.model_path = meta.model_path;
+                if (meta.width) updates.width = meta.width;
+                if (meta.height) updates.height = meta.height;
+                if (meta.prompt) updates.prompt = meta.prompt;
+                if (meta.negative_prompt) updates.negative_prompt = meta.negative_prompt;
+
+                // warn if model is unknown locally
+                if (updates.model_path && !availableModels.find(m => m.path === updates.model_path)) {
+                    console.warn('Imported model_path not available locally:', updates.model_path);
+                }
+                setSettings(updates);
+            } catch (err) {
+                console.error('Failed to import metadata from image', err);
+                // eslint-disable-next-line no-alert
+                alert('Failed to import settings from image');
+            }
+        };
+        reader.readAsDataURL(file);
+    };
 
     useEffect(() => {
         listModels().then(models => {
@@ -45,14 +80,7 @@ export function GenerationSettings() {
             }
         }).catch(console.error);
         listControlNets().then(res => setControlNets(res.models)).catch(console.error);
-
-        // Load settings history for the UI
-        getSettingsHistory().then(res => {
-            if (res && Array.isArray(res.history)) setSettingsHistory(res.history);
-        }).catch(() => {
-            /* ignore */
-        });
-    }, [setModels, setControlNets, setSettings, setSettingsHistory]);
+    }, [setModels, setControlNets, setSettings]);
 
     const handleGenerate = async () => {
         if (status === 'generating') {
@@ -527,15 +555,41 @@ export function GenerationSettings() {
                         />
                     </Group>
 
-                    <Select
-                        label="Load from history"
-                        placeholder="Select saved settings"
-                        data={(settingsHistory || []).map(h => ({ value: h.id, label: new Date(h.ts * 1000).toLocaleString() }))}
-                        onChange={(v) => {
-                            const snap = (settingsHistory || []).find(s => s.id === v);
-                            if (snap) setSettings(snap.settings);
-                        }}
-                    />
+                    <Text size="sm" fw={500} mt="md">Import settings from image</Text>
+                    <Dropzone
+                        onDrop={handleImportSettings}
+                        onReject={(files) => console.log('rejected files', files)}
+                        maxSize={5 * 1024 ** 2}
+                        accept={IMAGE_MIME_TYPE}
+                        p="sm"
+                    >
+                        <Group justify="center" gap="sm" style={{ minHeight: rem(60), pointerEvents: 'none' }}>
+                            <Dropzone.Accept>
+                                <IconUpload
+                                    style={{ width: rem(32), height: rem(32), color: 'var(--mantine-color-blue-6)' }}
+                                    stroke={1.5}
+                                />
+                            </Dropzone.Accept>
+                            <Dropzone.Reject>
+                                <IconX
+                                    style={{ width: rem(32), height: rem(32), color: 'var(--mantine-color-red-6)' }}
+                                    stroke={1.5}
+                                />
+                            </Dropzone.Reject>
+                            <Dropzone.Idle>
+                                <IconPhoto
+                                    style={{ width: rem(32), height: rem(32), color: 'var(--mantine-color-dimmed)' }}
+                                    stroke={1.5}
+                                />
+                            </Dropzone.Idle>
+
+                            <div>
+                                <Text size="sm" inline>
+                                    Drag image here to import settings
+                                </Text>
+                            </div>
+                        </Group>
+                    </Dropzone>
                 </Stack>
             </Collapse>
 
