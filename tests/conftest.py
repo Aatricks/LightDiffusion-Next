@@ -400,6 +400,18 @@ def mock_clip_sd15():
 
 
 @pytest.fixture
+def server_client():
+    """FastAPI TestClient for in-process server endpoint testing.
+
+    Use this fixture in API/integration tests to avoid starting a subprocess.
+    """
+    from fastapi.testclient import TestClient
+    import server as _server
+
+    return TestClient(_server.app)
+
+
+@pytest.fixture
 def mock_clip_sdxl():
     """Provide mock SDXL CLIP model."""
     return MockCLIP("SDXL")
@@ -525,24 +537,6 @@ def assert_valid_latent(latent_dict: Dict, expected_channels: int = 4):
 def pytest_runtest_teardown(item, nextitem):
     """Ensure all patches are stopped after each test."""
     patch.stopall()
-
-
-@pytest.fixture
-def patch_model_loader():
-    """Patch load_model_for_pipeline to return mock results."""
-    def mock_load(model_path=None, flux_dequant_dtype=None, flux_patch_dtype=None):
-        if model_path and "flux" in model_path.lower():
-            return ("FLUX", (MockModelPatcher(model_path, "FLUX"),))
-        elif model_path and "sdxl" in model_path.lower():
-            return ("SDXL", MockCheckpointResult("SDXL").as_tuple())
-        else:
-            return ("SD15", MockCheckpointResult("SD15").as_tuple())
-    
-    with patch(
-        "src.user.model_loader.load_model_for_pipeline",
-        side_effect=mock_load
-    ) as mock:
-        yield mock
 
 
 def get_test_data_path(relative_path: str) -> Path:

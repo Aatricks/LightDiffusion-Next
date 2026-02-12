@@ -9,3 +9,4 @@ frontend/node_modules/
 *.log
 .history_backups
 include/last_seed.txt
+include/settings_store.json
