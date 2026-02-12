@@ -176,17 +176,24 @@ class Pipeline:
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
                 logger.info(f"HiresFix: using base model for hires pass (use_refiner={use_refiner})")
+                # If a refiner was used earlier we may have unloaded the base model to free VRAM.
+                # Ensure the base model is reloaded and optimized before running the hires pass so
+                # downstream code (sampler / CFGGuider) can access model.model_options etc.
+                if use_refiner and (not model.is_loaded or getattr(model, "model", None) is None):
+                    logger.info("HiresFix: reloading base model for hires pass (was unloaded by refiner)")
+                    model = self._load_model(ctx)
+                    # Re-apply optimizations (LoRA / StableFast / FP8 / DeepCache) to the reloaded model
+                    self._apply_optimizations(ctx, model)
+                    # Re-encode prompts for the reloaded base model to ensure conditioning matches
+                    try:
+                        hf_pos, hf_neg = self._encode_prompts(ctx, model)
+                    except Exception:
+                        # Fallback to previously-encoded conditioning if re-encoding fails
+                        hf_pos, hf_neg = hf_pos, hf_neg
+                    current_model = model
                 # HiresFix might still need base model prompts if it was trained on them
                 latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg, callback=ctx.callback)
                 ctx.current_latents = latents["samples"]
-            
-            self._check_interrupt()
-            
-            # Decode to image (uses VAE from current model)
-            image = current_model.decode(ctx.current_latents)
-            ctx.current_image = image
-            
-            # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
                 self._check_interrupt()
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
@@ -854,14 +861,43 @@ class Pipeline:
                     single_latent = {"samples": batch_latents[0]["samples"][i:i+1]}
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
-                    
+
+                    # Default to the currently-loaded model (may be refiner)
+                    hires_model = model
+                    hires_pos = [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos
+                    hires_neg = [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg
+
+                    # If a refiner was used, prefer reloading the base model for the hires pass.
+                    # Attempt to reload + optimize the base model and re-encode the single-sample
+                    # prompts; fall back to existing behavior on any failure.
+                    if use_refiner:
+                        try:
+                            base_model = self._load_model(ctx)
+                            self._apply_optimizations(ctx, base_model)
+
+                            # Re-encode only the single sample for the reloaded base model
+                            single_pos, single_neg = base_model.encode_prompt([prompts[i]], [negatives[i]])
+                            if isinstance(single_pos, list):
+                                single_pos = single_pos[0]
+                                single_neg = single_neg[0]
+
+                            hires_model = base_model
+                            hires_pos = [single_pos] if isinstance(hf_pos, list) else single_pos
+                            hires_neg = [single_neg] if isinstance(hf_neg, list) else single_neg
+                        except Exception:
+                            # If reload/encode fails, continue with the previously-loaded model
+                            hires_model = model
+                            hires_pos = [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos
+                            hires_neg = [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg
+
                     hires = HiresFix.apply(
-                        single_latent, single_ctx, model,
-                        [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos,
-                        [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
+                        single_latent, single_ctx, hires_model,
+                        hires_pos,
+                        hires_neg,
                         callback=ctx.callback,
                     )
-                    final = model.decode(hires["samples"])[0]
+
+                    final = hires_model.decode(hires["samples"])[0]
                     if AutoHDRProcessor.is_enabled(ctx):
                         final = AutoHDRProcessor.apply(final, ctx)
                 except Exception as e:

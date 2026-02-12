@@ -267,6 +267,34 @@ class TestHiresFixRouting:
             "Latent upscale should be called for batched hires_fix with refiner"
         )
 
+    def test_hires_fix_reloads_base_model_after_refiner(self, mock_all_heavy_dependencies):
+        """If a refiner unloaded the base model, the pipeline must reload the base model before HiresFix."""
+        from src.user.pipeline import pipeline
+        from unittest.mock import patch
+
+        # Patch HiresFix.apply so we can inspect the `model` argument passed to it
+        with patch('src.Processors.HiresFix.HiresFix.apply') as mock_hires_apply:
+            mock_hires_apply.return_value = {"samples": __import__('torch').randn(1, 4, 128, 128)}
+
+            pipeline(
+                prompt=["one"],
+                w=512,
+                h=512,
+                batch=1,
+                hires_fix=True,
+                per_sample_info=[{"hires_fix": True}],
+                refiner_model_path="refiner.safetensors",
+                refiner_switch_step=1,
+                model_path="my_sdxl_model.safetensors",
+            )
+
+            assert mock_hires_apply.called, "HiresFix.apply should be invoked"
+            called_model = mock_hires_apply.call_args[0][2]
+
+            # The model passed to HiresFix must be loaded and have an inner model object
+            assert getattr(called_model, 'is_loaded', False), "Base model must be loaded when passed to HiresFix"
+            assert getattr(called_model, 'model', None) is not None, "Base model.model must be present for the hires pass"
+
     def test_batched_adetailer_with_refiner_sdxl(self, mock_all_heavy_dependencies):
         """Batched adetailer with SDXL refiner should call Adetailer.apply without NameError."""
         from src.user.pipeline import pipeline
