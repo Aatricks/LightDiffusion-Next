@@ -38,6 +38,7 @@ Additional tips:
 
 - `/api/generate` returns 500 with “No images produced”: inspect server logs for `Pipeline import error` or missing models. Ensure `pipeline.py` is importable and the working directory is the repository root.
 - Jobs appear stuck: call `/api/telemetry` to inspect `pending_by_signature`. Mixed resolutions or toggles prevent batching; if running single job automation, set `LD_BATCH_WAIT_SINGLETONS=0` to avoid coalescing delays.
+- SaveImage aborts with "Attempting to save N images in a single call" (exceeds `MAX_IMAGES_PER_SAVE`): this usually indicates tiled intermediate outputs or a very large batched tensor. The server will chunk large coalesced groups into smaller runs of at most `LD_MAX_IMAGES_PER_GROUP` images (default: 256) to mitigate this. If you must allow larger single-call saves, set `LD_MAX_IMAGES_PER_SAVE` to a higher value in the server environment (e.g., `export LD_MAX_IMAGES_PER_SAVE=256`) but be mindful of disk usage. Alternatively, reduce `num_images` per job or lower `LD_MAX_BATCH_SIZE` to keep groups smaller.
 - Health checks: `/health` returns `{ "status": "ok" }`. If it fails, the FastAPI app likely crashed—restart and inspect `logs/server.log`.
 
 ## Docker-specific notes
