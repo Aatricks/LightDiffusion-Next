@@ -195,6 +195,11 @@ LD_BATCH_TIMEOUT = float(os.getenv("LD_BATCH_TIMEOUT", "0.5"))
 # processed immediately. Default is to process singletons immediately to
 # favor throughput and avoid perceived "stuck" behavior.
 LD_BATCH_WAIT_SINGLETONS = os.getenv("LD_BATCH_WAIT_SINGLETONS", "0").lower() in ("1", "true", "yes")
+# Limit total number of images we will process in a single pipeline run when
+# coalescing many requests into a group. If the sum of images across the group
+# is larger than this, we will split the group into smaller chunks and run the
+# pipeline sequentially to avoid memory pressure and downstream save failures.
+LD_MAX_IMAGES_PER_GROUP = int(os.getenv("LD_MAX_IMAGES_PER_GROUP", "256"))
 
 
 class PendingRequest:
@@ -549,27 +554,121 @@ class GenerationBuffer:
 
             loop = asyncio.get_running_loop()
             saved_map: Dict[str, List[dict]] = {}
-            
-            # Run pipeline in thread pool to avoid blocking the event loop
-            func = functools.partial(pipeline, **pipeline_kwargs)
-            result = await loop.run_in_executor(None, func)
 
-            # Expect pipeline to return a mapping under 'batched_results' when
-            # run in batched mode; otherwise fall back to scanning.
-            if isinstance(result, dict) and "batched_results" in result:
-                saved_map = result["batched_results"]
+            # Decide whether to split the group into multiple pipeline runs to
+            # avoid creating very large forward passes and massive decode/save
+            # operations. This helps prevent cases where a large coalesced batch
+            # (e.g., hundreds of items) would result in >1000 images being
+            # processed in one shot and causing downstream save/IO failures.
+            total_images = len(prompts)
+
+            # Respect ImageSaver.MAX_IMAGES_PER_SAVE when deciding whether to run a
+            # single pipeline pass. If the total images exceed what ImageSaver will
+            # accept in one save call, chunk to avoid aborts even if total_images is
+            # within LD_MAX_IMAGES_PER_GROUP.
+            try:
+                from src.FileManaging import ImageSaver as _ImageSaver
+                _max_save_limit = getattr(_ImageSaver, "MAX_IMAGES_PER_SAVE", LD_MAX_IMAGES_PER_GROUP)
+            except Exception:
+                _max_save_limit = LD_MAX_IMAGES_PER_GROUP
+
+            if total_images <= LD_MAX_IMAGES_PER_GROUP and total_images <= _max_save_limit:
+                # Single pipeline run for the normal case
+                func = functools.partial(pipeline, **pipeline_kwargs)
+                result = await loop.run_in_executor(None, func)
+
+                # Expect pipeline to return a mapping under 'batched_results' when
+                # run in batched mode; otherwise fall back to scanning.
+                if isinstance(result, dict) and "batched_results" in result:
+                    saved_map = result["batched_results"]
+                else:
+                    # Fallback: scan filesystem for files created since group start
+                    files = _find_images_since(time.time() - 60)
+                    for f in files:
+                        # naive grouping by filename prefix (LD-REQ-<rid>)
+                        name = os.path.basename(f)
+                        for p in items:
+                            if f"LD-REQ-{p.request_id}" in name:
+                                saved_map.setdefault(p.request_id, []).append({
+                                    "filename": name,
+                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                })
             else:
-                # Fallback: scan filesystem for files created since group start
-                files = _find_images_since(time.time() - 60)
-                for f in files:
-                    # naive grouping by filename prefix (LD-REQ-<rid>)
-                    name = os.path.basename(f)
-                    for p in items:
-                        if f"LD-REQ-{p.request_id}" in name:
-                            saved_map.setdefault(p.request_id, []).append({
-                                "filename": name,
-                                "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
-                            })
+                # Chunk the items into smaller groups that each have at most
+                # LD_MAX_IMAGES_PER_GROUP images. Process each chunk sequentially
+                # and merge results. This avoids huge single-shot decodes/saves.
+                logger.info(
+                    "Large coalesced batch: %d items -> %d images. Chunking into max-%d image groups",
+                    len(items), total_images, LD_MAX_IMAGES_PER_GROUP,
+                )
+
+                # Flatten the per-request samples into a list of per-sample entries
+                flat_samples: list[dict] = []
+                for p in items:
+                    for _k in range(max(1, p.req.num_images)):
+                        flat_samples.append(
+                            {
+                                "request_id": p.request_id,
+                                "filename_prefix": f"LD-REQ-{p.request_id}",
+                                "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
+                                "hires_fix": bool(p.req.hiresfix),
+                                "adetailer": bool(p.req.adetailer),
+                                "prompt": p.req.prompt,
+                                "negative_prompt": p.req.negative_prompt or "",
+                            }
+                        )
+
+                # Partition into consecutive chunks of size <= LD_MAX_IMAGES_PER_GROUP
+                # Also respect ImageSaver.MAX_IMAGES_PER_SAVE to avoid aborting on huge
+                # single-call saves (admins can tune with LD_MAX_IMAGES_PER_SAVE).
+                _chunk_size = min(LD_MAX_IMAGES_PER_GROUP, _max_save_limit) if _max_save_limit and _max_save_limit > 0 else LD_MAX_IMAGES_PER_GROUP
+
+                chunks: list[list[dict]] = [
+                    flat_samples[i : i + _chunk_size]
+                    for i in range(0, len(flat_samples), _chunk_size)
+                ]
+
+                logger.info("Split into %d chunks (max %d images per chunk)", len(chunks), _chunk_size)
+
+                # Process each chunk sequentially
+                for chunk in chunks:
+                    c_prompts = [e["prompt"] for e in chunk]
+                    c_negatives = [e["negative_prompt"] for e in chunk]
+                    c_per_sample_info = [
+                        {
+                            "request_id": e["request_id"],
+                            "filename_prefix": e["filename_prefix"],
+                            "seed": e["seed"],
+                            "hires_fix": e["hires_fix"],
+                            "adetailer": e["adetailer"],
+                        }
+                        for e in chunk
+                    ]
+
+                    # Prepare kwargs for this chunk (reuse most of the group-level settings)
+                    chunk_kwargs = dict(pipeline_kwargs)
+                    chunk_kwargs["prompt"] = c_prompts
+                    chunk_kwargs["number"] = len(c_prompts)
+                    chunk_kwargs["per_sample_info"] = c_per_sample_info
+                    chunk_kwargs["negative_prompt"] = c_negatives
+
+                    func = functools.partial(pipeline, **chunk_kwargs)
+                    result = await loop.run_in_executor(None, func)
+
+                    if isinstance(result, dict) and "batched_results" in result:
+                        for k, v in result["batched_results"].items():
+                            saved_map.setdefault(k, []).extend(v)
+                    else:
+                        files = _find_images_since(time.time() - 60)
+                        for f in files:
+                            name = os.path.basename(f)
+                            for e in chunk:
+                                rid = e.get("request_id")
+                                if f"LD-REQ-{rid}" in name:
+                                    saved_map.setdefault(rid, []).append({
+                                        "filename": name,
+                                        "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                    })
 
             # For each pending item, collect its images and set future result
             for p in items:
@@ -767,6 +866,7 @@ async def telemetry() -> Dict[str, Any]:
         "worker_running": worker_running,
         "max_batch_size": LD_MAX_BATCH_SIZE,
         "batch_timeout": LD_BATCH_TIMEOUT,
+        "max_images_per_group": LD_MAX_IMAGES_PER_GROUP,
     "batches_processed": batches_processed,
     "items_processed": items_processed,
     "requests_processed": requests_processed,

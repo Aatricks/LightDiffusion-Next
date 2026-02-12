@@ -69,10 +69,46 @@ def apply_gamma_correction(lum_array, gamma):
     gamma_corrected = 1 / (1.1 - gamma)
     return np.clip(255 * ((lum_array / 255) ** gamma_corrected), 0, 255).astype(np.uint8)
 def apply_to_batch(func):
-    """Decorator to apply function to each image in batch."""
+    """Decorator to apply function to each image in batch.
+
+    Handles the common input shapes gracefully:
+    - 4D torch.Tensor: treated as a batch (B, H, W, C)
+    - 3D torch.Tensor: treated as a single image (H, W, C) and wrapped to a batch
+    - list/tuple of images: processed element-wise
+
+    Returns a single-element tuple containing a batched tensor `(batch_tensor,)`
+    to preserve the previous calling contract used elsewhere in the codebase.
+    """
     def wrapper(self, image, *args, **kwargs):
-        results = [func(self, img, *args, **kwargs) for img in image]
-        return (torch.cat(results, dim=0),)
+        # Fast-path for torch.Tensor inputs
+        if isinstance(image, torch.Tensor):
+            if image.ndim == 4:
+                # Already batched: iterate over batch dimension
+                results = [func(self, img, *args, **kwargs) for img in image]
+                return (torch.cat(results, dim=0),)
+            elif image.ndim == 3:
+                # Single image: add batch dimension, process, and return batched result
+                single = image.unsqueeze(0)
+                results = [func(self, img, *args, **kwargs) for img in single]
+                return (torch.cat(results, dim=0),)
+            else:
+                # Unexpected tensor rank: delegate to func and ensure batch wrapper
+                res = func(self, image, *args, **kwargs)
+                if isinstance(res, torch.Tensor):
+                    return (res.unsqueeze(0),)
+                return res
+
+        # Lists/tuples: process each element
+        if isinstance(image, (list, tuple)):
+            results = [func(self, img, *args, **kwargs) for img in image]
+            return (torch.cat(results, dim=0),)
+
+        # Fallback for other types (e.g., PIL Image) - convert single result to a batch
+        res = func(self, image, *args, **kwargs)
+        if isinstance(res, torch.Tensor):
+            return (res.unsqueeze(0),)
+        return res
+
     return wrapper
 
 
@@ -80,33 +116,54 @@ class HDREffects:
     @apply_to_batch
     def apply_hdr2(self, image, hdr_intensity=0.75, shadow_intensity=0.25, highlight_intensity=0.5, 
                    gamma_intensity=0.25, contrast=0.1, enhance_color=0.25):
+        global _HAVE_LCMS
         img = tensor2pil(image)
+        # Handle possible alpha channel by separating it out. ICC transforms expect RGB/LAB without alpha.
+        alpha = None
+        if 'A' in img.getbands():
+            alpha = img.getchannel('A')
+            img_rgb = img.convert('RGB')
+        else:
+            img_rgb = img.convert('RGB') if img.mode != 'RGB' else img
+
         # If LCMS is not available, skip ICC-based path and do the RGB fallback immediately.
         if not _HAVE_LCMS:
-            img_adjusted = ImageEnhance.Contrast(img).enhance(1 + contrast)
+            img_adjusted = ImageEnhance.Contrast(img_rgb).enhance(1 + contrast)
             img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
             img_adjusted = ImageEnhance.Brightness(img_adjusted).enhance(1 + hdr_intensity * 0.1)
+            if alpha:
+                img_adjusted = img_adjusted.convert('RGBA')
+                img_adjusted.putalpha(alpha)
             return pil2tensor(img_adjusted)
         try:
-            # Preferred path using ICC profiles (Lab transform)
-            img_lab = ImageCms.profileToProfile(img, sRGB_profile, Lab_profile, outputMode='LAB')
+            # Preferred path using ICC profiles (Lab transform) on RGB data
+            img_lab = ImageCms.profileToProfile(img_rgb, sRGB_profile, Lab_profile, outputMode='LAB')
             luminance, a, b = img_lab.split()
             lum_array = np.asarray(luminance, dtype=np.float32)
-            
+
             shadows_adj = adjust_shadows_non_linear(luminance, shadow_intensity)
             highlights_adj = adjust_highlights_non_linear(luminance, highlight_intensity)
-            merged = merge_adjustments_with_blend_modes(lum_array, shadows_adj, highlights_adj, 
+            merged = merge_adjustments_with_blend_modes(lum_array, shadows_adj, highlights_adj,
                                                          hdr_intensity, shadow_intensity, highlight_intensity)
             gamma_corr = Image.fromarray(apply_gamma_correction(np.asarray(merged), gamma_intensity)).resize(a.size)
-            
+
             adjusted_lab = Image.merge('LAB', (gamma_corr, a, b))
             img_adjusted = ImageCms.profileToProfile(adjusted_lab, Lab_profile, sRGB_profile, outputMode='RGB')
+            # Re-attach alpha channel if present
+            if alpha:
+                img_adjusted = img_adjusted.convert('RGBA')
+                img_adjusted.putalpha(alpha)
             img_adjusted = ImageEnhance.Contrast(img_adjusted).enhance(1 + contrast)
             img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
             return pil2tensor(img_adjusted)
         except Exception as e:
             logger.exception("AutoHDR: profile transform failed; using RGB fallback")
-            img_adjusted = ImageEnhance.Contrast(img).enhance(1 + contrast)
+            # Disable LCMS after a runtime failure to avoid repeated exceptions
+            _HAVE_LCMS = False
+            img_adjusted = ImageEnhance.Contrast(img_rgb).enhance(1 + contrast)
             img_adjusted = ImageEnhance.Color(img_adjusted).enhance(1 + enhance_color * 0.2)
             img_adjusted = ImageEnhance.Brightness(img_adjusted).enhance(1 + hdr_intensity * 0.1)
+            if alpha:
+                img_adjusted = img_adjusted.convert('RGBA')
+                img_adjusted.putalpha(alpha)
             return pil2tensor(img_adjusted) 
