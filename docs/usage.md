@@ -20,7 +20,7 @@ The Generate tab is designed as a control surface where the left sidebar contain
 
 - **Prompt / Negative prompt** — text areas at the top of the sidebar. Negative prompts are optional; the pipeline automatically falls back to a curated default containing `EasyNegative`, `badhandv4`, `lr` and `ng_deepnegative` embeddings.
 - **Dimensions** — width/height sliders (64–2048) with automatic aspect handling in the gallery.
-- **Images & batch** — request up to 10 images per job, with a separate batch size controlling internal chunking.
+- **Images & batch** — request multiple images per job; large requests may be chunked server-side into groups no larger than `LD_MAX_IMAGES_PER_GROUP` images (default: 256) to avoid memory and disk pressure. Use the `batch_size` setting to control internal sampler batch size and adjust `LD_MAX_IMAGES_PER_GROUP` via environment variables if necessary.
 
 ### Feature toggles
 

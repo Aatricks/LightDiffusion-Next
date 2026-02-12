@@ -60,11 +60,10 @@ def convert_cond(cond: list) -> list:
                 temp["cross_attn"] = cond_tensor
             except Exception:
                 pass
-        # Pass pooled_output as 'y' or 'pooled_output' for SDXL/Flux
+        # Pass pooled_output as 'y_pooled' for SDXL conditioning
         pooled = temp.get("pooled_output")
         if pooled is not None:
             model_conds["y_pooled"] = CONDRegular(pooled)
-            model_conds["pooled_output"] = CONDRegular(pooled)
         
         # Pass attention_mask for Klein/Flux2 models
         attention_mask = temp.get("attention_mask")
@@ -178,6 +177,17 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
 
         # Handle transformer options and patches
         transformer_options = model_options.get("transformer_options", {}).copy()
+        # Merge any per-condition transformer options (e.g. from ADetailer crop conditioning)
+        for cond_item in c_list:
+            if isinstance(cond_item, dict):
+                per_to = cond_item.get("transformer_options")
+                if isinstance(per_to, dict):
+                    for k, v in per_to.items():
+                        try:
+                            transformer_options[k] = int(v)
+                        except Exception:
+                            transformer_options[k] = v
+
         if patches is not None:
             cur_patches = transformer_options.get("patches", {}).copy()
             for p in patches:
@@ -186,6 +196,32 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
 
         transformer_options["cond_or_uncond"] = cond_or_uncond[:]
         transformer_options["sigmas"] = timestep_
+
+        # Validate image sizing if present and log helpful diagnostics
+        try:
+            if "img_h" in transformer_options and "img_w" in transformer_options:
+                token_h = transformer_options["img_h"] // 16
+                token_w = transformer_options["img_w"] // 16
+                if token_h != input_x.shape[2] or token_w != input_x.shape[3]:
+                    logging.info("calc_cond_batch: transformer_options img_h/img_w %r -> tokens %dx%d doesn't match input_x grid %dx%d; falling back to per-chunk",
+                                 (transformer_options.get("img_h"), transformer_options.get("img_w")), token_h, token_w, input_x.shape[2], input_x.shape[3])
+                    # Fall back to running the model on each chunk individually to avoid RoPE/positional-embedding mismatches.
+                    output_parts = _run_model_per_chunk(model, x_in, timestep, input_x_list, c_list, batch_sizes, batch_indices_list, cond_or_uncond, model_options)
+                    # Apply outputs immediately and continue with next batch
+                    for o in range(batch_chunks):
+                        cond_index = cond_or_uncond[o]
+                        a = area[o]
+                        out_part = output_parts[o]
+                        batch_inds = batch_indices_list[o]
+
+                        if a is None:
+                            _apply_output_no_area(out_conds, out_counts, cond_index, out_part, mult[o], batch_inds)
+                        else:
+                            _apply_output_with_area(out_conds, out_counts, cond_index, out_part, mult[o], batch_inds, a)
+                    continue
+        except Exception as ex:
+            logging.debug("calc_cond_batch: transformer_options validation failed: %s", ex)
+
         c["transformer_options"] = transformer_options
 
         # Run model
@@ -215,7 +251,8 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
                 else:
                     output_parts = list(torch.split(full_out, batch_sizes, dim=0))
             except Exception as e:
-                logging.exception("Fast-path model call failed, falling back to per-chunk: %s", e)
+                logging.exception("Fast-path model call failed, falling back to per-chunk: %s; input_x.shape=%s; transformer_options=%s",
+                                  e, input_x.shape, transformer_options)
                 output_parts = _run_model_per_chunk(model, x_in, timestep, input_x_list, c_list, batch_sizes, batch_indices_list, cond_or_uncond, model_options)
 
         # Apply outputs

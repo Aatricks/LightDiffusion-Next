@@ -266,6 +266,9 @@ class KSampler:
         self.denoise = denoise
         self.model_options = model_options
         self.pipeline = pipeline
+        # Initialize sigmas to an empty tensor to avoid AttributeError when
+        # direct_sample is used before set_steps is called.
+        self.sigmas = torch.FloatTensor([])
         if model and steps:
             self.set_steps(steps, denoise)
 
@@ -306,6 +309,31 @@ class KSampler:
                cfg_free_enabled=False, cfg_free_start_percent=70.0, batched_cfg=True, dynamic_cfg_rescaling=False,
                dynamic_cfg_method="variance", dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0,
                adaptive_noise_enabled=False, adaptive_noise_method="complexity", model_options=None):
+        # Ensure sigmas are populated when caller passes steps directly to sample().
+        # This supports patterns that instantiate KSampler() without steps and call
+        # sample(..., steps=... ) afterwards.
+        # Apply provided sampler/scheduler early so that set_steps and calculate_sigmas
+        # see the intended values (fixes Invalid scheduler: None when KSampler was
+        # instantiated without defaults).
+        if sampler_name is not None:
+            self.sampler_name = sampler_name
+        if scheduler is not None:
+            self.scheduler = scheduler
+
+        if steps is not None and (not hasattr(self, 'sigmas') or (isinstance(getattr(self, 'sigmas', None), torch.Tensor) and self.sigmas.numel() == 0)):
+            original_model = getattr(self, 'model', None)
+            # Temporarily set self.model so calculate_sigmas/set_steps can use it.
+            if original_model is None and model is not None:
+                self.model = model
+            try:
+                self.set_steps(steps, denoise if denoise is not None else self.denoise)
+            except Exception:
+                # Fail gracefully; downstream code will surface clearer errors if needed.
+                pass
+            finally:
+                if original_model is None:
+                    self.model = original_model
+
         if model is None:
             if latent_image is None:
                 raise ValueError("latent_image must be provided when using pre-initialized model")

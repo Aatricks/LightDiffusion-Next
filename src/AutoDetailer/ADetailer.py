@@ -111,10 +111,18 @@ def _compute_detailer_resize(width, height, guide_size, max_size):
     if new_w > max_size or new_h > max_size:
         upscale *= max_size / max(new_w, new_h)
         new_w, new_h = int(width * upscale), int(height * upscale)
+    # Round dimensions to nearest multiple of 8 for VAE compatibility.
+    # Non-divisible-by-8 dimensions cause NaN in VAE encode when tiled
+    # encoding is used, because round(dim * 0.125) != dim // 8.
+    new_w = max(8, (new_w + 4) // 8 * 8)
+    new_h = max(8, (new_h + 4) // 8 * 8)
     force_inpaint = False
     if upscale <= 1.0 or new_w == 0 or new_h == 0:
         force_inpaint = True
         upscale, new_w, new_h = 1.0, width, height
+        # Also round when force inpaint to keep VAE compatibility
+        new_w = max(8, (new_w + 4) // 8 * 8)
+        new_h = max(8, (new_h + 4) // 8 * 8)
     return upscale, new_w, new_h, force_inpaint
 
 
@@ -133,7 +141,9 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     print(f"Detailer: segment upscale for ({bbox[2]-bbox[0]}, {bbox[3]-bbox[1]}) | crop region {w, h} x {upscale} -> {new_w, new_h}")
 
     upscaled_image = tensor_util.tensor_resize(image, new_w, new_h)
+    
     latent_image = to_latent_image(upscaled_image, vae)
+    
     if noise_mask is not None:
         latent_image["noise_mask"] = noise_mask
 
@@ -142,6 +152,7 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
         refined_latent = ksampler_wrapper(model, seed + i, steps, cfg, sampler_name, scheduler, positive, negative,
             refined_latent, denoise, refiner_ratio, refiner_model, refiner_clip, refiner_positive, refiner_negative,
             noise=None, callback=callback, scheduler_func=scheduler_func, pipeline=pipeline)
+    
     try:
         refined_image = vae.decode(refined_latent["samples"])
     except Exception:

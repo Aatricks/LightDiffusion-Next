@@ -76,6 +76,8 @@ def test_uses_hires_ctx_defaults():
             assert call_kwargs["cfg"] == 8.0
             # Sampler name should be taken from hires_ctx (unchanged here)
             assert call_kwargs["sampler_name"] == ctx.sampling.sampler
+            # Scheduler should be propagated through to the sampler (regression guard)
+            assert call_kwargs["scheduler"] == ctx.sampling.scheduler
 
 
 def test_injects_size_conditioning_for_sdxl():

@@ -14,20 +14,21 @@ def CheckAndDownloadFlux2():
     - Qwen3 4B text encoder to ./include/text_encoder/
     - Flux VAE to ./include/vae/
     """
-    repo = "Comfy-Org/vae-text-encorder-for-flux-klein-4b"
     
     # Check for diffusion model
     diffusion_dir = "./include/diffusion_model/"
     os.makedirs(diffusion_dir, exist_ok=True)
     
-    flux2_models = glob.glob(f"{diffusion_dir}*flux*") + glob.glob(f"{diffusion_dir}*klein*")
+    # Look for actual diffusion model files (safetensors, pt, pth) that match flux/klein names, including nested subdirectories
+    diffusion_candidates = glob.glob(os.path.join(diffusion_dir, "**", "*flux*"), recursive=True) + glob.glob(os.path.join(diffusion_dir, "**", "*klein*"), recursive=True)
+    flux2_models = [p for p in diffusion_candidates if os.path.isfile(p) and os.path.splitext(p)[1].lower() in (".safetensors", ".pt", ".pth")]
     if not flux2_models:
         print("Downloading Flux2 Klein diffusion model...")
         try:
             filename = "split_files/diffusion_models/flux-2-klein-4b.safetensors"
             path = hf_hub_download(
-                repo_id=repo,
-                filename=filename,
+                repo_id="black-forest-labs/FLUX.2-klein-4B",
+                filename="flux-2-klein-4b.safetensors",
                 local_dir=diffusion_dir,
             )
             # If it downloaded into a subfolder, move it up
@@ -46,13 +47,15 @@ def CheckAndDownloadFlux2():
     text_encoder_dir = "./include/text_encoder/"
     os.makedirs(text_encoder_dir, exist_ok=True)
     
-    qwen_models = glob.glob(f"{text_encoder_dir}*qwen*") + glob.glob(f"{text_encoder_dir}*klein*")
+    # Look for actual text encoder model files (safetensors, pt, pth) matching qwen/klein, including nested subdirs
+    qwen_candidates = glob.glob(os.path.join(text_encoder_dir, "**", "*qwen*"), recursive=True) + glob.glob(os.path.join(text_encoder_dir, "**", "*klein*"), recursive=True)
+    qwen_models = [p for p in qwen_candidates if os.path.isfile(p) and os.path.splitext(p)[1].lower() in (".safetensors", ".pt", ".pth")]
     if not qwen_models:
         print("Downloading Qwen3 text encoder for Flux2 Klein...")
         try:
             filename = "split_files/text_encoders/qwen_3_4b.safetensors"
             path = hf_hub_download(
-                repo_id=repo,
+                repo_id="Comfy-Org/vae-text-encorder-for-flux-klein-4b",
                 filename=filename, 
                 local_dir=text_encoder_dir,
             )
@@ -78,7 +81,7 @@ def CheckAndDownloadFlux2():
         try:
             filename = "split_files/vae/flux2-vae.safetensors"
             path = hf_hub_download(
-                repo_id=repo,
+                repo_id="Comfy-Org/flux2-dev",
                 filename=filename,
                 local_dir=vae_dir,
             )

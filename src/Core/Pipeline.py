@@ -165,28 +165,35 @@ class Pipeline:
             
             # 6. Post-processing
             
-            # Apply HiresFix if enabled (uses the model currently loaded, which might be refiner!)
-            # Note: Usually HiresFix is done with the base model for better consistency,
-            # but some people like refining the hires pass too.
-            current_model = refiner_model if use_refiner else model
-            
-            # Define prompts for post-processors (HiresFix, Adetailer)
-            hf_pos = ref_positive if use_refiner and ref_positive else positive
-            hf_neg = ref_negative if use_refiner and ref_negative else negative
-            
+# Apply HiresFix if enabled. Prefer running hires pass with the base model
+            # and base prompts for consistency; using a refiner for the hires pass can
+            # introduce artifacts because its UNet/CLIP can differ from the base model.
+            current_model = model
+            # Prefer base prompts for hires pass (refiner prompts tend to mismatch)
+            hf_pos = positive
+            hf_neg = negative
+
             if HiresFix.is_enabled(ctx):
                 self._check_interrupt()
-                # HiresFix might need base model prompts if it was trained on them
+                logger.info(f"HiresFix: using base model for hires pass (use_refiner={use_refiner})")
+                # If a refiner was used earlier we may have unloaded the base model to free VRAM.
+                # Ensure the base model is reloaded and optimized before running the hires pass so
+                # downstream code (sampler / CFGGuider) can access model.model_options etc.
+                if use_refiner and (not model.is_loaded or getattr(model, "model", None) is None):
+                    logger.info("HiresFix: reloading base model for hires pass (was unloaded by refiner)")
+                    model = self._load_model(ctx)
+                    # Re-apply optimizations (LoRA / StableFast / FP8 / DeepCache) to the reloaded model
+                    self._apply_optimizations(ctx, model)
+                    # Re-encode prompts for the reloaded base model to ensure conditioning matches
+                    try:
+                        hf_pos, hf_neg = self._encode_prompts(ctx, model)
+                    except Exception:
+                        # Fallback to previously-encoded conditioning if re-encoding fails
+                        hf_pos, hf_neg = hf_pos, hf_neg
+                    current_model = model
+                # HiresFix might still need base model prompts if it was trained on them
                 latents = HiresFix.apply(latents, ctx, current_model, hf_pos, hf_neg, callback=ctx.callback)
                 ctx.current_latents = latents["samples"]
-            
-            self._check_interrupt()
-            
-            # Decode to image (uses VAE from current model)
-            image = current_model.decode(ctx.current_latents)
-            ctx.current_image = image
-            
-            # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
                 self._check_interrupt()
                 ctx.current_image = AutoHDRProcessor.apply(ctx.current_image, ctx)
@@ -194,7 +201,22 @@ class Pipeline:
             # Apply Adetailer if enabled (handles its own saving)
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, current_model, positive=hf_pos, negative=hf_neg, callback=ctx.callback)
+                if use_refiner:
+                    # Reload base model for ADetailer - the refiner's UNet/CLIP
+                    # is not suited for text-guided crop enhancement
+                    ad_model = self._load_model(ctx)
+                    ad_pos, ad_neg = self._encode_prompts(ctx, ad_model)
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, ad_model,
+                        positive=ad_pos, negative=ad_neg,
+                        callback=ctx.callback
+                    )
+                else:
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, current_model,
+                        positive=hf_pos, negative=hf_neg,
+                        callback=ctx.callback
+                    )
             else:
                 # Save the image synchronously so the server can reliably find it
                 prefix = "LD-HF" if ctx.features.hires_fix else "LD"
@@ -356,11 +378,22 @@ class Pipeline:
             from src.Processors import Adetailer
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                # Use refiner model and prompts if it was used
-                cur_model = refiner_model if (not use_upscale and use_refiner) else model
-                cur_pos = ref_positive if (not use_upscale and use_refiner) else positive
-                cur_neg = ref_negative if (not use_upscale and use_refiner) else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, positive=cur_pos, negative=cur_neg, callback=ctx.callback)
+                if not use_upscale and use_refiner:
+                    # Reload base model for ADetailer - the refiner's UNet/CLIP
+                    # is not suited for text-guided crop enhancement
+                    ad_model = self._load_model(ctx)
+                    ad_pos, ad_neg = self._encode_prompts(ctx, ad_model)
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, ad_model,
+                        positive=ad_pos, negative=ad_neg,
+                        callback=ctx.callback
+                    )
+                else:
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, model,
+                        positive=positive, negative=negative,
+                        callback=ctx.callback
+                    )
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -506,11 +539,22 @@ class Pipeline:
             from src.Processors import Adetailer
             if Adetailer.is_enabled(ctx):
                 self._check_interrupt()
-                # Use refiner model and prompts if it was used
-                cur_model = refiner_model if use_refiner else model
-                cur_pos = ref_positive if use_refiner else positive
-                cur_neg = ref_negative if use_refiner else negative
-                ctx.current_image, _ = Adetailer.apply(ctx.current_image, ctx, cur_model, positive=cur_pos, negative=cur_neg, callback=ctx.callback)
+                if use_refiner:
+                    # Reload base model for ADetailer - the refiner's UNet/CLIP
+                    # is not suited for text-guided crop enhancement
+                    ad_model = self._load_model(ctx)
+                    ad_pos, ad_neg = self._encode_prompts(ctx, ad_model)
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, ad_model,
+                        positive=ad_pos, negative=ad_neg,
+                        callback=ctx.callback
+                    )
+                else:
+                    ctx.current_image, _ = Adetailer.apply(
+                        ctx.current_image, ctx, model,
+                        positive=positive, negative=negative,
+                        callback=ctx.callback
+                    )
 
             # Apply AutoHDR if enabled
             if AutoHDRProcessor.is_enabled(ctx):
@@ -778,6 +822,26 @@ class Pipeline:
         if AutoHDRProcessor.is_enabled(ctx):
             images = AutoHDRProcessor.apply(images, ctx)
         
+        # If refiner was used, reload base model for ADetailer.
+        # The refiner's UNet/CLIP is optimized for short refinement passes,
+        # not for the text-guided crop enhancement that ADetailer performs.
+        ad_model = model
+        ad_pos = hf_pos
+        ad_neg = hf_neg
+        if use_refiner:
+            needs_adetailer = any(
+                (per_sample_info[j] if j < len(per_sample_info) else {}).get("adetailer", False)
+                for j in range(total_batch)
+            )
+            if needs_adetailer:
+                ad_model = self._load_model(ctx)
+                self._apply_optimizations(ctx, ad_model)
+                ad_pos, ad_neg = ad_model.encode_prompt(prompts, negatives)
+                if isinstance(ad_pos, list):
+                    for idx, entry in enumerate(ad_pos):
+                        if len(entry) > 1 and isinstance(entry[1], dict):
+                            entry[1]["batch_index"] = [idx]
+        
         # Process individually
         saver = ImageSaver.SaveImage()
         results = {}
@@ -797,14 +861,43 @@ class Pipeline:
                     single_latent = {"samples": batch_latents[0]["samples"][i:i+1]}
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
-                    
+
+                    # Default to the currently-loaded model (may be refiner)
+                    hires_model = model
+                    hires_pos = [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos
+                    hires_neg = [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg
+
+                    # If a refiner was used, prefer reloading the base model for the hires pass.
+                    # Attempt to reload + optimize the base model and re-encode the single-sample
+                    # prompts; fall back to existing behavior on any failure.
+                    if use_refiner:
+                        try:
+                            base_model = self._load_model(ctx)
+                            self._apply_optimizations(ctx, base_model)
+
+                            # Re-encode only the single sample for the reloaded base model
+                            single_pos, single_neg = base_model.encode_prompt([prompts[i]], [negatives[i]])
+                            if isinstance(single_pos, list):
+                                single_pos = single_pos[0]
+                                single_neg = single_neg[0]
+
+                            hires_model = base_model
+                            hires_pos = [single_pos] if isinstance(hf_pos, list) else single_pos
+                            hires_neg = [single_neg] if isinstance(hf_neg, list) else single_neg
+                        except Exception:
+                            # If reload/encode fails, continue with the previously-loaded model
+                            hires_model = model
+                            hires_pos = [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos
+                            hires_neg = [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg
+
                     hires = HiresFix.apply(
-                        single_latent, single_ctx, model,
-                        [hf_pos[i]] if isinstance(hf_pos, list) else hf_pos,
-                        [hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
+                        single_latent, single_ctx, hires_model,
+                        hires_pos,
+                        hires_neg,
                         callback=ctx.callback,
                     )
-                    final = model.decode(hires["samples"])[0]
+
+                    final = hires_model.decode(hires["samples"])[0]
                     if AutoHDRProcessor.is_enabled(ctx):
                         final = AutoHDRProcessor.apply(final, ctx)
                 except Exception as e:
@@ -816,9 +909,9 @@ class Pipeline:
                     single_ctx = ctx.clone()
                     single_ctx.seed = ctx.seeds[i] if i < len(ctx.seeds) else ctx.seed
                     final, saved = Adetailer.apply(
-                        final, single_ctx, model,
-                        positive=[hf_pos[i]] if isinstance(hf_pos, list) else hf_pos,
-                        negative=[hf_neg[i]] if isinstance(hf_neg, list) else hf_neg,
+                        final, single_ctx, ad_model,
+                        positive=[ad_pos[i]] if isinstance(ad_pos, list) else ad_pos,
+                        negative=[ad_neg[i]] if isinstance(ad_neg, list) else ad_neg,
                         callback=ctx.callback
                     )
                     for s in saved:

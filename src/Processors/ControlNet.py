@@ -8,7 +8,7 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Optional, Tuple, Any, Dict, List
+from typing import Optional, Tuple, Any, Dict, List, Callable
 from PIL import Image
 import logging
 

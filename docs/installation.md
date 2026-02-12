@@ -48,6 +48,13 @@ The root repository ships with a convenience script that handles environment cre
 	sudo apt update && sudo apt install python3.10 python3.10-venv python3-pip build-essential git
 	```
 
+	> If you plan to use **AutoHDR** (ICC-based color transforms), ensure Little CMS (lcms2) is installed so Pillow can build profile transforms. On Debian/Ubuntu:
+	```bash
+	sudo apt-get install -y liblcms2-2 liblcms2-dev
+	pip install --upgrade --force-reinstall pillow
+	```
+
+
 2. (Optional) Install the [NVIDIA CUDA 12 toolkit](https://developer.nvidia.com/cuda-toolkit-archive) so SageAttention/SpargeAttn can compile native extensions.
 3. Create and activate a virtual environment:
 

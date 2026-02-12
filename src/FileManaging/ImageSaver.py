@@ -3,10 +3,19 @@ import os
 import threading
 import queue
 import numpy as np
+import logging
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
+logger = logging.getLogger(__name__)
 output_directory = "./output"
+
+# Maximum number of images that will be saved in a single `save_images` call.
+# Higher counts are likely to indicate tiled intermediate outputs which should
+# not be saved as individual image files to avoid filling disk with tiles.
+# Can be configured at runtime via the `LD_MAX_IMAGES_PER_SAVE` environment
+# variable (default: 16).
+MAX_IMAGES_PER_SAVE = int(os.getenv("LD_MAX_IMAGES_PER_SAVE", "16"))
 
 # In-memory image buffer for API responses (avoids disk round-trip)
 # Maps request_filename_prefix -> list of (filename, subfolder, png_bytes)
@@ -132,6 +141,54 @@ class SaveImage:
             - `dict`: The saved images information.
         """
         filename_prefix += self.prefix_append
+
+        # Safety: compute total number of images to be saved in this call, counting
+        # batched tensors as multiple images. Abort early if count exceeds threshold.
+        total_images = 0
+        for image in images:
+            shape = getattr(image, 'shape', None)
+            if shape is None:
+                total_images += 1
+                continue
+            try:
+                if len(shape) >= 4:
+                    total_images += int(shape[0])
+                else:
+                    total_images += 1
+            except Exception:
+                total_images += 1
+
+        if total_images > MAX_IMAGES_PER_SAVE:
+            # Diagnostic: record basic info about incoming images to help trace
+            # the source of excessive image counts (tiling issues, batched tensors)
+            details = []
+            try:
+                for idx, image in enumerate(images[:10]):
+                    try:
+                        shape = getattr(image, 'shape', None)
+                        dtype = getattr(image, 'dtype', None)
+                        tname = type(image).__name__
+                        details.append(f"idx={idx} type={tname} shape={shape} dtype={dtype}")
+                    except Exception as e:
+                        details.append(f"idx={idx} inspect_failed: {e}")
+                more = f" (+{max(0, len(images)-10)} more)" if len(images) > 10 else ""
+            except Exception:
+                details = ["failed to enumerate images"]
+                more = ""
+
+            logger.warning(
+                "Attempting to save %d images in a single call (exceeds MAX_IMAGES_PER_SAVE=%d). "
+                "This may indicate tiled intermediate outputs; aborting save to avoid creating many tile files. "
+                "filename_prefix=%s store_bytes_prefix=%s Details: %s%s",
+                total_images,
+                MAX_IMAGES_PER_SAVE,
+                filename_prefix,
+                store_bytes_prefix,
+                "; ".join(details),
+                more,
+            )
+            return {"ui": {"images": []}}
+
         full_output_folder, filename, counter, subfolder, filename_prefix = (
             get_save_image_path(
                 filename_prefix,

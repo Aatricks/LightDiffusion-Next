@@ -94,6 +94,7 @@ The telemetry endpoint returns operational stats that help with autoscaling or q
     {"request_id": "a1b2c3d4", "waiting_s": 0.42, "prompt_preview": "a cinematic robot..."}
   ],
   "max_batch_size": 4,
+  "max_images_per_group": 256,
   "batch_timeout": 0.5,
   "batches_processed": 12,
   "items_processed": 24,
@@ -123,6 +124,8 @@ The queue accepts a few environment variables that influence behaviour:
 | `LD_MAX_BATCH_SIZE` | `4` | Maximum items processed together when signatures match. |
 | `LD_BATCH_TIMEOUT` | `0.5` | Seconds to wait before flushing a batch. |
 | `LD_BATCH_WAIT_SINGLETONS` | `0` | If `1`, single jobs wait the timeout hoping for companions. Set to `0` to process singletons immediately. |
+| `LD_MAX_IMAGES_PER_GROUP` | `256` | Maximum combined images processed in a single pipeline run when coalescing multiple requests. Groups larger than this are processed sequentially in smaller chunks to avoid memory and disk pressure. |
+| `LD_MAX_IMAGES_PER_SAVE` | `16` | Maximum images allowed in a single `save_images` call. If exceeded, the save is aborted to avoid creating many tile files; change with `LD_MAX_IMAGES_PER_SAVE` if needed. |
 | `LD_SERVER_LOGLEVEL` | `DEBUG` | Logging verbosity for `logs/server.log`. |
 
 ## Deploying behind a reverse proxy

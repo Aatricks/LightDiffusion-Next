@@ -156,3 +156,96 @@ class TestFP8AndCompileCombined:
             if "inductor" in str(e).lower() or "compile" in str(e).lower():
                 pytest.skip(f"torch.compile not functional in this environment: {e}")
             raise
+
+
+def test_apply_fp8_falls_back_to_top_level_model(caplog, monkeypatch):
+    """Models without a 'diffusion_model' submodule (e.g., Flux2) should have FP8 quantization
+    applied to the top-level module rather than emitting a warning."""
+    import logging
+    import torch
+    from src.Core.AbstractModel import AbstractModel, ModelCapabilities
+
+    class DummyModel(AbstractModel):
+        def _create_capabilities(self):
+            return ModelCapabilities()
+
+        def load(self, model_path=None):
+            self.model = torch.nn.Sequential(torch.nn.Linear(8, 8, bias=False))
+            self._loaded = True
+            return self
+
+        def encode_prompt(self, prompt, negative_prompt="", clip_skip=-2):
+            return None, None
+
+        def generate(self, ctx, positive, negative, *args, **kwargs):
+            raise NotImplementedError
+
+        def decode(self, latents):
+            raise NotImplementedError
+
+    dummy = DummyModel()
+    dummy.load()
+    caplog.set_level(logging.INFO)
+
+    # Force FP8 support path and spy on cast_to_fp8 calls
+    # Note: Device functions live in src.Device.Device module
+    monkeypatch.setattr('src.Device.Device.is_fp8_supported', lambda *args, **kwargs: True)
+    called = {'count': 0}
+
+    def fake_cast(tensor, scale=1.0):
+        called['count'] += 1
+        return tensor
+
+    monkeypatch.setattr('src.Device.Device.cast_to_fp8', fake_cast)
+
+    dummy.apply_fp8()
+
+    assert "No diffusion_model found for FP8 quantization" not in caplog.text
+    assert called['count'] > 0, "Expected cast_to_fp8 to be invoked on top-level model modules"
+
+
+def test_apply_torch_compile_falls_back_to_top_level_model(caplog, monkeypatch):
+    """If a model has no 'diffusion_model' attribute, torch.compile should be
+    applied to the top-level module instead of logging a warning."""
+    import logging
+    import torch
+    from src.Core.AbstractModel import AbstractModel, ModelCapabilities
+
+    if not hasattr(torch, 'compile'):
+        pytest.skip("torch.compile not available in this environment")
+
+    class DummyModel(AbstractModel):
+        def _create_capabilities(self):
+            return ModelCapabilities()
+
+        def load(self, model_path=None):
+            self.model = torch.nn.Sequential(torch.nn.Linear(4, 4, bias=False))
+            self._loaded = True
+            return self
+
+        def encode_prompt(self, prompt, negative_prompt="", clip_skip=-2):
+            return None, None
+
+        def generate(self, ctx, positive, negative, *args, **kwargs):
+            raise NotImplementedError
+
+        def decode(self, latents):
+            raise NotImplementedError
+
+    dummy = DummyModel()
+    dummy.load()
+    caplog.set_level(logging.INFO)
+
+    # Spy on Device.compile_model
+    compiled_called = {'count': 0}
+
+    def fake_compile(model_obj, mode='max-autotune-no-cudagraphs'):
+        compiled_called['count'] += 1
+        return model_obj  # Return same object for simplicity
+
+    monkeypatch.setattr('src.Device.Device.compile_model', fake_compile)
+
+    dummy.apply_torch_compile()
+
+    assert "No diffusion_model found for torch.compile" not in caplog.text
+    assert compiled_called['count'] > 0, "Expected Device.compile_model to be invoked on the top-level module"

@@ -1,13 +1,5 @@
-
-import argparse
-import os
-import random
-import time
-import sys
-import subprocess
-import requests
 import pytest
-from pathlib import Path
+pytest.skip("moved to tests/e2e/test_core_functionalities.py (refactored)", allow_module_level=True)
 
 # Add the project root to the Python path
 project_root = Path(__file__).resolve().parent.parent

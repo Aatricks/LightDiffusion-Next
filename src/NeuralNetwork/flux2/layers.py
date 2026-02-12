@@ -210,6 +210,19 @@ def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, pe: torch.Tenso
     Returns:
         Attention output [batch, seq, heads*dim]
     """
+    # Validate positional embedding sequence length to prevent RoPE shape errors
+    if pe is not None:
+        try:
+            pe_seq = pe.shape[2] if pe.ndim >= 3 else None
+            if pe_seq not in (1, q.shape[2]):
+                raise ValueError(
+                    f"RoPE sequence length mismatch: pe.seq={pe_seq} != q.seq={q.shape[2]}. "
+                    "Transformer options (img_h/img_w) may not match the input token grid; check calc_cond_batch merging of transformer_options."
+                )
+        except Exception:
+            # Re-raise as a clear ValueError for easier debugging
+            raise
+
     q, k = apply_rope(q, k, pe)
     
     # Efficient attention implementation
@@ -234,7 +247,28 @@ def apply_rope1(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
     """
     # Reshape x to match RoPE components [batch, heads, seq, dim//2, 2]
     x_reshaped = x.reshape(*x.shape[:-1], -1, 2)
-    
+
+    # Handle differing sequence lengths between x and freqs_cis
+    # freqs_cis shape: [batch, 1, seq_pe, dim//2, 2, 2]
+    seq_x = x.shape[2]
+    seq_pe = freqs_cis.shape[2]
+    if seq_pe != seq_x:
+        if seq_pe < seq_x:
+            # Upsample by repeating along sequence dimension then slice to exact length
+            repeat = (seq_x + seq_pe - 1) // seq_pe
+            freqs_cis = freqs_cis.repeat_interleave(repeat, dim=2)[..., :seq_x, :, :, :]
+        else:
+            # Slice to match x sequence length
+            freqs_cis = freqs_cis[..., :seq_x, :, :, :]
+
+    # Sanity-check: feature dimension (half of head dim) must match freqs_cis
+    feat_half = x.shape[-1] // 2
+    if freqs_cis.shape[-3] != feat_half:
+        raise ValueError(
+            f"RoPE feature-dim mismatch: freqs_cis.dim={freqs_cis.shape[-3]} != x.dim/2={feat_half}. "
+            f"x.shape={x.shape}, freqs_cis.shape={freqs_cis.shape}"
+        )
+
     # Extract rotation matrix components
     # freqs_cis is [..., dim//2, row, col]
     # row 0: [cos, -sin]
@@ -242,10 +276,10 @@ def apply_rope1(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
     cos = freqs_cis[..., 0, 0]
     msin = freqs_cis[..., 0, 1] # -sin
     sin = freqs_cis[..., 1, 0]
-    
+
     x1 = x_reshaped[..., 0]
     x2 = x_reshaped[..., 1]
-    
+
     # Apply rotation
     out1 = x1 * cos + x2 * msin
     out2 = x1 * sin + x2 * cos

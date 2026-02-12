@@ -127,11 +127,8 @@ class CrossAttention(nn.Module):
         q = self.to_q(x)
         context = util.default(context, x)
         
-        # Stability: Force standard attention for SDXL
-        # SDXL context_dim is 2048, or heads are 10/20.
-        is_sdxl = (self.heads in (10, 20)) or (context is not x and context is not None and context.shape[-1] == 2048)
-        
         # Optimization: Cache K and V if context is static (e.g. prompt embeddings)
+        # We use id(context) as key since it's typically the same object across steps
         if context is not x:
             cache_key = id(context)
             if cache_key in self._context_cache:
@@ -139,24 +136,15 @@ class CrossAttention(nn.Module):
             else:
                 k = self.to_k(context)
                 v = self.to_v(context)
+                # Keep cache size minimal
                 if len(self._context_cache) > 2:
                     self._context_cache.clear()
                 self._context_cache[cache_key] = (k, v)
-            
-            # Always use stable PyTorch attention for SDXL Cross-Attention
-            # if is_sdxl:
-            #     out = AttentionMethods.attention_pytorch(q, k, v, self.heads, mask)
-            # else:
-            out = optimized_attention(q, k, v, self.heads, mask)
         else:
             k = self.to_k(context)
             v = self.to_v(context)
-            # Force standard attention for SDXL Self-Attention at high res
-            # if is_sdxl:
-            #     out = AttentionMethods.attention_pytorch(q, k, v, self.heads, mask)
-            # else:
-            out = optimized_attention(q, k, v, self.heads, mask)
 
+        out = optimized_attention(q, k, v, self.heads)
         return self.to_out(out)
 
 

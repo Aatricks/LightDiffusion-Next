@@ -183,6 +183,14 @@ async def startup_event():
     """Capture event loop reference and start background worker."""
     global _main_event_loop
     _main_event_loop = asyncio.get_running_loop()
+    # Migrate legacy include/last_seed.txt into the JSON settings store on startup
+    try:
+        from src.Core.SettingsStore import migrate_from_last_seed_txt
+        migrated_seed = migrate_from_last_seed_txt()
+        if migrated_seed is not None:
+            logger.info("Migrated legacy include/last_seed.txt -> last_seed=%s", migrated_seed)
+    except Exception:
+        logger.exception("Failed to migrate legacy last_seed.txt on startup")
     await _generation_buffer.start()
     logger.info("Server startup complete, event loop captured for preview broadcasting")
 
@@ -195,6 +203,11 @@ LD_BATCH_TIMEOUT = float(os.getenv("LD_BATCH_TIMEOUT", "0.5"))
 # processed immediately. Default is to process singletons immediately to
 # favor throughput and avoid perceived "stuck" behavior.
 LD_BATCH_WAIT_SINGLETONS = os.getenv("LD_BATCH_WAIT_SINGLETONS", "0").lower() in ("1", "true", "yes")
+# Limit total number of images we will process in a single pipeline run when
+# coalescing many requests into a group. If the sum of images across the group
+# is larger than this, we will split the group into smaller chunks and run the
+# pipeline sequentially to avoid memory pressure and downstream save failures.
+LD_MAX_IMAGES_PER_GROUP = int(os.getenv("LD_MAX_IMAGES_PER_GROUP", "256"))
 
 
 class PendingRequest:
@@ -549,27 +562,121 @@ class GenerationBuffer:
 
             loop = asyncio.get_running_loop()
             saved_map: Dict[str, List[dict]] = {}
-            
-            # Run pipeline in thread pool to avoid blocking the event loop
-            func = functools.partial(pipeline, **pipeline_kwargs)
-            result = await loop.run_in_executor(None, func)
 
-            # Expect pipeline to return a mapping under 'batched_results' when
-            # run in batched mode; otherwise fall back to scanning.
-            if isinstance(result, dict) and "batched_results" in result:
-                saved_map = result["batched_results"]
+            # Decide whether to split the group into multiple pipeline runs to
+            # avoid creating very large forward passes and massive decode/save
+            # operations. This helps prevent cases where a large coalesced batch
+            # (e.g., hundreds of items) would result in >1000 images being
+            # processed in one shot and causing downstream save/IO failures.
+            total_images = len(prompts)
+
+            # Respect ImageSaver.MAX_IMAGES_PER_SAVE when deciding whether to run a
+            # single pipeline pass. If the total images exceed what ImageSaver will
+            # accept in one save call, chunk to avoid aborts even if total_images is
+            # within LD_MAX_IMAGES_PER_GROUP.
+            try:
+                from src.FileManaging import ImageSaver as _ImageSaver
+                _max_save_limit = getattr(_ImageSaver, "MAX_IMAGES_PER_SAVE", LD_MAX_IMAGES_PER_GROUP)
+            except Exception:
+                _max_save_limit = LD_MAX_IMAGES_PER_GROUP
+
+            if total_images <= LD_MAX_IMAGES_PER_GROUP and total_images <= _max_save_limit:
+                # Single pipeline run for the normal case
+                func = functools.partial(pipeline, **pipeline_kwargs)
+                result = await loop.run_in_executor(None, func)
+
+                # Expect pipeline to return a mapping under 'batched_results' when
+                # run in batched mode; otherwise fall back to scanning.
+                if isinstance(result, dict) and "batched_results" in result:
+                    saved_map = result["batched_results"]
+                else:
+                    # Fallback: scan filesystem for files created since group start
+                    files = _find_images_since(time.time() - 60)
+                    for f in files:
+                        # naive grouping by filename prefix (LD-REQ-<rid>)
+                        name = os.path.basename(f)
+                        for p in items:
+                            if f"LD-REQ-{p.request_id}" in name:
+                                saved_map.setdefault(p.request_id, []).append({
+                                    "filename": name,
+                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                })
             else:
-                # Fallback: scan filesystem for files created since group start
-                files = _find_images_since(time.time() - 60)
-                for f in files:
-                    # naive grouping by filename prefix (LD-REQ-<rid>)
-                    name = os.path.basename(f)
-                    for p in items:
-                        if f"LD-REQ-{p.request_id}" in name:
-                            saved_map.setdefault(p.request_id, []).append({
-                                "filename": name,
-                                "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
-                            })
+                # Chunk the items into smaller groups that each have at most
+                # LD_MAX_IMAGES_PER_GROUP images. Process each chunk sequentially
+                # and merge results. This avoids huge single-shot decodes/saves.
+                logger.info(
+                    "Large coalesced batch: %d items -> %d images. Chunking into max-%d image groups",
+                    len(items), total_images, LD_MAX_IMAGES_PER_GROUP,
+                )
+
+                # Flatten the per-request samples into a list of per-sample entries
+                flat_samples: list[dict] = []
+                for p in items:
+                    for _k in range(max(1, p.req.num_images)):
+                        flat_samples.append(
+                            {
+                                "request_id": p.request_id,
+                                "filename_prefix": f"LD-REQ-{p.request_id}",
+                                "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
+                                "hires_fix": bool(p.req.hiresfix),
+                                "adetailer": bool(p.req.adetailer),
+                                "prompt": p.req.prompt,
+                                "negative_prompt": p.req.negative_prompt or "",
+                            }
+                        )
+
+                # Partition into consecutive chunks of size <= LD_MAX_IMAGES_PER_GROUP
+                # Also respect ImageSaver.MAX_IMAGES_PER_SAVE to avoid aborting on huge
+                # single-call saves (admins can tune with LD_MAX_IMAGES_PER_SAVE).
+                _chunk_size = min(LD_MAX_IMAGES_PER_GROUP, _max_save_limit) if _max_save_limit and _max_save_limit > 0 else LD_MAX_IMAGES_PER_GROUP
+
+                chunks: list[list[dict]] = [
+                    flat_samples[i : i + _chunk_size]
+                    for i in range(0, len(flat_samples), _chunk_size)
+                ]
+
+                logger.info("Split into %d chunks (max %d images per chunk)", len(chunks), _chunk_size)
+
+                # Process each chunk sequentially
+                for chunk in chunks:
+                    c_prompts = [e["prompt"] for e in chunk]
+                    c_negatives = [e["negative_prompt"] for e in chunk]
+                    c_per_sample_info = [
+                        {
+                            "request_id": e["request_id"],
+                            "filename_prefix": e["filename_prefix"],
+                            "seed": e["seed"],
+                            "hires_fix": e["hires_fix"],
+                            "adetailer": e["adetailer"],
+                        }
+                        for e in chunk
+                    ]
+
+                    # Prepare kwargs for this chunk (reuse most of the group-level settings)
+                    chunk_kwargs = dict(pipeline_kwargs)
+                    chunk_kwargs["prompt"] = c_prompts
+                    chunk_kwargs["number"] = len(c_prompts)
+                    chunk_kwargs["per_sample_info"] = c_per_sample_info
+                    chunk_kwargs["negative_prompt"] = c_negatives
+
+                    func = functools.partial(pipeline, **chunk_kwargs)
+                    result = await loop.run_in_executor(None, func)
+
+                    if isinstance(result, dict) and "batched_results" in result:
+                        for k, v in result["batched_results"].items():
+                            saved_map.setdefault(k, []).extend(v)
+                    else:
+                        files = _find_images_since(time.time() - 60)
+                        for f in files:
+                            name = os.path.basename(f)
+                            for e in chunk:
+                                rid = e.get("request_id")
+                                if f"LD-REQ-{rid}" in name:
+                                    saved_map.setdefault(rid, []).append({
+                                        "filename": name,
+                                        "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                    })
 
             # For each pending item, collect its images and set future result
             for p in items:
@@ -767,6 +874,7 @@ async def telemetry() -> Dict[str, Any]:
         "worker_running": worker_running,
         "max_batch_size": LD_MAX_BATCH_SIZE,
         "batch_timeout": LD_BATCH_TIMEOUT,
+        "max_images_per_group": LD_MAX_IMAGES_PER_GROUP,
     "batches_processed": batches_processed,
     "items_processed": items_processed,
     "requests_processed": requests_processed,
@@ -779,6 +887,135 @@ async def telemetry() -> Dict[str, Any]:
         "pipeline_import_ok": pipeline is not None,
         "pipeline_import_error": str(_pipeline_import_error) if _pipeline_import_error is not None else None,
     }
+
+
+# Settings API ------------------------------------------------------------
+@app.get("/api/settings/last")
+async def api_get_last_settings():
+    """Return the last persisted seed (or null)."""
+    try:
+        from src.Core.SettingsStore import get_last_seed
+        seed = get_last_seed()
+        return {"seed": seed}
+    except Exception as e:
+        logger.exception("Failed to read last seed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/settings/history")
+async def api_get_settings_history():
+    """Return saved settings history (most-recent-first)."""
+    try:
+        from src.Core.SettingsStore import get_history
+        return {"history": get_history()}
+    except Exception as e:
+        logger.exception("Failed to read settings history: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/settings/history")
+async def api_post_settings_history(body: Dict[str, Any]):
+    """Append a settings snapshot to history.
+
+    Body: { settings: GenerationSettings, include_prompt: bool }
+    By default `include_prompt` is False and prompt/negative_prompt are NOT persisted.
+    """
+    try:
+        settings = body.get("settings")
+        if not settings:
+            raise HTTPException(status_code=400, detail="Missing 'settings' in request body")
+        include_prompt = bool(body.get("include_prompt", False))
+
+        if include_prompt:
+            stored = dict(settings)
+        else:
+            # Default sanitized/parameter-only snapshot for privacy
+            allowed = ["seed", "steps", "cfg_scale", "sampler", "scheduler", "model_path", "width", "height"]
+            stored = {k: settings[k] for k in allowed if k in settings}
+
+        from src.Core.SettingsStore import append_snapshot
+        snap = append_snapshot({"settings": stored})
+        return {"snapshot": snap}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to append settings history: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/images/metadata")
+async def api_post_image_metadata(body: Dict[str, Any]):
+    """Extract PNG metadata from a base64/data-URL image payload and return
+    a normalized metadata dictionary suitable for re-applying to UI settings.
+
+    Body: { image: "data:image/png;base64,..." } or { image: "<base64>" }
+    Returns: { metadata: { seed, steps, cfg_scale, sampler, scheduler, model_path, width, height, prompt?, negative_prompt? } }
+    """
+    try:
+        image_b64 = body.get("image")
+        if not image_b64:
+            raise HTTPException(status_code=400, detail="Missing 'image' in request body")
+
+        # Accept data URL or raw base64
+        b64_data = None
+        if isinstance(image_b64, str) and image_b64.startswith("data:"):
+            idx = image_b64.find("base64,")
+            if idx != -1:
+                b64_data = image_b64[idx + len("base64,"):]
+        elif isinstance(image_b64, str):
+            b64_data = image_b64.strip().replace("\n", "")
+
+        if not b64_data:
+            raise HTTPException(status_code=400, detail="Invalid image payload")
+
+        decoded = base64.b64decode(b64_data)
+
+        # Parse PNG metadata using PIL
+        from PIL import Image
+        img = Image.open(io.BytesIO(decoded))
+        info = img.info or {}
+
+        def _to_int(v):
+            try:
+                return int(v)
+            except Exception:
+                return None
+
+        def _to_float(v):
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        meta: Dict[str, Any] = {}
+        if "prompt" in info:
+            meta["prompt"] = info.get("prompt")
+        if "negative_prompt" in info:
+            meta["negative_prompt"] = info.get("negative_prompt")
+        if "seed" in info:
+            meta["seed"] = _to_int(info.get("seed"))
+        if "steps" in info:
+            meta["steps"] = _to_int(info.get("steps"))
+        # Context.build_metadata uses key 'cfg' for CFG value — map it to cfg_scale
+        if "cfg" in info:
+            meta["cfg_scale"] = _to_float(info.get("cfg"))
+        if "sampler" in info:
+            meta["sampler"] = info.get("sampler")
+        if "scheduler" in info:
+            meta["scheduler"] = info.get("scheduler")
+        if "model_path" in info:
+            meta["model_path"] = info.get("model_path")
+        if "width" in info:
+            meta["width"] = _to_int(info.get("width"))
+        if "height" in info:
+            meta["height"] = _to_int(info.get("height"))
+
+        return {"metadata": meta}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to decode image metadata: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _encode_png_to_base64(path: str) -> str:
@@ -1165,12 +1402,14 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         log.error("Pipeline import error: %s", _pipeline_import_error)
         raise HTTPException(status_code=500, detail=f"Pipeline import error: {_pipeline_import_error}")
 
-    # Optionally honor requested seed by writing include/last_seed.txt and enabling reuse
+    # Optionally honor requested seed by persisting it in SettingsStore and enabling reuse
     reuse_seed = req.reuse_seed
     if req.seed is not None and req.seed >= 0:
-        os.makedirs("./include", exist_ok=True)
-        with open(os.path.join("./include", "last_seed.txt"), "w", encoding="utf-8") as f:
-            f.write(str(int(req.seed)))
+        try:
+            from src.Core.SettingsStore import set_last_seed
+            set_last_seed(int(req.seed))
+        except Exception:
+            logger.exception("Failed to persist last seed to SettingsStore")
         reuse_seed = True
 
     # For buffered execution we pass request data into the queue; the
