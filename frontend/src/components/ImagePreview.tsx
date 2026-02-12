@@ -132,7 +132,7 @@ export function ImagePreview() {
                 )}
 
                 {displayImage && (
-                    <Group position="right" mt="sm">
+                    <Group style={{ justifyContent: 'flex-end' }} mt="sm">
                         <Button
                             size="xs"
                             variant="outline"

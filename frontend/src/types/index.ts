@@ -29,8 +29,37 @@ export interface GenerationSettings {
     enable_preview: boolean;
     // Preview fidelity for in-progress previews (low|balanced|high)
     preview_fidelity?: 'low' | 'balanced' | 'high';
-    // Persist prompt/negative_prompt to server history when user opts in
+    // Persist prompt/negative_prompt to server history when user.opts in
     persist_prompt_history?: boolean;
+
+    // ControlNet
+    controlnet_enabled: boolean;
+    controlnet_model?: string;
+    controlnet_strength: number;
+    controlnet_type: string;
+
+    // Multi-scale
+    enable_multiscale: boolean;
+    multiscale_preset: string;
+    multiscale_factor: number;
+    multiscale_fullres_start: number;
+    multiscale_fullres_end: number;
+    multiscale_intermittent_fullres: boolean;
+
+    // DeepCache
+    deepcache_enabled: boolean;
+    deepcache_interval: number;
+    deepcache_depth: number;
+
+    // Other optimizations
+    cfg_free_enabled: boolean;
+    cfg_free_start_percent: number;
+    tome_enabled: boolean;
+    tome_ratio: number;
+    
+    // Compilation & quantization
+    torch_compile: boolean;
+    fp8_inference: boolean;
 }
 
 export interface ImageMetadata {

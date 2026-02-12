@@ -193,6 +193,20 @@ async def startup_event():
         logger.exception("Failed to migrate legacy last_seed.txt on startup")
     await _generation_buffer.start()
     logger.info("Server startup complete, event loop captured for preview broadcasting")
+    # Helpful, user-friendly startup URL(s) so users know what to open in a browser.
+    try:
+        port = int(os.environ.get("PORT") or os.environ.get("UVICORN_PORT") or 7861)
+    except Exception:
+        port = 7861
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "127.0.0.1"
+    logger.info("Open the UI in a browser: http://localhost:%d/  (or on your network: http://%s:%d/)", port, local_ip, port)
 
 
 # Batching buffer -----------------------------------------------------------
@@ -1590,7 +1604,21 @@ if __name__ == "__main__":
         else:
             logger.warning(f"Frontend directory not found at {frontend_dir}")
 
+    # Present helpful URL(s) to the user before starting uvicorn
     try:
+        if args.host in ("0.0.0.0", "::", ""):
+            try:
+                import socket
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                host_ip = s.getsockname()[0]
+                s.close()
+            except Exception:
+                host_ip = "127.0.0.1"
+            logger.info("Open the UI in a browser: http://localhost:%d/  (or on your network: http://%s:%d/)", args.port, host_ip, args.port)
+        else:
+            logger.info("Open the UI in a browser: http://%s:%d/", args.host, args.port)
+
         uvicorn.run("server:app", host=args.host, port=args.port, reload=False, ws="websockets")
     finally:
         if frontend_proc:

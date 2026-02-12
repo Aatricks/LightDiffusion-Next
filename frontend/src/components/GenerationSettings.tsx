@@ -317,7 +317,7 @@ export function GenerationSettings() {
                                             { value: 'high', label: 'High (quality)' },
                                         ]}
                                         value={settings.preview_fidelity || 'balanced'}
-                                        onChange={(v) => setSettings({ preview_fidelity: v || 'balanced' })}
+                                        onChange={(value: string | null) => setSettings({ preview_fidelity: (value as 'low' | 'balanced' | 'high') ?? 'balanced' })}
                                         disabled={!settings.enable_preview}
                                     />
                                 </Stack>
@@ -438,15 +438,15 @@ export function GenerationSettings() {
                                     <Switch
                                         label="torch.compile"
                                         description="Compile diffusion model for faster inference (mutually exclusive with Stable Fast)"
-                                        checked={settings.stable_fast ? false : (settings as any).torch_compile || false}
-                                        onChange={(e) => setSettings({ torch_compile: e.currentTarget.checked, stable_fast: e.currentTarget.checked ? false : settings.stable_fast } as any)}
+                                        checked={settings.stable_fast ? false : (settings.torch_compile ?? false)}
+                                        onChange={(e) => setSettings({ torch_compile: e.currentTarget.checked, stable_fast: e.currentTarget.checked ? false : settings.stable_fast })}
                                         disabled={settings.stable_fast}
                                     />
                                     <Switch
                                         label="FP8 Inference"
                                         description="Quantize weights to FP8 for lower VRAM usage (Ada Lovelace+ GPUs)"
-                                        checked={(settings as any).fp8_inference || false}
-                                        onChange={(e) => setSettings({ fp8_inference: e.currentTarget.checked } as any)}
+                                        checked={settings.fp8_inference ?? false}
+                                        onChange={(e) => setSettings({ fp8_inference: e.currentTarget.checked })}
                                     />
                                     <Switch label="Keep Models Loaded" checked={settings.keep_models_loaded} onChange={(e) => setSettings({ keep_models_loaded: e.currentTarget.checked })} />
                                     <Switch label="Reuse Seed" checked={settings.reuse_seed} onChange={(e) => setSettings({ reuse_seed: e.currentTarget.checked })} />
@@ -533,7 +533,7 @@ export function GenerationSettings() {
                         data={(settingsHistory || []).map(h => ({ value: h.id, label: new Date(h.ts * 1000).toLocaleString() }))}
                         onChange={(v) => {
                             const snap = (settingsHistory || []).find(s => s.id === v);
-                            if (snap) setSettings(snap.settings as any);
+                            if (snap) setSettings(snap.settings);
                         }}
                     />
                 </Stack>
