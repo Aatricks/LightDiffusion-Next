@@ -261,6 +261,14 @@ def apply_rope1(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
             # Slice to match x sequence length
             freqs_cis = freqs_cis[..., :seq_x, :, :, :]
 
+    # Sanity-check: feature dimension (half of head dim) must match freqs_cis
+    feat_half = x.shape[-1] // 2
+    if freqs_cis.shape[-3] != feat_half:
+        raise ValueError(
+            f"RoPE feature-dim mismatch: freqs_cis.dim={freqs_cis.shape[-3]} != x.dim/2={feat_half}. "
+            f"x.shape={x.shape}, freqs_cis.shape={freqs_cis.shape}"
+        )
+
     # Extract rotation matrix components
     # freqs_cis is [..., dim//2, row, col]
     # row 0: [cos, -sin]

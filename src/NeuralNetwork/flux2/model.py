@@ -335,10 +335,36 @@ class Flux2(nn.Module):
             
             # Pad to patch size (matches ComfyUI's pad_to_patch_size)
             img = self._pad_to_patch_size(img, self.patch_size)
-            # Re-update h, w from padded shape if not using explicit pixel dims
-            if img_h is None:
-                _, _, h, w = img.shape
-            
+
+            # If explicit pixel dimensions were provided, ensure the **spatial**
+            # dimensions of the (possibly VAE-converted) latent match the token
+            # grid implied by img_h/img_w. Pad or crop the latent so that the
+            # downstream positional ids (and RoPE) align with the image tokens.
+            if img_h is not None and img_w is not None:
+                expected_h_tokens = img_h // 16
+                expected_w_tokens = img_w // 16
+                # At this point `img` is in spatial units compatible with token
+                # counts (for Flux2: patchified VAE -> [B, C, H_tokens, W_tokens]).
+                curr_h, curr_w = img.shape[2], img.shape[3]
+                target_h = expected_h_tokens * self.patch_size
+                target_w = expected_w_tokens * self.patch_size
+
+                if curr_h != target_h or curr_w != target_w:
+                    # Pad bottom/right when smaller, otherwise crop extra pixels.
+                    pad_h = max(0, target_h - curr_h)
+                    pad_w = max(0, target_w - curr_w)
+                    if pad_h or pad_w:
+                        img = torch.nn.functional.pad(img, (0, pad_w, 0, pad_h), mode='constant', value=0)
+                    # Crop to target if larger
+                    img = img[:, :, :target_h, :target_w]
+
+                # Keep h/w consistent with transformer_options
+                h, w = expected_h_tokens, expected_w_tokens
+            else:
+                # Re-update h, w from padded shape if not using explicit pixel dims
+                if img_h is None:
+                    _, _, h, w = img.shape
+
             img = self._patchify(img)
         else:
             # Assume already patchified [B, L, C]
@@ -347,9 +373,23 @@ class Flux2(nn.Module):
             if img_h is not None and img_w is not None:
                 # Always convert pixel dimensions to tokens (16x16 pixels per token)
                 h, w = img_h // 16, img_w // 16
+
+                # If the incoming patch sequence length doesn't match the
+                # explicit token grid, pad/crop the sequence so its length is
+                # exactly `h*w`. This mirrors the spatial padding above and
+                # prevents RoPE/positional-mismatch at attention time.
+                seq_len = img.shape[1]
+                expected_seq = h * w
+                if seq_len != expected_seq:
+                    if seq_len < expected_seq:
+                        pad_len = expected_seq - seq_len
+                        pad_tensor = torch.zeros((b, pad_len, img.shape[2]), device=img.device, dtype=img.dtype)
+                        img = torch.cat([img, pad_tensor], dim=1)
+                    else:
+                        img = img[:, :expected_seq, :]
             else:
                 h = w = int(math.sqrt(img.shape[1] * self.patch_size * self.patch_size / self.in_channels))
-            h_orig = w_orig = h        
+            h_orig = w_orig = h       
         # Create position IDs for RoPE (number of axes matches axes_dim)
         # CRITICAL: Position IDs must ALWAYS be float32 for precision (matches ComfyUI)
         num_axes = len(self.params.axes_dim)
@@ -439,14 +479,26 @@ class Flux2(nn.Module):
         # Unpatchify back to image shape
         img = self._unpatchify(img, h // self.patch_size, w // self.patch_size)
         
-        # If we converted from VAE format, convert back
+        # If we converted from VAE format, convert back and ensure the
+        # returned tensor matches the original input shape. When the model
+        # was forced to use an explicit `img_h/img_w` token grid we may have
+        # cropped/padded internally; here we pad if the unpatched result is
+        # smaller than the original latent so downstream callers always get
+        # an output with the same spatial shape they passed in.
         if converted_from_vae:
             img = self.latent_format.unpatchify_for_vae(img)
-            img = img[:, :, :initial_shape[2], :initial_shape[3]]
+            out_h, out_w = img.shape[2], img.shape[3]
+            req_h, req_w = initial_shape[2], initial_shape[3]
+            # Pad bottom/right if necessary to restore original size
+            pad_h = max(0, req_h - out_h)
+            pad_w = max(0, req_w - out_w)
+            if pad_h or pad_w:
+                img = torch.nn.functional.pad(img, (0, pad_w, 0, pad_h), mode='constant', value=0)
+            img = img[:, :, :req_h, :req_w]
         else:
             # Crop back to original size (remove padding - matches ComfyUI)
             img = img[:, :, :h_orig, :w_orig]
-        
+
         return img
 
     def _pad_to_patch_size(self, img: torch.Tensor, patch_size: int, mode: str = "circular") -> torch.Tensor:

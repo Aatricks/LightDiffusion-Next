@@ -186,17 +186,33 @@ class Flux2(LatentFormat):
     
     def patchify_from_vae(self, latent: torch.Tensor) -> torch.Tensor:
         """Convert VAE format (32ch 8x) to patchified latent (128ch 16x).
-        
+
+        This operation requires the spatial dimensions to be even because it
+        groups each 2x2 spatial block into channel groups. If the incoming
+        VAE latent has an odd height or width (possible after cropping/resize),
+        pad the latent on the bottom/right with zeros so the reshape is safe.
+
         Args:
             latent: [B, 32, H/8, W/8] VAE-compatible latent
-            
+
         Returns:
-            [B, 128, H/16, W/16] patchified latent
+            [B, 128, H/16, W/16] patchified latent (uses padded dims when needed)
         """
         # Reshape: 32 channels * 2*2 patches -> 128 channels
         # [B, 32, h*2, w*2] -> [B, 32, h, 2, w, 2] -> [B, 128, h, w]
         b, c, h, w = latent.shape
         assert c == 32, f"Expected 32 channels, got {c}"
+
+        # Pad to even spatial dims so 2x2 grouping is valid. Padding is removed
+        # later by Flux2.forward (it crops back to the original spatial size).
+        pad_h = (2 - (h % 2)) % 2
+        pad_w = (2 - (w % 2)) % 2
+        if pad_h or pad_w:
+            # pad format: (left, right, top, bottom)
+            latent = torch.nn.functional.pad(latent, (0, pad_w, 0, pad_h), mode='constant', value=0)
+            h += pad_h
+            w += pad_w
+
         latent = latent.reshape(b, 32, h // 2, 2, w // 2, 2)
         latent = latent.permute(0, 1, 3, 5, 2, 4)  # [B, 32, 2, 2, h//2, w//2]
         latent = latent.reshape(b, 128, h // 2, w // 2)

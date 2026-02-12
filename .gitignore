@@ -7,3 +7,5 @@
 node_modules/
 frontend/node_modules/
 *.log
+.history_backups
+include/last_seed.txt
