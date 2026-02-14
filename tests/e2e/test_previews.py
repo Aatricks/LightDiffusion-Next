@@ -2,7 +2,10 @@ import json
 import time
 import pytest
 
+pytestmark = pytest.mark.slow
 
+
+@pytest.mark.slow
 def test_preview_with_testclient(server_client):
     """Connect to the preview websocket via TestClient and request a preview."""
     # Start websocket connection

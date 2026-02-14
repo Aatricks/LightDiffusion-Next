@@ -56,9 +56,15 @@ class ModelCapabilities:
         Returns:
             Adjusted (width, height) tuple
         """
-        # Clamp to min/max
-        width = max(self.min_resolution, min(width, self.max_resolution))
-        height = max(self.min_resolution, min(height, self.max_resolution))
+        # Maintain aspect ratio when clamping to max_resolution
+        if width > self.max_resolution or height > self.max_resolution:
+            scale = min(self.max_resolution / width, self.max_resolution / height)
+            width = int(width * scale)
+            height = int(height * scale)
+
+        # Clamp to minimum
+        width = max(self.min_resolution, width)
+        height = max(self.min_resolution, height)
         
         # Round to required multiple
         width = (width // self.requires_resolution_multiple) * self.requires_resolution_multiple
@@ -284,6 +290,80 @@ class AbstractModel(ABC):
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"FP8 quantization failed: {e}")
+        
+        return self
+
+    def apply_nvfp4(self) -> "AbstractModel":
+        """Apply NVFP4 (4-bit) quantization to the diffusion model weights.
+        
+        Reduces memory usage by ~75% vs FP16 with some quality impact.
+        
+        After quantizing weights to NVFP4, enables comfy_cast_weights on all affected
+        modules so that forward() uses cast_bias_weight() to dequantize NVFP4 weights
+        to the input dtype at runtime.
+        
+        Returns:
+            Self for method chaining
+        """
+        if not self._loaded:
+            raise RuntimeError("Model must be loaded before applying NVFP4")
+        
+        try:
+            from src.cond.cast import CastWeightBiasOp
+            from src.Utilities.Quantization import quantize_nvfp4
+            
+            inner = getattr(self.model, 'model', self.model)
+            diff_model = getattr(inner, 'diffusion_model', None)
+            if diff_model is None:
+                import torch.nn as nn
+                if isinstance(inner, nn.Module):
+                    diff_model = inner
+                else:
+                    import logging
+                    logging.getLogger(__name__).warning("No diffusion_model found for NVFP4 quantization")
+                    return self
+            
+            converted = 0
+            cast_enabled = 0
+            for name, module in diff_model.named_modules():
+                # Quantize weight parameters to NVFP4
+                if hasattr(module, 'weight') and module.weight is not None:    
+                    w = module.weight
+                    if w.dtype in (torch.float16, torch.bfloat16, torch.float32) and w.ndim == 2 and w.numel() > 4096:
+                        from src.Utilities.Quantization import quantize_nvfp4, from_blocked
+                        q_weight, tensor_scale, blocked_scales = quantize_nvfp4(w.data)
+
+                        module.weight = torch.nn.Parameter(q_weight, requires_grad=False)
+                        module.quant_format = "nvfp4"
+                        
+                        # Pre-de-block scales to save compute during inference
+                        rows, cols = w.shape
+                        block_cols = (cols + 15) // 16
+                        deblocked_scales = from_blocked(blocked_scales, rows, block_cols)
+                        
+                        import torch.nn as nn
+                        if isinstance(module, nn.Module):
+                            module.register_buffer("weight_scale_2", tensor_scale)
+                            module.register_buffer("weight_scale", deblocked_scales)
+                        else:
+                            module.weight_scale_2 = tensor_scale
+                            module.weight_scale = deblocked_scales
+                            
+                        module.original_shape = w.shape
+
+                        converted += 1
+                        # Enable runtime casting so forward() dequantizes NVFP4→input dtype
+                        if isinstance(module, CastWeightBiasOp):
+                            module.comfy_cast_weights = True
+                            cast_enabled += 1            
+            import logging
+            logging.getLogger(__name__).info(
+                f"NVFP4 quantization applied to {converted} weight tensors, "
+                f"runtime casting enabled on {cast_enabled} modules"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception(f"NVFP4 quantization failed: {e}")
         
         return self
     

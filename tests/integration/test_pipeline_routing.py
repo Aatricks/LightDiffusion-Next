@@ -18,6 +18,8 @@ from typing import Tuple
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+pytestmark = pytest.mark.slow
+
 
 # =============================================================================
 # Test Fixtures
@@ -159,6 +161,7 @@ def mock_all_heavy_dependencies(request):
 # Pipeline Flag Routing Tests
 # =============================================================================
 
+@pytest.mark.slow
 class TestPipelineBasicRouting:
     """Test basic pipeline routing based on flags."""
     
@@ -191,6 +194,7 @@ class TestPipelineBasicRouting:
         assert "original_prompt" in result or "batched_results" in result
 
 
+@pytest.mark.slow
 class TestHiresFixRouting:
     """Test hires_fix flag routing."""
     

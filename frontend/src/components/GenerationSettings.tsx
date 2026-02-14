@@ -31,6 +31,7 @@ export function GenerationSettings() {
                 if (meta.height) updates.height = meta.height;
                 if (meta.prompt) updates.prompt = meta.prompt;
                 if (meta.negative_prompt) updates.negative_prompt = meta.negative_prompt;
+                if (meta.weight_quantization !== undefined) updates.weight_quantization = meta.weight_quantization;
 
                 // warn if model is unknown locally
                 if (updates.model_path && !availableModels.find(m => m.path === updates.model_path)) {
@@ -470,11 +471,16 @@ export function GenerationSettings() {
                                         onChange={(e) => setSettings({ torch_compile: e.currentTarget.checked, stable_fast: e.currentTarget.checked ? false : settings.stable_fast })}
                                         disabled={settings.stable_fast}
                                     />
-                                    <Switch
-                                        label="FP8 Inference"
-                                        description="Quantize weights to FP8 for lower VRAM usage (Ada Lovelace+ GPUs)"
-                                        checked={settings.fp8_inference ?? false}
-                                        onChange={(e) => setSettings({ fp8_inference: e.currentTarget.checked })}
+                                    <Select
+                                        label="Weight Quantization"
+                                        description="Lower precision for reduced VRAM usage"
+                                        data={[
+                                            { value: 'none', label: 'None (FP16/BF16)' },
+                                            { value: 'fp8', label: 'FP8 (8-bit)' },
+                                            { value: 'nvfp4', label: 'NVFP4 (4-bit)' },
+                                        ]}
+                                        value={settings.weight_quantization || 'none'}
+                                        onChange={(v) => setSettings({ weight_quantization: v === 'none' ? null : (v as 'fp8' | 'nvfp4') })}
                                     />
                                     <Switch label="Keep Models Loaded" checked={settings.keep_models_loaded} onChange={(e) => setSettings({ keep_models_loaded: e.currentTarget.checked })} />
                                     <Switch label="Reuse Seed" checked={settings.reuse_seed} onChange={(e) => setSettings({ reuse_seed: e.currentTarget.checked })} />

@@ -60,6 +60,7 @@ export interface GenerationSettings {
     // Compilation & quantization
     torch_compile: boolean;
     fp8_inference: boolean;
+    weight_quantization?: 'fp8' | 'nvfp4' | 'none' | null;
 }
 
 export interface ImageMetadata {
@@ -104,6 +105,7 @@ export interface ImageMetadata {
     // Compilation & quantization
     torch_compile?: boolean;
     fp8_inference?: boolean;
+    weight_quantization?: 'fp8' | 'nvfp4' | 'none' | null;
 }
 
 export interface GenerationResponse {

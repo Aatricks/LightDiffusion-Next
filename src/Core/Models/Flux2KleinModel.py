@@ -65,6 +65,7 @@ class Flux2KleinModel(AbstractModel):
         model_path: str = None,
         text_encoder_path: str = None,
         vae_path: str = None,
+        quantization: str = None,  # "fp8", "nvfp4", or None
     ):
         """Initialize the Flux2 Klein model adapter.
         
@@ -72,6 +73,7 @@ class Flux2KleinModel(AbstractModel):
             model_path: Path to diffusion model (safetensors)
             text_encoder_path: Path to Qwen3 text encoder (optional, auto-detected)
             vae_path: Path to VAE (optional, auto-detected)
+            quantization: Quantization format to use ("fp8", "nvfp4", or None)
         """
         super().__init__(model_path)
         self._text_encoder = None
@@ -80,6 +82,7 @@ class Flux2KleinModel(AbstractModel):
         self._text_encoder_path = text_encoder_path
         self._vae_path = vae_path
         self._raw_model = None  # The raw Flux2 nn.Module
+        self.quantization = quantization
         
         # Device management
         self.load_device = Device.get_torch_device()
@@ -89,7 +92,7 @@ class Flux2KleinModel(AbstractModel):
         """Create capabilities for Flux2 Klein model."""
         return ModelCapabilities(
             min_resolution=256,
-            max_resolution=2048,
+            max_resolution=4096,
             preferred_resolution=1024,
             requires_resolution_multiple=16,  # Flux2 uses 16-pixel patches
             supports_hires_fix=True, 
@@ -218,15 +221,23 @@ class Flux2KleinModel(AbstractModel):
             # Create ModelPatcher
             self.model = ModelPatcher(self.model, self.load_device, self.offload_device)
             
-            # Apply FP8 quantization if supported and needed
-            if use_fp8:
-                logging.info("Flux2: Applying FP8 weight-only quantization to fit in VRAM")
+            # Apply quantization if requested or needed
+            quant_format = self.quantization
+            if quant_format is None and use_fp8:
+                quant_format = "fp8"
+                
+            if quant_format == "nvfp4":
+                logging.info("Flux2: Applying NVFP4 (4-bit) weight-only quantization")
+                self.model.weight_only_quantize("nvfp4")
+                self.model.model_dtype = lambda: torch.float16 # Compute in FP16 for dequantization
+            elif quant_format == "fp8":
+                logging.info("Flux2: Applying FP8 weight-only quantization")
                 self.model.weight_only_quantize(torch.float8_e4m3fn)
                 self.model.model_dtype = lambda: torch.float8_e4m3fn # Override
             
             # Load text encoder
             if text_encoder_path:
-                self.clip = self._load_klein_text_encoder(text_encoder_path, quantize=use_fp8)
+                self.clip = self._load_klein_text_encoder(text_encoder_path, quantize=quant_format)
                 self._text_encoder = self.clip # For internal reference
                 self._tokenizer = self.clip.tokenizer
             else:
@@ -470,12 +481,12 @@ class Flux2KleinModel(AbstractModel):
         
         return config
 
-    def _load_klein_text_encoder(self, path: str, quantize: bool = False):
+    def _load_klein_text_encoder(self, path: str, quantize: str = None):
         """Load the Klein (Qwen3-4B) text encoder.
         
         Args:
             path: Path to text encoder safetensors
-            quantize: Whether to quantize weights to FP8
+            quantize: Quantization format ("fp8", "nvfp4", or None)
             
         Returns:
             KleinCLIP wrapper
@@ -510,10 +521,15 @@ class Flux2KleinModel(AbstractModel):
         
         # Apply quantization BEFORE moving to offload device if requested
         if quantize:
-            logger.info("Flux2KleinModel: Quantizing Klein (Qwen3-4B) to FP8")
+            logger.info(f"Flux2KleinModel: Quantizing Klein (Qwen3-4B) to {quantize}")
             # We must use ModelPatcher to correctly update comfy_cast_weights flags
             te_patcher = ModelPatcher(model, self.load_device, self.offload_device)
-            te_patcher.weight_only_quantize(torch.float8_e4m3fn)
+            
+            if quantize == "nvfp4":
+                te_patcher.weight_only_quantize("nvfp4")
+            else:
+                te_patcher.weight_only_quantize(torch.float8_e4m3fn)
+                
             model = te_patcher.model
 
         # IMPORTANT: Keep model on CPU to save VRAM for diffusion model

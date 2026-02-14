@@ -6,10 +6,13 @@ on pipeline return value.
 
 import os
 import sys
+import pytest
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
+
+pytestmark = pytest.mark.slow
 
 from PIL import Image
 from src.user.pipeline import pipeline
@@ -22,6 +25,7 @@ def create_red_image():
     return str(path)
 
 
+@pytest.mark.slow
 def test_high_denoise_asserts_result():
     img_path = create_red_image()
 

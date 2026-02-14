@@ -9,7 +9,24 @@ from src.Utilities import util
 
 try:
     import tomesd
+    import tomesd.patch
     TOMESD_AVAILABLE = True
+
+    # Monkey-patch tomesd to support our transformer_options argument in _forward
+    _original_make_tome_block = tomesd.patch.make_tome_block
+
+    def _fixed_make_tome_block(block_class):
+        cls = _original_make_tome_block(block_class)
+        old_forward = cls._forward
+
+        def new_forward(self, x, context=None, *args, **kwargs):
+            return old_forward(self, x, context)
+
+        cls._forward = new_forward
+        return cls
+
+    tomesd.patch.make_tome_block = _fixed_make_tome_block
+
 except ImportError:
     TOMESD_AVAILABLE = False
     tomesd = None
@@ -128,20 +145,47 @@ class ModelPatcher:
         out_weight = self.calculate_weight(self.patches[key], temp_weight, key).to(weight.dtype)
         (util.copy_to_param if self.weight_inplace_update else util.set_attr_param)(self.model, key, out_weight)
 
-    def weight_only_quantize(self, dtype: torch.dtype = torch.float8_e4m3fn):
-        """Quantize all model weights to the target dtype (weight-only)."""
-        logging.info(f"Quantizing model weights to {dtype}")
+    def weight_only_quantize(self, dtype: torch.dtype | str = torch.float8_e4m3fn):
+        """Quantize all model weights to the target dtype or format (weight-only)."""
+        if isinstance(dtype, str):
+            format_name = dtype.lower()
+        else:
+            format_name = str(dtype)
+
+        logging.info(f"Quantizing model weights to {format_name}")
+        
         with torch.no_grad():
             for n, m in self.model.named_modules():
                 if hasattr(m, "weight") and m.weight is not None:
                     # Don't quantize small tensors or non-float weights
-                    if m.weight.numel() > 4096 and m.weight.is_floating_point():
-                        q_weight = m.weight.to(dtype)
-                        # We keep it as a Parameter so it can be used in forward
-                        m.weight = torch.nn.Parameter(q_weight, requires_grad=False)
-                        # Enable weight casting so it dequantizes to input dtype on the fly
-                        if hasattr(m, "comfy_cast_weights"):
+                    if m.weight.numel() > 4096 and m.weight.is_floating_point() and m.weight.ndim == 2:
+                        if format_name == "nvfp4":
+                            from src.Utilities.Quantization import quantize_nvfp4, from_blocked
+                            orig_shape = m.weight.shape
+                            q_weight, tensor_scale, blocked_scales = quantize_nvfp4(m.weight)
+                            
+                            m.weight = torch.nn.Parameter(q_weight, requires_grad=False)
+                            m.quant_format = "nvfp4"
+                            
+                            # Register as buffers so they move with the model
+                            # (They are automatically handled by CastWeightBiasOp via getattr)
+                            m.register_buffer("weight_scale_2", tensor_scale)
+                            
+                            # Pre-de-block scales to save compute during inference
+                            rows, cols = orig_shape
+                            block_cols = (cols + 15) // 16
+                            deblocked_scales = from_blocked(blocked_scales, rows, block_cols)
+                            m.register_buffer("weight_scale", deblocked_scales)
+                                
+                            m.original_shape = orig_shape
                             m.comfy_cast_weights = True
+                        else:
+                            q_weight = m.weight.to(dtype)
+                            # We keep it as a Parameter so it can be used in forward
+                            m.weight = torch.nn.Parameter(q_weight, requires_grad=False)
+                            # Enable weight casting so it dequantizes to input dtype on the fly
+                            if hasattr(m, "comfy_cast_weights"):
+                                m.comfy_cast_weights = True
                 if hasattr(m, "bias") and m.bias is not None:
                     # Biases are usually kept in higher precision
                     pass

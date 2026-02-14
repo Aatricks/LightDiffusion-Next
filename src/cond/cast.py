@@ -1,7 +1,9 @@
 """Weight casting utilities for efficient model loading."""
 from src.Device import Device
 import torch
+import logging
 
+logger = logging.getLogger(__name__)
 
 def cast_to(weight, dtype=None, device=None, non_blocking=False, copy=False):
     """Cast a weight tensor to specified dtype and device."""
@@ -35,7 +37,21 @@ def cast_bias_weight(s, input=None, dtype=None, device=None, bias_dtype=None):
             bias = s.bias_function(bias)
 
     has_fn = s.weight_function is not None
-    weight = cast_to(s.weight, dtype, device, non_blocking=non_blocking, copy=has_fn)
+    weight = cast_to(s.weight, None, device, non_blocking=non_blocking, copy=has_fn)
+    
+    # Handle NVFP4 dequantization
+    if getattr(s, "quant_format", None) == "nvfp4":
+        from src.Utilities.Quantization import dequantize_nvfp4
+        weight = dequantize_nvfp4(
+            weight, 
+            s.weight_scale_2, 
+            s.weight_scale, 
+            s.original_shape
+        )
+        weight = weight.to(dtype)
+    else:
+        weight = weight.to(dtype)
+
     if has_fn:
         weight = s.weight_function(weight)
     return weight, bias

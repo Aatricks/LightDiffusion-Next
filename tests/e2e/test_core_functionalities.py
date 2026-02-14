@@ -11,6 +11,8 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
+pytestmark = pytest.mark.slow
+
 from src.user.pipeline import pipeline
 
 

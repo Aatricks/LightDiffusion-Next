@@ -160,6 +160,9 @@ class GenerateRequest(BaseModel):
     # torch.compile optimization (mutually exclusive with stable_fast)
     torch_compile: bool = False
     
+    # Weight quantization format: None, "fp8", or "nvfp4"
+    weight_quantization: Optional[str] = None
+
     # FP8 inference (auto-gated to supported hardware: Ada Lovelace+)
     fp8_inference: bool = False
 
@@ -534,6 +537,8 @@ class GenerationBuffer:
             controlnet_type=first_req.controlnet_type,
             # torch.compile
             torch_compile=first_req.torch_compile,
+            # Weight quantization
+            weight_quantization=first_req.weight_quantization,
             # FP8 inference
             fp8_inference=first_req.fp8_inference,
             # Add callback for WebSocket preview broadcasting

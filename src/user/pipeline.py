@@ -101,6 +101,8 @@ def pipeline(
     controlnet_type: str = "canny",
     # torch.compile
     torch_compile: bool = False,
+    # Weight quantization
+    weight_quantization: str | None = None,
     # FP8 quantization
     fp8_inference: bool = False,
     # Batched mode
@@ -209,6 +211,7 @@ def pipeline(
         controlnet_type=controlnet_type,
         torch_compile=torch_compile,
         fp8_inference=fp8_inference,
+        weight_quantization=weight_quantization,
     )
     
     # Handle prompt enhancement

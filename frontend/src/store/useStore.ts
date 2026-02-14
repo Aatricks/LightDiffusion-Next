@@ -74,6 +74,7 @@ export const useStore = create<AppState>((set) => ({
         tome_ratio: 0.5,
         torch_compile: false,
         fp8_inference: false,
+        weight_quantization: null,
     },
     availableModels: [],
     availableControlNets: [],

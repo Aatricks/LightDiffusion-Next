@@ -1,4 +1,7 @@
 import torch
+import pytest
+
+pytestmark = pytest.mark.slow
 from src.AutoDetailer.ADetailer import _compute_detailer_resize, to_latent_image
 from src.NeuralNetwork.flux2.model import Flux2
 from src.AutoEncoders.VariationalAE import VAEEncode
@@ -16,6 +19,7 @@ class DummyVAE:
         return torch.zeros((batch, self.latent_channels, latent_h, latent_w))
 
 
+@pytest.mark.slow
 def test_compute_and_latent_transformer_options_consistency():
     w, h = 1537, 1567  # edge sizes that require rounding
     guide_size = 512
@@ -35,6 +39,7 @@ def test_compute_and_latent_transformer_options_consistency():
     assert computed_img_w == new_w
 
 
+@pytest.mark.slow
 def test_flux2_forward_resolves_transformer_mismatch():
     model = Flux2()
     # Create an input image with token grid 12x13

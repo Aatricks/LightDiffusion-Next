@@ -163,6 +163,9 @@ class Pipeline:
                 # If we have more seeds, we'll need to reload base model in the next iteration
                 # _load_model handles this automatically
             
+            # Decode latents to image
+            ctx.current_image = model.decode(ctx.current_latents)
+            
             # 6. Post-processing
             
 # Apply HiresFix if enabled. Prefer running hires pass with the base model
@@ -1075,8 +1078,10 @@ class Pipeline:
             model.apply_torch_compile()
         
         # FP8 quantization (hardware-gated, applies independently)
-        if ctx.generation.fp8_inference:
+        if ctx.generation.fp8_inference or ctx.generation.weight_quantization == "fp8":
             model.apply_fp8()
+        elif ctx.generation.weight_quantization == "nvfp4":
+            model.apply_nvfp4()
         
         # Token Merging (ToMe)
         if ctx.sampling.tome_enabled and getattr(model.capabilities, 'supports_tome', True):

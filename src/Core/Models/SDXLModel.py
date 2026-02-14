@@ -37,7 +37,7 @@ class SDXLModel(AbstractModel):
         """Create capabilities for SDXL models."""
         return ModelCapabilities(
             min_resolution=512,
-            max_resolution=2048,
+            max_resolution=4096,
             preferred_resolution=1024,
             requires_resolution_multiple=64,
             supports_hires_fix=True,
