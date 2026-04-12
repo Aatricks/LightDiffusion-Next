@@ -119,6 +119,7 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
     out_conds = [torch.zeros_like(x_in) for _ in range(len(conds))]
     out_counts = [torch.ones_like(x_in) * 1e-37 for _ in range(len(conds))]
     to_run = []
+    batched_cfg = model_options.get("batched_cfg", True)
 
     for i, cond in enumerate(conds):
         if cond is not None:
@@ -130,9 +131,15 @@ def calc_cond_batch(model, conds, x_in, timestep, model_options) -> list:
     while to_run:
         first = to_run[0]
         first_shape = first[0][0].shape
+        first_cond_index = first[1]
         
         # Find compatible conditions
-        to_batch_temp = [x for x in range(len(to_run)) if cond_util.can_concat_cond(to_run[x][0], first[0])]
+        to_batch_temp = [
+            x
+            for x in range(len(to_run))
+            if cond_util.can_concat_cond(to_run[x][0], first[0])
+            and (batched_cfg or to_run[x][1] == first_cond_index)
+        ]
         to_batch_temp.reverse()
         to_batch = to_batch_temp[:1]
 

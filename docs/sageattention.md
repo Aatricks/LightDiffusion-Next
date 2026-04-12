@@ -94,7 +94,7 @@ python -c "import spas_sage_attn; print('SpargeAttn installed successfully')"
 | RTX 4060/4070/4080/4090 | 8.9 | `"8.9"` |
 | A100 | 8.0 | `"8.0"` |
 | H100 | 9.0 | `"9.0"` |
-| RTX 5060/5070/5080/5090 | 12.0 | Not supported yet |
+| RTX 5060/5070/5080/5090 | 12.0 | SageAttention supported, SpargeAttn pending |
 
 ### Docker Installation
 

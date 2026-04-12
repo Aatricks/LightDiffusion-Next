@@ -2,14 +2,14 @@
 
 ## Overview
 
-WaveSpeed is a collection of **feature caching strategies** that exploit temporal redundancy in diffusion processes. By reusing high-level features across multiple denoising steps, WaveSpeed can provide significant speedup with tunable quality trade-offs.
+WaveSpeed is the project's caching-oriented optimization layer for reusing work across denoising steps. In the current codebase, the integrated path is DeepCache for UNet-based models, and the repository also contains groundwork for a Flux-oriented First Block Cache path.
 
-LightDiffusion-Next implements two WaveSpeed variants:
+LightDiffusion-Next contains two WaveSpeed-related implementations:
 
-1. **DeepCache** — For UNet-based models (SD1.5, SDXL)
-2. **First Block Cache (FBCache)** — For Transformer-based models (Flux)
+1. **DeepCache** — Integrated for UNet-based models (SD1.5, SDXL)
+2. **First Block Cache (FBCache)** — Flux-oriented cache machinery present in the codebase
 
-Both are **training-free**, work alongside other optimizations and can be toggled per-generation.
+Both are training-free. DeepCache is the user-facing path today; First Block Cache is codebase groundwork for a more specialized transformer caching path.
 
 ## How It Works
 
@@ -20,36 +20,25 @@ Diffusion models denoise images iteratively over 20-50 steps. Researchers observ
 - **High-level features** (semantic structure, composition) change slowly across steps
 - **Low-level features** (fine details, textures) require frequent updates
 
-WaveSpeed caches the expensive high-level computations and reuses them for several steps, only updating low-level details cheaply.
+WaveSpeed aims to reduce repeated computation across nearby denoising steps by reusing information from earlier steps where practical.
 
 ### DeepCache (UNet Models) {#deepcache}
 
-DeepCache targets the middle and output blocks of the UNet architecture:
-
-```
-┌─────────────────────────────────────────┐
-│ Input Blocks (always computed)          │
-├─────────────────────────────────────────┤
-│ Middle Blocks (cached every N steps)    │ ← DeepCache caching zone
-├─────────────────────────────────────────┤
-│ Output Blocks (cached every N steps)    │ ← DeepCache caching zone
-└─────────────────────────────────────────┘
-```
+DeepCache is the integrated WaveSpeed path for UNet models.
 
 **Cache step (every N steps):**
-1. Run full forward pass through all UNet blocks
-2. Store middle/output block activations in cache
+1. Run the full denoiser path
+2. Store the output for later reuse
 
-**Reuse step (N-1 intermediate steps):**
-1. Run only input blocks
-2. Retrieve cached middle/output activations
-3. Skip expensive middle/output block computation
+**Reuse step (intermediate steps):**
+1. Reuse the cached denoiser output
+2. Skip the full model recomputation for that step
 
 **Speedup:** ~50-70% time saved per reuse step → 2-3x total speedup with `interval=3`
 
 ### First Block Cache (Flux Models)
 
-Flux uses Transformer blocks instead of UNet convolutions. FBCache applies a similar principle:
+Flux uses Transformer blocks instead of UNet convolutions. The repository includes a First Block Cache implementation for this architecture family:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -65,7 +54,7 @@ Flux uses Transformer blocks instead of UNet convolutions. FBCache applies a sim
 3. If difference < threshold: reuse cached remaining blocks
 4. If difference ≥ threshold: run all blocks and update cache
 
-**Adaptive caching:** Automatically decides when to cache vs. recompute based on feature similarity.
+In the current project structure, this cache path is implementation groundwork rather than a standard generation toggle like DeepCache.
 
 ## DeepCache Configuration
 
@@ -160,7 +149,7 @@ end_step: 800
 
 ### Usage
 
-FBCache is applied automatically when generating Flux images. No UI controls yet — configured via pipeline code:
+First Block Cache is not currently exposed as a standard per-generation toggle. The implementation is available in the codebase for specialized integration work:
 
 ```python
 # In src/user/pipeline.py
@@ -169,7 +158,7 @@ from src.WaveSpeed import fbcache_nodes
 # Create cache context
 cache_context = fbcache_nodes.create_cache_context()
 
-# Apply caching to Flux model
+# Apply caching to a Flux-style model
 with fbcache_nodes.cache_context(cache_context):
     patched_model = fbcache_nodes.create_patch_flux_forward_orig(
         flux_model,
@@ -196,7 +185,7 @@ Speedup scales with cache interval and depth:
 | SD1.5 | 3 | Good speedup, slight quality loss |
 | SD1.5 | 5 | High speedup, noticeable quality loss |
 | SDXL | 3 | Good speedup, slight quality loss |
-| Flux (FBCache) | auto | Moderate speedup, minimal quality loss |
+| Flux-style caching paths | implementation-specific | Depends on the integration path |
 
 **Performance varies based on:**
 - GPU architecture

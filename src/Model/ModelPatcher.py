@@ -47,6 +47,56 @@ class LowVramPatch:
         return self.model_patcher.calculate_weight(self.model_patcher.patches[self.key], weight, self.key)
 
 
+class ModelFunctionWrapperChain:
+    """Compose multiple model_function_wrapper hooks without overwriting them.
+
+    Several optimizations patch the same U-Net wrapper hook. Keeping only the
+    last wrapper silently disables earlier optimizations. This chain preserves
+    application order by making the most recently-added wrapper the outermost
+    wrapper around the existing stack.
+    """
+
+    def __init__(self, wrappers=None):
+        self.wrappers = list(wrappers or [])
+
+    def add_outer(self, wrapper):
+        self.wrappers.insert(0, wrapper)
+        return self
+
+    def __call__(self, model_function, params):
+        return self._invoke(0, model_function, params)
+
+    def _invoke(self, index, model_function, params):
+        if index >= len(self.wrappers):
+            return model_function(
+                params["input"],
+                params["timestep"],
+                **params.get("c", {}),
+            )
+
+        wrapper = self.wrappers[index]
+
+        def next_model_function(input_x, timestep, **c_kwargs):
+            next_params = dict(params)
+            next_params["input"] = input_x
+            next_params["timestep"] = timestep
+            next_params["c"] = c_kwargs
+            return self._invoke(index + 1, model_function, next_params)
+
+        return wrapper(next_model_function, params)
+
+    def to(self, device):
+        updated = []
+        for wrapper in self.wrappers:
+            if hasattr(wrapper, "to"):
+                moved = wrapper.to(device)
+                updated.append(moved if moved is not None else wrapper)
+            else:
+                updated.append(wrapper)
+        self.wrappers = updated
+        return self
+
+
 class ModelPatcher:
     def __init__(self, model: torch.nn.Module, load_device: torch.device, offload_device: torch.device,
                  size: int = 0, current_device: torch.device = None, weight_inplace_update: bool = False):
@@ -91,7 +141,17 @@ class ModelPatcher:
         return self.model.memory_required(input_shape=input_shape)
 
     def set_model_unet_function_wrapper(self, f):
-        self.model_options["model_function_wrapper"] = f
+        existing = self.model_options.get("model_function_wrapper")
+        if existing is None:
+            self.model_options["model_function_wrapper"] = f
+            return
+
+        if isinstance(existing, ModelFunctionWrapperChain):
+            existing.add_outer(f)
+            self.model_options["model_function_wrapper"] = existing
+            return
+
+        self.model_options["model_function_wrapper"] = ModelFunctionWrapperChain([f, existing])
 
     def set_model_denoise_mask_function(self, f):
         self.model_options["denoise_mask_function"] = f
