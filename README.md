@@ -27,6 +27,8 @@ That's when the first version of LightDiffusion was born which only counted [300
 
 📚 Learn more in the [official documentation](https://aatricks.github.io/LightDiffusion-Next/)
 
+For a source-based breakdown of the optimization stack, see the [Implemented Optimizations Report](https://aatricks.github.io/LightDiffusion-Next/implemented-optimizations-report/).
+
 ---
 
 ## 🌟 Highlights
