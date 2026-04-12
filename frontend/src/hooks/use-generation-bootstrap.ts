@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { listControlNets, listModels } from '../api/client';
+import { getSettingsPreferences, listControlNets, listModels } from '../api/client';
 import { useStore } from '../store/useStore';
 import { getDefaultModel, getModelSelectionUpdates } from '../lib/settings';
 import { useShallow } from 'zustand/react/shallow';
@@ -45,11 +45,26 @@ export function useGenerationBootstrap() {
       }
     };
 
+    const loadPreferences = async () => {
+      try {
+        const preferences = await getSettingsPreferences();
+        if (!cancelled) {
+          setSettings({
+            torch_compile: !!preferences.torch_compile,
+            vae_autotune: !!preferences.vae_autotune,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load settings preferences', error);
+      }
+    };
+
     if (availableModels.length === 0) {
       void loadModels();
     }
 
     void loadControlNets();
+    void loadPreferences();
 
     return () => {
       cancelled = true;

@@ -22,6 +22,7 @@ interface AppState {
     setStatus: (status: 'idle' | 'generating' | 'error') => void;
     setCurrentImage: (image: string | null) => void;
     addToGallery: (image: string) => void;
+    addManyToGallery: (images: string[]) => void;
     setPreview: (preview: PreviewMessage | null) => void;
     setServerStatus: (status: boolean) => void;
 }
@@ -73,6 +74,7 @@ export const useStore = create<AppState>((set) => ({
         tome_enabled: false,
         tome_ratio: 0.5,
         torch_compile: false,
+        vae_autotune: false,
         fp8_inference: false,
         weight_quantization: null,
     },
@@ -95,6 +97,10 @@ export const useStore = create<AppState>((set) => ({
     setStatus: (status) => set({ status }),
     setCurrentImage: (image) => set({ currentImage: image }),
     addToGallery: (image) => set((state) => ({ gallery: [image, ...state.gallery] })),
+    addManyToGallery: (images) =>
+        set((state) => ({
+            gallery: images.length > 0 ? [...images, ...state.gallery] : state.gallery,
+        })),
     setPreview: (preview) => set({ preview }),
     setServerStatus: (status) => set({ serverStatus: status }),
 }));

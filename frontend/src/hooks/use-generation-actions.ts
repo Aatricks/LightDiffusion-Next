@@ -4,8 +4,10 @@ import {
   getImageMetadata,
   getLastSeed,
   interruptGeneration,
+  postSettingsPreferences,
   postSettingsSnapshot,
 } from '../api/client';
+import type { GenerationSettings } from '../types';
 import { getMetadataSettingsUpdates } from '../lib/settings';
 import { useStore } from '../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -43,6 +45,7 @@ export function useGenerationActions() {
     setStatus,
     setCurrentImage,
     addToGallery,
+    addManyToGallery,
     appendSettingsSnapshot,
     setPreview,
   } = useStore(useShallow((state) => ({
@@ -53,6 +56,7 @@ export function useGenerationActions() {
     setStatus: state.setStatus,
     setCurrentImage: state.setCurrentImage,
     addToGallery: state.addToGallery,
+    addManyToGallery: state.addManyToGallery,
     appendSettingsSnapshot: state.appendSettingsSnapshot,
     setPreview: state.setPreview,
   })));
@@ -148,6 +152,38 @@ export function useGenerationActions() {
     }
   }, [setSettings]);
 
+  const updateAutotuneSettings = useCallback(
+    async (
+      updates: Pick<GenerationSettings, 'torch_compile' | 'vae_autotune'> & Partial<Pick<GenerationSettings, 'stable_fast'>>,
+    ): Promise<ActionResult> => {
+      const previous = useStore.getState().settings;
+      setSettings(updates);
+
+      try {
+        await postSettingsPreferences({
+          torch_compile: updates.torch_compile,
+          vae_autotune: updates.vae_autotune,
+        });
+        return {
+          ok: true,
+          message: 'Autotune preferences saved.',
+        };
+      } catch (error) {
+        console.error('Failed to save autotune preferences', error);
+        setSettings({
+          torch_compile: previous.torch_compile,
+          vae_autotune: previous.vae_autotune,
+          stable_fast: previous.stable_fast,
+        });
+        return {
+          ok: false,
+          message: 'Could not save autotune preferences.',
+        };
+      }
+    },
+    [setSettings],
+  );
+
   const handleGenerate = useCallback(async () => {
     if (status === 'generating') {
       try {
@@ -171,12 +207,17 @@ export function useGenerationActions() {
 
     try {
       const response = await generateImage(settings);
-      const image = response.images?.[0] ?? response.image ?? null;
+      const images = response.images ?? (response.image ? [response.image] : []);
+      const image = images[0] ?? null;
 
       if (image) {
         startTransition(() => {
           setCurrentImage(image);
-          addToGallery(image);
+          if (images.length === 1) {
+            addToGallery(image);
+          } else {
+            addManyToGallery(images);
+          }
         });
       }
     } catch (error) {
@@ -186,7 +227,7 @@ export function useGenerationActions() {
     }
 
     setStatus('idle');
-  }, [addToGallery, appendSettingsSnapshot, setCurrentImage, setPreview, setStatus, settings, status]);
+  }, [addManyToGallery, addToGallery, appendSettingsSnapshot, setCurrentImage, setPreview, setStatus, settings, status]);
 
   return {
     handleGenerate,
@@ -194,5 +235,6 @@ export function useGenerationActions() {
     importSettingsFromFiles,
     saveSettingsSnapshot,
     restoreLastSeed,
+    updateAutotuneSettings,
   };
 }

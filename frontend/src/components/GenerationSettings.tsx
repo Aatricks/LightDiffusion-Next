@@ -174,10 +174,17 @@ export function GenerationSettings() {
     setSettings: state.setSettings,
     status: state.status,
   })));
-  const { handleGenerate, importSettingsFromFiles, restoreLastSeed, saveSettingsSnapshot } = useGenerationActions();
+  const {
+    handleGenerate,
+    importSettingsFromFiles,
+    restoreLastSeed,
+    saveSettingsSnapshot,
+    updateAutotuneSettings,
+  } = useGenerationActions();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [historyFeedback, setHistoryFeedback] = useState<FeedbackState | null>(null);
   const [actionFeedback, setActionFeedback] = useState<FeedbackState | null>(null);
+  const [performanceFeedback, setPerformanceFeedback] = useState<FeedbackState | null>(null);
 
   const modelOptions = useMemo<SelectOption[]>(
     () => availableModels.map((model) => ({ value: model.path, label: model.name })),
@@ -231,6 +238,44 @@ export function GenerationSettings() {
       tone: 'success',
       text: 'Restored a saved local snapshot.',
     });
+  };
+
+  const handleStableFastChange = (checked: boolean) => {
+    if (checked && settings.torch_compile) {
+      void (async () => {
+        const result = await updateAutotuneSettings({
+          stable_fast: true,
+          torch_compile: false,
+          vae_autotune: settings.vae_autotune,
+        });
+        setPerformanceFeedback(result.ok ? null : { tone: 'error', text: result.message });
+      })();
+      return;
+    }
+
+    setSettings({ stable_fast: checked });
+    setPerformanceFeedback(null);
+  };
+
+  const handleModelAutotuneChange = (checked: boolean) => {
+    void (async () => {
+      const result = await updateAutotuneSettings({
+        stable_fast: checked ? false : settings.stable_fast,
+        torch_compile: checked,
+        vae_autotune: settings.vae_autotune,
+      });
+      setPerformanceFeedback(result.ok ? null : { tone: 'error', text: result.message });
+    })();
+  };
+
+  const handleVaeAutotuneChange = (checked: boolean) => {
+    void (async () => {
+      const result = await updateAutotuneSettings({
+        torch_compile: settings.torch_compile,
+        vae_autotune: checked,
+      });
+      setPerformanceFeedback(result.ok ? null : { tone: 'error', text: result.message });
+    })();
   };
 
   const capabilityTokens = [
@@ -619,7 +664,7 @@ export function GenerationSettings() {
                           checked={settings.stable_fast}
                           disabled={capabilities?.supports_stable_fast === false}
                           label="Stable Fast"
-                          onCheckedChange={(checked) => setSettings({ stable_fast: checked, torch_compile: checked ? false : settings.torch_compile })}
+                          onCheckedChange={handleStableFastChange}
                         />
                         <SupportHint
                           capability={capabilities?.supports_stable_fast}
@@ -628,8 +673,15 @@ export function GenerationSettings() {
                         <FeatureSwitch
                           checked={settings.torch_compile}
                           disabled={settings.stable_fast}
-                          label="torch.compile"
-                          onCheckedChange={(checked) => setSettings({ torch_compile: checked, stable_fast: checked ? false : settings.stable_fast })}
+                          description="Compiles the diffusion model for faster repeat runs."
+                          label="Model autotune (torch.compile)"
+                          onCheckedChange={handleModelAutotuneChange}
+                        />
+                        <FeatureSwitch
+                          checked={settings.vae_autotune}
+                          description="Compiles the VAE decoder when enabled for faster decode and encode steps."
+                          label="VAE autotune (torch.compile)"
+                          onCheckedChange={handleVaeAutotuneChange}
                         />
                         <Field label="Weight quantization">
                           <OptionSelect
@@ -662,6 +714,7 @@ export function GenerationSettings() {
                           label="ToMe"
                           onCheckedChange={(checked) => setSettings({ tome_enabled: checked })}
                         />
+                        {performanceFeedback ? <StatusLine {...performanceFeedback} /> : null}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
