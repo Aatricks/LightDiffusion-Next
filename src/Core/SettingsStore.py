@@ -3,6 +3,7 @@
 This module provides a small JSON-backed settings store used for:
 - persisting the last used seed (previously include/last_seed.txt)
 - maintaining a short history of saved generation settings (for UI)
+- storing server-wide generation preferences that should survive restarts
 
 Design notes:
 - Store file defaults to './include/settings_store.json'. Override via
@@ -23,6 +24,21 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 
+def _default_preferences() -> Dict[str, bool]:
+    return {
+        "torch_compile": False,
+        "vae_autotune": False,
+    }
+
+
+def _default_store() -> Dict[str, Any]:
+    return {
+        "last_seed": None,
+        "history": [],
+        "preferences": _default_preferences(),
+    }
+
+
 def _get_store_path() -> str:
     env = os.environ.get("LD_SETTINGS_STORE_PATH")
     if env:
@@ -34,12 +50,32 @@ def _read_store() -> Dict[str, Any]:
     path = _get_store_path()
     try:
         if not os.path.exists(path):
-            return {"last_seed": None, "history": []}
+            return _default_store()
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            raw = json.load(f)
+        if not isinstance(raw, dict):
+            return _default_store()
+
+        data = _default_store()
+        data.update(raw)
+
+        history = raw.get("history")
+        data["history"] = history if isinstance(history, list) else []
+
+        seed = raw.get("last_seed")
+        data["last_seed"] = int(seed) if seed is not None else None
+
+        raw_preferences = raw.get("preferences")
+        if not isinstance(raw_preferences, dict):
+            raw_preferences = {}
+        data["preferences"] = {
+            "torch_compile": bool(raw_preferences.get("torch_compile", False)),
+            "vae_autotune": bool(raw_preferences.get("vae_autotune", False)),
+        }
+        return data
     except Exception:
         # Corrupt/invalid file -> return sane default (do not raise)
-        return {"last_seed": None, "history": []}
+        return _default_store()
 
 
 def _write_store(data: Dict[str, Any]) -> None:
@@ -67,6 +103,32 @@ def get_last_seed() -> Optional[int]:
     data = _read_store()
     seed = data.get("last_seed")
     return int(seed) if seed is not None else None
+
+
+def get_preferences() -> Dict[str, bool]:
+    """Return persisted server-wide generation preferences."""
+    data = _read_store()
+    prefs = data.get("preferences") or {}
+    defaults = _default_preferences()
+    return {
+        "torch_compile": bool(prefs.get("torch_compile", defaults["torch_compile"])),
+        "vae_autotune": bool(prefs.get("vae_autotune", defaults["vae_autotune"])),
+    }
+
+
+def set_preferences(preferences: Dict[str, Any]) -> Dict[str, bool]:
+    """Persist server-wide generation preferences and return the stored values."""
+    try:
+        stored = {
+            "torch_compile": bool(preferences.get("torch_compile", False)),
+            "vae_autotune": bool(preferences.get("vae_autotune", False)),
+        }
+        d = _read_store()
+        d["preferences"] = stored
+        _write_store(d)
+        return stored
+    except Exception:
+        return get_preferences()
 
 
 def set_last_seed(seed: int) -> None:

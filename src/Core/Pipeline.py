@@ -69,6 +69,10 @@ class Pipeline:
         self.model_factory = model_factory or create_model
         self.default_lora = default_lora
         self._model: Optional[AbstractModel] = None
+
+    def _apply_runtime_preferences(self, ctx: Context, model: AbstractModel) -> None:
+        """Apply request-scoped runtime preferences that should track reused models."""
+        model.set_vae_autotune(ctx.generation.vae_autotune)
     
     def run(self, ctx: Context) -> Context:
         """Run the full generation pipeline.
@@ -83,6 +87,7 @@ class Pipeline:
         
         # 1. Load base model
         model = self._load_model(ctx)
+        self._apply_runtime_preferences(ctx, model)
         
         # 2. Apply optimizations to base model
         mo = getattr(model, 'model', None)
@@ -1053,6 +1058,8 @@ class Pipeline:
 
     def _apply_optimizations(self, ctx: Context, model: AbstractModel) -> None:
         """Apply all configured optimizations to the model."""
+        self._apply_runtime_preferences(ctx, model)
+
         # LoRA - only if model supports it and matches default LoRA type
         # Default LoRA (add_detail) is SD1.5 (context_dim 768)
         is_sd15 = False
@@ -1125,3 +1132,15 @@ def get_default_pipeline() -> Pipeline:
     if _default_pipeline is None:
         _default_pipeline = Pipeline()
     return _default_pipeline
+
+
+def reset_default_pipeline() -> None:
+    """Release the singleton pipeline and any loaded model it still owns."""
+    global _default_pipeline
+    if _default_pipeline is not None:
+        try:
+            if _default_pipeline._model is not None and _default_pipeline._model.is_loaded:
+                _default_pipeline._model.unload()
+        except Exception:
+            pass
+        _default_pipeline = None

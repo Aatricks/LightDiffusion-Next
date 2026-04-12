@@ -29,8 +29,15 @@ async def test_chunking_respects_image_saver_limit(monkeypatch):
 
     monkeypatch.setattr(server, "pipeline", fake_pipeline)
 
-    # Create 10 small requests (1 image each)
-    items = [server.PendingRequest(server.GenerateRequest(prompt=f"p{i}", num_images=1), request_id=str(i)) for i in range(10)]
+    # Create 10 small requests (1 image each) with a large batch_size so the
+    # saver limit, not the request batch size, is what forces chunking.
+    items = [
+        server.PendingRequest(
+            server.GenerateRequest(prompt=f"p{i}", num_images=1, batch_size=10),
+            request_id=str(i),
+        )
+        for i in range(10)
+    ]
 
     buf = server.GenerationBuffer()
 

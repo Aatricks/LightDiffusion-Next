@@ -158,13 +158,19 @@ class GenerateRequest(BaseModel):
     controlnet_type: str = "canny"
 
     # torch.compile optimization (mutually exclusive with stable_fast)
-    torch_compile: bool = False
+    torch_compile: Optional[bool] = None
+    vae_autotune: Optional[bool] = None
     
     # Weight quantization format: None, "fp8", or "nvfp4"
     weight_quantization: Optional[str] = None
 
     # FP8 inference (auto-gated to supported hardware: Ada Lovelace+)
     fp8_inference: bool = False
+
+
+class SettingsPreferencesRequest(BaseModel):
+    torch_compile: bool = False
+    vae_autotune: bool = False
 
 
 app = FastAPI(title="LightDiffusion Server", version="1.0.0")
@@ -225,6 +231,25 @@ LD_BATCH_WAIT_SINGLETONS = os.getenv("LD_BATCH_WAIT_SINGLETONS", "0").lower() in
 # is larger than this, we will split the group into smaller chunks and run the
 # pipeline sequentially to avoid memory pressure and downstream save failures.
 LD_MAX_IMAGES_PER_GROUP = int(os.getenv("LD_MAX_IMAGES_PER_GROUP", "256"))
+
+
+def _normalized_image_key(value: Optional[str]) -> str:
+    """Return a stable image identity key for batching decisions."""
+    if not value:
+        return ""
+    if value.startswith("data:"):
+        # Data URLs should already be normalized to a temp file before enqueue,
+        # but keep a deterministic fallback in case this helper is called early.
+        return value[:128]
+    try:
+        return os.path.abspath(os.path.realpath(value))
+    except Exception:
+        return str(value)
+
+
+def _effective_guidance_scale(req: "GenerateRequest") -> float:
+    """Normalize guidance scale for batch signatures and pipeline calls."""
+    return float(req.cfg_scale if req.guidance_scale is None else req.guidance_scale)
 
 
 class PendingRequest:
@@ -330,17 +355,31 @@ class GenerationBuffer:
         # Detect model type to determine if refiner is relevant
         from src.Core.Models.ModelFactory import detect_model_type
         is_sdxl = (detect_model_type(req.model_path) == "SDXL")
+        guidance_scale = _effective_guidance_scale(req)
+        normalized_img2img_image = _normalized_image_key(req.img2img_image)
         
         return (
             str(req.model_path),  # Model must match
             bool(req.realistic_model),
             int(req.width),
             int(req.height),
+            int(max(1, req.batch_size)),
             bool(req.stable_fast),
+            bool(req.torch_compile),
+            bool(req.vae_autotune),
+            bool(req.fp8_inference),
+            str(req.weight_quantization),
             bool(req.img2img_mode),
+            normalized_img2img_image,
+            float(req.img2img_denoise),
             str(req.scheduler),
             str(req.sampler),
             int(req.steps),
+            float(guidance_scale),
+            bool(req.enhance_prompt),
+            bool(req.reuse_seed),
+            bool(req.enable_preview),
+            str(req.preview_fidelity),
             # Treat multiscale options as batch-level — mixing them may
             # change the sampling schedule and therefore cannot be
             # safely combined into a single forward pass.
@@ -349,6 +388,18 @@ class GenerationBuffer:
             float(req.multiscale_factor),
             int(req.multiscale_fullres_start),
             int(req.multiscale_fullres_end),
+            bool(req.cfg_free_enabled),
+            float(req.cfg_free_start_percent),
+            bool(req.tome_enabled),
+            float(req.tome_ratio),
+            int(req.tome_max_downsample),
+            bool(req.batched_cfg),
+            bool(req.dynamic_cfg_rescaling),
+            str(req.dynamic_cfg_method),
+            float(req.dynamic_cfg_percentile),
+            float(req.dynamic_cfg_target_scale),
+            bool(req.adaptive_noise_enabled),
+            str(req.adaptive_noise_method),
             # VRAM retention flags are also batch level
             bool(req.keep_models_loaded),
             # ControlNet (must match)
@@ -359,9 +410,8 @@ class GenerationBuffer:
             # Refiner (must match only if it will actually be used)
             str(req.refiner_model_path) if is_sdxl else "",
             (int(req.refiner_switch_step) if req.refiner_switch_step is not None else -1) if is_sdxl else -1,
-            # Note: hires_fix, adetailer, and enable_preview remain intentionally 
-            # NOT part of this signature because they are executed per-sample
-            # (or as side-effects) after or during a shared forward pass.
+            # Note: hires_fix and adetailer remain intentionally NOT part of
+            # this signature because they are executed per-sample.
         )
 
     async def _worker(self):
@@ -423,8 +473,12 @@ class GenerationBuffer:
                         logger.debug("Processing singleton group for signature %s immediately (age=%.3fs). LD_BATCH_WAIT_SINGLETONS=%s",
                                      str(chosen_sig), age, LD_BATCH_WAIT_SINGLETONS)
 
-                # Pick up to max batch size
-                to_process = candidates[:LD_MAX_BATCH_SIZE]
+                # Keep ControlNet requests singleton for now. Its image-conditioned
+                # path has not been made batch-safe in the same way as text2img/img2img.
+                max_group_size = 1 if candidates[0].req.controlnet_enabled else LD_MAX_BATCH_SIZE
+
+                # Pick up to the allowed group size
+                to_process = candidates[:max_group_size]
                 # Remove selected items from pending list
                 for p in to_process:
                     try:
@@ -467,37 +521,36 @@ class GenerationBuffer:
         if not items:
             return
 
-        # Build flat per-sample prompt list and per-sample info
-        prompts: List[str] = []
-        per_sample_info: List[dict] = []
+        first_req = items[0].req
+        flat_samples: List[dict[str, Any]] = []
         for p in items:
-            for k in range(max(1, p.req.num_images)):
-                prompts.append(p.req.prompt)
-                per_sample_info.append(
+            for _ in range(max(1, p.req.num_images)):
+                flat_samples.append(
                     {
                         "request_id": p.request_id,
                         "filename_prefix": f"LD-REQ-{p.request_id}",
                         "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
                         "hires_fix": bool(p.req.hiresfix),
                         "adetailer": bool(p.req.adetailer),
+                        "prompt": p.req.prompt,
+                        "negative_prompt": p.req.negative_prompt or "",
                     }
                 )
 
         # Prepare pipeline kwargs based on the shared signature (take from first)
-        first_req = items[0].req
         # Unique ID for this generation run; sent with every preview message
         # so the frontend can discard stale previews from previous runs.
         _gen_id = uuid.uuid4().hex[:12]
         pipeline_kwargs = dict(
-            prompt=prompts,
+            prompt=[],
             w=first_req.width,
             h=first_req.height,
-            number=len(prompts),
-            batch=first_req.batch_size,
+            number=0,
+            batch=0,
             scheduler=first_req.scheduler,
             sampler=first_req.sampler,
             steps=first_req.steps,
-            cfg_scale=first_req.cfg_scale if first_req.guidance_scale is None else first_req.guidance_scale,
+            cfg_scale=_effective_guidance_scale(first_req),
             enhance_prompt=first_req.enhance_prompt,
             img2img=first_req.img2img_mode,
             img2img_denoise=first_req.img2img_denoise,
@@ -508,7 +561,7 @@ class GenerationBuffer:
             model_path=first_req.model_path,
             refiner_model_path=first_req.refiner_model_path,
             refiner_switch_step=first_req.refiner_switch_step,
-            negative_prompt=[p.req.negative_prompt or "" for p in items for _ in range(max(1, p.req.num_images))],
+            negative_prompt=[],
             multiscale_preset=first_req.multiscale_preset,
             enable_multiscale=first_req.enable_multiscale,
             multiscale_factor=first_req.multiscale_factor,
@@ -517,7 +570,7 @@ class GenerationBuffer:
             multiscale_intermittent_fullres=first_req.multiscale_intermittent,
             img2img_image=first_req.img2img_image,
             request_filename_prefix=f"LD-REQ-{items[0].request_id}",
-            per_sample_info=per_sample_info,
+            per_sample_info=[],
             cfg_free_enabled=first_req.cfg_free_enabled,
             cfg_free_start_percent=first_req.cfg_free_start_percent,
             tome_enabled=first_req.tome_enabled,
@@ -537,6 +590,7 @@ class GenerationBuffer:
             controlnet_type=first_req.controlnet_type,
             # torch.compile
             torch_compile=first_req.torch_compile,
+            vae_autotune=first_req.vae_autotune,
             # Weight quantization
             weight_quantization=first_req.weight_quantization,
             # FP8 inference
@@ -582,120 +636,75 @@ class GenerationBuffer:
             loop = asyncio.get_running_loop()
             saved_map: Dict[str, List[dict]] = {}
 
-            # Decide whether to split the group into multiple pipeline runs to
-            # avoid creating very large forward passes and massive decode/save
-            # operations. This helps prevent cases where a large coalesced batch
-            # (e.g., hundreds of items) would result in >1000 images being
-            # processed in one shot and causing downstream save/IO failures.
-            total_images = len(prompts)
+            total_images = len(flat_samples)
 
-            # Respect ImageSaver.MAX_IMAGES_PER_SAVE when deciding whether to run a
-            # single pipeline pass. If the total images exceed what ImageSaver will
-            # accept in one save call, chunk to avoid aborts even if total_images is
-            # within LD_MAX_IMAGES_PER_GROUP.
+            # Respect ImageSaver.MAX_IMAGES_PER_SAVE and the requested batch size.
+            # Multi-image runs always execute in deterministic chunks so that
+            # `batch_size` means "images per sampling pass" and `num_images`
+            # means "total outputs returned".
             try:
                 from src.FileManaging import ImageSaver as _ImageSaver
                 _max_save_limit = getattr(_ImageSaver, "MAX_IMAGES_PER_SAVE", LD_MAX_IMAGES_PER_GROUP)
             except Exception:
                 _max_save_limit = LD_MAX_IMAGES_PER_GROUP
 
-            if total_images <= LD_MAX_IMAGES_PER_GROUP and total_images <= _max_save_limit:
-                # Single pipeline run for the normal case
-                func = functools.partial(pipeline, **pipeline_kwargs)
+            max_save_limit = _max_save_limit if _max_save_limit and _max_save_limit > 0 else LD_MAX_IMAGES_PER_GROUP
+            requested_batch_size = max(1, int(first_req.batch_size))
+            max_chunk_size = min(requested_batch_size, LD_MAX_IMAGES_PER_GROUP, max_save_limit)
+
+            logger.info(
+                "Processing group of %d request(s) -> %d image(s) with effective batch_size=%d across %d chunk(s)",
+                len(items),
+                total_images,
+                max_chunk_size,
+                (total_images + max_chunk_size - 1) // max_chunk_size if max_chunk_size > 0 else 0,
+            )
+
+            chunks: list[list[dict[str, Any]]] = [
+                flat_samples[i : i + max_chunk_size]
+                for i in range(0, total_images, max_chunk_size)
+            ]
+
+            for chunk in chunks:
+                c_prompts = [entry["prompt"] for entry in chunk]
+                c_negatives = [entry["negative_prompt"] for entry in chunk]
+                c_per_sample_info = [
+                    {
+                        "request_id": entry["request_id"],
+                        "filename_prefix": entry["filename_prefix"],
+                        "seed": entry["seed"],
+                        "hires_fix": entry["hires_fix"],
+                        "adetailer": entry["adetailer"],
+                    }
+                    for entry in chunk
+                ]
+
+                chunk_kwargs = dict(pipeline_kwargs)
+                chunk_kwargs["prompt"] = c_prompts
+                chunk_kwargs["negative_prompt"] = c_negatives
+                chunk_kwargs["number"] = len(c_prompts)
+                chunk_kwargs["batch"] = len(c_prompts)
+                chunk_kwargs["per_sample_info"] = c_per_sample_info
+                chunk_kwargs["request_filename_prefix"] = c_per_sample_info[0]["filename_prefix"] if c_per_sample_info else None
+
+                chunk_start_ts = time.time()
+                func = functools.partial(pipeline, **chunk_kwargs)
                 result = await loop.run_in_executor(None, func)
 
-                # Expect pipeline to return a mapping under 'batched_results' when
-                # run in batched mode; otherwise fall back to scanning.
                 if isinstance(result, dict) and "batched_results" in result:
-                    saved_map = result["batched_results"]
+                    for request_id, entries in result["batched_results"].items():
+                        saved_map.setdefault(request_id, []).extend(entries)
                 else:
-                    # Fallback: scan filesystem for files created since group start
-                    files = _find_images_since(time.time() - 60)
+                    files = _find_images_since(chunk_start_ts)
                     for f in files:
-                        # naive grouping by filename prefix (LD-REQ-<rid>)
                         name = os.path.basename(f)
-                        for p in items:
-                            if f"LD-REQ-{p.request_id}" in name:
-                                saved_map.setdefault(p.request_id, []).append({
+                        for entry in chunk:
+                            rid = entry["request_id"]
+                            if f"LD-REQ-{rid}" in name:
+                                saved_map.setdefault(rid, []).append({
                                     "filename": name,
                                     "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
                                 })
-            else:
-                # Chunk the items into smaller groups that each have at most
-                # LD_MAX_IMAGES_PER_GROUP images. Process each chunk sequentially
-                # and merge results. This avoids huge single-shot decodes/saves.
-                logger.info(
-                    "Large coalesced batch: %d items -> %d images. Chunking into max-%d image groups",
-                    len(items), total_images, LD_MAX_IMAGES_PER_GROUP,
-                )
-
-                # Flatten the per-request samples into a list of per-sample entries
-                flat_samples: list[dict] = []
-                for p in items:
-                    for _k in range(max(1, p.req.num_images)):
-                        flat_samples.append(
-                            {
-                                "request_id": p.request_id,
-                                "filename_prefix": f"LD-REQ-{p.request_id}",
-                                "seed": p.req.seed if (p.req.seed is not None and p.req.seed >= 0) else None,
-                                "hires_fix": bool(p.req.hiresfix),
-                                "adetailer": bool(p.req.adetailer),
-                                "prompt": p.req.prompt,
-                                "negative_prompt": p.req.negative_prompt or "",
-                            }
-                        )
-
-                # Partition into consecutive chunks of size <= LD_MAX_IMAGES_PER_GROUP
-                # Also respect ImageSaver.MAX_IMAGES_PER_SAVE to avoid aborting on huge
-                # single-call saves (admins can tune with LD_MAX_IMAGES_PER_SAVE).
-                _chunk_size = min(LD_MAX_IMAGES_PER_GROUP, _max_save_limit) if _max_save_limit and _max_save_limit > 0 else LD_MAX_IMAGES_PER_GROUP
-
-                chunks: list[list[dict]] = [
-                    flat_samples[i : i + _chunk_size]
-                    for i in range(0, len(flat_samples), _chunk_size)
-                ]
-
-                logger.info("Split into %d chunks (max %d images per chunk)", len(chunks), _chunk_size)
-
-                # Process each chunk sequentially
-                for chunk in chunks:
-                    c_prompts = [e["prompt"] for e in chunk]
-                    c_negatives = [e["negative_prompt"] for e in chunk]
-                    c_per_sample_info = [
-                        {
-                            "request_id": e["request_id"],
-                            "filename_prefix": e["filename_prefix"],
-                            "seed": e["seed"],
-                            "hires_fix": e["hires_fix"],
-                            "adetailer": e["adetailer"],
-                        }
-                        for e in chunk
-                    ]
-
-                    # Prepare kwargs for this chunk (reuse most of the group-level settings)
-                    chunk_kwargs = dict(pipeline_kwargs)
-                    chunk_kwargs["prompt"] = c_prompts
-                    chunk_kwargs["number"] = len(c_prompts)
-                    chunk_kwargs["per_sample_info"] = c_per_sample_info
-                    chunk_kwargs["negative_prompt"] = c_negatives
-
-                    func = functools.partial(pipeline, **chunk_kwargs)
-                    result = await loop.run_in_executor(None, func)
-
-                    if isinstance(result, dict) and "batched_results" in result:
-                        for k, v in result["batched_results"].items():
-                            saved_map.setdefault(k, []).extend(v)
-                    else:
-                        files = _find_images_since(time.time() - 60)
-                        for f in files:
-                            name = os.path.basename(f)
-                            for e in chunk:
-                                rid = e.get("request_id")
-                                if f"LD-REQ-{rid}" in name:
-                                    saved_map.setdefault(rid, []).append({
-                                        "filename": name,
-                                        "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
-                                    })
 
             # For each pending item, collect its images and set future result
             for p in items:
@@ -909,6 +918,60 @@ async def telemetry() -> Dict[str, Any]:
 
 
 # Settings API ------------------------------------------------------------
+def _read_settings_preferences() -> Dict[str, bool]:
+    from src.Core.SettingsStore import get_preferences
+
+    return get_preferences()
+
+
+def _resolve_autotune_preferences(req: GenerateRequest) -> GenerateRequest:
+    prefs = _read_settings_preferences()
+    req.torch_compile = bool(prefs["torch_compile"] if req.torch_compile is None else req.torch_compile)
+    req.vae_autotune = bool(prefs["vae_autotune"] if req.vae_autotune is None else req.vae_autotune)
+    return req
+
+
+def _reset_autotune_runtime_state() -> None:
+    """Clear runtime model state so changed autotune preferences take effect."""
+    from src.Core.Pipeline import reset_default_pipeline
+    from src.Device.Device import clear_compiled_models
+    from src.Device.ModelCache import clear_model_cache
+
+    reset_default_pipeline()
+    clear_model_cache()
+    clear_compiled_models()
+
+
+@app.get("/api/settings/preferences")
+async def api_get_settings_preferences():
+    """Return persisted server-wide generation preferences."""
+    try:
+        return _read_settings_preferences()
+    except Exception as e:
+        logger.exception("Failed to read settings preferences: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/settings/preferences")
+async def api_post_settings_preferences(body: SettingsPreferencesRequest):
+    """Persist server-wide generation preferences and reset runtime caches if needed."""
+    try:
+        from src.Core.SettingsStore import set_preferences
+
+        current = _read_settings_preferences()
+        incoming = {
+            "torch_compile": bool(body.torch_compile),
+            "vae_autotune": bool(body.vae_autotune),
+        }
+        stored = set_preferences(incoming)
+        if stored != current:
+            _reset_autotune_runtime_state()
+        return stored
+    except Exception as e:
+        logger.exception("Failed to update settings preferences: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/settings/last")
 async def api_get_last_settings():
     """Return the last persisted seed (or null)."""
@@ -1431,6 +1494,8 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
             logger.exception("Failed to persist last seed to SettingsStore")
         reuse_seed = True
 
+    req = _resolve_autotune_preferences(req)
+
     # For buffered execution we pass request data into the queue; the
     # background worker will control how the prompt and img2img path are
     # consumed when invoking the pipeline.
@@ -1442,7 +1507,7 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         return s if len(s) <= n else s[:n] + "…"
 
     log.debug(
-        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hiresfix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s reuse_seed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
+        "Request: w=%s h=%s num_images=%s batch=%s scheduler=%s sampler=%s steps=%s hiresfix=%s adetailer=%s enhance=%s img2img=%s stable_fast=%s torch_compile=%s vae_autotune=%s reuse_seed=%s realistic=%s multiscale=%s intermittent=%s factor=%s fullres=[%s,%s] keep_models_loaded=%s enable_preview=%s prompt='%s' neg='%s' img2img_image_present=%s",
         req.width,
         req.height,
         req.num_images,
@@ -1455,6 +1520,8 @@ async def generate(req: GenerateRequest) -> Dict[str, Any]:
         req.enhance_prompt,
         req.img2img_mode,
         req.stable_fast,
+        req.torch_compile,
+        req.vae_autotune,
         reuse_seed,
         req.realistic_model,
         req.enable_multiscale,

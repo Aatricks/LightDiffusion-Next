@@ -91,3 +91,66 @@ def test_settings_api_endpoints(tmp_path, monkeypatch):
     # Newest-first; explicit include_prompt entry should be first and contain the prompt
     assert isinstance(hist2, list) and len(hist2) >= 1
     assert hist2[0]["settings"].get("prompt") == "unit test"
+
+
+def test_settings_preferences_api_and_generate_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("LD_SETTINGS_STORE_PATH", str(tmp_path / "settings_store.json"))
+
+    import server
+    importlib.reload(server)
+
+    client = TestClient(server.app)
+
+    reset_calls = []
+    monkeypatch.setattr(server, "_reset_autotune_runtime_state", lambda: reset_calls.append("reset"))
+
+    r = client.get("/api/settings/preferences")
+    assert r.status_code == 200
+    assert r.json() == {"torch_compile": False, "vae_autotune": False}
+
+    r = client.post("/api/settings/preferences", json={"torch_compile": True, "vae_autotune": True})
+    assert r.status_code == 200
+    assert r.json() == {"torch_compile": True, "vae_autotune": True}
+    assert reset_calls == ["reset"]
+
+    r = client.post("/api/settings/preferences", json={"torch_compile": True, "vae_autotune": True})
+    assert r.status_code == 200
+    assert reset_calls == ["reset"]
+
+    captured = {}
+
+    async def fake_enqueue(pending):
+        captured["torch_compile"] = pending.req.torch_compile
+        captured["vae_autotune"] = pending.req.vae_autotune
+        return {"ok": True}
+
+    monkeypatch.setattr(server._generation_buffer, "enqueue", fake_enqueue)
+
+    r = client.post("/api/generate", json={"prompt": "unit test prompt"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    assert captured == {"torch_compile": True, "vae_autotune": True}
+
+    r = client.post("/api/generate", json={"prompt": "unit test prompt", "torch_compile": False})
+    assert r.status_code == 200
+    assert captured == {"torch_compile": False, "vae_autotune": True}
+
+
+def test_reset_autotune_runtime_state_clears_runtime_caches(tmp_path, monkeypatch):
+    monkeypatch.setenv("LD_SETTINGS_STORE_PATH", str(tmp_path / "settings_store.json"))
+
+    import server
+    importlib.reload(server)
+
+    PipelineModule = importlib.import_module("src.Core.Pipeline")
+    DeviceModule = importlib.import_module("src.Device.Device")
+    ModelCacheModule = importlib.import_module("src.Device.ModelCache")
+
+    calls = []
+    monkeypatch.setattr(PipelineModule, "reset_default_pipeline", lambda: calls.append("pipeline"))
+    monkeypatch.setattr(ModelCacheModule, "clear_model_cache", lambda: calls.append("cache"))
+    monkeypatch.setattr(DeviceModule, "clear_compiled_models", lambda: calls.append("compiled"))
+
+    server._reset_autotune_runtime_state()
+
+    assert calls == ["pipeline", "cache", "compiled"]

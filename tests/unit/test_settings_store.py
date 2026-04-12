@@ -33,6 +33,20 @@ def test_append_and_get_history(tmp_path, monkeypatch):
     assert "id" in hist[0] and "ts" in hist[0]
 
 
+def test_preferences_default_and_round_trip(tmp_path, monkeypatch):
+    monkeypatch.setenv("LD_SETTINGS_STORE_PATH", str(tmp_path / "settings_store.json"))
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('settings_store_module', os.path.join(os.getcwd(), 'src', 'Core', 'SettingsStore.py'))
+    SS = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(SS)
+
+    assert SS.get_preferences() == {"torch_compile": False, "vae_autotune": False}
+
+    stored = SS.set_preferences({"torch_compile": True, "vae_autotune": True})
+    assert stored == {"torch_compile": True, "vae_autotune": True}
+    assert SS.get_preferences() == {"torch_compile": True, "vae_autotune": True}
+
+
 def test_migrate_from_last_seed_txt(tmp_path, monkeypatch):
     store_path = tmp_path / "settings_store.json"
     monkeypatch.setenv("LD_SETTINGS_STORE_PATH", str(store_path))

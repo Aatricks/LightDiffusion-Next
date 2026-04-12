@@ -207,6 +207,7 @@ class VAE:
         self.process_output = lambda img: torch.clamp((img + 1.0) / 2.0, 0.0, 1.0)
         self.working_dtypes = [torch.bfloat16, torch.float32]
         self.flux = flux
+        self._autotune_enabled = False
 
         if config is None and sd and "decoder.conv_in.weight" in sd:
             ddconfig = {"double_z": True, "z_channels": 4, "resolution": 256, "in_channels": 3,
@@ -244,6 +245,10 @@ class VAE:
         self.patcher = ModelPatcher.ModelPatcher(self.first_stage_model, self.device, Device.vae_offload_device())
         self._compiled_decoder = False
 
+    def set_autotune_enabled(self, enabled: bool) -> None:
+        """Enable or disable decoder autotune for future decode/encode calls."""
+        self._autotune_enabled = bool(enabled)
+
     def _ensure_compiled(self):
         """Optimization A: Compile the VAE decoder with torch.compile on first use.
         
@@ -251,6 +256,8 @@ class VAE:
         is always beneficial and independent of the diffusion model compile flag.
         """
         if self._compiled_decoder:
+            return
+        if not self._autotune_enabled:
             return
         try:
             if not hasattr(torch, 'compile'):

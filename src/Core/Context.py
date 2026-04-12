@@ -71,6 +71,7 @@ class GenerationConfig:
     refiner_switch_step: Optional[int] = None
     stable_fast: bool = False
     torch_compile: bool = False
+    vae_autotune: bool = False
     fp8_inference: bool = False
     weight_quantization: Optional[str] = None  # "fp8", "nvfp4", or None
     autohdr: bool = True
@@ -287,6 +288,7 @@ class Context:
         ctx.generation.refiner_switch_step = kwargs.get("refiner_switch_step")
         ctx.generation.stable_fast = kwargs.get("stable_fast", False)
         ctx.generation.torch_compile = kwargs.get("torch_compile", False)
+        ctx.generation.vae_autotune = kwargs.get("vae_autotune", False)
         ctx.generation.fp8_inference = kwargs.get("fp8_inference", False)
         ctx.generation.weight_quantization = kwargs.get("weight_quantization")
         ctx.generation.autohdr = kwargs.get("autohdr", True)
