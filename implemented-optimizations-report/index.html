@@ -39,7 +39,7 @@
     
 
 
-<title>Overview</title>
+<title>Implementation Report</title>
 
 
 
@@ -51,18 +51,18 @@
 
 
 
-<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/optimizations/">
+<link rel="canonical" href="https://aatricks.github.io/LightDiffusion-Next/implemented-optimizations-report/">
 
 
 <!-- Open Graph (Facebook, LinkedIn) -->
 
-<meta property="og:title" content="Overview">
+<meta property="og:title" content="Implementation Report">
 
 
 
 
 
-<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/optimizations/">
+<meta property="og:url" content="https://aatricks.github.io/LightDiffusion-Next/implemented-optimizations-report/">
 
 
 
@@ -71,7 +71,7 @@
 
 <!-- Twitter Card -->
 
-<meta name="twitter:title" content="Overview">
+<meta name="twitter:title" content="Implementation Report">
 
 
 
@@ -674,7 +674,7 @@
         <ul data-slot="sidebar-menu" data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-0.5">
             
             <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
+    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/optimizations/"
         class="hpeer/menu-button flex items-center gap-2 rounded-md p-2 text-left ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md data-[active=true]:border-accent data-[active=true]:bg-accent 3xl:fixed:w-full 3xl:fixed:max-w-48">
 
@@ -691,7 +691,7 @@
 </li>
             
             <li data-slot="sidebar-menu-item" data-sidebar="menu-item" class="group/menu-item relative">
-    <a data-slot="sidebar-menu-button" data-active="false" data-sidebar="menu-button"
+    <a data-slot="sidebar-menu-button" data-active="true" data-sidebar="menu-button"
         data-size="default" href="/LightDiffusion-Next/implemented-optimizations-report/"
         class="hpeer/menu-button flex items-center gap-2 rounded-md p-2 text-left ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground relative h-[30px] w-fit overflow-visible border border-transparent text-[0.8rem] font-medium after:absolute after:inset-x-0 after:-inset-y-1 after:z-0 after:rounded-md data-[active=true]:border-accent data-[active=true]:bg-accent 3xl:fixed:w-full 3xl:fixed:max-w-48">
 
@@ -910,13 +910,13 @@
     <div class="flex flex-col gap-2">
       <div id="page-header" class="flex items-start justify-between">
         <h1 class="scroll-m-20 text-4xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-          Overview
+          Implementation Report
         </h1>
 
         <div class="flex items-center gap-2 pt-1.5">
           
 <button
-    onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/optimizations.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))"
+    onclick="fetch(`https://aatricks.github.io/LightDiffusion-Next/implemented-optimizations-report.md`).then((r) => r.blob()).then((blob) => navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]))"
     data-slot="button" class="secondary cursor-pointer">
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-copy ">
@@ -930,7 +930,7 @@
           
           <a data-slot="button" id="previous-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/api/">
+            href="/LightDiffusion-Next/optimizations/">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
               class="tabler-icon tabler-icon-arrow-left">
@@ -944,7 +944,7 @@
           
           <a data-slot="button" id="next-button"
             class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 extend-touch-target size-8 shadow-none md:size-7"
-            href="/LightDiffusion-Next/implemented-optimizations-report/">
+            href="/LightDiffusion-Next/cfg-free-sampling/">
             <span class="sr-only">Next</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -964,252 +964,649 @@
     </div>
   </div>
   <div class="typography w-full flex-1 *:data-[slot=alert]:first:mt-0">
-    <p>LightDiffusion-Next achieves its industry-leading inference speed through a layered stack of training-free optimizations that can be selectively enabled based on your hardware and quality requirements. This page provides an overview of each acceleration technique and links to detailed guides.</p>
-<p>For a detailed source-based report on what is implemented today, including server-side throughput optimizations and practical implementation notes, see the <a href="../implemented-optimizations-report/">Implemented Optimizations Report</a>.</p>
-<h2 id="optimization-stack-overview">Optimization Stack Overview</h2>
-<p>The pipeline orchestrates six primary acceleration paths:</p>
+    <p>This document presents a source-based engineering report on the optimization stack used across generation, model loading, and serving in LightDiffusion-Next.</p>
+<p>Unlike the overview pages:</p>
+<ul>
+<li>The source tree is treated as the primary reference point.</li>
+<li>Each optimization is described in terms of purpose, implementation, integration, and trade-offs.</li>
+<li>Supporting infrastructure and codebase groundwork are included when they materially contribute to the performance profile of the project.</li>
+</ul>
+<h2 id="report-scope">Report Scope</h2>
+<h3 id="usage-profile-definitions">Usage Profile Definitions</h3>
+<ul>
+<li><code>default</code>: selected in the standard execution path</li>
+<li><code>integrated</code>: part of the current generation or serving flow</li>
+<li><code>optional</code>: integrated, but enabled through request settings, configuration, or model capabilities</li>
+<li><code>conditional</code>: available when hardware, dependencies, or runtime capabilities allow it</li>
+<li><code>implementation-specific</code>: implemented and used, but its effective behavior is shaped by a narrower internal path than the request surface alone suggests</li>
+<li><code>infrastructure-level</code>: supports the fast path indirectly through loading, transfer, caching, or serving behavior</li>
+<li><code>codebase groundwork</code>: implemented in the codebase as part of the optimization stack, but not yet surfaced as a broad standard pipeline option</li>
+</ul>
+<h3 id="what-this-report-covers">What This Report Covers</h3>
+<p>This report covers both model-level and system-level optimizations:</p>
+<ul>
+<li>inference and sampling speedups</li>
+<li>precision and memory reductions</li>
+<li>request batching and pipeline throughput improvements</li>
+<li>preview and output-path latency reductions</li>
+</ul>
+<p>It does not catalog ordinary features unless they clearly reduce compute, memory, or end-to-end latency.</p>
+<h2 id="quick-inventory">Quick Inventory</h2>
 <div class="table-wrapper"><table>
 <thead>
 <tr>
-<th>Technique</th>
-<th>Type</th>
-<th>Speedup</th>
-<th>Quality Impact</th>
-<th>Requirements</th>
+<th>Optimization</th>
+<th>Usage Profile</th>
+<th>Main Goal</th>
+<th>Primary Evidence</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><a href="#ays-scheduler">AYS Scheduler</a></td>
-<td>Sampling schedule</td>
-<td>~2x</td>
-<td>None/Better</td>
-<td>All models</td>
+<td>CUDA runtime tuning (TF32, cuDNN benchmark, SDPA enablement)</td>
+<td>integrated, conditional</td>
+<td>faster kernels and better backend selection</td>
+<td><code>src/Device/Device.py</code></td>
 </tr>
 <tr>
-<td><a href="#prompt-caching">Prompt Caching</a></td>
-<td>Embedding cache</td>
-<td>5-15%</td>
-<td>None</td>
-<td>All models</td>
+<td>Attention backend cascade (SpargeAttn/SageAttention/xformers/SDPA)</td>
+<td>integrated, conditional</td>
+<td>faster attention kernels with fallback</td>
+<td><code>src/Attention/Attention.py</code>, <code>src/Attention/AttentionMethods.py</code></td>
 </tr>
 <tr>
-<td><a href="#sageattention--spargeattn">SageAttention</a></td>
-<td>Attention kernel</td>
-<td>Moderate</td>
-<td>None</td>
-<td>All CUDA GPUs</td>
+<td>Flux2 SDPA backend priority</td>
+<td>integrated, conditional</td>
+<td>prefer cuDNN/Flash SDPA for Flux2 attention</td>
+<td><code>src/NeuralNetwork/flux2/layers.py</code>, <code>src/Device/Device.py</code></td>
 </tr>
 <tr>
-<td><a href="#sageattention--spargeattn">SpargeAttn</a></td>
-<td>Sparse attention</td>
-<td>Significant</td>
-<td>Minimal</td>
-<td>Compute 8.0-9.0</td>
+<td>Cross-attention K/V projection cache</td>
+<td>integrated</td>
+<td>skip repeated key/value projection work for static context</td>
+<td><code>src/Attention/Attention.py</code></td>
 </tr>
 <tr>
-<td><a href="#stable-fast">Stable-Fast</a></td>
-<td>Graph compilation</td>
-<td>Significant*</td>
-<td>None</td>
-<td>&gt;8GB VRAM, batch jobs</td>
+<td>Prompt embedding cache</td>
+<td>integrated</td>
+<td>avoid re-encoding repeated prompts</td>
+<td><code>src/Utilities/prompt_cache.py</code>, <code>src/clip/Clip.py</code></td>
 </tr>
 <tr>
-<td><a href="#wavespeed-caching">WaveSpeed</a></td>
-<td>Feature caching</td>
-<td>High</td>
-<td>Tunable</td>
-<td>All models</td>
+<td>Conditioning batch packing and memory-aware concatenation</td>
+<td>integrated</td>
+<td>reduce forward passes and pack compatible condition chunks</td>
+<td><code>src/cond/cond.py</code></td>
+</tr>
+<tr>
+<td>CFG=1 unconditional-skip fast path</td>
+<td>integrated</td>
+<td>skip unnecessary unconditional branch at CFG 1.0</td>
+<td><code>src/sample/CFG.py</code>, <code>src/sample/BaseSampler.py</code></td>
+</tr>
+<tr>
+<td>AYS scheduler</td>
+<td>default</td>
+<td>reach similar quality in fewer steps</td>
+<td><code>src/sample/ays_scheduler.py</code>, <code>src/sample/ksampler_util.py</code></td>
+</tr>
+<tr>
+<td>CFG++ samplers</td>
+<td>integrated</td>
+<td>improve denoising behavior with momentum-style correction</td>
+<td><code>src/sample/BaseSampler.py</code></td>
+</tr>
+<tr>
+<td>CFG-Free sampling</td>
+<td>integrated, optional</td>
+<td>taper CFG late in sampling for better detail/naturalness</td>
+<td><code>src/sample/CFG.py</code></td>
+</tr>
+<tr>
+<td>Dynamic CFG rescaling</td>
+<td>integrated, optional</td>
+<td>reduce overshoot and saturation from strong CFG</td>
+<td><code>src/sample/CFG.py</code></td>
+</tr>
+<tr>
+<td>Adaptive noise scheduling</td>
+<td>integrated, optional</td>
+<td>adjust schedule based on observed complexity</td>
+<td><code>src/sample/CFG.py</code></td>
+</tr>
+<tr>
+<td><code>batched_cfg</code> request surface</td>
+<td>implementation-specific</td>
+<td>request-facing control around the deeper conditioning batching path</td>
+<td><code>src/sample/sampling.py</code>, <code>src/cond/cond.py</code></td>
+</tr>
+<tr>
+<td>Multi-scale latent switching</td>
+<td>integrated, optional</td>
+<td>do some denoising at reduced spatial resolution</td>
+<td><code>src/sample/BaseSampler.py</code></td>
+</tr>
+<tr>
+<td>HiDiffusion MSW-MSA patching</td>
+<td>integrated, optional</td>
+<td>patch UNet attention for high-resolution multiscale workflows</td>
+<td><code>src/Core/Pipeline.py</code>, <code>src/hidiffusion/msw_msa_attention.py</code></td>
+</tr>
+<tr>
+<td>Stable-Fast</td>
+<td>integrated, conditional</td>
+<td>trace/compile UNet forward path</td>
+<td><code>src/StableFast/StableFast.py</code>, <code>src/Core/Pipeline.py</code></td>
+</tr>
+<tr>
+<td><code>torch.compile</code></td>
+<td>integrated, optional</td>
+<td>compiler-based model speedup without Stable-Fast</td>
+<td><code>src/Device/Device.py</code>, <code>src/Core/AbstractModel.py</code></td>
+</tr>
+<tr>
+<td>VAE compile, tiled path, and transfer tuning</td>
+<td>integrated</td>
+<td>speed up decode/encode and avoid OOM</td>
+<td><code>src/AutoEncoders/VariationalAE.py</code></td>
+</tr>
+<tr>
+<td>BF16/FP16 automatic dtype selection</td>
+<td>integrated, conditional</td>
+<td>reduce memory and improve throughput on supported hardware</td>
+<td><code>src/Device/Device.py</code></td>
+</tr>
+<tr>
+<td>FP8 weight quantization</td>
+<td>integrated, conditional</td>
+<td>reduce weight memory and enable Flux2-friendly inference paths</td>
+<td><code>src/Core/AbstractModel.py</code>, <code>src/Model/ModelPatcher.py</code></td>
+</tr>
+<tr>
+<td>NVFP4 weight quantization</td>
+<td>integrated, optional</td>
+<td>stronger memory reduction than FP8</td>
+<td><code>src/Core/AbstractModel.py</code>, <code>src/Model/ModelPatcher.py</code>, <code>src/Utilities/Quantization.py</code></td>
+</tr>
+<tr>
+<td>Flux2 load-time weight-only quantization</td>
+<td>integrated, conditional</td>
+<td>keep large Flux2/Klein components workable on smaller VRAM budgets</td>
+<td><code>src/Core/Models/Flux2KleinModel.py</code></td>
+</tr>
+<tr>
+<td>ToMe</td>
+<td>integrated, optional</td>
+<td>reduce attention cost by token merging on UNet models</td>
+<td><code>src/Model/ModelPatcher.py</code>, <code>src/Core/Pipeline.py</code></td>
+</tr>
+<tr>
+<td>DeepCache</td>
+<td>integrated, optional, implementation-specific</td>
+<td>reuse prior denoiser output between update steps</td>
+<td><code>src/WaveSpeed/deepcache_nodes.py</code>, <code>src/Core/Pipeline.py</code></td>
+</tr>
+<tr>
+<td>First Block Cache for Flux</td>
+<td>codebase groundwork</td>
+<td>cache transformer work for Flux-like models</td>
+<td><code>src/WaveSpeed/first_block_cache.py</code></td>
+</tr>
+<tr>
+<td>Low-VRAM partial loading and offload policy</td>
+<td>integrated</td>
+<td>load only what fits and offload the rest</td>
+<td><code>src/cond/cond_util.py</code>, <code>src/Device/Device.py</code>, <code>src/Model/ModelPatcher.py</code></td>
+</tr>
+<tr>
+<td>Async transfer helpers and pinned checkpoint tensors</td>
+<td>integrated, infrastructure-level</td>
+<td>reduce host/device transfer overhead</td>
+<td><code>src/Device/Device.py</code>, <code>src/Utilities/util.py</code></td>
+</tr>
+<tr>
+<td>Request coalescing and queue batching</td>
+<td>integrated</td>
+<td>increase throughput across compatible API requests</td>
+<td><code>server.py</code></td>
+</tr>
+<tr>
+<td>Large-group chunking and image-save guardrails</td>
+<td>integrated</td>
+<td>keep large coalesced runs from blowing up save/decode paths</td>
+<td><code>server.py</code>, <code>src/FileManaging/ImageSaver.py</code></td>
+</tr>
+<tr>
+<td>Next-model prefetch</td>
+<td>integrated</td>
+<td>hide future checkpoint load latency</td>
+<td><code>server.py</code>, <code>src/Device/ModelCache.py</code>, <code>src/Utilities/util.py</code></td>
+</tr>
+<tr>
+<td>Keep-models-loaded cache</td>
+<td>integrated</td>
+<td>reuse loaded checkpoints and reduce warm starts</td>
+<td><code>src/Device/ModelCache.py</code>, <code>server.py</code></td>
+</tr>
+<tr>
+<td>In-memory PNG byte buffer</td>
+<td>integrated</td>
+<td>avoid disk round-trip for API responses</td>
+<td><code>src/FileManaging/ImageSaver.py</code>, <code>server.py</code></td>
+</tr>
+<tr>
+<td>TAESD preview pacing and preview fidelity control</td>
+<td>integrated, conditional</td>
+<td>reduce preview overhead while keeping live feedback usable</td>
+<td><code>src/sample/BaseSampler.py</code>, <code>src/AutoEncoders/taesd.py</code>, <code>server.py</code></td>
 </tr>
 </tbody>
 </table></div>
-<p>*Speedup depends heavily on batch size and generation count</p>
-<p>These optimizations <strong>work together</strong> — enabling multiple techniques simultaneously can provide substantial cumulative speedup with tunable quality trade-offs.</p>
-<h2 id="quick-comparison">Quick Comparison</h2>
-<h3 id="ays-scheduler">AYS Scheduler</h3>
-<p><strong>What it does:</strong> Uses research-backed optimal timestep distributions that allow equivalent quality in approximately half the steps. Instead of uniform sigma spacing, AYS concentrates samples on noise levels that contribute most to image formation.</p>
-<p><strong>When to use:</strong>
-- Always recommended for SD1.5, SDXL, and Flux models
-- Txt2Img generation
-- Production workflows where speed matters
-- Any scenario where you'd normally use 20+ steps</p>
-<p><strong>Trade-offs:</strong> Images will differ slightly from standard schedulers (different sampling path), but quality is equivalent or better. Not ideal when exact reproduction of old results is required.</p>
-<p><a href="../ays-scheduler/">→ Full AYS Scheduler guide</a></p>
-<hr />
-<h3 id="prompt-caching">Prompt Caching</h3>
-<p><strong>What it does:</strong> Caches CLIP text embeddings for prompts that have been encoded before. When generating multiple images with the same or similar prompts, embeddings are retrieved from cache instead of being recomputed.</p>
-<p><strong>When to use:</strong>
-- Batch generation with same prompt
-- Testing different seeds or settings
-- Iterative prompt refinement
-- Any workflow with repeated prompts</p>
-<p><strong>Trade-offs:</strong> None — minimal memory overhead (~50-200MB), negligible CPU cost, automatically enabled by default.</p>
-<p><a href="../prompt-caching/">→ Full Prompt Caching guide</a></p>
-<hr />
-<h3 id="sageattention--spargeattn">SageAttention &amp; SpargeAttn</h3>
-<p><strong>What it does:</strong> Replaces PyTorch's default scaled dot-product attention with highly optimized CUDA kernels. SageAttention uses INT8 quantization for key/value tensors while maintaining FP16 query precision. SpargeAttn extends this with dynamic sparsity pruning, skipping redundant attention computations.</p>
-<p><strong>When to use:</strong>
-- Always enable SageAttention if available (no quality loss, pure speed gain)
-- SpargeAttn for maximum speed on supported hardware (RTX 30xx/40xx, A100, H100)
-- Both work seamlessly with all samplers, LoRAs and post-processing stages</p>
-<p><strong>Trade-offs:</strong> None for SageAttention. SpargeAttn may introduce subtle texture variations at very high sparsity thresholds (default is conservative).</p>
-<p><a href="../sageattention/">→ Full SageAttention/SpargeAttn guide</a></p>
-<hr />
-<h3 id="cfg-samplers">CFG Samplers</h3>
-<p>CFG++ Samplers are advanced sampling algorithms that incorporate Classifier-Free Guidance directly into the sampling process, providing better quality and stability compared to standard CFG.</p>
-<hr />
-<h3 id="multi-scale">Multi-Scale Diffusion</h3>
-<p>Multi-Scale Diffusion optimizes performance by processing images at multiple resolutions during generation, reducing computation for high-resolution areas.</p>
-<p><strong>When to use:</strong>
-- High-resolution generation (&gt;1024px)
-- When memory is limited
-- For faster previews</p>
-<p><strong>Trade-offs:</strong> May reduce detail in fine areas.</p>
-<p><strong>Note:</strong> In most cases, Multi-Scale Diffusion in quality mode gives better results than standard diffusion while giving a small speedup (this is explained by the upsampling process).</p>
-<hr />
-<h3 id="stable-fast">Stable-Fast</h3>
-<p><strong>What it does:</strong> JIT-compiles the UNet diffusion model into optimized TorchScript with optional CUDA graphs. The first forward pass traces execution, caches kernel launches and fuses operators for reduced overhead.</p>
-<p><strong>When to use:</strong>
-- <strong>Systems with &gt;8GB VRAM</strong> (preferably 12GB+)
-- Batch jobs or workflows generating 50+ images with identical settings
-- Long-running operations where 30-60s compilation amortizes over time
-- Fixed resolutions and batch sizes</p>
-<p><strong>When NOT to use:</strong>
-- Normal 20-step single image generation (compilation overhead &gt; speedup gains)
-- Systems with &lt;8GB VRAM
-- Flux workflows (different architecture)
-- Quick prototyping or frequent model/resolution changes</p>
-<p><strong>Trade-offs:</strong> Compilation time on first run (30-60s), VRAM overhead (~500MB), reduced flexibility for dynamic shapes.</p>
-<p><a href="../stablefast/">→ Full Stable-Fast guide</a></p>
-<hr />
-<h3 id="wavespeed-caching">WaveSpeed Caching</h3>
-<p><strong>What it does:</strong> Exploits temporal redundancy in diffusion processes by reusing work across denoising steps. In the current project stack this primarily means DeepCache on supported UNet models, with additional Flux-oriented cache groundwork present in the codebase.</p>
+<h2 id="executive-summary">Executive Summary</h2>
+<p>The optimization strategy in LightDiffusion-Next is layered and cumulative rather than dependent on a single acceleration mechanism.</p>
 <ol>
-<li><strong>DeepCache</strong> — Reuses prior denoiser outputs on selected steps in UNet models (SD1.5, SDXL)</li>
-<li><strong>First Block Cache (FBCache)</strong> — Flux-oriented cache machinery available for specialized integration work</li>
+<li>The core generation path combines runtime kernel selection, conditioning batching, lower-precision execution, and schedule optimization.</li>
+<li>Several optimizations are part of the standard execution path, most notably AYS scheduling, prompt caching, attention backend selection, low-VRAM loading policy, and server-side request grouping.</li>
+<li>A second layer of optional mechanisms provides workload-specific extensions, including Stable-Fast, <code>torch.compile</code>, ToMe, multiscale sampling, quantization, and guidance refinements such as CFG-Free and dynamic rescaling.</li>
+<li>The serving layer contributes materially to end-to-end throughput and latency through request coalescing, chunking, model prefetching, keep-loaded caching, and in-memory response handling.</li>
+<li>The codebase also contains foundational work for additional caching paths, particularly around Flux-oriented first-block caching, alongside the currently integrated DeepCache path.</li>
 </ol>
-<p><strong>When to use:</strong>
-- Any workflow where you can tolerate slight smoothing in exchange for 2-3x speedup
-- Combine with conservative cache intervals (2-3) for minimal quality loss
-- Works alongside SageAttention and Stable-Fast</p>
-<p><strong>Trade-offs:</strong> Reduced fine detail if interval is too high, slight VRAM increase for cached tensors.</p>
-<p><a href="../wavespeed/">→ Full WaveSpeed guide</a></p>
-<hr />
-<h2 id="priority-fallback-system">Priority &amp; Fallback System</h2>
-<p>LightDiffusion-Next automatically selects the best available attention backend at runtime:</p>
-<div class="codehilite"><pre><span></span><code>SpargeAttn &gt; SageAttention &gt; xformers &gt; PyTorch SDPA
-</code></pre></div>
-
-<p>If a kernel fails (e.g., unsupported head dimension), the system gracefully falls back to the next option. You can force PyTorch SDPA by setting <code>LD_DISABLE_SAGE_ATTENTION=1</code> for debugging.</p>
-<p>Stable-Fast and WaveSpeed are opt-in toggles controlled via the UI or REST API.</p>
-<h2 id="recommended-configurations">Recommended Configurations</h2>
-<h3 id="maximum-speed-batch-jobs-sd15-8gb-vram-50-images">Maximum Speed - Batch Jobs (SD1.5, &gt;8GB VRAM, 50+ images)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Only for batch operations</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span><span class="w">  </span><span class="c1"># or spargeattn if available</span>
-<span class="nt">deepCache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<span class="w">  </span><span class="nt">depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-</code></pre></div>
-
-<p><strong>Expected:</strong> Maximum speedup for batch operations, some quality loss
-<strong>Note:</strong> Disable stable_fast for single 20-step generations</p>
-<h3 id="balanced-quick-generation-sd15-any-vram">Balanced - Quick Generation (SD1.5, any VRAM)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">scheduler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ays</span><span class="w">  </span><span class="c1"># NEW: Use AYS for 2x speedup</span>
-<span class="nt">steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># Reduced from 20 (same quality with AYS)</span>
-<span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># Disabled for normal generations</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">prompt_cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Enabled by default</span>
-<span class="nt">deepcache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="w">  </span><span class="nt">depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-</code></pre></div>
-
-<p><strong>Expected:</strong> ~2-3x speedup with minimal quality loss
-<strong>Note:</strong> AYS scheduler provides the main speedup; enable stable_fast only for batch jobs (50+ images)</p>
-<h3 id="quality-first-flux">Quality-First (Flux)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">scheduler</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ays_flux</span><span class="w">  </span><span class="c1"># NEW: Optimized for Flux models</span>
-<span class="nt">steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span><span class="w">  </span><span class="c1"># Reduced from 15 (same quality with AYS)</span>
-<span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># not supported</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">prompt_cache_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="nt">deepcache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-</code></pre></div>
-
-<p><strong>Expected:</strong> ~2x speedup with minimal quality impact</p>
-<h3 id="production-api-high-volume-8gb-vram">Production API - High Volume (&gt;8GB VRAM)</h3>
-<div class="codehilite"><pre><span></span><code><span class="nt">stable_fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Only for sustained high-volume APIs</span>
-<span class="nt">sageattention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span>
-<span class="nt">deepCache</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># avoid variability across batch sizes</span>
-<span class="nt">keep_models_loaded</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</code></pre></div>
-
-<p><strong>Expected:</strong> Consistent latency for repeated identical requests
-<strong>Note:</strong> For low-volume or single-shot APIs, use <code>stable_fast: false</code></p>
-<h2 id="hardware-specific-tips">Hardware-Specific Tips</h2>
-<h3 id="rtx-30xx-40xx-ampereada">RTX 30xx / 40xx (Ampere/Ada)</h3>
+<h2 id="runtime-and-attention-optimizations">Runtime And Attention Optimizations</h2>
+<h3 id="cuda-runtime-tuning">CUDA runtime tuning</h3>
 <ul>
-<li>Enable SpargeAttn for best results</li>
-<li>Stable-Fast only for batch jobs (disable for quick 20-step generations)</li>
-<li>Stable-Fast + SpargeAttn + DeepCache stacks well for long operations</li>
-<li>Watch VRAM — Stable-Fast graphs consume ~500MB</li>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: use faster math modes and let the backend choose more aggressive convolution and attention kernels.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/Device/Device.py</code> enables TF32 (<code>torch.backends.cuda.matmul.allow_tf32</code>, <code>torch.backends.cudnn.allow_tf32</code>), enables cuDNN benchmarking, and turns on PyTorch math/flash/memory-efficient SDPA when available.</li>
+<li>Project integration: these are process-wide defaults. They do not require per-request toggles, so supported CUDA deployments get them automatically.</li>
+<li>Effect: reduces matmul/convolution cost and opens better SDPA backends with no extra application-layer work.</li>
+<li>Benefits: automatic, broad coverage, low complexity.</li>
+<li>Trade-offs: hardware-conditional; benefits depend on GPU generation and PyTorch build.</li>
+<li>Evidence: <code>src/Device/Device.py</code>.</li>
 </ul>
-<h3 id="rtx-50xx-blackwell">RTX 50xx (Blackwell)</h3>
+<h3 id="attention-backend-cascade-spargeattn-sageattention-xformers-pytorch-sdpa">Attention backend cascade: SpargeAttn, SageAttention, xformers, PyTorch SDPA</h3>
 <ul>
-<li>SageAttention only (SpargeAttn support pending)</li>
-<li>Stable-Fast works but recompiles for new CUDA arch</li>
-<li>DeepCache is your best additional speedup</li>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: use the fastest available attention kernel and fall back safely when unsupported.</li>
+<li>Implementation in LightDiffusion-Next: UNet/VAE attention chooses <code>SpargeAttn &gt; SageAttention &gt; xformers &gt; PyTorch</code> in <code>src/Attention/Attention.py</code>; the concrete kernels and fallback behavior live in <code>src/Attention/AttentionMethods.py</code>.</li>
+<li>Project integration: the selection happens once when the attention module is imported/constructed. Sage/Sparge paths reshape inputs to HND layouts and pad unsupported head sizes to supported dimensions where possible; larger unsupported head sizes fall back.</li>
+<li>Effect: faster attention on supported CUDA systems without changing calling code.</li>
+<li>Benefits: automatic fallback chain, works across UNet cross-attention and VAE attention blocks, handles padding for awkward head sizes.</li>
+<li>Trade-offs: dependency- and GPU-dependent; not all head sizes stay on the fast path; behavior differs between generic UNet/VAE attention and Flux2 attention.</li>
+<li>Evidence: <code>src/Attention/Attention.py</code>, <code>src/Attention/AttentionMethods.py</code>.</li>
 </ul>
-<h3 id="a100-h100-datacenter">A100 / H100 (Datacenter)</h3>
+<h3 id="flux2-sdpa-backend-priority">Flux2 SDPA backend priority</h3>
 <ul>
-<li>SpargeAttn + Stable-Fast + aggressive WaveSpeed</li>
-<li>Prefer larger batch sizes to amortize kernel overhead</li>
-<li>Use CUDA graphs (<code>enable_cuda_graph=True</code> in Stable-Fast config)</li>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: prefer the best PyTorch SDPA backend for Flux2 transformer attention.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/Device/Device.py</code> builds an SDPA priority context preferring cuDNN attention, then Flash, then efficient, then math; <code>src/NeuralNetwork/flux2/layers.py</code> uses <code>Device.get_sdpa_context()</code> around <code>scaled_dot_product_attention</code>.</li>
+<li>Project integration: Flux2 uses a separate attention implementation from the generic UNet attention path. It first tries prioritized SDPA, then xformers, then plain SDPA.</li>
+<li>Effect: prioritized fast attention for Flux2 with robust fallback behavior.</li>
+<li>Benefits: keeps Flux2 on the most optimized native backend available; does not require custom kernels.</li>
+<li>Trade-offs: benefits depend heavily on PyTorch version, backend support, and GPU runtime.</li>
+<li>Evidence: <code>src/Device/Device.py</code>, <code>src/NeuralNetwork/flux2/layers.py</code>.</li>
 </ul>
-<h3 id="low-vram-8gb">Low VRAM (&lt;8GB)</h3>
+<h3 id="cross-attention-static-kv-projection-cache">Cross-attention static K/V projection cache</h3>
 <ul>
-<li><strong>Always disable Stable-Fast</strong> (requires &gt;8GB VRAM)</li>
-<li>Use SageAttention (minimal overhead)</li>
-<li>Enable DeepCache with conservative intervals</li>
-<li>Set <code>vae_on_cpu=True</code> for HiRes workflows</li>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: when the context tensor is unchanged across denoising steps, avoid recomputing K/V projections every step.</li>
+<li>Implementation in LightDiffusion-Next: <code>CrossAttention</code> in <code>src/Attention/Attention.py</code> keeps a small <code>_context_cache</code> keyed by <code>id(context)</code> and caches projected <code>k</code> and <code>v</code>.</li>
+<li>Project integration: this primarily targets prompt-conditioning cases where context is static while the latent evolves. The cache is tiny and self-pruning.</li>
+<li>Effect: shaves repeated linear-projection work from cross-attention-heavy denoising loops.</li>
+<li>Benefits: simple, training-free, no user configuration.</li>
+<li>Trade-offs: keyed by object identity, so it only helps when the exact context object is reused; small cache size limits reuse breadth.</li>
+<li>Evidence: <code>src/Attention/Attention.py</code>.</li>
 </ul>
-<h2 id="debugging-profiling">Debugging &amp; Profiling</h2>
-<p>Check which optimizations are active:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># View startup logs</span>
-cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;using\|enabled&quot;</span>
-
-<span class="c1"># Sample output:</span>
-<span class="c1"># Using SpargeAttn (Sparse + SageAttention) cross attention</span>
-<span class="c1"># Using SpargeAttn (Sparse + SageAttention) in VAE</span>
-<span class="c1"># Stable-Fast compilation enabled</span>
-<span class="c1"># DeepCache active: interval=3, depth=2</span>
-</code></pre></div>
-
-<p>Monitor telemetry:</p>
-<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>http://localhost:7861/api/telemetry<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.vram_usage_mb, .average_latency_ms&#39;</span>
-</code></pre></div>
-
-<p>Disable individual optimizations to isolate issues:</p>
-<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_SAGE_ATTENTION</span><span class="o">=</span><span class="m">1</span><span class="w">      </span><span class="c1"># Forces PyTorch SDPA</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_STABLE_FAST</span><span class="o">=</span><span class="m">1</span><span class="w">         </span><span class="c1"># Skips compilation</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">LD_DISABLE_WAVESPEED</span><span class="o">=</span><span class="m">1</span><span class="w">           </span><span class="c1"># Disables all caching</span>
-</code></pre></div>
-
-<h2 id="further-reading">Further Reading</h2>
+<h3 id="prompt-embedding-cache">Prompt embedding cache</h3>
 <ul>
-<li><a href="../ays-scheduler/">AYS Scheduler Deep Dive</a> — Theory, implementation, quality tuning</li>
-<li><a href="../prompt-caching/">Prompt Caching Deep Dive</a> — Implementation details, cache management, performance impact</li>
-<li><a href="../sageattention/">SageAttention &amp; SpargeAttn Deep Dive</a> — Installation, technical details, head dimension handling</li>
-<li><a href="../stablefast/">Stable-Fast Compilation Guide</a> — Configuration, CUDA graphs, troubleshooting</li>
-<li><a href="../wavespeed/">WaveSpeed Caching Strategies</a> — DeepCache vs FBCache, tuning parameters, compatibility matrix</li>
-<li><a href="../quirks/">Performance Tuning</a> — VRAM management, slow first runs, recompilation fixes</li>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: cache text encoder outputs for repeated prompts instead of re-encoding them each time.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/Utilities/prompt_cache.py</code> stores <code>(cond, pooled)</code> entries keyed by prompt hash and CLIP identity; <code>src/clip/Clip.py</code> checks the cache before tokenization/encoding and writes back after encode.</li>
+<li>Project integration: prompt caching is globally enabled by default, applies to single prompts and prompt lists, and prunes old entries once the cache exceeds its configured maximum.</li>
+<li>Effect: reduces prompt-side overhead in repeated-prompt workflows, especially seed sweeps and incremental prompt refinement.</li>
+<li>Benefits: low complexity, wired into the actual CLIP encode path, no quality trade-off.</li>
+<li>Trade-offs: cache size is estimate-based and global, not per-model-session aware.</li>
+<li>Evidence: <code>src/Utilities/prompt_cache.py</code>, <code>src/clip/Clip.py</code>, cache clear hook in <code>src/Core/Pipeline.py</code>.</li>
 </ul>
-<hr />
-<p>Armed with this overview, dive into the technique-specific guides or experiment directly in the UI to find your optimal speed/quality balance.</p>
+<h3 id="conditioning-batch-packing-and-cfg1-fast-path">Conditioning batch packing and CFG=1 fast path</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: concatenate compatible conditioning work into fewer forward calls, and skip unconditional work entirely when CFG is effectively disabled.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/cond/cond.py::calc_cond_batch()</code> groups compatible condition chunks by shape and memory budget, concatenates them, and falls back per chunk when transformer options mismatch. <code>src/sample/CFG.py</code> sets <code>uncond_ = None</code> when <code>cond_scale == 1.0</code> and the optimization is not disabled.</li>
+<li>Project integration: this path is central to the standard sampling flow. The batching logic also validates Flux-style transformer image sizes and falls back when they do not match token grids.</li>
+<li>Effect: fewer model invocations, better GPU utilization, and a lower-cost path for CFG=1 workloads.</li>
+<li>Benefits: real throughput win, memory-aware, includes safety fallback for positional/shape mismatches.</li>
+<li>Trade-offs: batching heuristics are shape- and memory-sensitive; fallback behavior can reduce speed when conditions diverge.</li>
+<li>Evidence: <code>src/cond/cond.py</code>, <code>src/sample/CFG.py</code>, <code>src/sample/BaseSampler.py</code>, <code>tests/unit/test_calc_cond_batch_fallback.py</code>.</li>
+</ul>
+<h2 id="sampling-and-guidance-optimizations">Sampling And Guidance Optimizations</h2>
+<h3 id="ays-scheduler">AYS scheduler</h3>
+<ul>
+<li>Status: <code>default</code></li>
+<li>Purpose: use precomputed sigma schedules that spend steps where they matter most, so fewer steps can reach comparable quality.</li>
+<li>Implementation in LightDiffusion-Next: schedules are encoded in <code>src/sample/ays_scheduler.py</code>; <code>src/sample/ksampler_util.py</code> routes <code>ays</code>, <code>ays_sd15</code>, and <code>ays_sdxl</code> to the scheduler and auto-detects model type when possible.</li>
+<li>Project integration: both <code>server.py</code> and <code>src/user/pipeline.py</code> default the scheduler to <code>ays</code>. Exact schedules are used when present; otherwise the code resamples or interpolates schedules.</li>
+<li>Effect: fewer denoising steps for similar output quality, especially on SD1.5 and SDXL.</li>
+<li>Benefits: training-free, defaulted into the request path, compatible with the sampler stack.</li>
+<li>Trade-offs: produces different trajectories than classic schedulers; unsupported step counts use interpolation rather than paper-derived schedules.</li>
+<li>Evidence: <code>src/sample/ays_scheduler.py</code>, <code>src/sample/ksampler_util.py</code>, defaults in <code>server.py</code> and <code>src/user/pipeline.py</code>, benchmark usage in <code>tests/benchmark_performance.py</code>.</li>
+</ul>
+<h3 id="cfg-samplers">CFG++ samplers</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: apply CFG++-style momentum behavior in sampler variants to improve denoising stability and quality.</li>
+<li>Implementation in LightDiffusion-Next: sampler registry maps <code>_cfgpp</code> sampler names to the same sampler classes, and <code>get_sampler()</code> enables <code>use_momentum</code> whenever the sampler name contains <code>_cfgpp</code>.</li>
+<li>Project integration: the sampler loop stores prior denoised state and applies momentum-style correction through <code>BaseSampler.apply_cfg()</code>. The server default sampler is <code>dpmpp_sde_cfgpp</code>.</li>
+<li>Effect: better denoising behavior than plain sampler variants without a separate post-process stage.</li>
+<li>Benefits: integrated directly into the sampler registry; default sampler already uses it.</li>
+<li>Trade-offs: only applies on <code>_cfgpp</code> variants; behavior is coupled to sampler implementation details rather than being a universal guidance layer.</li>
+<li>Evidence: <code>src/sample/BaseSampler.py</code>, default sampler in <code>server.py</code>.</li>
+</ul>
+<h3 id="cfg-free-sampling">CFG-Free sampling</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: reduce CFG late in the denoising process so the model can finish with less over-guidance.</li>
+<li>Implementation in LightDiffusion-Next: <code>CFGGuider</code> stores <code>cfg_free_enabled</code> and <code>cfg_free_start_percent</code>, tracks current sigma position, and progressively reduces <code>self.cfg</code> once the configured progress threshold is crossed.</li>
+<li>Project integration: the flag is part of the request/context surface and is forwarded by SD1.5, SDXL, Flux2, HiResFix, and Img2Img code paths.</li>
+<li>Effect: potentially better detail recovery and more natural late-stage refinement.</li>
+<li>Benefits: integrated and actually wired through multiple pipelines; easy to combine with the rest of the sampler stack.</li>
+<li>Trade-offs: quality optimization rather than pure speedup; exact effect is prompt- and sampler-dependent.</li>
+<li>Evidence: <code>src/sample/CFG.py</code>, <code>src/Core/Models/SD15Model.py</code>, <code>src/Core/Models/SDXLModel.py</code>, <code>src/Core/Models/Flux2KleinModel.py</code>, <code>src/Processors/HiresFix.py</code>, <code>src/Processors/Img2Img.py</code>.</li>
+</ul>
+<h3 id="dynamic-cfg-rescaling">Dynamic CFG rescaling</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: reduce effective CFG when the guidance delta becomes too strong.</li>
+<li>Implementation in LightDiffusion-Next: <code>CFGGuider._apply_dynamic_cfg_rescaling()</code> computes either a variance-based or range-based adjustment and clamps the result.</li>
+<li>Project integration: it runs inside <code>cfg_function()</code> before CFG mixing is finalized, so it affects the real denoising path rather than acting as a post-hoc metric.</li>
+<li>Effect: reduces oversaturation and over-guided outputs for high-CFG workloads.</li>
+<li>Benefits: low incremental overhead and direct integration into CFG computation.</li>
+<li>Trade-offs: not a pure speed optimization; the chosen formulas are heuristic and can flatten outputs if pushed too hard.</li>
+<li>Evidence: <code>src/sample/CFG.py</code>.</li>
+</ul>
+<h3 id="adaptive-noise-scheduling">Adaptive noise scheduling</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: use observed prediction complexity to perturb the sigma schedule during sampling.</li>
+<li>Implementation in LightDiffusion-Next: <code>CFGGuider</code> records complexity history during prediction and scales <code>sigmas</code> inside <code>inner_sample()</code> if adaptive mode is enabled.</li>
+<li>Project integration: complexity can be estimated with a spatial-difference metric or variance-like behavior, depending on the selected method.</li>
+<li>Effect: attempts to spend effort where the current prediction appears more complex.</li>
+<li>Benefits: implemented end-to-end in the guider.</li>
+<li>Trade-offs: heuristic, can alter reproducibility, and its benefit is much less established in this repo than AYS or request coalescing.</li>
+<li>Evidence: <code>src/sample/CFG.py</code>.</li>
+</ul>
+<h3 id="batched_cfg-request-surface"><code>batched_cfg</code> request surface</h3>
+<ul>
+<li>Status: <code>implementation-specific</code></li>
+<li>Purpose: expose control over conditional/unconditional batching.</li>
+<li>Implementation in LightDiffusion-Next: the field exists in the request and context models and is passed into sampling, where it is stored in <code>model_options["batched_cfg"]</code>.</li>
+<li>Project integration: the main batching behavior is centered in <code>calc_cond_batch()</code>, while <code>batched_cfg</code> is carried through <code>model_options</code> as part of the request-side control surface around that path.</li>
+<li>Effect: provides a request-facing handle for a batching path whose heavy lifting is performed centrally in conditioning packing.</li>
+<li>Benefits: fits cleanly into the existing request and sampling pipeline.</li>
+<li>Trade-offs: its effect is indirect because the main concatenation behavior is implemented deeper in the conditioning layer.</li>
+<li>Evidence: <code>src/sample/sampling.py</code>, <code>src/Core/Context.py</code>, <code>src/cond/cond.py</code>.</li>
+</ul>
+<h2 id="multiscale-and-architecture-specific-optimizations">Multiscale And Architecture-Specific Optimizations</h2>
+<h3 id="multi-scale-latent-switching">Multi-scale latent switching</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: run some denoising steps at a downscaled latent resolution and return to full resolution for selected steps.</li>
+<li>Implementation in LightDiffusion-Next: <code>MultiscaleManager</code> in <code>src/sample/BaseSampler.py</code> computes a per-step full-resolution schedule and uses bilinear downscale/upscale around sampler model calls.</li>
+<li>Project integration: the samplers consult <code>ms.use_fullres(i)</code> each step. Flux and Flux2 are explicitly excluded because the code treats multiscale as incompatible with DiT-style architectures.</li>
+<li>Effect: lower compute on some denoising steps for compatible samplers and architectures.</li>
+<li>Benefits: actually participates in the sampler loop; configurable by factor and schedule.</li>
+<li>Trade-offs: it necessarily changes the denoising path and can trade detail for speed; not available for Flux/Flux2.</li>
+<li>Evidence: <code>src/sample/BaseSampler.py</code>, <code>src/sample/sampling.py</code>, <code>src/Core/Models/Flux2KleinModel.py</code>.</li>
+</ul>
+<h3 id="hidiffusion-msw-msa-patching">HiDiffusion MSW-MSA patching</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: patch UNet attention for high-resolution workflows using HiDiffusion-style MSW-MSA attention changes.</li>
+<li>Implementation in LightDiffusion-Next: the pipeline clones the inner model and applies <code>ApplyMSWMSAAttentionSimple</code> when multiscale is enabled on UNet architectures.</li>
+<li>Project integration: the patch is explicitly blocked for Flux/Flux2 and disabled in some sub-pipelines like refiner or certain detail passes where the project wants to avoid artifact risk.</li>
+<li>Effect: makes the multiscale/high-resolution path more efficient or more stable on SD1.5/SDXL-style UNets.</li>
+<li>Benefits: architecture-aware and guarded against obvious misuse.</li>
+<li>Trade-offs: not universal; adds another patching layer and can be brittle if architecture assumptions drift.</li>
+<li>Evidence: <code>src/Core/Pipeline.py</code>, <code>src/hidiffusion/msw_msa_attention.py</code>, <code>src/Core/AbstractModel.py</code>, <code>src/Core/Models/SD15Model.py</code>, <code>src/Core/Models/SDXLModel.py</code>.</li>
+</ul>
+<h2 id="model-compilation-precision-and-memory-optimizations">Model Compilation, Precision, And Memory Optimizations</h2>
+<h3 id="stable-fast">Stable-Fast</h3>
+<ul>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: trace and wrap UNet execution to reduce Python overhead and optionally use CUDA graph behavior.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/StableFast/StableFast.py</code> builds a lazy trace module around the model function and stores compiled modules in a cache keyed by converted kwargs; <code>Pipeline._apply_optimizations()</code> applies it when <code>stable_fast</code> is enabled.</li>
+<li>Project integration: only model types that advertise <code>supports_stable_fast=True</code> can use it. Flux2 explicitly opts out at the capability layer.</li>
+<li>Effect: faster repeated UNet execution when the optional <code>sfast</code> dependency is present and shapes stay compatible enough for compilation reuse.</li>
+<li>Benefits: capability-gated, optional dependency handled defensively, integrated into the core optimization application phase.</li>
+<li>Trade-offs: dependency-sensitive, compilation overhead can dominate short runs, CUDA graph behavior is less flexible.</li>
+<li>Evidence: <code>src/StableFast/StableFast.py</code>, <code>src/Core/Pipeline.py</code>, <code>src/Core/Models/SD15Model.py</code>, <code>src/Core/Models/SDXLModel.py</code>, <code>src/Core/Models/Flux2KleinModel.py</code>.</li>
+</ul>
+<h3 id="torchcompile"><code>torch.compile</code></h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: rely on PyTorch compiler paths instead of Stable-Fast.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/Device/Device.py::compile_model()</code> defaults to <code>max-autotune-no-cudagraphs</code>; <code>src/Core/AbstractModel.py::apply_torch_compile()</code> applies it to the top-level module or diffusion submodule when possible.</li>
+<li>Project integration: the optimization is mutually exclusive with Stable-Fast in the main pipeline.</li>
+<li>Effect: compiler-based speedups with a safer default mode than more fragile CUDA-graph-heavy settings.</li>
+<li>Benefits: built on standard PyTorch, tested for safe default mode.</li>
+<li>Trade-offs: compiler behavior is environment-dependent; still vulnerable to dynamic-shape and dynamic-state limitations.</li>
+<li>Evidence: <code>src/Device/Device.py</code>, <code>src/Core/AbstractModel.py</code>, <code>src/Core/Pipeline.py</code>, <code>tests/unit/test_fp8_compile.py</code>.</li>
+</ul>
+<h3 id="vae-compile-tiled-path-and-transfer-tuning">VAE compile, tiled path, and transfer tuning</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: speed up VAE encode/decode, reduce overhead, and avoid OOM by choosing tiled or batched paths.</li>
+<li>Implementation in LightDiffusion-Next: <code>VariationalAE.VAE</code> compiles the decoder on first use, runs decode/encode under <code>torch.inference_mode()</code>, uses channels-last where useful, chooses tiled fallback when memory is tight, and uses non-blocking transfers.</li>
+<li>Project integration: this is automatic. Callers do not opt in.</li>
+<li>Effect: faster VAE stages, less repeated Python/autograd overhead, and better robustness under constrained memory.</li>
+<li>Benefits: always enabled and directly applied in the decode and encode hot path.</li>
+<li>Trade-offs: decoder compile still depends on <code>torch.compile</code> availability; tiling adds complexity and can affect throughput at small sizes.</li>
+<li>Evidence: <code>src/AutoEncoders/VariationalAE.py</code>.</li>
+</ul>
+<h3 id="bf16fp16-automatic-dtype-selection">BF16/FP16 automatic dtype selection</h3>
+<ul>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: pick a lower-precision working dtype that matches the hardware and model constraints.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/Device/Device.py</code> contains the dtype selection logic for UNet, text encoder, and VAE devices/dtypes, including bf16 support checks and fallback rules.</li>
+<li>Project integration: loaders and patchers consult these helpers when deciding how to instantiate and place components.</li>
+<li>Effect: reduced memory footprint and better arithmetic throughput on modern hardware.</li>
+<li>Benefits: broad, centralized policy.</li>
+<li>Trade-offs: heuristic; wrong hardware assumptions can reduce numerical stability or disable a faster path.</li>
+<li>Evidence: <code>src/Device/Device.py</code>, <code>src/Model/ModelPatcher.py</code>, <code>src/FileManaging/Loader.py</code>.</li>
+</ul>
+<h3 id="fp8-weight-quantization">FP8 weight quantization</h3>
+<ul>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: store weights in FP8 while casting them back to the input dtype during execution.</li>
+<li>Implementation in LightDiffusion-Next: <code>AbstractModel.apply_fp8()</code> hardware-gates support using <code>Device.is_fp8_supported()</code>, rewrites eligible weights to FP8, and enables runtime cast behavior on <code>CastWeightBiasOp</code> modules. The lower-level <code>ModelPatcher.weight_only_quantize()</code> also supports FP8-style quantization.</li>
+<li>Project integration: it is available through generation settings and also used in Flux2 load paths when appropriate.</li>
+<li>Effect: lower model weight memory with an execution path that avoids dtype-mismatch crashes.</li>
+<li>Benefits: tested explicitly, integrates with cast-aware modules, useful for large models.</li>
+<li>Trade-offs: hardware-gated; quality/performance trade-offs depend on model and layer mix.</li>
+<li>Evidence: <code>src/Core/AbstractModel.py</code>, <code>src/Device/Device.py</code>, <code>src/Model/ModelPatcher.py</code>, <code>tests/unit/test_fp8_compile.py</code>.</li>
+</ul>
+<h3 id="nvfp4-weight-quantization">NVFP4 weight quantization</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: use a more aggressive 4-bit weight-only format to reduce memory further than FP8.</li>
+<li>Implementation in LightDiffusion-Next: both <code>AbstractModel.apply_nvfp4()</code> and <code>ModelPatcher.weight_only_quantize("nvfp4")</code> quantize supported weights, store scale buffers, and enable runtime casting/dequantization.</li>
+<li>Project integration: the quantization path is used most clearly in Flux2/Klein loading, but the abstract model path also exists for supported models.</li>
+<li>Effect: significant memory reduction at the cost of more aggressive approximation.</li>
+<li>Benefits: strongest memory reduction path in the repo.</li>
+<li>Trade-offs: more invasive than FP8, more likely to affect quality, and only applies to some weight shapes.</li>
+<li>Evidence: <code>src/Core/AbstractModel.py</code>, <code>src/Model/ModelPatcher.py</code>, <code>src/Utilities/Quantization.py</code>, <code>tests/test_nvfp4.py</code>, <code>tests/test_nvfp4_integration.py</code>.</li>
+</ul>
+<h3 id="flux2-load-time-weight-only-quantization">Flux2 load-time weight-only quantization</h3>
+<ul>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: automatically quantize large Flux2 diffusion and Klein text encoder weights during loading when the configuration or hardware path calls for it.</li>
+<li>Implementation in LightDiffusion-Next: <code>Flux2KleinModel.load()</code> selects a quantization format and applies weight-only quantization to the diffusion model; <code>_load_klein_text_encoder()</code> applies the same idea to the text encoder before offloading it back to CPU.</li>
+<li>Project integration: Flux2 is the clearest example in the codebase where quantization is implemented as a first-class loading strategy rather than as a generic capability alone.</li>
+<li>Effect: keeps a large Flux2/Klein stack usable on lower-VRAM systems than an uncompressed load would allow.</li>
+<li>Benefits: integrated, architecture-specific, and directly aligned with large-model VRAM constraints.</li>
+<li>Trade-offs: tightly coupled to Flux2/Klein assumptions; not equivalent to a universally available quantized-mode toggle.</li>
+<li>Evidence: <code>src/Core/Models/Flux2KleinModel.py</code>.</li>
+</ul>
+<h3 id="tome">ToMe</h3>
+<ul>
+<li>Status: <code>integrated, optional</code></li>
+<li>Purpose: merge similar tokens to reduce attention workload in UNet-based models.</li>
+<li>Implementation in LightDiffusion-Next: <code>ModelPatcher.apply_tome()</code> applies and removes <code>tomesd</code> patches; <code>Pipeline._apply_optimizations()</code> applies it only when the model capabilities allow it.</li>
+<li>Project integration: SD1.5 and SDXL advertise <code>supports_tome=True</code>; Flux2 advertises <code>False</code>.</li>
+<li>Effect: lower attention cost on supported UNet models, particularly at higher token counts.</li>
+<li>Benefits: explicitly capability-gated, integrated into the core optimization phase.</li>
+<li>Trade-offs: optional dependency, UNet-only in current practice, and quality can soften if pushed too aggressively.</li>
+<li>Evidence: <code>src/Model/ModelPatcher.py</code>, <code>src/Core/Pipeline.py</code>, capability declarations in <code>src/Core/Models/*</code>, <code>tests/unit/test_tome_fix.py</code>.</li>
+</ul>
+<h3 id="deepcache">DeepCache</h3>
+<ul>
+<li>Status: <code>integrated, optional, implementation-specific</code></li>
+<li>Purpose: reuse work across denoising steps rather than running a full forward pass every time.</li>
+<li>Implementation in LightDiffusion-Next: <code>ApplyDeepCacheOnModel.patch()</code> clones the model and wraps its UNet function. On cache-update steps it runs the model normally and stores the output; on reuse steps it returns the cached output directly.</li>
+<li>Project integration: the main pipeline applies it from <code>_apply_optimizations()</code> when <code>deepcache_enabled</code> is true and the model advertises support.</li>
+<li>Effect: fewer full model computations on reuse steps, trading some fidelity for speed.</li>
+<li>Benefits: live integrated path, simple integration model, and capability gating.</li>
+<li>Trade-offs: the implementation works at whole-output reuse granularity rather than a finer-grained internal block reuse strategy, so its speed/fidelity profile is comparatively coarse.</li>
+<li>Evidence: <code>src/WaveSpeed/deepcache_nodes.py</code>, <code>src/Core/Pipeline.py</code>, <code>src/Core/AbstractModel.py</code>, <code>src/Core/Models/SD15Model.py</code>, <code>src/Core/Models/SDXLModel.py</code>, <code>tests/test_core_functionalities.py</code>.</li>
+</ul>
+<h3 id="first-block-cache-for-flux">First Block Cache for Flux</h3>
+<ul>
+<li>Status: <code>codebase groundwork</code></li>
+<li>Purpose: cache downstream transformer work when the first-block residual indicates the state has not changed much.</li>
+<li>Implementation in LightDiffusion-Next: <code>src/WaveSpeed/first_block_cache.py</code> contains cache contexts and patch builders for both UNet-like and Flux-like forward paths.</li>
+<li>Project integration: the module provides the machinery for a Flux-oriented first-block caching path. In the current project flow, the directly surfaced caching path is DeepCache, while this module remains groundwork for a more specialized integration.</li>
+<li>Effect: establishes the components needed for a transformer-oriented cache path in the codebase.</li>
+<li>Benefits: nontrivial implementation foundation already exists.</li>
+<li>Trade-offs: it is not yet surfaced as a broad standard option in the same way as the main integrated optimizations.</li>
+<li>Evidence: <code>src/WaveSpeed/first_block_cache.py</code>.</li>
+</ul>
+<h2 id="memory-management-and-serving-optimizations">Memory Management And Serving Optimizations</h2>
+<h3 id="low-vram-partial-loading-and-offload-policy">Low-VRAM partial loading and offload policy</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: keep only the amount of model state in VRAM that current free memory allows, offloading the rest.</li>
+<li>Implementation in LightDiffusion-Next: <code>cond_util.prepare_sampling()</code> calls <code>Device.load_models_gpu(..., force_full_load=False)</code>; <code>Device.load_models_gpu()</code> computes low-VRAM budgets and delegates partial loading to <code>ModelPatcher.patch_model_lowvram()</code> and <code>partially_load()</code>.</li>
+<li>Project integration: this is a core loading behavior, not a side option. Text encoder and VAE also have explicit offload-device helpers.</li>
+<li>Effect: keeps generation viable on limited VRAM systems and reduces full reload pressure.</li>
+<li>Benefits: central to memory behavior in constrained environments, architecture-aware, and tied into checkpoint, text encoder, and VAE device policy.</li>
+<li>Trade-offs: more complex state management; partial loading can increase latency and complicate debugging.</li>
+<li>Evidence: <code>src/cond/cond_util.py</code>, <code>src/Device/Device.py</code>, <code>src/Model/ModelPatcher.py</code>.</li>
+</ul>
+<h3 id="async-transfer-helpers-and-pinned-checkpoint-tensors">Async transfer helpers and pinned checkpoint tensors</h3>
+<ul>
+<li>Status: <code>integrated, infrastructure-level</code></li>
+<li>Purpose: reduce CPU&lt;-&gt;GPU transfer cost with asynchronous copies, streams, and pinned host memory.</li>
+<li>Implementation in LightDiffusion-Next: <code>Device.cast_to()</code> can issue transfers on offload streams; checkpoint tensors are pinned on CUDA loads in <code>util.load_torch_file()</code>; VAE encode/decode uses non-blocking transfers.</li>
+<li>Project integration: these mechanisms appear most clearly in checkpoint loading, model movement, and VAE data flow. Some parts act as general transfer infrastructure rather than as a single user-facing optimization toggle.</li>
+<li>Effect: faster host/device movement and less transfer-induced stalling in hot paths that actually use the helpers.</li>
+<li>Benefits: useful on CUDA systems, especially during model load and VAE stages.</li>
+<li>Trade-offs: integration is uneven; some helper functions look broader than their current call footprint.</li>
+<li>Evidence: <code>src/Device/Device.py</code>, <code>src/Utilities/util.py</code>, <code>src/AutoEncoders/VariationalAE.py</code>.</li>
+</ul>
+<h3 id="request-coalescing-and-queue-batching">Request coalescing and queue batching</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: batch compatible API requests together so the backend does fewer larger pipeline invocations.</li>
+<li>Implementation in LightDiffusion-Next: <code>server.py::GenerationBuffer</code> groups pending requests by a signature that includes model, size, scheduler, sampler, steps, multiscale settings, and other batch-level properties.</li>
+<li>Project integration: the worker chooses the oldest eligible group, optionally waits for more arrivals, flattens per-request samples into one pipeline call, and later remaps saved results back to request futures.</li>
+<li>Effect: better throughput and GPU utilization for concurrent API use.</li>
+<li>Benefits: real server-level optimization, clearly implemented, includes observability-oriented logs.</li>
+<li>Trade-offs: requires careful grouping keys; incompatible request options fragment batching opportunities.</li>
+<li>Evidence: <code>server.py</code>.</li>
+</ul>
+<h3 id="singleton-policy-large-group-chunking-and-image-save-guardrails">Singleton policy, large-group chunking, and image-save guardrails</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: prevent batching from hurting latency for lone requests, and prevent oversized coalesced batches from exploding decode/save paths.</li>
+<li>Implementation in LightDiffusion-Next: <code>LD_BATCH_WAIT_SINGLETONS</code> controls whether singletons wait; <code>LD_MAX_IMAGES_PER_GROUP</code> and <code>ImageSaver.MAX_IMAGES_PER_SAVE</code> drive chunking; large groups are split into smaller sequential pipeline runs.</li>
+<li>Project integration: the server keeps the coalescing optimization from turning into pathological giant save/decode operations, and tests cover the chunking behavior.</li>
+<li>Effect: better tail latency for single requests and more stable handling of large batched workloads.</li>
+<li>Benefits: directly addresses operational failure modes in large batched workloads.</li>
+<li>Trade-offs: chunking reduces some batching benefits; many environment variables affect behavior.</li>
+<li>Evidence: <code>server.py</code>, <code>src/FileManaging/ImageSaver.py</code>, <code>tests/unit/test_generation_buffer_chunking.py</code>, <code>docs/quirks.md</code>.</li>
+</ul>
+<h3 id="next-model-prefetch">Next-model prefetch</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: while one batch is running, read the next checkpoint into CPU RAM if the queued next batch needs a different model.</li>
+<li>Implementation in LightDiffusion-Next: <code>GenerationBuffer._look_ahead_and_prefetch()</code> resolves the next checkpoint, loads it via <code>util.load_torch_file()</code> on a background task, and stores it in <code>ModelCache</code> as a prefetched state dict.</li>
+<li>Project integration: the next load can reuse the prefetched state dict through <code>util.load_torch_file()</code> before the cache entry is cleared.</li>
+<li>Effect: overlaps some future checkpoint load cost with current generation work.</li>
+<li>Benefits: server-side latency hiding with minimal interface impact.</li>
+<li>Trade-offs: only helps when queued work is predictable; increases CPU RAM usage.</li>
+<li>Evidence: <code>server.py</code>, <code>src/Device/ModelCache.py</code>, <code>src/Utilities/util.py</code>.</li>
+</ul>
+<h3 id="keep-models-loaded-cache">Keep-models-loaded cache</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: keep recently used checkpoints and sampling models resident instead of cleaning them up after every request.</li>
+<li>Implementation in LightDiffusion-Next: <code>ModelCache</code> stores checkpoints, TAESD models, sampling models, and the keep-loaded policy; <code>server.py</code> temporarily applies the request's <code>keep_models_loaded</code> directive for a group.</li>
+<li>Project integration: when enabled, main models are retained and only auxiliary control models are cleaned up aggressively.</li>
+<li>Effect: lower warm-start cost between related generations and less repetitive reload churn.</li>
+<li>Benefits: simple end-user behavior for a meaningful latency/memory trade-off.</li>
+<li>Trade-offs: consumes more VRAM/RAM; can make memory pressure less predictable on multi-user servers.</li>
+<li>Evidence: <code>src/Device/ModelCache.py</code>, <code>server.py</code>.</li>
+</ul>
+<h3 id="in-memory-png-byte-buffer">In-memory PNG byte buffer</h3>
+<ul>
+<li>Status: <code>integrated</code></li>
+<li>Purpose: return API images from memory instead of reading them back from disk after save.</li>
+<li>Implementation in LightDiffusion-Next: <code>ImageSaver</code> can store encoded PNG bytes in <code>_image_bytes_buffer</code>; <code>server.py</code> first calls <code>pop_image_bytes()</code> when fulfilling request futures.</li>
+<li>Project integration: batched pipeline runs can still save images normally while the API path avoids a disk round-trip for the response payload.</li>
+<li>Effect: lower response latency and less unnecessary disk I/O for served images.</li>
+<li>Benefits: directly reduces response-path disk I/O in API-serving scenarios.</li>
+<li>Trade-offs: consumes temporary RAM; only helps when the buffer path is actually populated.</li>
+<li>Evidence: <code>src/FileManaging/ImageSaver.py</code>, <code>server.py</code>.</li>
+</ul>
+<h3 id="taesd-preview-pacing-and-preview-fidelity-control">TAESD preview pacing and preview fidelity control</h3>
+<ul>
+<li>Status: <code>integrated, conditional</code></li>
+<li>Purpose: keep live previews useful without letting preview generation dominate sampling time.</li>
+<li>Implementation in LightDiffusion-Next: <code>SamplerCallback</code> caches preview settings, only triggers previews at a coarse interval, and runs preview work on a background thread; the server also applies per-request preview fidelity presets (<code>low</code>, <code>balanced</code>, <code>high</code>).</li>
+<li>Project integration: previews are generated only when previewing is enabled, and the preview cadence is adaptive to total step count.</li>
+<li>Effect: live feedback with bounded preview overhead.</li>
+<li>Benefits: explicit pacing, non-blocking thread model, request-level fidelity override.</li>
+<li>Trade-offs: still extra work during sampling; fidelity presets are intentionally coarse.</li>
+<li>Evidence: <code>src/sample/BaseSampler.py</code>, <code>src/AutoEncoders/taesd.py</code>, <code>server.py</code>, preview tests under <code>tests/e2e</code> and <code>tests/integration/api</code>.</li>
+</ul>
+<h2 id="integration-notes">Integration Notes</h2>
+<p>These notes highlight how several optimizations are currently integrated and used inside the project.</p>
+<h3 id="1-flux-oriented-first-block-caching">1. Flux-oriented first block caching</h3>
+<ul>
+<li>The codebase contains a dedicated <code>src/WaveSpeed/first_block_cache.py</code> module with cache contexts and patch builders for Flux-oriented paths.</li>
+<li>In the current optimization stack, the directly surfaced caching path is DeepCache, while First Block Cache remains implementation groundwork for a more specialized integration.</li>
+<li>This establishes the core components for a transformer-oriented cache path even though it is not yet surfaced as a primary standard option.</li>
+</ul>
+<h3 id="2-deepcache-reuse-granularity">2. DeepCache reuse granularity</h3>
+<ul>
+<li>DeepCache is integrated through <code>src/WaveSpeed/deepcache_nodes.py</code> and is applied from the main pipeline when enabled.</li>
+<li>In this project, it works by reusing prior denoiser outputs on designated reuse steps.</li>
+<li>This yields a clear speed-fidelity profile based on output reuse rather than on finer-grained internal block caching.</li>
+</ul>
+<h3 id="3-conditioning-batching-control">3. Conditioning batching control</h3>
+<ul>
+<li>Conditioning batching is centered in <code>src/cond/cond.py::calc_cond_batch()</code>, where compatible condition chunks are packed and concatenated.</li>
+<li>The <code>batched_cfg</code> request field participates as request-side control metadata around this behavior.</li>
+<li>In operation, the batching outcome is therefore shaped mainly by the central conditioning logic rather than by a standalone external switch.</li>
+</ul>
+<h3 id="4-gpu-attention-backend-selection">4. GPU attention backend selection</h3>
+<ul>
+<li>Attention backend selection is hardware- and build-aware, with the runtime choosing among SpargeAttn, SageAttention, xformers, and PyTorch SDPA based on capability checks.</li>
+<li>The exact backend used in practice therefore depends on the active GPU generation, dependencies, and runtime configuration.</li>
+<li>Backend acceleration is therefore largely automatic from the user perspective while remaining environment-specific in implementation.</li>
+</ul>
+<h3 id="5-prompt-cache-behavior">5. Prompt cache behavior</h3>
+<ul>
+<li>Prompt caching is implemented as a global dict-backed cache keyed by prompt hash and CLIP identity.</li>
+<li>The cache prunes old entries once it exceeds its configured size threshold.</li>
+<li>In operation, it primarily benefits repeated-prompt workflows such as seed sweeps and prompt iteration.</li>
+</ul>
+<h2 id="conclusion">Conclusion</h2>
+<p>LightDiffusion-Next uses a layered optimization strategy spanning runtime kernels, scheduling, guidance logic, precision and memory control, model patching, and server-side throughput management.</p>
+<ul>
+<li>The core operational stack is built around AYS scheduling, attention backend selection, conditioning batching, low-VRAM loading policy, prompt caching, VAE tuning, and request coalescing.</li>
+<li>Optional paths such as Stable-Fast, <code>torch.compile</code>, ToMe, DeepCache, multiscale sampling, and quantization extend that stack for specific hardware targets, model families, and workload profiles.</li>
+<li>The serving layer is a first-class component of the performance model, with batching, chunking, prefetching, keep-loaded caches, and in-memory responses contributing directly to end-to-end latency and throughput.</li>
+</ul>
   </div>
   
   <script>
@@ -1222,7 +1619,7 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 shadow-none"
-        href="/LightDiffusion-Next/api/">
+        href="/LightDiffusion-Next/optimizations/">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-left ">
@@ -1230,14 +1627,14 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
             <path d="M5 12l6 6"></path>
             <path d="M5 12l6 -6"></path>
         </svg>
-        <span class="max-[500px]:hidden">REST API</span>
+        <span class="max-[500px]:hidden">Overview</span>
     </a>
     
     
     <a data-slot="button"
         class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground hover:bg-secondary/80 h-8 rounded-md gap-1.5 px-3 has-[&gt;svg]:px-2.5 ml-auto shadow-none"
-        href="/LightDiffusion-Next/implemented-optimizations-report/">
-        <span class="max-[500px]:hidden">Implementation Report</span>
+        href="/LightDiffusion-Next/cfg-free-sampling/">
+        <span class="max-[500px]:hidden">CFG-Free Sampling</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             class="tabler-icon tabler-icon-arrow-right ">
@@ -1342,13 +1739,13 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
                     
                     <div class="flex flex-col gap-3">
                         
-                        <a class="text-2xl font-medium" href="./">
+                        <a class="text-2xl font-medium" href="../optimizations/">
                             
                             Overview
                             
                         </a>
                         
-                        <a class="text-2xl font-medium" href="../implemented-optimizations-report/">
+                        <a class="text-2xl font-medium" href="./">
                             
                             Implementation Report
                             
@@ -1445,50 +1842,164 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
         
         
         
-        <a href="#optimization-stack-overview"
+        <a href="#report-scope"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#optimization-stack-overview');">
-            Optimization Stack Overview
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#report-scope');">
+            Report Scope
+        </a>
+        
+        
+        <a href="#usage-profile-definitions"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#usage-profile-definitions');">
+            Usage Profile Definitions
+        </a>
+        
+        <a href="#what-this-report-covers"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#what-this-report-covers');">
+            What This Report Covers
+        </a>
+        
+        
+
+        
+        <a href="#quick-inventory"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#quick-inventory');">
+            Quick Inventory
         </a>
         
 
         
-        <a href="#quick-comparison"
+        <a href="#executive-summary"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#quick-comparison');">
-            Quick Comparison
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#executive-summary');">
+            Executive Summary
+        </a>
+        
+
+        
+        <a href="#runtime-and-attention-optimizations"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#runtime-and-attention-optimizations');">
+            Runtime And Attention Optimizations
+        </a>
+        
+        
+        <a href="#cuda-runtime-tuning"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#cuda-runtime-tuning');">
+            CUDA runtime tuning
+        </a>
+        
+        <a href="#attention-backend-cascade-spargeattn-sageattention-xformers-pytorch-sdpa"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#attention-backend-cascade-spargeattn-sageattention-xformers-pytorch-sdpa');">
+            Attention backend cascade: SpargeAttn, SageAttention, xformers, PyTorch SDPA
+        </a>
+        
+        <a href="#flux2-sdpa-backend-priority"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#flux2-sdpa-backend-priority');">
+            Flux2 SDPA backend priority
+        </a>
+        
+        <a href="#cross-attention-static-kv-projection-cache"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#cross-attention-static-kv-projection-cache');">
+            Cross-attention static K/V projection cache
+        </a>
+        
+        <a href="#prompt-embedding-cache"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#prompt-embedding-cache');">
+            Prompt embedding cache
+        </a>
+        
+        <a href="#conditioning-batch-packing-and-cfg1-fast-path"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#conditioning-batch-packing-and-cfg1-fast-path');">
+            Conditioning batch packing and CFG=1 fast path
+        </a>
+        
+        
+
+        
+        <a href="#sampling-and-guidance-optimizations"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#sampling-and-guidance-optimizations');">
+            Sampling And Guidance Optimizations
         </a>
         
         
         <a href="#ays-scheduler"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#ays-scheduler');">
-            AYS Scheduler
-        </a>
-        
-        <a href="#prompt-caching"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#prompt-caching');">
-            Prompt Caching
-        </a>
-        
-        <a href="#sageattention--spargeattn"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#sageattention--spargeattn');">
-            SageAttention &amp; SpargeAttn
+            AYS scheduler
         </a>
         
         <a href="#cfg-samplers"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
             data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#cfg-samplers');">
-            CFG Samplers
+            CFG++ samplers
         </a>
         
-        <a href="#multi-scale"
+        <a href="#cfg-free-sampling"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#multi-scale');">
-            Multi-Scale Diffusion
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#cfg-free-sampling');">
+            CFG-Free sampling
         </a>
+        
+        <a href="#dynamic-cfg-rescaling"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#dynamic-cfg-rescaling');">
+            Dynamic CFG rescaling
+        </a>
+        
+        <a href="#adaptive-noise-scheduling"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#adaptive-noise-scheduling');">
+            Adaptive noise scheduling
+        </a>
+        
+        <a href="#batched_cfg-request-surface"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#batched_cfg-request-surface');">
+            batched_cfg request surface
+        </a>
+        
+        
+
+        
+        <a href="#multiscale-and-architecture-specific-optimizations"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#multiscale-and-architecture-specific-optimizations');">
+            Multiscale And Architecture-Specific Optimizations
+        </a>
+        
+        
+        <a href="#multi-scale-latent-switching"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#multi-scale-latent-switching');">
+            Multi-scale latent switching
+        </a>
+        
+        <a href="#hidiffusion-msw-msa-patching"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#hidiffusion-msw-msa-patching');">
+            HiDiffusion MSW-MSA patching
+        </a>
+        
+        
+
+        
+        <a href="#model-compilation-precision-and-memory-optimizations"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#model-compilation-precision-and-memory-optimizations');">
+            Model Compilation, Precision, And Memory Optimizations
+        </a>
+        
         
         <a href="#stable-fast"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
@@ -1496,103 +2007,165 @@ cat<span class="w"> </span>logs/server.log<span class="w"> </span><span class="p
             Stable-Fast
         </a>
         
-        <a href="#wavespeed-caching"
+        <a href="#torchcompile"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#wavespeed-caching');">
-            WaveSpeed Caching
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#torchcompile');">
+            torch.compile
+        </a>
+        
+        <a href="#vae-compile-tiled-path-and-transfer-tuning"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#vae-compile-tiled-path-and-transfer-tuning');">
+            VAE compile, tiled path, and transfer tuning
+        </a>
+        
+        <a href="#bf16fp16-automatic-dtype-selection"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#bf16fp16-automatic-dtype-selection');">
+            BF16/FP16 automatic dtype selection
+        </a>
+        
+        <a href="#fp8-weight-quantization"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#fp8-weight-quantization');">
+            FP8 weight quantization
+        </a>
+        
+        <a href="#nvfp4-weight-quantization"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#nvfp4-weight-quantization');">
+            NVFP4 weight quantization
+        </a>
+        
+        <a href="#flux2-load-time-weight-only-quantization"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#flux2-load-time-weight-only-quantization');">
+            Flux2 load-time weight-only quantization
+        </a>
+        
+        <a href="#tome"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#tome');">
+            ToMe
+        </a>
+        
+        <a href="#deepcache"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#deepcache');">
+            DeepCache
+        </a>
+        
+        <a href="#first-block-cache-for-flux"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#first-block-cache-for-flux');">
+            First Block Cache for Flux
         </a>
         
         
 
         
-        <a href="#priority-fallback-system"
+        <a href="#memory-management-and-serving-optimizations"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#priority-fallback-system');">
-            Priority &amp; Fallback System
-        </a>
-        
-
-        
-        <a href="#recommended-configurations"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#recommended-configurations');">
-            Recommended Configurations
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#memory-management-and-serving-optimizations');">
+            Memory Management And Serving Optimizations
         </a>
         
         
-        <a href="#maximum-speed-batch-jobs-sd15-8gb-vram-50-images"
+        <a href="#low-vram-partial-loading-and-offload-policy"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#maximum-speed-batch-jobs-sd15-8gb-vram-50-images');">
-            Maximum Speed - Batch Jobs (SD1.5, &gt;8GB VRAM, 50+ images)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#low-vram-partial-loading-and-offload-policy');">
+            Low-VRAM partial loading and offload policy
         </a>
         
-        <a href="#balanced-quick-generation-sd15-any-vram"
+        <a href="#async-transfer-helpers-and-pinned-checkpoint-tensors"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#balanced-quick-generation-sd15-any-vram');">
-            Balanced - Quick Generation (SD1.5, any VRAM)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#async-transfer-helpers-and-pinned-checkpoint-tensors');">
+            Async transfer helpers and pinned checkpoint tensors
         </a>
         
-        <a href="#quality-first-flux"
+        <a href="#request-coalescing-and-queue-batching"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#quality-first-flux');">
-            Quality-First (Flux)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#request-coalescing-and-queue-batching');">
+            Request coalescing and queue batching
         </a>
         
-        <a href="#production-api-high-volume-8gb-vram"
+        <a href="#singleton-policy-large-group-chunking-and-image-save-guardrails"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#production-api-high-volume-8gb-vram');">
-            Production API - High Volume (&gt;8GB VRAM)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#singleton-policy-large-group-chunking-and-image-save-guardrails');">
+            Singleton policy, large-group chunking, and image-save guardrails
         </a>
         
-        
-
-        
-        <a href="#hardware-specific-tips"
+        <a href="#next-model-prefetch"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#hardware-specific-tips');">
-            Hardware-Specific Tips
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#next-model-prefetch');">
+            Next-model prefetch
         </a>
         
-        
-        <a href="#rtx-30xx-40xx-ampereada"
+        <a href="#keep-models-loaded-cache"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#rtx-30xx-40xx-ampereada');">
-            RTX 30xx / 40xx (Ampere/Ada)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#keep-models-loaded-cache');">
+            Keep-models-loaded cache
         </a>
         
-        <a href="#rtx-50xx-blackwell"
+        <a href="#in-memory-png-byte-buffer"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#rtx-50xx-blackwell');">
-            RTX 50xx (Blackwell)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#in-memory-png-byte-buffer');">
+            In-memory PNG byte buffer
         </a>
         
-        <a href="#a100-h100-datacenter"
+        <a href="#taesd-preview-pacing-and-preview-fidelity-control"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#a100-h100-datacenter');">
-            A100 / H100 (Datacenter)
-        </a>
-        
-        <a href="#low-vram-8gb"
-            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#low-vram-8gb');">
-            Low VRAM (&lt;8GB)
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#taesd-preview-pacing-and-preview-fidelity-control');">
+            TAESD preview pacing and preview fidelity control
         </a>
         
         
 
         
-        <a href="#debugging-profiling"
+        <a href="#integration-notes"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#debugging-profiling');">
-            Debugging &amp; Profiling
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#integration-notes');">
+            Integration Notes
         </a>
+        
+        
+        <a href="#1-flux-oriented-first-block-caching"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#1-flux-oriented-first-block-caching');">
+            1. Flux-oriented first block caching
+        </a>
+        
+        <a href="#2-deepcache-reuse-granularity"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#2-deepcache-reuse-granularity');">
+            2. DeepCache reuse granularity
+        </a>
+        
+        <a href="#3-conditioning-batching-control"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#3-conditioning-batching-control');">
+            3. Conditioning batching control
+        </a>
+        
+        <a href="#4-gpu-attention-backend-selection"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#4-gpu-attention-backend-selection');">
+            4. GPU attention backend selection
+        </a>
+        
+        <a href="#5-prompt-cache-behavior"
+            class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
+            data-active="false" data-depth="3" onClick="deferSetActiveTocLink('#5-prompt-cache-behavior');">
+            5. Prompt cache behavior
+        </a>
+        
         
 
         
-        <a href="#further-reading"
+        <a href="#conclusion"
             class="text-muted-foreground hover:text-foreground data-[active=true]:text-foreground text-[0.8rem] no-underline transition-colors data-[depth=3]:pl-4 data-[depth=4]:pl-6"
-            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#further-reading');">
-            Further Reading
+            data-active="false" data-depth="2" onClick="deferSetActiveTocLink('#conclusion');">
+            Conclusion
         </a>
         
 

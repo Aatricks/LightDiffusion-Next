@@ -45,6 +45,7 @@ uvicorn server:app --host 0.0.0.0 --port 7861
   "multiscale_fullres_end": 8,
   "keep_models_loaded": true,
   "enable_preview": false,
+  "preview_fidelity": "balanced",
   "guidance_scale": null,
   "seed": null
 }
@@ -70,7 +71,13 @@ Base64 strings represent PNG files with embedded metadata identical to the Strea
 
 ### Img2Img uploads
 
-When `img2img_enabled` is `true`, provide `img2img_image` as a Base64-encoded PNG (same format as outputs). Keep payloads under a few megabytes to avoid HTTP timeouts.
+When `img2img_enabled` is `true`, `img2img_image` may be provided as any of the following:
+
+- A local file path (e.g., `"tests/test.png"`)
+- A data URL (e.g., `"data:image/png;base64,<...>"`)
+- A raw Base64-encoded PNG string
+
+The server will decode data URLs and raw Base64 strings and save them to the system temporary directory before processing (default max upload size: 10 MB). Keep payloads under a few megabytes to avoid HTTP timeouts.
 
 ## Telemetry shape (`/api/telemetry`)
 
@@ -87,6 +94,7 @@ The telemetry endpoint returns operational stats that help with autoscaling or q
     {"request_id": "a1b2c3d4", "waiting_s": 0.42, "prompt_preview": "a cinematic robot..."}
   ],
   "max_batch_size": 4,
+  "max_images_per_group": 256,
   "batch_timeout": 0.5,
   "batches_processed": 12,
   "items_processed": 24,
@@ -116,6 +124,8 @@ The queue accepts a few environment variables that influence behaviour:
 | `LD_MAX_BATCH_SIZE` | `4` | Maximum items processed together when signatures match. |
 | `LD_BATCH_TIMEOUT` | `0.5` | Seconds to wait before flushing a batch. |
 | `LD_BATCH_WAIT_SINGLETONS` | `0` | If `1`, single jobs wait the timeout hoping for companions. Set to `0` to process singletons immediately. |
+| `LD_MAX_IMAGES_PER_GROUP` | `256` | Maximum combined images processed in a single pipeline run when coalescing multiple requests. Groups larger than this are processed sequentially in smaller chunks to avoid memory and disk pressure. |
+| `LD_MAX_IMAGES_PER_SAVE` | `16` | Maximum images allowed in a single `save_images` call. If exceeded, the save is aborted to avoid creating many tile files; change with `LD_MAX_IMAGES_PER_SAVE` if needed. |
 | `LD_SERVER_LOGLEVEL` | `DEBUG` | Logging verbosity for `logs/server.log`. |
 
 ## Deploying behind a reverse proxy

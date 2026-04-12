@@ -2,78 +2,82 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/advanced-cfg-optimizations/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/api/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/architecture/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/ays-scheduler/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/cfg-free-sampling/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/contributing/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/examples/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/faq/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
+    </url>
+    <url>
+         <loc>https://aatricks.github.io/LightDiffusion-Next/implemented-optimizations-report/</loc>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/installation/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/optimizations/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/prompt-caching/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/quirks/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/rocm-metal-support/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/sageattention/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/stablefast/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/tome/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/usage/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
     <url>
          <loc>https://aatricks.github.io/LightDiffusion-Next/wavespeed/</loc>
-         <lastmod>2025-11-08</lastmod>
+         <lastmod>2026-04-12</lastmod>
     </url>
 </urlset>
