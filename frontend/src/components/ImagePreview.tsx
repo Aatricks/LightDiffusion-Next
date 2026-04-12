@@ -113,84 +113,86 @@ export function ImagePreview() {
   };
 
   return (
-    <section className="studio-panel overflow-hidden rounded-[2.25rem] border border-line p-4 sm:p-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Main canvas</p>
-            <h2 className="mt-1 font-serif text-[2rem] tracking-[-0.03em] text-ink">Preview</h2>
+    <section className="overflow-hidden rounded-t-[2.25rem] border border-line border-b-0 bg-paper/90 p-2 shadow-[0_18px_42px_-36px_color-mix(in_oklab,var(--color-ink)_18%,transparent)] sm:p-3">
+      <div className="studio-grid relative min-h-[460px] overflow-hidden rounded-[1.7rem] p-2 sm:min-h-[680px] sm:p-4">
+        {isGenerating ? (
+          <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between sm:inset-x-6">
+            <div className="rounded-full border border-line bg-paper/92 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-muted">
+              Generating
+            </div>
+            <div className="rounded-full border border-line bg-paper/92 px-3 py-1.5 text-xs text-muted">
+              {stepText}
+            </div>
           </div>
+        ) : null}
 
+        <div className="flex h-full items-center justify-center">
           {displayImage ? (
-            <Button variant="outline" size="sm" onClick={() => void handleImportFromPreview()}>
-              <Import className="h-4 w-4" />
-              Import settings from image
-            </Button>
-          ) : null}
+            <img
+              src={displayImage}
+              alt="Generated preview"
+              className="max-h-[calc(100vh-10rem)] w-auto max-w-full rounded-[1.15rem] object-contain shadow-[0_16px_30px_-24px_color-mix(in_oklab,var(--color-ink)_18%,transparent)]"
+            />
+          ) : (
+            <div className="flex max-w-lg flex-col items-center justify-center gap-5 px-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-paper text-clay">
+                {isGenerating ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <ImagePlus className="h-6 w-6" />}
+              </div>
+              <div className="space-y-2">
+                <p className="font-serif text-[clamp(1.8rem,3vw,2.5rem)] tracking-[-0.035em] text-ink">
+                  {isGenerating ? 'Preparing the next frame' : 'Ready to generate'}
+                </p>
+                <p className="text-sm leading-6 text-muted">
+                  {isGenerating
+                    ? 'Live previews appear here as the run progresses.'
+                    : 'Choose a model, write a prompt, then generate your first frame.'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="studio-grid relative min-h-[420px] overflow-hidden rounded-[1.9rem] border border-line p-4 sm:min-h-[560px] sm:p-6">
-          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 py-4 sm:px-6">
-            <div className="rounded-full bg-paper px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-muted">
-              {isGenerating ? 'Live' : 'Frame'}
-            </div>
-            <div className="rounded-full bg-paper px-3 py-1.5 text-xs text-muted">{stepText}</div>
-          </div>
-
-          <div className="flex h-full items-center justify-center">
-            {displayImage ? (
-              <img
-                src={displayImage}
-                alt="Generated preview"
-                className="max-h-[calc(100vh-16rem)] w-auto max-w-full rounded-[1.5rem] object-contain shadow-[0_14px_32px_-24px_color-mix(in_oklab,var(--color-ink)_18%,transparent)]"
-              />
-            ) : (
-              <div className="flex max-w-md flex-col items-center justify-center gap-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-paper text-clay shadow-[0_10px_24px_-18px_color-mix(in_oklab,var(--color-clay)_28%,transparent)]">
-                  {isGenerating ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <ImagePlus className="h-6 w-6" />}
-                </div>
-                <div className="space-y-2">
-                  <p className="font-medium text-ink">{isGenerating ? 'Preparing preview' : 'No image yet'}</p>
-                  <p className="text-sm text-muted">Generate to fill the canvas.</p>
-                </div>
-              </div>
-            )}
-          </div>
-
+        {isGenerating ? (
           <div className="pointer-events-none absolute inset-x-4 bottom-4 sm:inset-x-6">
-            <div className="rounded-[1.4rem] border border-line bg-paper p-3">
+            <div className="rounded-[1.35rem] border border-line bg-paper/94 p-3">
               <div className="mb-2 flex items-center justify-between text-xs text-muted">
-                <span>{isGenerating ? 'Progress' : 'State'}</span>
-                <span>{isGenerating ? `${Math.round(progressValue)}%` : displayImage ? 'Ready' : 'Waiting'}</span>
+                <span>Progress</span>
+                <span>{Math.round(progressValue)}%</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-sand">
+              <div className="h-1.5 overflow-hidden rounded-full bg-sand">
                 <div
-                  className={cn(
-                    'h-full rounded-full bg-clay transition-[width] duration-300',
-                    isGenerating ? 'opacity-100' : 'opacity-50',
-                  )}
-                  style={{ width: `${isGenerating ? progressValue : displayImage ? 100 : 12}%` }}
+                  className="h-full rounded-full bg-clay transition-[width] duration-300"
+                  style={{ width: `${progressValue}%` }}
                 />
               </div>
             </div>
           </div>
-        </div>
-
-        {feedback ? (
-          <p
-            className={cn(
-              'text-sm',
-              feedback.tone === 'error'
-                ? 'text-clay-strong'
-                : feedback.tone === 'warning'
-                  ? 'text-muted'
-                  : 'text-clay',
-            )}
-          >
-            {feedback.text}
-          </p>
         ) : null}
       </div>
+
+      {displayImage ? (
+        <div className="mt-1 flex justify-end pr-1">
+          <Button variant="ghost" size="sm" className="text-muted hover:text-ink" onClick={() => void handleImportFromPreview()}>
+            <Import className="h-4 w-4" />
+            Import settings from image
+          </Button>
+        </div>
+      ) : null}
+
+      {feedback ? (
+        <p
+          className={cn(
+            'mt-3 text-sm',
+            feedback.tone === 'error'
+              ? 'text-clay-strong'
+              : feedback.tone === 'warning'
+                ? 'text-muted'
+                : 'text-clay',
+          )}
+        >
+          {feedback.text}
+        </p>
+      ) : null}
     </section>
   );
 }

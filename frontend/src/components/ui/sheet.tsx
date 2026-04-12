@@ -14,7 +14,7 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
-    className={cn('fixed inset-0 z-50 bg-ink/18', className)}
+    className={cn('fixed inset-0 z-50 bg-ink/14 backdrop-blur-[1.5px]', className)}
     {...props}
     ref={ref}
   />
@@ -22,14 +22,14 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  'fixed z-50 gap-4 bg-paper shadow-[0_18px_40px_-26px_color-mix(in_oklab,var(--color-ink)_20%,transparent)] transition ease-out',
+  'fixed z-50 gap-4 bg-paper/98 shadow-[0_22px_46px_-28px_color-mix(in_oklab,var(--color-ink)_18%,transparent)] transition ease-out',
   {
     variants: {
       side: {
         top: 'inset-x-4 top-4 rounded-[2rem] border border-line p-6',
         bottom: 'inset-x-3 bottom-3 rounded-[2rem] border border-line p-5 pb-7',
-        left: 'inset-y-4 left-4 h-auto w-3/4 rounded-[2rem] border border-line p-6 sm:max-w-sm',
-        right: 'inset-y-4 right-4 h-auto w-3/4 rounded-[2rem] border border-line p-6 sm:max-w-sm',
+        left: 'inset-y-3 left-3 h-auto w-3/4 rounded-[1.9rem] border border-line p-5 sm:max-w-sm',
+        right: 'inset-y-3 right-3 h-auto w-3/4 rounded-[1.9rem] border border-line p-5 sm:max-w-sm',
       },
     },
     defaultVariants: {

@@ -1,4 +1,3 @@
-import { Images } from 'lucide-react';
 import { ScrollArea, ScrollBar } from './ui/scroll-area';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
@@ -12,25 +11,21 @@ export function Gallery() {
   })));
 
   return (
-    <section className="studio-panel overflow-hidden rounded-[2rem] border border-line px-5 py-5 sm:px-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Recent frames</p>
-          <h2 className="mt-1 font-serif text-2xl tracking-[-0.02em] text-ink">Recent</h2>
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-full bg-sand px-3 py-1.5 text-xs text-muted">
-          <Images className="h-3.5 w-3.5 text-clay" />
-          {gallery.length === 0 ? 'Empty' : `${gallery.length} image${gallery.length === 1 ? '' : 's'}`}
-        </div>
+    <section className="-mt-2 overflow-hidden rounded-b-[2rem] border border-line border-t-0 bg-paper/62 px-4 pb-3 pt-2 sm:px-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-serif text-[1.05rem] tracking-[-0.025em] text-ink">Recent</h2>
+        <p className="text-xs text-muted">
+          {gallery.length === 0 ? 'No saved frames yet' : `${gallery.length} saved`}
+        </p>
       </div>
 
       {gallery.length === 0 ? (
-        <div className="mt-5 rounded-[1.5rem] border border-dashed border-line bg-oat/55 px-4 py-8 text-sm text-muted">
-          Recent images appear here.
+        <div className="mt-4 rounded-[1.4rem] border border-dashed border-line bg-oat/45 px-4 py-6 text-sm text-muted">
+          Generated images will collect here for quick comparison.
         </div>
       ) : (
-        <ScrollArea className="mt-5 w-full whitespace-nowrap">
-          <div className="flex gap-3 pb-3">
+        <ScrollArea className="mt-2.5 w-full whitespace-nowrap">
+          <div className="flex gap-2 pb-2">
             {gallery.map((image, index) => {
               const isSelected = image === currentImage;
 
@@ -40,9 +35,9 @@ export function Gallery() {
                   type="button"
                   onClick={() => setCurrentImage(image)}
                   className={cn(
-                    'group relative w-28 shrink-0 overflow-hidden rounded-[1.4rem] border bg-paper text-left transition sm:w-32',
+                    'group relative w-[4.25rem] shrink-0 overflow-hidden rounded-[1rem] border bg-paper text-left transition sm:w-[4.9rem]',
                     isSelected
-                      ? 'border-clay shadow-[0_10px_24px_-18px_color-mix(in_oklab,var(--color-clay)_28%,transparent)]'
+                      ? 'border-clay shadow-[0_10px_20px_-18px_color-mix(in_oklab,var(--color-clay)_28%,transparent)]'
                       : 'border-line hover:-translate-y-0.5 hover:border-clay/35',
                   )}
                   aria-label={`Open image ${index + 1}`}
@@ -52,7 +47,7 @@ export function Gallery() {
                     alt={`Generated frame ${index + 1}`}
                     loading="lazy"
                     decoding="async"
-                    className="h-28 w-full object-cover sm:h-32"
+                    className="h-[4.25rem] w-full object-cover sm:h-[4.9rem]"
                   />
                   {isSelected ? <div className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-clay" /> : null}
                 </button>

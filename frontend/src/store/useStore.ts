@@ -29,8 +29,8 @@ interface AppState {
 
 export const useStore = create<AppState>((set) => ({
     settings: {
-        prompt: "An astronaut riding a horse on mars, detailed, 8k",
-        negative_prompt: "blurry, low quality, distorted",
+        prompt: "",
+        negative_prompt: "",
         width: 512,
         height: 512,
         num_images: 1,
