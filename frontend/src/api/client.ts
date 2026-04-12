@@ -45,7 +45,7 @@ export const getImageMetadata = async (imageB64: string): Promise<{ metadata: Im
     return res.data;
 };
 
-export const getTelemetry = async (): Promise<any> => {
+export const getTelemetry = async (): Promise<Record<string, unknown>> => {
     const res = await api.get('/telemetry');
     return res.data;
 }

@@ -1,4 +1,130 @@
-/* Global styles */
-html, body, #root {
-  height: 100%;
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Instrument Sans", ui-sans-serif, sans-serif;
+  --font-serif: "Fraunces", ui-serif, serif;
+
+  --color-canvas: oklch(0.978 0.012 78);
+  --color-paper: oklch(0.992 0.008 82);
+  --color-oat: oklch(0.967 0.018 79);
+  --color-sand: oklch(0.94 0.018 76);
+  --color-stone: oklch(0.83 0.016 73);
+  --color-line: oklch(0.88 0.012 76);
+  --color-ink: oklch(0.255 0.02 55);
+  --color-muted: oklch(0.54 0.015 67);
+  --color-clay: oklch(0.64 0.15 41);
+  --color-clay-strong: oklch(0.56 0.16 39);
+
+  --animate-accordion-down: accordion-down 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-accordion-up: accordion-up 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes page-fade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes section-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  :root {
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    border-color: color-mix(in oklab, var(--color-line) 92%, white);
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: linear-gradient(180deg, var(--color-paper), var(--color-canvas) 24rem);
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-clay) 22%, white);
+  }
+}
+
+@layer utilities {
+  .page-fade {
+    animation: page-fade 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .studio-panel {
+    background: var(--color-paper);
+    box-shadow: 0 14px 36px -30px color-mix(in oklab, var(--color-ink) 18%, transparent);
+  }
+
+  .studio-grid {
+    background: linear-gradient(180deg, var(--color-paper), color-mix(in oklab, var(--color-oat) 72%, white));
+  }
+
+  .soft-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-stone) 65%, transparent) transparent;
+  }
+
+  .page-halo {
+    background:
+      radial-gradient(circle at top, color-mix(in oklab, var(--color-oat) 78%, transparent), transparent 70%),
+      linear-gradient(180deg, color-mix(in oklab, var(--color-paper) 96%, transparent), transparent 80%);
+  }
 }

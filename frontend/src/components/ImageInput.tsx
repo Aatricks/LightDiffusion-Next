@@ -1,96 +1,110 @@
-import { Group, Text, Stack, rem } from '@mantine/core';
-import { IconUpload, IconPhoto, IconX } from '@tabler/icons-react';
-import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
+import { useCallback } from 'react';
+import { ImageUp, Upload, X } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
 
 interface ImageInputProps {
-    value?: string | null;
-    onChange: (base64: string | null) => void;
-    label?: string;
-    [key: string]: any; // Allow other props
+  value?: string | null;
+  onChange: (base64: string | null) => void;
+  label?: string;
+  description?: string;
+  className?: string;
+  compact?: boolean;
 }
 
-export function ImageInput({ value, onChange, label, ...props }: ImageInputProps) {
-    const handleDrop = (files: File[]) => {
-        const file = files[0];
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            onChange(e.target?.result as string);
-        };
-        reader.readAsDataURL(file);
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (typeof result === 'string') {
+        resolve(result);
+      } else {
+        reject(new Error('Unable to read image file.'));
+      }
     };
 
-    return (
-        <Stack gap="xs">
-            {label && <Text size="sm" fw={500}>{label}</Text>}
-            <Dropzone
-                onDrop={handleDrop}
-                onReject={(files) => console.log('rejected files', files)}
-                maxSize={5 * 1024 ** 2}
-                accept={IMAGE_MIME_TYPE}
-                {...props}
-                style={{
-                    border: value ? 'none' : undefined,
-                    padding: value ? 0 : undefined,
-                    overflow: 'hidden',
-                }}
-            >
-                {value ? (
-                    <div style={{ position: 'relative', width: '100%', height: 200 }}>
-                        <img
-                            src={value}
-                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                            alt="Input"
-                        />
-                        <div
-                            style={{
-                                position: 'absolute',
-                                top: 5,
-                                right: 5,
-                                background: 'rgba(0,0,0,0.5)',
-                                borderRadius: '50%',
-                                padding: 5,
-                                cursor: 'pointer'
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onChange(null);
-                            }}
-                        >
-                            <IconX size={16} color="white" />
-                        </div>
-                    </div>
-                ) : (
-                    <Group justify="center" gap="xl" style={{ minHeight: rem(120), pointerEvents: 'none' }}>
-                        <Dropzone.Accept>
-                            <IconUpload
-                                style={{ width: rem(52), height: rem(52), color: 'var(--mantine-color-blue-6)' }}
-                                stroke={1.5}
-                            />
-                        </Dropzone.Accept>
-                        <Dropzone.Reject>
-                            <IconX
-                                style={{ width: rem(52), height: rem(52), color: 'var(--mantine-color-red-6)' }}
-                                stroke={1.5}
-                            />
-                        </Dropzone.Reject>
-                        <Dropzone.Idle>
-                            <IconPhoto
-                                style={{ width: rem(52), height: rem(52), color: 'var(--mantine-color-dimmed)' }}
-                                stroke={1.5}
-                            />
-                        </Dropzone.Idle>
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read image file.'));
+    reader.readAsDataURL(file);
+  });
+}
 
-                        <div>
-                            <Text size="xl" inline>
-                                Drag images here or click to select
-                            </Text>
-                            <Text size="sm" c="dimmed" inline mt={7}>
-                                Attach as many files as you like, each file should not exceed 5mb
-                            </Text>
-                        </div>
-                    </Group>
-                )}
-            </Dropzone>
-        </Stack>
-    );
+export function ImageInput({ value, onChange, label, description, className, compact = false }: ImageInputProps) {
+  const handleDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      const file = acceptedFiles[0];
+      if (!file) return;
+
+      try {
+        const base64 = await readFileAsDataUrl(file);
+        onChange(base64);
+      } catch (error) {
+        console.error('Failed to read dropped image', error);
+      }
+    },
+    [onChange],
+  );
+
+  const { getRootProps, getInputProps, isDragAccept, isDragReject } = useDropzone({
+    accept: { 'image/*': [] },
+    maxFiles: 1,
+    maxSize: 10 * 1024 * 1024,
+    multiple: false,
+    onDrop: (acceptedFiles) => {
+      void handleDrop(acceptedFiles);
+    },
+  });
+
+  return (
+    <div className={cn('space-y-3', className)}>
+      {label ? (
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-ink">{label}</p>
+          {description ? <p className="text-xs leading-5 text-muted">{description}</p> : null}
+        </div>
+      ) : null}
+
+      {value ? (
+        <div className="overflow-hidden rounded-[1.5rem] border border-line bg-paper">
+          <div className={cn('relative overflow-hidden bg-sand/45', compact ? 'h-40' : 'h-52')}>
+            <img src={value} alt="Selected input" className="h-full w-full object-contain p-4" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="absolute right-3 top-3 h-9 w-9 bg-paper/92"
+              onClick={() => onChange(null)}
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Remove image</span>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div
+          {...getRootProps()}
+          className={cn(
+            'rounded-[1.5rem] border border-dashed bg-oat/60 px-4 py-6 transition',
+            compact ? 'min-h-36' : 'min-h-40',
+            isDragAccept && 'border-clay bg-clay/8',
+            isDragReject && 'border-clay-strong bg-clay/10',
+            'cursor-pointer border-line hover:border-clay/45 hover:bg-oat',
+          )}
+        >
+          <input {...getInputProps()} />
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-paper text-clay shadow-[0_12px_30px_-22px_color-mix(in_oklab,var(--color-clay)_50%,transparent)]">
+              {isDragAccept ? <Upload className="h-5 w-5" /> : <ImageUp className="h-5 w-5" />}
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-ink">Drop an image or click to browse</p>
+              <p className="text-xs leading-5 text-muted">PNG, JPG, or WEBP up to 10 MB.</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
