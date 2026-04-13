@@ -117,7 +117,7 @@ def _compute_detailer_resize(width, height, guide_size, max_size):
     new_w = max(8, (new_w + 4) // 8 * 8)
     new_h = max(8, (new_h + 4) // 8 * 8)
     force_inpaint = False
-    if upscale <= 1.0 or new_w == 0 or new_h == 0:
+    if new_w == 0 or new_h == 0:
         force_inpaint = True
         upscale, new_w, new_h = 1.0, width, height
         # Also round when force inpaint to keep VAE compatibility

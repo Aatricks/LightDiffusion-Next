@@ -27,10 +27,11 @@ def test_compute_detailer_resize_rounds_to_multiple_of_8():
     assert w % 8 == 0, f"width {w} not divisible by 8"
     assert h % 8 == 0, f"height {h} not divisible by 8"
 
-    # Force inpaint case (crop larger than guide_size)
+    # Larger crops should downscale cleanly without forcing full-size inpaint
     _, w, h, fi = adetailer._compute_detailer_resize(800, 900, 768, 1024)
     assert w % 8 == 0, f"width {w} not divisible by 8"
     assert h % 8 == 0, f"height {h} not divisible by 8"
+    assert fi is False
 
 
 def test_enhance_detail_localizes_noise_to_mask(monkeypatch):

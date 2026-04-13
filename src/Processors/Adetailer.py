@@ -33,6 +33,44 @@ class Adetailer:
     DEFAULT_DENOISE = 0.5
     DEFAULT_SCHEDULER = "karras"
     DEFAULT_POSITIVE_PROMPT = "royal, detailed, magnificient, beautiful, seducing"
+
+    @classmethod
+    def _runtime_profile(cls, ctx: "PipelineContext", model: "AbstractModel") -> dict[str, Any]:
+        is_flux = getattr(model.capabilities, "is_flux", False)
+        is_flux2 = getattr(model.capabilities, "is_flux2", False)
+        is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
+
+        profile = {
+            "is_flux": is_flux,
+            "is_flux2": is_flux2,
+            "is_sdxl": is_sdxl,
+            "guide_size": cls.DEFAULT_GUIDE_SIZE,
+            "max_size": cls.DEFAULT_MAX_SIZE,
+            "steps": cls.DEFAULT_STEPS,
+            "cfg": cls.DEFAULT_CFG,
+            "denoise": cls.DEFAULT_DENOISE,
+            "scheduler": cls.DEFAULT_SCHEDULER,
+            "body_crop_factor": 2.0,
+            "face_crop_factor": 2.0,
+        }
+
+        if is_sdxl:
+            profile.update(
+                guide_size=512,
+                max_size=768,
+                steps=8,
+                cfg=cls.DEFAULT_CFG,
+                denoise=0.35,
+                scheduler=ctx.sampling.scheduler,
+                body_crop_factor=1.4,
+                face_crop_factor=1.6,
+            )
+        elif is_flux2:
+            profile.update(steps=6, cfg=1.0)
+        elif is_flux:
+            profile.update(steps=20, cfg=1.0)
+
+        return profile
     
     @classmethod
     def apply(
@@ -102,40 +140,14 @@ class Adetailer:
             detailer = ADetailer.DetailerForEachTest()
             saveimage = ImageSaver.SaveImage()
             hdr = ahdr.HDREffects()
-            
-            # Determine model flags
-            is_flux = getattr(model.capabilities, "is_flux", False)
-            is_flux2 = getattr(model.capabilities, "is_flux2", False)
-            
-            # SDXL-aware defaults for guide_size, max_size, and denoise
-            is_sdxl = not is_flux and not is_flux2
-            adetailer_guide_size = cls.DEFAULT_GUIDE_SIZE
-            adetailer_max_size = cls.DEFAULT_MAX_SIZE
-            adetailer_denoise = cls.DEFAULT_DENOISE
-            
-            if is_sdxl:
-                # SDXL models need larger crop regions and lower denoise
-                # to avoid destroying content in the masked area
-                adetailer_guide_size = 768
-                adetailer_max_size = 1024
-                adetailer_denoise = 0.35
-            
-            # Adjust parameters for Flux/distilled models
-            adetailer_steps = cls.DEFAULT_STEPS
-            adetailer_cfg = cls.DEFAULT_CFG
-            if is_flux2:
-                adetailer_steps = 6  # Distilled models need very few steps
-                adetailer_cfg = 1.0  # Flux distilled usually CFG 1.0
-            elif is_flux:
-                adetailer_steps = 20
-                adetailer_cfg = 1.0
+            profile = cls._runtime_profile(ctx, model)
             
             # ===== BODY PASS =====
             # Detect body regions
             body_segs = bbox_detector.doit(
                 threshold=0.5,
                 dilation=10,
-                crop_factor=2,
+                crop_factor=profile["body_crop_factor"],
                 drop_size=10,
                 labels="all",
                 bbox_detector=body_detector,
@@ -167,16 +179,17 @@ class Adetailer:
             
             # Apply body enhancement
             body_seed = random.randint(1, 2**63 - 1)
+            body_start = time.perf_counter()
             body_result = detailer.doit(
-                guide_size=adetailer_guide_size,
+                guide_size=profile["guide_size"],
                 guide_size_for=False,
-                max_size=adetailer_max_size,
+                max_size=profile["max_size"],
                 seed=body_seed,
-                steps=adetailer_steps,
-                cfg=adetailer_cfg,
+                steps=profile["steps"],
+                cfg=profile["cfg"],
                 sampler_name=ctx.sampling.sampler,
-                scheduler=cls.DEFAULT_SCHEDULER,
-                denoise=adetailer_denoise,
+                scheduler=profile["scheduler"],
+                denoise=profile["denoise"],
                 feather=5,
                 noise_mask=True,
                 force_inpaint=True,
@@ -194,6 +207,15 @@ class Adetailer:
                 pipeline=True,
                 callback=callback,
             )
+            logger.info(
+                "Adetailer body pass: guide=%s max=%s steps=%s scheduler=%s denoise=%s elapsed=%.2fs",
+                profile["guide_size"],
+                profile["max_size"],
+                profile["steps"],
+                profile["scheduler"],
+                profile["denoise"],
+                time.perf_counter() - body_start,
+            )
             
             # Extract enhanced body image
             body_image = body_result[0]
@@ -210,8 +232,8 @@ class Adetailer:
             # Save body-enhanced image
             body_meta = cls._build_metadata(ctx, body_seed_str, "body")
             # Update meta with actual steps/cfg used
-            body_meta["steps"] = str(adetailer_steps)
-            body_meta["cfg"] = str(adetailer_cfg)
+            body_meta["steps"] = str(profile["steps"])
+            body_meta["cfg"] = str(profile["cfg"])
             
             saved_body = saveimage.save_images(
                 filename_prefix="LD-body",
@@ -236,7 +258,7 @@ class Adetailer:
             face_segs = bbox_detector.doit(
                 threshold=0.5,
                 dilation=10,
-                crop_factor=2,
+                crop_factor=profile["face_crop_factor"],
                 drop_size=10,
                 labels="all",
                 bbox_detector=face_detector,
@@ -268,16 +290,17 @@ class Adetailer:
             
             # Apply face enhancement
             face_seed = random.randint(1, 2**63 - 1)
+            face_start = time.perf_counter()
             face_result = detailer.doit(
-                guide_size=adetailer_guide_size,
+                guide_size=profile["guide_size"],
                 guide_size_for=False,
-                max_size=adetailer_max_size,
+                max_size=profile["max_size"],
                 seed=face_seed,
-                steps=adetailer_steps,
-                cfg=adetailer_cfg,
+                steps=profile["steps"],
+                cfg=profile["cfg"],
                 sampler_name=ctx.sampling.sampler,
-                scheduler=cls.DEFAULT_SCHEDULER,
-                denoise=adetailer_denoise,
+                scheduler=profile["scheduler"],
+                denoise=profile["denoise"],
                 feather=5,
                 noise_mask=True,
                 force_inpaint=True,
@@ -295,6 +318,15 @@ class Adetailer:
                 pipeline=True,
                 callback=callback,
             )
+            logger.info(
+                "Adetailer face pass: guide=%s max=%s steps=%s scheduler=%s denoise=%s elapsed=%.2fs",
+                profile["guide_size"],
+                profile["max_size"],
+                profile["steps"],
+                profile["scheduler"],
+                profile["denoise"],
+                time.perf_counter() - face_start,
+            )
             
             # Extract final enhanced image
             final_image = face_result[0]
@@ -310,8 +342,8 @@ class Adetailer:
             
             # Save face-enhanced (final) image
             face_meta = cls._build_metadata(ctx, face_seed_str, "head")
-            face_meta["steps"] = str(adetailer_steps)
-            face_meta["cfg"] = str(adetailer_cfg)
+            face_meta["steps"] = str(profile["steps"])
+            face_meta["cfg"] = str(profile["cfg"])
             saved_face = saveimage.save_images(
                 filename_prefix="LD-head",
                 images=final_image,
