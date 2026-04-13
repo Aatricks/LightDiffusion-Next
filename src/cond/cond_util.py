@@ -3,6 +3,26 @@ import torch
 from typing import List, Tuple, Any
 
 
+def _resolve_sampling_container(model: object) -> object:
+    """Return the patcher-like object that owns sampling/runtime methods.
+
+    Sampling paths may receive either:
+    - a patcher-like object directly
+    - a higher-level model wrapper exposing `.model`
+
+    The sampler needs the object that provides methods such as
+    `model_dtype()`, `memory_required()`, and usually `load_device`.
+    """
+    if hasattr(model, "model_dtype") and hasattr(model, "memory_required"):
+        return model
+
+    inner = getattr(model, "model", None)
+    if inner is not None and hasattr(inner, "model_dtype") and hasattr(inner, "memory_required"):
+        return inner
+
+    return model
+
+
 def get_models_from_cond(cond: dict, model_type: str) -> List[object]:
     """#### Get models from a condition.
 
@@ -64,25 +84,26 @@ def prepare_sampling(
         - `Tuple[object, dict, List[object]]`: The prepared model, conditions, and additional models.
     """
     real_model = None
-    models, inference_memory = get_additional_models(conds, model.model_dtype())
+    sampling_model = _resolve_sampling_container(model)
+    models, inference_memory = get_additional_models(conds, sampling_model.model_dtype())
     memory_required = (
-        model.memory_required([noise_shape[0] * 2] + list(noise_shape[1:]))
+        sampling_model.memory_required([noise_shape[0] * 2] + list(noise_shape[1:]))
         + inference_memory
     )
     minimum_memory_required = (
-        model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
+        sampling_model.memory_required([noise_shape[0]] + list(noise_shape[1:]))
         + inference_memory
     )
     
     # Don't force full load - let partial loading work for all models including Flux2
     # This enables ComfyUI-style partial loading: load what fits in VRAM, offload rest
     Device.load_models_gpu(
-        [model] + models,
+        [sampling_model] + models,
         memory_required=memory_required,
         minimum_memory_required=minimum_memory_required,
         force_full_load=False,
     )
-    real_model = model.model
+    real_model = getattr(sampling_model, "model", sampling_model)
 
     return real_model, conds, models
 

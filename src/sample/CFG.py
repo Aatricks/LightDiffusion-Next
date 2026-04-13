@@ -59,7 +59,12 @@ class CFGGuider:
                  dynamic_cfg_percentile=95.0, dynamic_cfg_target_scale=7.0, 
                  adaptive_noise_enabled=False, adaptive_noise_method="complexity"):
         self.model_patcher = model_patcher
-        self.model_options = model_patcher.model_options
+        inner_model = getattr(model_patcher, "model", model_patcher)
+        self.model_options = getattr(
+            model_patcher,
+            "model_options",
+            getattr(inner_model, "model_options", {}),
+        )
         self.original_conds = {}
         self.cfg = 1.0
         self.cfg_free_enabled = False
@@ -173,7 +178,8 @@ class CFGGuider:
         self.conds = {k: [a.copy() for a in v] for k, v in self.original_conds.items()}
         self.inner_model, self.conds, self.loaded_models = cond_util.prepare_sampling(
             self.model_patcher, noise.shape, self.conds)
-        device = self.model_patcher.load_device
+        inner_patcher = getattr(self.model_patcher, "model", self.model_patcher)
+        device = getattr(self.model_patcher, "load_device", getattr(inner_patcher, "load_device", None))
         
         # Handle mock objects in tests
         if not isinstance(device, (torch.device, str)):
