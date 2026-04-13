@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 # Keep project root on path
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 pytestmark = pytest.mark.slow

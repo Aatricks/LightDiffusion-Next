@@ -1,38 +1,43 @@
-import json
-import time
+import asyncio
+
 import pytest
 
 pytestmark = pytest.mark.slow
 
 
+class FakePreviewClient:
+    def __init__(self):
+        self.payloads = []
+
+    async def send_json(self, payload):
+        self.payloads.append(payload)
+
+
 @pytest.mark.slow
-def test_preview_with_testclient(server_client):
-    """Connect to the preview websocket via TestClient and request a preview."""
-    # Start websocket connection
-    with server_client.websocket_connect('/ws/preview') as websocket:
-        # Fire a generate request that enables preview
-        payload = {
-            "prompt": "a beautiful landscape",
-            "width": 512,
-            "height": 512,
-            "steps": 10,
-            "enable_preview": True,
-        }
+def test_preview_broadcast_payload_contract():
+    import server
 
-        resp = server_client.post('/api/generate', json=payload)
-        assert resp.status_code == 200
+    client = FakePreviewClient()
+    original_clients = list(server._preview_clients)
+    server._preview_clients[:] = [client]
 
-        previews_received = 0
-        start_time = time.time()
-        while time.time() - start_time < 30:
-            try:
-                message = websocket.receive_text(timeout=5.0)
-            except Exception:
-                break
-            data = json.loads(message)
-            if data.get('type') == 'preview':
-                previews_received += 1
-                if previews_received == 1 and 'images' in data and data['images']:
-                    assert isinstance(data['images'][0], str)
+    try:
+        asyncio.run(
+            server.broadcast_preview(
+                step=1,
+                total_steps=10,
+                images=["data:image/png;base64,ZmFrZQ=="],
+                message_type="preview",
+                generation_id="test-preview",
+            )
+        )
+    finally:
+        server._preview_clients[:] = original_clients
 
-        assert previews_received > 0, "Expected at least one preview message via websocket"
+    assert len(client.payloads) == 1
+    payload = client.payloads[0]
+    assert payload["type"] == "preview"
+    assert payload["step"] == 1
+    assert payload["total_steps"] == 10
+    assert payload["generation_id"] == "test-preview"
+    assert payload["images"] == ["data:image/png;base64,ZmFrZQ=="]

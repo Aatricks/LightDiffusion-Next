@@ -16,17 +16,20 @@ class DummyModel:
             uses_dual_clip=False,
             requires_size_conditioning=False,
         )
+        self.model_options = {}
         self.model = SimpleNamespace(model_options={})
-
-    def get_model_object(self, name):
-        if name == "latent_format":
-            return SimpleNamespace(latent_channels=4)
-        return None
 
     def encode_prompt(self, prompts, negatives):
         positive = [[torch.randn(1, 77, 768), {}] for _ in prompts]
         negative = [[torch.randn(1, 77, 768), {}] for _ in negatives]
         return positive, negative
+
+    def get_model_object(self, name):
+        if name == "latent_format":
+            return SimpleNamespace(latent_channels=4)
+        if name == "model_sampling":
+            return self.model.model_sampling
+        return None
 
     def decode(self, latents):
         batch = latents.shape[0]
@@ -68,7 +71,7 @@ def test_run_batched_img2img_repeats_input_and_tags_both_conditionings(monkeypat
         captured["positive_batch_index"] = [entry[1]["batch_index"] for entry in positive]
         captured["negative_batch_index"] = [entry[1]["batch_index"] for entry in negative]
         captured["denoise"] = denoise
-        return ({"samples": torch.zeros((image_tensor.shape[0], 4, 8, 8), dtype=torch.float32)},)
+        return {"samples": torch.zeros((image_tensor.shape[0], 4, 8, 8), dtype=torch.float32)}
 
     monkeypatch.setattr(Img2Img, "simple_img2img", staticmethod(fake_simple_img2img))
 
