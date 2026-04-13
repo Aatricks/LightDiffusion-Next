@@ -4,6 +4,7 @@ import io
 import tempfile
 
 from PIL import Image
+import pytest
 
 import server
 
@@ -39,7 +40,8 @@ def test_save_bare_base64():
     os.remove(path)
 
 
-def test_generate_endpoint_converts(monkeypatch, server_client):
+@pytest.mark.asyncio
+async def test_generate_endpoint_converts(monkeypatch, async_server_client):
     data_uri, raw = _make_png_data()
 
     async def fake_enqueue(pending):
@@ -62,7 +64,7 @@ def test_generate_endpoint_converts(monkeypatch, server_client):
         'img2img_image': data_uri,
     }
 
-    res = server_client.post('/api/generate', json=payload)
+    res = await async_server_client.post('/api/generate', json=payload)
     assert res.status_code == 200
     assert 'image' in res.json()
 

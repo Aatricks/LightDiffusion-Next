@@ -11,6 +11,11 @@ from src.FileManaging import ImageSaver
 async def test_single_request_large_num_images_is_chunked(monkeypatch):
     server.LD_MAX_IMAGES_PER_GROUP = 3
 
+    async def immediate_to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
+
     def fake_pipeline(**kwargs):
         per_sample_info = kwargs.get("per_sample_info", [])
         results = {}
@@ -46,6 +51,10 @@ async def test_single_request_large_num_images_is_chunked(monkeypatch):
 @pytest.mark.asyncio
 async def test_single_request_respects_batch_size_semantics(monkeypatch):
     server.LD_MAX_IMAGES_PER_GROUP = 32
+    async def immediate_to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
     monkeypatch.setattr(ImageSaver, "MAX_IMAGES_PER_SAVE", 16)
 
     calls = []

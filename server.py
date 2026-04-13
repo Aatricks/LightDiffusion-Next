@@ -20,12 +20,12 @@ from pydantic import BaseModel
 from src.Device.ModelCache import get_model_cache
 from src.Device.ModelCache import get_model_cache
 from src.Core.Models.ModelFactory import list_available_models, list_available_controlnets
+from src.FileManaging.ImageSaver import pop_image_bytes
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # Logging setup
 import asyncio
-import functools
 import logging
 import uuid
 from logging.handlers import RotatingFileHandler
@@ -633,7 +633,6 @@ class GenerationBuffer:
             except Exception:
                 prev_keep_models_loaded = None
 
-            loop = asyncio.get_running_loop()
             saved_map: Dict[str, List[dict]] = {}
 
             total_images = len(flat_samples)
@@ -688,8 +687,7 @@ class GenerationBuffer:
                 chunk_kwargs["request_filename_prefix"] = c_per_sample_info[0]["filename_prefix"] if c_per_sample_info else None
 
                 chunk_start_ts = time.time()
-                func = functools.partial(pipeline, **chunk_kwargs)
-                result = await loop.run_in_executor(None, func)
+                result = await asyncio.to_thread(pipeline, **chunk_kwargs)
 
                 if isinstance(result, dict) and "batched_results" in result:
                     for request_id, entries in result["batched_results"].items():
@@ -716,7 +714,6 @@ class GenerationBuffer:
                     continue
                 
                 # Try to use in-memory byte buffer first (avoids disk I/O)
-                from src.FileManaging.ImageSaver import pop_image_bytes
                 buffered_images = pop_image_bytes(f"LD-REQ-{p.request_id}")
                 
                 b64_list = []

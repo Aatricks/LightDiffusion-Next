@@ -16,10 +16,16 @@ async def test_process_group_chunks_large_batch(monkeypatch):
     # Keep chunk size small for the test
     server.LD_MAX_IMAGES_PER_GROUP = 3
 
+    async def immediate_to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
+
     # Prepare a simple fake pipeline that records saved images in the
     # in-memory byte buffer and returns a batched_results mapping.
     def fake_pipeline(**kwargs):
         per_sample_info = kwargs.get("per_sample_info", [])
+        assert kwargs["batch"] <= 3
         results = {}
         for info in per_sample_info:
             rid = info["request_id"]
@@ -34,7 +40,7 @@ async def test_process_group_chunks_large_batch(monkeypatch):
     # Build a list of 7 pending requests which will be chunked as 3,3,1
     items = []
     for i in range(7):
-        req = server.GenerateRequest(prompt=f"p{i}", num_images=1)
+        req = server.GenerateRequest(prompt=f"p{i}", num_images=1, batch_size=3)
         pr = server.PendingRequest(req, request_id=f"r{i:03d}")
         items.append(pr)
 

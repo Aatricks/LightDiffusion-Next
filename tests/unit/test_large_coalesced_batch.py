@@ -8,6 +8,11 @@ async def test_large_coalesced_batch_1024(monkeypatch):
     # Set small chunk limit to force many chunks
     server.LD_MAX_IMAGES_PER_GROUP = 32
 
+    async def immediate_to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
+
     def fake_pipeline(**kwargs):
         per_sample_info = kwargs.get("per_sample_info", [])
         results = {}

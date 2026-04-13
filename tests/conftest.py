@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch, PropertyMock
 from typing import Tuple, Dict, Any, Optional, List
 
 import pytest
+import pytest_asyncio
 import torch
 import numpy as np
 
@@ -409,6 +410,35 @@ def server_client():
     import server as _server
 
     return TestClient(_server.app)
+
+
+@pytest_asyncio.fixture
+async def async_server_client():
+    """Async in-process HTTP client for FastAPI endpoint testing.
+
+    Uses HTTPX's ASGI transport because the bundled TestClient currently
+    deadlocks against this app in the sandboxed test environment.
+    """
+    import httpx
+    import server as _server
+
+    await _server.startup_event()
+    await _server._start_buffer()
+
+    transport = httpx.ASGITransport(app=_server.app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        yield client
+
+    worker_task = getattr(_server._generation_buffer, "_worker_task", None)
+    if worker_task is not None:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except BaseException:
+            pass
 
 
 @pytest.fixture

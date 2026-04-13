@@ -1,7 +1,9 @@
 import server
+import pytest
 
 
-def test_generate_endpoint_forwards_preview_fidelity(monkeypatch, server_client):
+@pytest.mark.asyncio
+async def test_generate_endpoint_forwards_preview_fidelity(monkeypatch, async_server_client):
     captured = {}
 
     async def fake_enqueue(pending):
@@ -20,6 +22,6 @@ def test_generate_endpoint_forwards_preview_fidelity(monkeypatch, server_client)
         'enable_preview': True,
     }
 
-    res = server_client.post('/api/generate', json=payload)
+    res = await async_server_client.post('/api/generate', json=payload)
     assert res.status_code == 200
     assert captured.get('preview_fidelity') == 'high'

@@ -2,17 +2,17 @@ import base64
 import io
 import importlib
 
-from fastapi.testclient import TestClient
+import pytest
 from PIL import Image, PngImagePlugin
 
 
-def test_image_metadata_endpoint(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_image_metadata_endpoint(tmp_path, monkeypatch, async_server_client):
     # Ensure server loads with test environment
     monkeypatch.setenv("LD_SETTINGS_STORE_PATH", str(tmp_path / "settings_store.json"))
 
     import server
     importlib.reload(server)
-    client = TestClient(server.app)
 
     # Create an in-memory PNG with PngInfo metadata
     img = Image.new("RGB", (64, 64), color=(255, 0, 0))
@@ -33,7 +33,10 @@ def test_image_metadata_endpoint(tmp_path, monkeypatch):
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     # POST data URL
-    r = client.post("/api/images/metadata", json={"image": f"data:image/png;base64,{b64}"})
+    r = await async_server_client.post(
+        "/api/images/metadata",
+        json={"image": f"data:image/png;base64,{b64}"},
+    )
     assert r.status_code == 200
     md = r.json().get("metadata")
     assert md is not None

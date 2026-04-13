@@ -10,6 +10,11 @@ from src.FileManaging import ImageSaver
 async def test_chunking_respects_image_saver_limit(monkeypatch):
     server.LD_MAX_IMAGES_PER_GROUP = 32
 
+    async def immediate_to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", immediate_to_thread)
+
     # Force a small ImageSaver limit so the buffer must chunk accordingly
     monkeypatch.setattr(ImageSaver, "MAX_IMAGES_PER_SAVE", 3)
 
