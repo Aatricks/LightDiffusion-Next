@@ -691,45 +691,61 @@ class GenerationBuffer:
                 for i in range(0, total_images, max_chunk_size)
             ]
 
-            for chunk in chunks:
-                c_prompts = [entry["prompt"] for entry in chunk]
-                c_negatives = [entry["negative_prompt"] for entry in chunk]
-                c_per_sample_info = [
-                    {
-                        "request_id": entry["request_id"],
-                        "filename_prefix": entry["filename_prefix"],
-                        "seed": entry["seed"],
-                        "hires_fix": entry["hires_fix"],
-                        "adetailer": entry["adetailer"],
-                    }
-                    for entry in chunk
-                ]
+            try:
+                for chunk in chunks:
+                    c_prompts = [entry["prompt"] for entry in chunk]
+                    c_negatives = [entry["negative_prompt"] for entry in chunk]
+                    c_per_sample_info = [
+                        {
+                            "request_id": entry["request_id"],
+                            "filename_prefix": entry["filename_prefix"],
+                            "seed": entry["seed"],
+                            "hires_fix": entry["hires_fix"],
+                            "adetailer": entry["adetailer"],
+                        }
+                        for entry in chunk
+                    ]
 
-                chunk_kwargs = dict(pipeline_kwargs)
-                chunk_kwargs["prompt"] = c_prompts
-                chunk_kwargs["negative_prompt"] = c_negatives
-                chunk_kwargs["number"] = len(c_prompts)
-                chunk_kwargs["batch"] = len(c_prompts)
-                chunk_kwargs["per_sample_info"] = c_per_sample_info
-                chunk_kwargs["request_filename_prefix"] = c_per_sample_info[0]["filename_prefix"] if c_per_sample_info else None
+                    chunk_kwargs = dict(pipeline_kwargs)
+                    chunk_kwargs["prompt"] = c_prompts
+                    chunk_kwargs["negative_prompt"] = c_negatives
+                    chunk_kwargs["number"] = len(c_prompts)
+                    chunk_kwargs["batch"] = len(c_prompts)
+                    chunk_kwargs["per_sample_info"] = c_per_sample_info
+                    chunk_kwargs["request_filename_prefix"] = c_per_sample_info[0]["filename_prefix"] if c_per_sample_info else None
 
-                chunk_start_ts = time.time()
-                result = await asyncio.to_thread(pipeline, **chunk_kwargs)
+                    chunk_start_ts = time.time()
+                    result = await asyncio.to_thread(pipeline, **chunk_kwargs)
 
-                if isinstance(result, dict) and "batched_results" in result:
-                    for request_id, entries in result["batched_results"].items():
-                        saved_map.setdefault(request_id, []).extend(entries)
-                else:
-                    files = _find_images_since(chunk_start_ts)
-                    for f in files:
-                        name = os.path.basename(f)
-                        for entry in chunk:
-                            rid = entry["request_id"]
-                            if f"LD-REQ-{rid}" in name:
-                                saved_map.setdefault(rid, []).append({
-                                    "filename": name,
-                                    "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
-                                })
+                    if isinstance(result, dict) and "batched_results" in result:
+                        for request_id, entries in result["batched_results"].items():
+                            saved_map.setdefault(request_id, []).extend(entries)
+                    else:
+                        files = _find_images_since(chunk_start_ts)
+                        for f in files:
+                            name = os.path.basename(f)
+                            for entry in chunk:
+                                rid = entry["request_id"]
+                                if f"LD-REQ-{rid}" in name:
+                                    saved_map.setdefault(rid, []).append({
+                                        "filename": name,
+                                        "subfolder": os.path.relpath(os.path.dirname(f), "./output"),
+                                    })
+            except InterruptedError:
+                logger.info(
+                    "Generation interrupted for request_ids=%s",
+                    [p.request_id for p in items],
+                )
+                sync_broadcast_preview(
+                    step=0,
+                    total_steps=first_req.steps,
+                    message_type="error",
+                    generation_id=_gen_id,
+                )
+                for p in items:
+                    if not p.future.done():
+                        p.future.set_exception(HTTPException(status_code=409, detail="Generation interrupted"))
+                return
 
             # For each pending item, collect its images and set future result
             for p in items:

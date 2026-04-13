@@ -1,4 +1,5 @@
-import { startTransition, useCallback } from 'react';
+import { startTransition, useCallback, useRef } from 'react';
+import axios from 'axios';
 import {
   generateImage,
   getImageMetadata,
@@ -37,6 +38,8 @@ function readFileAsDataUrl(file: File) {
 }
 
 export function useGenerationActions() {
+  const interruptedGenerationRef = useRef(false);
+  const activeRunIdRef = useRef(0);
   const {
     settings,
     availableModels,
@@ -187,13 +190,17 @@ export function useGenerationActions() {
   const handleGenerate = useCallback(async () => {
     if (status === 'generating') {
       try {
+        interruptedGenerationRef.current = true;
         await interruptGeneration();
-      } finally {
-        setStatus('idle');
+      } catch (error) {
+        console.error('Failed to interrupt generation', error);
       }
-
       return;
     }
+
+    const runId = activeRunIdRef.current + 1;
+    activeRunIdRef.current = runId;
+    interruptedGenerationRef.current = false;
 
     setStatus('generating');
     setPreview(null);
@@ -207,6 +214,12 @@ export function useGenerationActions() {
 
     try {
       const response = await generateImage(settings);
+      if (activeRunIdRef.current !== runId || interruptedGenerationRef.current) {
+        setPreview(null);
+        setStatus('idle');
+        return;
+      }
+
       const images = response.images ?? (response.image ? [response.image] : []);
       const image = images[0] ?? null;
 
@@ -221,6 +234,17 @@ export function useGenerationActions() {
         });
       }
     } catch (error) {
+      if (
+        interruptedGenerationRef.current &&
+        axios.isAxiosError(error) &&
+        (error.response?.status === 409 ||
+          String(error.response?.data?.detail ?? '').toLowerCase().includes('interrupt'))
+      ) {
+        setPreview(null);
+        setStatus('idle');
+        return;
+      }
+
       console.error('Generation failed', error);
       setStatus('error');
       return;
