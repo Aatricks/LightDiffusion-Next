@@ -252,6 +252,14 @@ def _effective_guidance_scale(req: "GenerateRequest") -> float:
     return float(req.cfg_scale if req.guidance_scale is None else req.guidance_scale)
 
 
+def _has_running_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
+
 class PendingRequest:
     def __init__(self, req: GenerateRequest, request_id: str):
         self.req = req
@@ -263,11 +271,12 @@ class PendingRequest:
 class GenerationBuffer:
     def __init__(self):
         self._pending: List[PendingRequest] = []
-        self._lock = asyncio.Lock()
-        self._new_request = asyncio.Event()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._lock: asyncio.Lock
+        self._new_request: asyncio.Event
         
         # Prefetching state
-        self._prefetch_lock = asyncio.Lock()
+        self._prefetch_lock: asyncio.Lock
         self._prefetch_task: Optional[asyncio.Task] = None
         self._current_prefetch_path: Optional[str] = None
 
@@ -278,9 +287,27 @@ class GenerationBuffer:
         self._cumulative_wait_time = 0.0
         self._last_batch_ts = 0.0
         self._worker_task: Optional[asyncio.Task] = None
+        self._reset_async_primitives(asyncio.get_running_loop() if _has_running_loop() else None)
+
+    def _reset_async_primitives(self, loop: Optional[asyncio.AbstractEventLoop]) -> None:
+        """Recreate loop-bound synchronization primitives.
+
+        Test runs can start the in-process server multiple times on different
+        event loops. The queue's Event/Lock objects must be recreated when the
+        owning loop changes to avoid cross-loop RuntimeError during teardown.
+        """
+        self._loop = loop
+        self._lock = asyncio.Lock()
+        self._new_request = asyncio.Event()
+        self._prefetch_lock = asyncio.Lock()
+        self._prefetch_task = None
+        self._current_prefetch_path = None
 
     async def start(self):
         """Start the background worker task."""
+        current_loop = asyncio.get_running_loop()
+        if self._loop is not current_loop:
+            self._reset_async_primitives(current_loop)
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(self._worker())
             logger.info("GenerationBuffer worker task started")
