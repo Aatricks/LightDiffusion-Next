@@ -1,604 +1,765 @@
-import { Button, NumberInput, Select, Stack, Textarea, Switch, Group, Collapse, Box, Text, Accordion, rem } from '@mantine/core';
+import { type ChangeEvent, useMemo, useState } from 'react';
+import { FolderClock, Layers3, SlidersHorizontal, Sparkles, WandSparkles, Workflow } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+import { useGenerationActions } from '../hooks/use-generation-actions';
+import { cn } from '../lib/utils';
 import { useStore } from '../store/useStore';
-import { generateImage, interruptGeneration, listModels, listControlNets, getLastSeed, postSettingsSnapshot, getImageMetadata } from '../api/client';
-import { useEffect, useMemo } from 'react';
-import { useDisclosure } from '@mantine/hooks';
-import { IconCaretDown, IconCaretRight, IconUpload, IconPhoto, IconX } from '@tabler/icons-react';
+import type { GenerationSettings as GenerationSettingsShape } from '../types';
 import { ImageInput } from './ImageInput';
-import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import { ScrollArea } from './ui/scroll-area';
+import { Switch } from './ui/switch';
+import { useShallow } from 'zustand/react/shallow';
+
+type FeedbackTone = 'success' | 'warning' | 'error';
+
+type FeedbackState = {
+  tone: FeedbackTone;
+  text: string;
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+const samplerOptions = [
+  'dpmpp_2m',
+  'dpmpp_2m_cfgpp',
+  'dpmpp_sde',
+  'dpmpp_sde_cfgpp',
+  'euler',
+  'euler_cfgpp',
+  'euler_ancestral',
+  'euler_ancestral_cfgpp',
+];
+
+const schedulerOptions = ['karras', 'exponential', 'sgm_uniform', 'simple', 'normal', 'ays'];
+const controlTypes = ['canny', 'depth', 'pose', 'softedge'];
+const multiscalePresets = ['balanced', 'detailed', 'creative', 'disabled'];
+
+function Field({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {description ? <p className="text-xs leading-5 text-muted">{description}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+function FeatureSwitch({
+  checked,
+  description,
+  disabled,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  description?: string;
+  disabled?: boolean;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-4 rounded-[1.15rem] border px-3.5 py-3',
+        disabled ? 'border-line bg-oat/32 opacity-70' : 'border-line bg-oat/42',
+      )}
+    >
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-ink">{label}</p>
+        {description ? <p className="text-xs leading-5 text-muted">{description}</p> : null}
+      </div>
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+    </div>
+  );
+}
+
+function StatusLine({ tone, text }: FeedbackState) {
+  return (
+    <p
+      className={cn(
+        'text-sm',
+        tone === 'error' ? 'text-clay-strong' : tone === 'warning' ? 'text-muted' : 'text-clay',
+      )}
+    >
+      {text}
+    </p>
+  );
+}
+
+function SupportHint({
+  capability,
+  label,
+}: {
+  capability?: boolean;
+  label: string;
+}) {
+  if (capability !== false) return null;
+
+  return <p className="text-xs leading-5 text-muted">{label}</p>;
+}
+
+function OptionSelect({
+  disabled,
+  onValueChange,
+  options,
+  placeholder,
+  value,
+}: {
+  disabled?: boolean;
+  onValueChange: (value: string) => void;
+  options: SelectOption[];
+  placeholder: string;
+  value?: string;
+}) {
+  return (
+    <Select disabled={disabled} onValueChange={onValueChange} value={value}>
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.length > 0 ? (
+          options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))
+        ) : (
+          <div className="px-4 py-3 text-sm text-muted">No options available</div>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export function GenerationSettings() {
-    const { settings, setSettings, status, setStatus, setCurrentImage, addToGallery, availableModels, setModels, setPreview, availableControlNets, setControlNets, appendSettingsSnapshot } = useStore();
-    const [openedAdvanced, { toggle: toggleAdvanced }] = useDisclosure(false);
-    const [openedHistory, { toggle: toggleHistory }] = useDisclosure(false);
+  const {
+    availableControlNets,
+    availableModels,
+    settings,
+    settingsHistory,
+    setSettings,
+    status,
+  } = useStore(useShallow((state) => ({
+    availableControlNets: state.availableControlNets,
+    availableModels: state.availableModels,
+    settings: state.settings,
+    settingsHistory: state.settingsHistory,
+    setSettings: state.setSettings,
+    status: state.status,
+  })));
+  const { importSettingsFromFiles, restoreLastSeed, saveSettingsSnapshot, updateAutotuneSettings } =
+    useGenerationActions();
+  const [historyFeedback, setHistoryFeedback] = useState<FeedbackState | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<FeedbackState | null>(null);
+  const [performanceFeedback, setPerformanceFeedback] = useState<FeedbackState | null>(null);
 
-    const handleImportSettings = async (files: File[]) => {
-        const file = files[0];
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const b64 = e.target?.result as string;
-            try {
-                const res = await getImageMetadata(b64);
-                const meta = res?.metadata || {};
-                const updates: any = {};
-                if (meta.seed !== undefined) updates.seed = meta.seed;
-                if (meta.steps !== undefined) updates.steps = meta.steps;
-                if (meta.cfg_scale !== undefined) updates.cfg_scale = meta.cfg_scale;
-                if (meta.sampler) updates.sampler = meta.sampler;
-                if (meta.scheduler) updates.scheduler = meta.scheduler;
-                if (meta.model_path) updates.model_path = meta.model_path;
-                if (meta.width) updates.width = meta.width;
-                if (meta.height) updates.height = meta.height;
-                if (meta.prompt) updates.prompt = meta.prompt;
-                if (meta.negative_prompt) updates.negative_prompt = meta.negative_prompt;
-                if (meta.weight_quantization !== undefined) updates.weight_quantization = meta.weight_quantization;
+  const modelOptions = useMemo<SelectOption[]>(
+    () => availableModels.map((model) => ({ value: model.path, label: model.name })),
+    [availableModels],
+  );
+  const controlNetOptions = useMemo<SelectOption[]>(
+    () => availableControlNets.map((model) => ({ value: model, label: model })),
+    [availableControlNets],
+  );
+  const currentModel = availableModels.find((model) => model.path === settings.model_path);
+  const capabilities = currentModel?.capabilities;
 
-                // warn if model is unknown locally
-                if (updates.model_path && !availableModels.find(m => m.path === updates.model_path)) {
-                    console.warn('Imported model_path not available locally:', updates.model_path);
-                }
-                setSettings(updates);
-            } catch (err) {
-                console.error('Failed to import metadata from image', err);
-                // eslint-disable-next-line no-alert
-                alert('Failed to import settings from image');
-            }
-        };
-        reader.readAsDataURL(file);
+  const importDropzone = useDropzone({
+    accept: { 'image/*': [] },
+    maxFiles: 1,
+    multiple: false,
+    onDrop: (acceptedFiles) => {
+      void (async () => {
+        const result = await importSettingsFromFiles(acceptedFiles);
+        setHistoryFeedback({
+          tone: result.ok ? (result.warning ? 'warning' : 'success') : 'error',
+          text: result.warning ? `${result.message} ${result.warning}` : result.message,
+        });
+      })();
+    },
+  });
+
+  const updateNumber =
+    (key: keyof GenerationSettingsShape, fallback = 0) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const raw = event.currentTarget.value;
+      const nextValue = raw === '' ? fallback : Number(raw);
+      if (!Number.isNaN(nextValue)) {
+        setSettings({ [key]: nextValue } as Partial<GenerationSettingsShape>);
+      }
     };
 
-    useEffect(() => {
-        listModels().then(models => {
-            setModels(models);
-            // Automatically select the first model if none is currently selected
-            // We use the store's current state directly to avoid dependency loop
-            const currentSettings = useStore.getState().settings;
-            if (!currentSettings.model_path && models.length > 0) {
-                const defaultModel = models.find(m => m.name.toLowerCase().includes("dreamshaper")) || models[0];
-                const updates: any = { model_path: defaultModel.path };
-                
-                if (defaultModel.type === "Flux2Klein") {
-                    updates.width = 1024;
-                    updates.height = 1024;
-                    updates.sampler = "euler";
-                    updates.scheduler = "simple";
-                    updates.steps = 4;
-                    updates.cfg_scale = 1.0;
-                } else if (defaultModel.type === "SDXL") {
-                    updates.width = 1024;
-                    updates.height = 1024;
-                    updates.sampler = "euler";
-                    updates.scheduler = "simple";
-                    updates.steps = 25;
-                } else {
-                    updates.width = 512;
-                    updates.height = 512;
-                    updates.sampler = "dpmpp_2m";
-                    updates.scheduler = "karras";
-                    updates.steps = 20;
-                }
-                setSettings(updates);
-            }
-        }).catch(console.error);
-        listControlNets().then(res => setControlNets(res.models)).catch(console.error);
-    }, [setModels, setControlNets, setSettings]);
+  const restoreSnapshot = (snapshot: GenerationSettingsShape) => {
+    setSettings(snapshot);
+    setHistoryFeedback({
+      tone: 'success',
+      text: 'Restored a saved local snapshot.',
+    });
+  };
 
-    const handleGenerate = async () => {
-        if (status === 'generating') {
-            await interruptGeneration();
-            setStatus('idle');
-            return;
-        }
+  const handleStableFastChange = (checked: boolean) => {
+    if (checked && settings.torch_compile) {
+      void (async () => {
+        const result = await updateAutotuneSettings({
+          stable_fast: true,
+          torch_compile: false,
+          vae_autotune: settings.vae_autotune,
+        });
+        setPerformanceFeedback(result.ok ? null : { tone: 'error', text: result.message });
+      })();
+      return;
+    }
 
-        setStatus('generating');
-        setPreview(null); // Clear previous preview
-        try {
-            // Auto-save a local client-side snapshot for quick restore/history
-            const localSnap = {
-                id: (Date.now().toString(36) + Math.random().toString(36).slice(2,8)),
-                ts: Math.floor(Date.now() / 1000),
-                settings: { ...settings }
-            };
-            appendSettingsSnapshot(localSnap);
+    setSettings({ stable_fast: checked });
+    setPerformanceFeedback(null);
+  };
 
-            const res = await generateImage(settings);
-            if (res.images && res.images.length > 0) {
-                setCurrentImage(res.images[0]);
-                addToGallery(res.images[0]);
-            } else if (res.image) {
-                setCurrentImage(res.image);
-                addToGallery(res.image);
-            }
-        } catch (error) {
-            console.error("Generation failed:", error);
-        } finally {
-            setStatus('idle');
-        }
-    };
+  const handleModelAutotuneChange = (checked: boolean) => {
+    void (async () => {
+      const result = await updateAutotuneSettings({
+        stable_fast: checked ? false : settings.stable_fast,
+        torch_compile: checked,
+        vae_autotune: settings.vae_autotune,
+      });
+      setPerformanceFeedback(result.ok ? null : { tone: 'error', text: result.message });
+    })();
+  };
 
-    const modelOptions = useMemo(() => availableModels.map(m => ({ value: m.path, label: m.name })), [availableModels]);
-    const controlNetOptions = useMemo(() => availableControlNets.map(m => ({ value: m, label: m })), [availableControlNets]);
-    const currentModel = availableModels.find(m => m.path === settings.model_path);
-    const caps = currentModel?.capabilities;
+  const handleVaeAutotuneChange = (checked: boolean) => {
+    void (async () => {
+      const result = await updateAutotuneSettings({
+        torch_compile: settings.torch_compile,
+        vae_autotune: checked,
+      });
+      setPerformanceFeedback(result.ok ? null : { tone: 'error', text: result.message });
+    })();
+  };
 
-    return (
-        <Stack gap="md" p="xs">
-            <Select
-                label="Model"
-                placeholder="Select model"
-                data={modelOptions}
-                value={settings.model_path}
-                nothingFoundMessage="No models found"
-                maxDropdownHeight={400}
-                onChange={(v) => {
-                    if (!v) {
-                        setSettings({ model_path: "" });
-                        return;
-                    }
+  const capabilityTokens = [
+    currentModel?.type,
+    capabilities?.supports_img2img ? 'Img2Img' : null,
+    capabilities?.supports_controlnet ? 'ControlNet' : null,
+    capabilities?.supports_hires_fix ? 'Hires Fix' : null,
+  ].filter(Boolean) as string[];
 
-                    const selectedModel = availableModels.find(m => m.path === v);
-                    const updates: any = { model_path: v };
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="space-y-1.5 border-b border-line/70 pb-3">
+        <p className="text-xs leading-5 text-muted">
+          Technical controls live here. The main prompt stays in the composer.
+        </p>
+        <p className="text-[11px] uppercase tracking-[0.16em] text-muted">
+          {currentModel ? currentModel.name : 'No model selected'}
+        </p>
+        {status === 'error' ? <StatusLine tone="error" text="Generation failed. Check the backend logs." /> : null}
+      </div>
 
-                    if (selectedModel) {
-                        if (selectedModel.type === "Flux2Klein") {
-                            updates.width = 1024;
-                            updates.height = 1024;
-                            updates.sampler = "euler";
-                            updates.scheduler = "simple";
-                            updates.steps = 4;
-                            updates.cfg_scale = 1.0;
-                        } else if (selectedModel.type === "SDXL") {
-                            updates.width = 1024;
-                            updates.height = 1024;
-                            updates.sampler = "euler";
-                            updates.scheduler = "simple";
-                            updates.steps = 25;
-                            // Auto-enable refiner if available
-                            const refiner = availableModels.find(m => m.type === "SDXL" && (m.name.toLowerCase().includes("refiner") || m.path.toLowerCase().includes("refiner")));
-                            if (refiner) {
-                                updates.refiner_model_path = refiner.path;
-                                updates.refiner_switch_step = 20;
-                            }
-                        } else {
-                            // SD1.5
-                            updates.width = 512;
-                            updates.height = 512;
-                            updates.sampler = "dpmpp_2m";
-                            updates.scheduler = "karras";
-                            updates.steps = 20;
+      <ScrollArea className="soft-scroll min-h-0 flex-1">
+        <div className="space-y-5 py-4">
+          <div className="flex flex-wrap gap-2">
+            {capabilityTokens.length > 0 ? (
+              capabilityTokens.map((token) => (
+                <span key={token} className="rounded-full bg-sand px-3 py-1.5 text-xs text-muted">
+                  {token}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full bg-sand px-3 py-1.5 text-xs text-muted">Waiting for model metadata</span>
+            )}
+          </div>
+
+          <Accordion className="space-y-2.5" type="multiple" defaultValue={['output']}>
+            <AccordionItem value="output">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-clay" />
+                  Output
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Width">
+                    <Input type="number" step="64" value={settings.width} onChange={updateNumber('width', 512)} />
+                  </Field>
+                  <Field label="Height">
+                    <Input type="number" step="64" value={settings.height} onChange={updateNumber('height', 512)} />
+                  </Field>
+                  <Field label="Steps">
+                    <Input type="number" min="1" value={settings.steps} onChange={updateNumber('steps', 20)} />
+                  </Field>
+                  <Field label="CFG scale">
+                    <Input type="number" step="0.5" value={settings.cfg_scale} onChange={updateNumber('cfg_scale', 7)} />
+                  </Field>
+                  <Field label="Batch size">
+                    <Input type="number" min="1" max="4" value={settings.batch_size} onChange={updateNumber('batch_size', 1)} />
+                  </Field>
+                  <Field label="Images">
+                    <Input type="number" min="1" value={settings.num_images} onChange={updateNumber('num_images', 1)} />
+                  </Field>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="sampling">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-clay" />
+                  Sampling
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Sampler">
+                      <OptionSelect
+                        onValueChange={(value) => setSettings({ sampler: value })}
+                        options={samplerOptions.map((sampler) => ({ value: sampler, label: sampler }))}
+                        placeholder="Sampler"
+                        value={settings.sampler}
+                      />
+                    </Field>
+                    <Field label="Scheduler">
+                      <OptionSelect
+                        onValueChange={(value) => setSettings({ scheduler: value })}
+                        options={schedulerOptions.map((scheduler) => ({ value: scheduler, label: scheduler }))}
+                        placeholder="Scheduler"
+                        value={settings.scheduler}
+                      />
+                    </Field>
+                    <Field label="Preview fidelity">
+                      <OptionSelect
+                        disabled={!settings.enable_preview}
+                        onValueChange={(value) =>
+                          setSettings({ preview_fidelity: value as NonNullable<GenerationSettingsShape['preview_fidelity']> })
                         }
-                        
-                        // Disable features not supported by new model
-                        if (selectedModel.capabilities) {
-                            if (!selectedModel.capabilities.supports_hires_fix) updates.hiresfix = false;
-                            if (!selectedModel.capabilities.supports_img2img) updates.img2img_mode = false;
-                            if (!selectedModel.capabilities.supports_controlnet) updates.controlnet_enabled = false;
-                            if (!selectedModel.capabilities.supports_stable_fast) updates.stable_fast = false;
-                            if (!selectedModel.capabilities.supports_deepcache) updates.deepcache_enabled = false;
-                            if (!selectedModel.capabilities.supports_tome) updates.tome_enabled = false;
-                        }
-                    }
-                    setSettings(updates);
-                }}
-            />
-
-            <Textarea
-                label="Prompt"
-                placeholder="Describe your image..."
-                minRows={3}
-                autosize
-                value={settings.prompt}
-                onChange={(e) => setSettings({ prompt: e.currentTarget.value })}
-            />
-
-            <Textarea
-                label="Negative Prompt"
-                placeholder="What to avoid..."
-                minRows={2}
-                autosize
-                value={settings.negative_prompt}
-                onChange={(e) => setSettings({ negative_prompt: e.currentTarget.value })}
-            />
-
-            <Group grow>
-                <NumberInput
-                    label="Width"
-                    value={settings.width}
-                    onChange={(v) => setSettings({ width: Number(v) })}
-                    step={64}
-                />
-                <NumberInput
-                    label="Height"
-                    value={settings.height}
-                    onChange={(v) => setSettings({ height: Number(v) })}
-                    step={64}
-                />
-            </Group>
-
-            <Group grow>
-                <NumberInput
-                    label="Steps"
-                    value={settings.steps}
-                    onChange={(v) => setSettings({ steps: Number(v) })}
-                />
-                <NumberInput
-                    label="CFG Scale"
-                    value={settings.cfg_scale}
-                    onChange={(v) => setSettings({ cfg_scale: Number(v) })}
-                    step={0.5}
-                    decimalScale={1}
-                    fixedDecimalScale
-                />
-            </Group>
-
-            <Group grow>
-                <NumberInput
-                    label="Batch Size"
-                    value={settings.batch_size}
-                    onChange={(v) => setSettings({ batch_size: Number(v) })}
-                    min={1}
-                    max={4}
-                />
-                <NumberInput
-                    label="Images"
-                    value={settings.num_images}
-                    onChange={(v) => setSettings({ num_images: Number(v) })}
-                    min={1}
-                />
-            </Group>
-
-            <Button
-                onClick={handleGenerate}
-                loading={status === 'generating' && false} // We want interrupt button if generating
-                color={status === 'generating' ? 'red' : 'blue'}
-                size="lg"
-            >
-                {status === 'generating' ? 'Interrupt' : 'Generate'}
-            </Button>
-
-            <Box>
-                <Group onClick={toggleAdvanced} style={{ cursor: 'pointer' }} mb={5}>
-                    {openedAdvanced ? <IconCaretDown size={16} /> : <IconCaretRight size={16} />}
-                    <Text size="sm" fw={500}>Advanced Settings</Text>
-                </Group>
-                <Collapse in={openedAdvanced}>
-                    <Accordion variant="separated" radius="md" mt="xs" multiple defaultValue={['sampling']}>
-                        <Accordion.Item value="sampling">
-                            <Accordion.Control>Sampling & Guidance</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Group>
-                                        <NumberInput
-                                            label="Seed"
-                                            description="-1 for random"
-                                            value={settings.seed}
-                                            onChange={(v) => setSettings({ seed: Number(v) })}
-                                        />
-
-                                        <Button
-                                            variant="outline"
-                                            onClick={async () => {
-                                                try {
-                                                    const res = await getLastSeed();
-                                                    const s = res?.seed ?? -1;
-                                                    setSettings({ seed: typeof s === 'number' ? s : -1 });
-                                                } catch (err) {
-                                                    console.error('Failed to fetch last seed', err);
-                                                }
-                                            }}
-                                        >
-                                            Use last seed
-                                        </Button>
-                                    </Group>
-                                    <Group grow>
-                                        <Select
-                                            label="Sampler"
-                                            data={[
-                                                "dpmpp_2m", "dpmpp_2m_cfgpp", 
-                                                "dpmpp_sde", "dpmpp_sde_cfgpp", 
-                                                "euler", "euler_cfgpp",
-                                                "euler_ancestral", "euler_ancestral_cfgpp"
-                                            ]}
-                                            value={settings.sampler}
-                                            onChange={(v) => setSettings({ sampler: v || "dpmpp_sde_cfgpp" })}
-                                        />
-                                        <Select
-                                            label="Scheduler"
-                                            data={["karras", "exponential", "sgm_uniform", "simple", "normal", "ays"]}
-                                            value={settings.scheduler}
-                                            onChange={(v) => setSettings({ scheduler: v || "ays" })}
-                                        />
-                                    </Group>
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                        <Accordion.Item value="enhancements">
-                            <Accordion.Control>Enhancements</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Switch
-                                        label="High Res Fix"
-                                        checked={settings.hiresfix}
-                                        onChange={(e) => setSettings({ hiresfix: e.currentTarget.checked })}
-                                        disabled={caps && !caps.supports_hires_fix}
-                                    />
-                                    <Switch
-                                        label="ADetailer"
-                                        checked={settings.adetailer}
-                                        onChange={(e) => setSettings({ adetailer: e.currentTarget.checked })}
-                                    />
-                                    <Switch
-                                        label="Prompt Enhancer"
-                                        checked={settings.enhance_prompt}
-                                        onChange={(e) => setSettings({ enhance_prompt: e.currentTarget.checked })}
-                                    />
-                                    <Switch
-                                        label="Live Preview"
-                                        checked={settings.enable_preview}
-                                        onChange={(e) => setSettings({ enable_preview: e.currentTarget.checked })}
-                                    />
-                                    <Select
-                                        label="Preview Fidelity"
-                                        data={[
-                                            { value: 'low', label: 'Low (fast)' },
-                                            { value: 'balanced', label: 'Balanced (default)' },
-                                            { value: 'high', label: 'High (quality)' },
-                                        ]}
-                                        value={settings.preview_fidelity || 'balanced'}
-                                        onChange={(value: string | null) => setSettings({ preview_fidelity: (value as 'low' | 'balanced' | 'high') ?? 'balanced' })}
-                                        disabled={!settings.enable_preview}
-                                    />
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                        <Accordion.Item value="refiner">
-                            <Accordion.Control>Refiner</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Select
-                                        label="Refiner Model"
-                                        placeholder="None"
-                                        clearable
-                                        data={modelOptions}
-                                        value={settings.refiner_model_path}
-                                        nothingFoundMessage="No models found"
-                                        onChange={(v) => setSettings({ refiner_model_path: v || "" })}
-                                        disabled={availableModels.find(m => m.path === settings.model_path)?.type !== "SDXL"}
-                                    />
-                                    <NumberInput
-                                        label="Switch Step"
-                                        value={settings.refiner_switch_step}
-                                        onChange={(v) => setSettings({ refiner_switch_step: Number(v) })}
-                                        min={1}
-                                        disabled={!settings.refiner_model_path}
-                                    />
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                        <Accordion.Item value="img2img">
-                            <Accordion.Control>Image to Image</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Switch
-                                        label="Enable Img2Img"
-                                        checked={settings.img2img_mode}
-                                        onChange={(e) => setSettings({ img2img_mode: e.currentTarget.checked })}
-                                        disabled={caps && !caps.supports_img2img}
-                                    />
-                                    {settings.img2img_mode && (
-                                        <ImageInput
-                                            label="Input Image"
-                                            value={settings.img2img_image}
-                                            onChange={(b64) => setSettings({ img2img_image: b64 || undefined })}
-                                        />
-                                    )}
-                                    <NumberInput
-                                        label="Denoising Strength"
-                                        value={settings.img2img_denoise}
-                                        onChange={(v) => setSettings({ img2img_denoise: Number(v) })}
-                                        min={0} max={1} step={0.05}
-                                        disabled={!settings.img2img_mode}
-                                    />
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                        <Accordion.Item value="controlnet">
-                            <Accordion.Control>ControlNet</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Switch
-                                        label="Enable ControlNet"
-                                        checked={settings.controlnet_enabled}
-                                        onChange={(e) => setSettings({ controlnet_enabled: e.currentTarget.checked })}
-                                        disabled={caps && !caps.supports_controlnet}
-                                    />
-                                    {settings.controlnet_enabled && (
-                                        <>
-                                            <Select
-                                                label="ControlNet Model"
-                                                placeholder="Select model"
-                                                data={controlNetOptions}
-                                                value={settings.controlnet_model}
-                                                nothingFoundMessage="No ControlNet models found"
-                                                onChange={(v) => setSettings({ controlnet_model: v || undefined })}
-                                            />
-                                            <Text size="sm">Control Image (uses Img2Img input)</Text>
-                                            {!settings.img2img_mode && (
-                                                <ImageInput
-                                                    label="Control Image"
-                                                    value={settings.img2img_image}
-                                                    onChange={(b64) => setSettings({ img2img_image: b64 || undefined })}
-                                                />
-                                            )}
-                                            <Group>
-                                                <Select
-                                                    label="Type"
-                                                    data={["canny", "depth", "pose", "softedge"]}
-                                                    value={settings.controlnet_type}
-                                                    onChange={(v) => setSettings({ controlnet_type: v || "canny" })}
-                                                />
-                                                <NumberInput
-                                                    label="Strength"
-                                                    value={settings.controlnet_strength}
-                                                    onChange={(v) => setSettings({ controlnet_strength: Number(v) })}
-                                                    min={0} max={2} step={0.1}
-                                                />
-                                            </Group>
-                                        </>
-                                    )}
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                        <Accordion.Item value="performance">
-                            <Accordion.Control>Performance & Optimizations</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Switch
-                                        label="Stable Fast"
-                                        checked={settings.stable_fast}
-                                        onChange={(e) => setSettings({ stable_fast: e.currentTarget.checked })}
-                                        disabled={caps && !caps.supports_stable_fast}
-                                    />
-                                    <Switch
-                                        label="torch.compile"
-                                        description="Compile diffusion model for faster inference (mutually exclusive with Stable Fast)"
-                                        checked={settings.stable_fast ? false : (settings.torch_compile ?? false)}
-                                        onChange={(e) => setSettings({ torch_compile: e.currentTarget.checked, stable_fast: e.currentTarget.checked ? false : settings.stable_fast })}
-                                        disabled={settings.stable_fast}
-                                    />
-                                    <Select
-                                        label="Weight Quantization"
-                                        description="Lower precision for reduced VRAM usage"
-                                        data={[
-                                            { value: 'none', label: 'None (FP16/BF16)' },
-                                            { value: 'fp8', label: 'FP8 (8-bit)' },
-                                            { value: 'nvfp4', label: 'NVFP4 (4-bit)' },
-                                        ]}
-                                        value={settings.weight_quantization || 'none'}
-                                        onChange={(v) => setSettings({ weight_quantization: v === 'none' ? null : (v as 'fp8' | 'nvfp4') })}
-                                    />
-                                    <Switch label="Keep Models Loaded" checked={settings.keep_models_loaded} onChange={(e) => setSettings({ keep_models_loaded: e.currentTarget.checked })} />
-                                    <Switch label="Reuse Seed" checked={settings.reuse_seed} onChange={(e) => setSettings({ reuse_seed: e.currentTarget.checked })} />
-
-                                    <Group mt="xs">
-                                        <Switch
-                                            label="DeepCache"
-                                            checked={settings.deepcache_enabled}
-                                            onChange={(e) => setSettings({ deepcache_enabled: e.currentTarget.checked })}
-                                            disabled={caps && !caps.supports_deepcache}
-                                        />
-                                        <Switch
-                                            label="ToMe"
-                                            checked={settings.tome_enabled}
-                                            onChange={(e) => setSettings({ tome_enabled: e.currentTarget.checked })}
-                                            disabled={caps && !caps.supports_tome}
-                                        />
-                                    </Group>
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                        <Accordion.Item value="multiscale">
-                            <Accordion.Control>Multiscale Generation</Accordion.Control>
-                            <Accordion.Panel>
-                                <Stack gap="xs">
-                                    <Switch
-                                        label="Enable Multiscale"
-                                        checked={settings.enable_multiscale}
-                                        onChange={(e) => setSettings({ enable_multiscale: e.currentTarget.checked })}
-                                    />
-                                    {settings.enable_multiscale && (
-                                        <>
-                                            <Select
-                                                label="Preset"
-                                                data={["balanced", "detailed", "creative", "disabled"]}
-                                                value={settings.multiscale_preset}
-                                                onChange={(v) => setSettings({ multiscale_preset: v || "balanced" })}
-                                            />
-                                            <NumberInput label="Factor" value={settings.multiscale_factor} onChange={(v) => setSettings({ multiscale_factor: Number(v) })} step={0.1} min={0.1} max={1.0} />
-                                        </>
-                                    )}
-                                </Stack>
-                            </Accordion.Panel>
-                        </Accordion.Item>
-
-                    </Accordion>
-                </Collapse>
-            </Box>
-
-            <Group onClick={toggleHistory} style={{ cursor: 'pointer' }} mb={5}>
-                {openedHistory ? <IconCaretDown size={16} /> : <IconCaretRight size={16} />}
-                <Text size="sm" fw={500}>Settings History</Text>
-            </Group>
-            <Collapse in={openedHistory}>
-                <Stack gap="xs" p="xs">
-                    <Group>
-                        <Button
-                            variant="light"
-                            onClick={async () => {
-                                try {
-                                    const res = await postSettingsSnapshot(settings, !!settings.persist_prompt_history);
-                                    if (res && res.snapshot) {
-                                        appendSettingsSnapshot(res.snapshot);
-                                    }
-                                } catch (err) {
-                                    console.error('Failed to save settings to history', err);
-                                }
-                            }}
-                        >
-                            Save to history
-                        </Button>
-
-                        <Switch
-                            label="Include prompt in server history (opt-in)"
-                            checked={!!settings.persist_prompt_history}
-                            onChange={(e) => setSettings({ persist_prompt_history: e.currentTarget.checked })}
-                        />
-                    </Group>
-
-                    <Text size="sm" fw={500} mt="md">Import settings from image</Text>
-                    <Dropzone
-                        onDrop={handleImportSettings}
-                        onReject={(files) => console.log('rejected files', files)}
-                        maxSize={5 * 1024 ** 2}
-                        accept={IMAGE_MIME_TYPE}
-                        p="sm"
+                        options={[
+                          { value: 'low', label: 'Low · faster' },
+                          { value: 'balanced', label: 'Balanced · default' },
+                          { value: 'high', label: 'High · slower' },
+                        ]}
+                        placeholder="Preview fidelity"
+                        value={settings.preview_fidelity || 'balanced'}
+                      />
+                    </Field>
+                    <FeatureSwitch
+                      checked={settings.reuse_seed}
+                      label="Reuse seed"
+                      onCheckedChange={(checked) => setSettings({ reuse_seed: checked })}
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <Field label="Seed">
+                      <Input type="number" value={settings.seed ?? -1} onChange={updateNumber('seed', -1)} />
+                    </Field>
+                    <Button
+                      className="self-end"
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void (async () => {
+                          const result = await restoreLastSeed();
+                          setActionFeedback({
+                            tone: result.ok ? 'success' : 'error',
+                            text: result.message,
+                          });
+                        })();
+                      }}
                     >
-                        <Group justify="center" gap="sm" style={{ minHeight: rem(60), pointerEvents: 'none' }}>
-                            <Dropzone.Accept>
-                                <IconUpload
-                                    style={{ width: rem(32), height: rem(32), color: 'var(--mantine-color-blue-6)' }}
-                                    stroke={1.5}
-                                />
-                            </Dropzone.Accept>
-                            <Dropzone.Reject>
-                                <IconX
-                                    style={{ width: rem(32), height: rem(32), color: 'var(--mantine-color-red-6)' }}
-                                    stroke={1.5}
-                                />
-                            </Dropzone.Reject>
-                            <Dropzone.Idle>
-                                <IconPhoto
-                                    style={{ width: rem(32), height: rem(32), color: 'var(--mantine-color-dimmed)' }}
-                                    stroke={1.5}
-                                />
-                            </Dropzone.Idle>
+                      Use last seed
+                    </Button>
+                  </div>
+                  {actionFeedback ? <StatusLine {...actionFeedback} /> : null}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
 
+            <AccordionItem value="enhancements">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <WandSparkles className="h-4 w-4 text-clay" />
+                  Enhancements
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <FeatureSwitch
+                    checked={settings.hiresfix}
+                    disabled={capabilities?.supports_hires_fix === false}
+                    label="High Res Fix"
+                    onCheckedChange={(checked) => setSettings({ hiresfix: checked })}
+                  />
+                  <SupportHint
+                    capability={capabilities?.supports_hires_fix}
+                    label="The selected model does not support High Res Fix."
+                  />
+                  <FeatureSwitch
+                    checked={settings.adetailer}
+                    label="ADetailer"
+                    onCheckedChange={(checked) => setSettings({ adetailer: checked })}
+                  />
+                  <FeatureSwitch
+                    checked={settings.enhance_prompt}
+                    label="Prompt enhancer"
+                    onCheckedChange={(checked) => setSettings({ enhance_prompt: checked })}
+                  />
+                  <FeatureSwitch
+                    checked={settings.enable_preview}
+                    label="Live preview"
+                    onCheckedChange={(checked) => setSettings({ enable_preview: checked })}
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="refiner">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <Layers3 className="h-4 w-4 text-clay" />
+                  Refiner
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <Field label="Refiner model">
+                    <OptionSelect
+                      disabled={currentModel?.type !== 'SDXL'}
+                      onValueChange={(value) => setSettings({ refiner_model_path: value === '__none' ? '' : value })}
+                      options={[{ value: '__none', label: 'None' }, ...modelOptions]}
+                      placeholder="None"
+                      value={settings.refiner_model_path || '__none'}
+                    />
+                  </Field>
+                  <Field label="Switch step">
+                    <Input
+                      disabled={!settings.refiner_model_path}
+                      type="number"
+                      min="1"
+                      value={settings.refiner_switch_step ?? 15}
+                      onChange={updateNumber('refiner_switch_step', 15)}
+                    />
+                  </Field>
+                  <SupportHint
+                    capability={currentModel?.type === 'SDXL'}
+                    label="Refiner selection is only relevant for SDXL base models."
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="img2img">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-clay" />
+                  Image to image
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <FeatureSwitch
+                    checked={settings.img2img_mode}
+                    disabled={capabilities?.supports_img2img === false}
+                    label="Enable Img2Img"
+                    onCheckedChange={(checked) => setSettings({ img2img_mode: checked })}
+                  />
+                  <SupportHint
+                    capability={capabilities?.supports_img2img}
+                    label="The selected model does not support Img2Img."
+                  />
+                  {settings.img2img_mode ? (
+                    <ImageInput
+                      label="Input image"
+                      value={settings.img2img_image}
+                      onChange={(base64) => setSettings({ img2img_image: base64 ?? undefined })}
+                    />
+                  ) : null}
+                  <Field label="Denoising strength">
+                    <Input
+                      disabled={!settings.img2img_mode}
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.img2img_denoise}
+                      onChange={updateNumber('img2img_denoise', 0.75)}
+                    />
+                  </Field>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="controlnet">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-clay" />
+                  ControlNet
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <FeatureSwitch
+                    checked={settings.controlnet_enabled}
+                    disabled={capabilities?.supports_controlnet === false}
+                    label="Enable ControlNet"
+                    onCheckedChange={(checked) => setSettings({ controlnet_enabled: checked })}
+                  />
+                  <SupportHint
+                    capability={capabilities?.supports_controlnet}
+                    label="The selected model does not support ControlNet."
+                  />
+                  {settings.controlnet_enabled ? (
+                    <>
+                      <Field label="ControlNet model">
+                        <OptionSelect
+                          onValueChange={(value) =>
+                            setSettings({ controlnet_model: value === '__none' ? undefined : value })
+                          }
+                          options={[{ value: '__none', label: 'Select a model' }, ...controlNetOptions]}
+                          placeholder="Select a ControlNet model"
+                          value={settings.controlnet_model || '__none'}
+                        />
+                      </Field>
+                      <Field label="Control type">
+                        <OptionSelect
+                          onValueChange={(value) => setSettings({ controlnet_type: value })}
+                          options={controlTypes.map((type) => ({ value: type, label: type }))}
+                          placeholder="Control type"
+                          value={settings.controlnet_type}
+                        />
+                      </Field>
+                      <Field label="Strength">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={settings.controlnet_strength}
+                          onChange={updateNumber('controlnet_strength', 1)}
+                        />
+                      </Field>
+                      {!settings.img2img_mode ? (
+                        <ImageInput
+                          compact
+                          label="Control image"
+                          value={settings.img2img_image}
+                          onChange={(base64) => setSettings({ img2img_image: base64 ?? undefined })}
+                        />
+                      ) : (
+                        <p className="text-xs leading-5 text-muted">Uses the Img2Img source image.</p>
+                      )}
+                    </>
+                  ) : null}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="performance">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-clay" />
+                  Performance and optimizations
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <FeatureSwitch
+                    checked={settings.stable_fast}
+                    disabled={capabilities?.supports_stable_fast === false}
+                    label="Stable Fast"
+                    onCheckedChange={handleStableFastChange}
+                  />
+                  <SupportHint
+                    capability={capabilities?.supports_stable_fast}
+                    label="The selected model does not support Stable Fast."
+                  />
+                  <FeatureSwitch
+                    checked={settings.torch_compile}
+                    disabled={settings.stable_fast}
+                    description="Compiles the diffusion model for faster repeat runs."
+                    label="Model autotune (torch.compile)"
+                    onCheckedChange={handleModelAutotuneChange}
+                  />
+                  <FeatureSwitch
+                    checked={settings.vae_autotune}
+                    description="Compiles the VAE decoder when enabled for faster decode and encode steps."
+                    label="VAE autotune (torch.compile)"
+                    onCheckedChange={handleVaeAutotuneChange}
+                  />
+                  <Field label="Weight quantization">
+                    <OptionSelect
+                      onValueChange={(value) =>
+                        setSettings({ weight_quantization: value === 'none' ? null : (value as 'fp8' | 'nvfp4') })
+                      }
+                      options={[
+                        { value: 'none', label: 'None · FP16/BF16' },
+                        { value: 'fp8', label: 'FP8 · 8-bit' },
+                        { value: 'nvfp4', label: 'NVFP4 · 4-bit' },
+                      ]}
+                      placeholder="Weight quantization"
+                      value={settings.weight_quantization || 'none'}
+                    />
+                  </Field>
+                  <FeatureSwitch
+                    checked={settings.keep_models_loaded}
+                    label="Keep models loaded"
+                    onCheckedChange={(checked) => setSettings({ keep_models_loaded: checked })}
+                  />
+                  <FeatureSwitch
+                    checked={settings.deepcache_enabled}
+                    disabled={capabilities?.supports_deepcache === false}
+                    label="DeepCache"
+                    onCheckedChange={(checked) => setSettings({ deepcache_enabled: checked })}
+                  />
+                  <FeatureSwitch
+                    checked={settings.tome_enabled}
+                    disabled={capabilities?.supports_tome === false}
+                    label="ToMe"
+                    onCheckedChange={(checked) => setSettings({ tome_enabled: checked })}
+                  />
+                  {performanceFeedback ? <StatusLine {...performanceFeedback} /> : null}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="multiscale">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <Layers3 className="h-4 w-4 text-clay" />
+                  Multiscale generation
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <FeatureSwitch
+                    checked={settings.enable_multiscale}
+                    label="Enable multiscale"
+                    onCheckedChange={(checked) => setSettings({ enable_multiscale: checked })}
+                  />
+                  {settings.enable_multiscale ? (
+                    <>
+                      <Field label="Preset">
+                        <OptionSelect
+                          onValueChange={(value) => setSettings({ multiscale_preset: value })}
+                          options={multiscalePresets.map((preset) => ({ value: preset, label: preset }))}
+                          placeholder="Preset"
+                          value={settings.multiscale_preset}
+                        />
+                      </Field>
+                      <Field label="Factor">
+                        <Input
+                          type="number"
+                          min="0.1"
+                          max="1"
+                          step="0.1"
+                          value={settings.multiscale_factor}
+                          onChange={updateNumber('multiscale_factor', 0.5)}
+                        />
+                      </Field>
+                    </>
+                  ) : null}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="history">
+              <AccordionTrigger>
+                <span className="flex items-center gap-2">
+                  <FolderClock className="h-4 w-4 text-clay" />
+                  History and import
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <FeatureSwitch
+                    checked={!!settings.persist_prompt_history}
+                    label="Include prompts in server history"
+                    onCheckedChange={(checked) => setSettings({ persist_prompt_history: checked })}
+                  />
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void (async () => {
+                          const result = await saveSettingsSnapshot();
+                          setHistoryFeedback({
+                            tone: result.ok ? 'success' : 'error',
+                            text: result.message,
+                          });
+                        })();
+                      }}
+                    >
+                      Save settings
+                    </Button>
+                  </div>
+
+                  <div
+                    {...importDropzone.getRootProps()}
+                    className="cursor-pointer rounded-[1.5rem] border border-dashed border-line bg-oat/55 px-4 py-5 transition hover:border-clay/35 hover:bg-oat"
+                  >
+                    <input {...importDropzone.getInputProps()} />
+                    <div className="space-y-1 text-sm">
+                      <p className="font-medium text-ink">Import from image</p>
+                      <p className="text-xs leading-5 text-muted">Drop an image to restore its settings.</p>
+                    </div>
+                  </div>
+
+                  {settingsHistory.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted">Local snapshots</p>
+                      <div className="space-y-2">
+                        {settingsHistory.slice(0, 5).map((snapshot) => (
+                          <button
+                            key={snapshot.id}
+                            type="button"
+                            onClick={() => restoreSnapshot(snapshot.settings)}
+                            className="flex w-full items-center justify-between rounded-[1.2rem] border border-line bg-paper px-4 py-3 text-left transition hover:border-clay/35 hover:bg-oat/75"
+                          >
                             <div>
-                                <Text size="sm" inline>
-                                    Drag image here to import settings
-                                </Text>
+                              <p className="text-sm font-medium text-ink">{snapshot.settings.model_path || 'Saved state'}</p>
+                              <p className="text-xs leading-5 text-muted">
+                                {new Intl.DateTimeFormat(undefined, {
+                                  dateStyle: 'medium',
+                                  timeStyle: 'short',
+                                }).format(snapshot.ts * 1000)}
+                              </p>
                             </div>
-                        </Group>
-                    </Dropzone>
-                </Stack>
-            </Collapse>
+                            <span className="text-xs text-muted">Restore</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
-        </Stack>
-    );
+                  {historyFeedback ? <StatusLine {...historyFeedback} /> : null}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </ScrollArea>
+    </section>
+  );
 }

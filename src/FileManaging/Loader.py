@@ -140,22 +140,8 @@ class CheckpointLoaderSimple:
 
         if cached_result is not None:
             model_patcher, clip, vae = cached_result
-            # Defensive check: some tests may cache MagicMock-based mocked checkpoints
-            # which should not be treated as a real cached model. If any of the cached
-            # items look like a MagicMock, clear the cache and continue to load
-            # a real checkpoint to avoid propagating MagicMock values at runtime.
-            try:
-                from unittest.mock import MagicMock
-                if isinstance(model_patcher, MagicMock) or isinstance(clip, MagicMock) or isinstance(vae, MagicMock):
-                    logging.info("Cached checkpoint for %s appears to contain MagicMocks; clearing cache and reloading.", ckpt_path)
-                    cache.clear_cache()
-                else:
-                    print("using cached", ckpt_path)
-                    return (model_patcher, clip, vae)
-            except Exception:
-                # If anything unexpected happens, fall back to using the cached result
-                print("using cached", ckpt_path)
-                return (model_patcher, clip, vae)
+            print("using cached", ckpt_path)
+            return (model_patcher, clip, vae)
 
         # Load normally if not cached
         out = load_checkpoint_guess_config(

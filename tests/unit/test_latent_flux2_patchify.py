@@ -2,6 +2,21 @@ import torch
 from src.Utilities.Latent import Flux2 as Flux2LatentFormat
 
 
+def _make_tiny_flux2(dtype=torch.float32):
+    from src.NeuralNetwork.flux2.model import Flux2, Flux2Params
+
+    params = Flux2Params(
+        context_in_dim=16,
+        vec_in_dim=16,
+        hidden_size=64,
+        num_heads=1,
+        axes_dim=(16, 16, 16, 16),
+        depth=1,
+        depth_single_blocks=1,
+    )
+    return Flux2(params=params, dtype=dtype)
+
+
 def test_patchify_from_vae_even_dims():
     fmt = Flux2LatentFormat()
     latent = torch.randn(1, 32, 64, 64)
@@ -33,10 +48,7 @@ def test_flux2_apply_model_accepts_vae_latent_with_odd_spatial_dims():
     """Simulate the exact call-site used by calc_cond_batch/_run_model_per_chunk
     to ensure Flux2.apply_model (and Latent.patchify_from_vae) accept odd H/W.
     """
-    from src.NeuralNetwork.flux2.model import Flux2
-
-    # Force float32 dtype for unit test to avoid bfloat16 casting issues in this env
-    model = Flux2(dtype=torch.float32)
+    model = _make_tiny_flux2(dtype=torch.float32)
     # VAE-format latent with odd height (will require internal padding)
     vae_latent = torch.randn(1, 32, 67, 64)
     # timestep vector (single value is supported)
@@ -55,9 +67,7 @@ def test_flux2_apply_model_pads_or_crops_to_transformer_options():
     """When explicit transformer_options img_h/img_w are provided, the model
     must pad/crop the incoming latent so positional ids (RoPE) align.
     """
-    from src.NeuralNetwork.flux2.model import Flux2
-
-    model = Flux2(dtype=torch.float32)
+    model = _make_tiny_flux2(dtype=torch.float32)
 
     # Case A: VAE latent smaller than transformer_options -> should pad
     vae_latent_small = torch.randn(1, 32, 96, 38)

@@ -368,7 +368,8 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
             model_options=None):
     
     # Auto-detect Flux/Flux2 to disable multi-scale (DiT architecture compatibility)
-    model_sampling_obj = getattr(model.model, "model_sampling", None)
+    inner_model = _unwrap_sampling_model(model)
+    model_sampling_obj = getattr(inner_model, "model_sampling", None)
     
     is_flux_sampling = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
     if flux or flux2 or is_flux_sampling:
@@ -414,7 +415,8 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
     # Use provided model_options or default to model's own
     # FIX: Only use provided model_options if they actually contain something, 
     # otherwise we might strip important model-level optimizations like StableFast or HiDiffusion
-    m_opts = (model_options if (model_options is not None and len(model_options) > 0) else model.model_options).copy()
+    base_model_options = getattr(inner_model, "model_options", {})
+    m_opts = (model_options if (model_options is not None and len(model_options) > 0) else base_model_options).copy()
 
     # Pass explicit resolution to model (CRITICAL for Flux positional encoding)
     if flux or flux2:
@@ -422,7 +424,7 @@ def sample1(model, noise, steps, cfg, sampler_name, scheduler, positive, negativ
         m_opts["transformer_options"]["img_h"] = latent_image.shape[2] * 8
         m_opts["transformer_options"]["img_w"] = latent_image.shape[3] * 8
 
-    load_device = model.load_device
+    load_device = getattr(model, "load_device", None)
     if not isinstance(load_device, (torch.device, str)):
         load_device = Device.get_torch_device() # Fallback
 
@@ -443,6 +445,15 @@ class ModelType(Enum):
     EDM = 3
     FLUX = 8
     FLUX2 = 9  # Flux2 Klein
+
+
+def _unwrap_sampling_model(model):
+    """Return the inner model when a wrapper exposes `.model`.
+
+    Sampling entrypoints are called with both wrapper objects and direct
+    model/patcher objects in tests and batch orchestration paths.
+    """
+    return getattr(model, "model", model)
 
 
 class ModelSamplingFlux2(torch.nn.Module):
@@ -521,7 +532,8 @@ def common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, 
                     callback=None):
     
     # Auto-detect Flux/Flux2 to disable multi-scale
-    model_sampling_obj = getattr(model.model, "model_sampling", None)
+    inner_model = _unwrap_sampling_model(model)
+    model_sampling_obj = getattr(inner_model, "model_sampling", None)
     is_flux_sampling = isinstance(model_sampling_obj, (ModelSamplingFlux, ModelSamplingFlux2))
     if flux or flux2 or is_flux_sampling:
         enable_multiscale = False

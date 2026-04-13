@@ -1,188 +1,198 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ImagePlus, Import, LoaderCircle } from 'lucide-react';
 import useWebSocket from 'react-use-websocket';
+import { useGenerationActions } from '../hooks/use-generation-actions';
 import { useStore } from '../store/useStore';
-import { Center, Image, Stack, Text, Progress, Paper, Group, Button } from '@mantine/core';
-import { IconPhoto } from '@tabler/icons-react';
 import type { PreviewMessage } from '../types';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
+import { useShallow } from 'zustand/react/shallow';
+
+type FeedbackState = {
+  tone: 'success' | 'warning' | 'error';
+  text: string;
+};
 
 export function ImagePreview() {
-    const { preview, setPreview, status, currentImage, setServerStatus } = useStore();
-    const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
-    const lastStepRef = useRef(-1);
-    const currentGenIdRef = useRef<string | null>(null);
+  const { importSettingsFromBase64 } = useGenerationActions();
+  const { currentImage, preview, setPreview, setServerStatus, status } = useStore(useShallow((state) => ({
+    currentImage: state.currentImage,
+    preview: state.preview,
+    setPreview: state.setPreview,
+    setServerStatus: state.setServerStatus,
+    status: state.status,
+  })));
+  const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const currentGenerationIdRef = useRef<string | null>(null);
+  const lastStepRef = useRef(-1);
 
-    // Connect to WebSocket via Vite proxy or direct relative URL
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${protocol}://${window.location.host}/ws/preview`;
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const wsUrl = `${protocol}://${window.location.host}/ws/preview`;
 
-    const handleMessage = useCallback((event: MessageEvent) => {
-        try {
-            const msg = JSON.parse(event.data) as PreviewMessage;
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      try {
+        const message = JSON.parse(event.data) as PreviewMessage;
 
-            // Handle generation_start: adopt this generation's ID and reset state
-            if (msg.type === 'generation_start' && msg.generation_id) {
-                currentGenIdRef.current = msg.generation_id;
-                lastStepRef.current = -1;
-                setActivePreviewImage(null);
-                setPreview(null);
-                return;
-            }
-
-            // If this message has a generation_id, ignore it unless it matches
-            // the current generation. This prevents stale previews from a
-            // previous run from being displayed.
-            if (msg.generation_id && currentGenIdRef.current &&
-                msg.generation_id !== currentGenIdRef.current) {
-                return;
-            }
-
-            // Enforce monotonic progress
-            if (msg.step !== undefined) {
-                if (msg.step < lastStepRef.current && msg.step !== 0) {
-                    return;
-                }
-                lastStepRef.current = msg.step;
-            }
-
-            // Persist latest preview image locally immediately
-            if (msg.images && msg.images.length > 0) {
-                setActivePreviewImage(msg.images[0]);
-            }
-
-            setPreview(msg);
-        } catch (e) {
-            console.error("Failed to parse websocket message", e);
+        if (message.type === 'generation_start' && message.generation_id) {
+          currentGenerationIdRef.current = message.generation_id;
+          lastStepRef.current = -1;
+          setActivePreviewImage(null);
+          setPreview(null);
+          return;
         }
-    }, [setPreview]);
 
-    useWebSocket(wsUrl, {
-        shouldReconnect: () => true,
-        reconnectInterval: 3000,
-        onOpen: () => setServerStatus(true),
-        onClose: () => setServerStatus(false),
-        onError: () => setServerStatus(false),
-        onMessage: handleMessage
+        if (
+          message.generation_id &&
+          currentGenerationIdRef.current &&
+          message.generation_id !== currentGenerationIdRef.current
+        ) {
+          return;
+        }
+
+        if (message.step !== undefined) {
+          if (message.step < lastStepRef.current && message.step !== 0) {
+            return;
+          }
+          lastStepRef.current = message.step;
+        }
+
+        if (message.images && message.images.length > 0) {
+          setActivePreviewImage(message.images[0]);
+        }
+
+        setPreview(message);
+      } catch (error) {
+        console.error('Failed to parse websocket message', error);
+      }
+    },
+    [setPreview],
+  );
+
+  useWebSocket(wsUrl, {
+    shouldReconnect: () => true,
+    reconnectInterval: 3000,
+    onOpen: () => setServerStatus(true),
+    onClose: () => setServerStatus(false),
+    onError: () => setServerStatus(false),
+    onMessage: handleMessage,
+  });
+
+  useEffect(() => {
+    lastStepRef.current = -1;
+  }, [status]);
+
+  useEffect(() => {
+    if (status === 'idle') {
+      currentGenerationIdRef.current = null;
+    }
+  }, [status]);
+
+  const isGenerating = status === 'generating';
+  const displayImage = isGenerating ? (preview ? activePreviewImage : null) : currentImage;
+  const progressValue =
+    isGenerating && preview?.step !== undefined && preview.total_steps
+      ? (preview.step / preview.total_steps) * 100
+      : 0;
+  const stepText =
+    isGenerating && preview?.step !== undefined && preview.total_steps
+      ? `Step ${preview.step} / ${preview.total_steps}`
+      : isGenerating
+        ? 'Generating...'
+        : 'Idle';
+
+  const handleImportFromPreview = async () => {
+    if (!displayImage) return;
+
+    const result = await importSettingsFromBase64(displayImage);
+    setFeedback({
+      tone: result.ok ? (result.warning ? 'warning' : 'success') : 'error',
+      text: result.warning ? `${result.message} ${result.warning}` : result.message,
     });
+  };
 
-    useEffect(() => {
-        if (status === 'generating') {
-            // Reset step counter and clear old preview on new generation
-            lastStepRef.current = -1;
-            setActivePreviewImage(null);
-            // Don't reset currentGenIdRef here — the server's
-            // generation_start message will set it authoritatively.
-        } else {
-            lastStepRef.current = -1;
-        }
-    }, [status]);
+  return (
+    <section className="overflow-hidden rounded-t-[2.25rem] border border-line border-b-0 bg-paper/90 p-2 shadow-[0_18px_42px_-36px_color-mix(in_oklab,var(--color-ink)_18%,transparent)] sm:p-3">
+      <div className="studio-grid relative min-h-[460px] overflow-hidden rounded-[1.7rem] p-2 sm:min-h-[680px] sm:p-4">
+        {isGenerating ? (
+          <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between sm:inset-x-6">
+            <div className="rounded-full border border-line bg-paper/92 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-muted">
+              Generating
+            </div>
+            <div className="rounded-full border border-line bg-paper/92 px-3 py-1.5 text-xs text-muted">
+              {stepText}
+            </div>
+          </div>
+        ) : null}
 
-    // Reset active preview when idle
-    useEffect(() => {
-        if (status === 'idle') {
-            setActivePreviewImage(null);
-            currentGenIdRef.current = null;
-        }
-    }, [status]);
+        <div className="flex h-full items-center justify-center">
+          {displayImage ? (
+            <img
+              src={displayImage}
+              alt="Generated preview"
+              className="max-h-[calc(100vh-10rem)] w-auto max-w-full rounded-[1.15rem] object-contain shadow-[0_16px_30px_-24px_color-mix(in_oklab,var(--color-ink)_18%,transparent)]"
+            />
+          ) : (
+            <div className="flex max-w-lg flex-col items-center justify-center gap-5 px-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-paper text-clay">
+                {isGenerating ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <ImagePlus className="h-6 w-6" />}
+              </div>
+              <div className="space-y-2">
+                <p className="font-serif text-[clamp(1.8rem,3vw,2.5rem)] tracking-[-0.035em] text-ink">
+                  {isGenerating ? 'Preparing the next frame' : 'Ready to generate'}
+                </p>
+                <p className="text-sm leading-6 text-muted">
+                  {isGenerating
+                    ? 'Live previews appear here as the run progresses.'
+                    : 'Choose a model, write a prompt, then generate your first frame.'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
+        {isGenerating ? (
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 sm:inset-x-6">
+            <div className="rounded-[1.35rem] border border-line bg-paper/94 p-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-muted">
+                <span>Progress</span>
+                <span>{Math.round(progressValue)}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-sand">
+                <div
+                  className="h-full rounded-full bg-clay transition-[width] duration-300"
+                  style={{ width: `${progressValue}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
+      {displayImage ? (
+        <div className="mt-1 flex justify-end pr-1">
+          <Button variant="ghost" size="sm" className="text-muted hover:text-ink" onClick={() => void handleImportFromPreview()}>
+            <Import className="h-4 w-4" />
+            Import settings from image
+          </Button>
+        </div>
+      ) : null}
 
-    // Display logic
-    const isGenerating = status === 'generating';
-
-    // Use preview image if generating and available, otherwise currentImage
-    let displayImage = currentImage;
-    if (isGenerating && activePreviewImage) {
-        displayImage = activePreviewImage;
-    }
-
-    let progressValue = 0;
-    let stepText = '';
-
-    if (isGenerating && preview) {
-        if (preview.step !== undefined && preview.total_steps !== undefined && preview.total_steps > 0) {
-            progressValue = (preview.step / preview.total_steps) * 100;
-            stepText = `Step ${preview.step} / ${preview.total_steps}`;
-        }
-    }
-
-    return (
-        <Paper shadow="sm" p="md" radius="md" h="100%" withBorder>
-            <Stack h="100%" justify="center">
-                {displayImage ? (
-                    <Center style={{ width: '100%', height: '100%', minHeight: undefined }}>
-                        <Image
-                            src={displayImage}
-                            alt="Preview"
-                            fit="contain"
-                            radius="md"
-                            style={{
-                                maxHeight: 'calc(100vh - 200px)',
-                                maxWidth: '100%',
-                                objectFit: 'contain'
-                            }}
-                        />
-                    </Center>
-                ) : (
-                    <Center h={300}>
-                        <Stack align="center" gap="xs" c="dimmed">
-                            <IconPhoto size={48} />
-                            <Text>No image generated yet</Text>
-                        </Stack>
-                    </Center>
-                )}
-
-                {displayImage && (
-                    <Group style={{ justifyContent: 'flex-end' }} mt="sm">
-                        <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={async () => {
-                                try {
-                                    // Lazy import to avoid circular deps
-                                    const { getImageMetadata } = await import('../api/client');
-                                    const res = await getImageMetadata(displayImage);
-                                    const meta = res?.metadata || {};
-                                    const updates: any = {};
-                                    if (meta.seed !== undefined) updates.seed = meta.seed;
-                                    if (meta.steps !== undefined) updates.steps = meta.steps;
-                                    if (meta.cfg_scale !== undefined) updates.cfg_scale = meta.cfg_scale;
-                                    if (meta.sampler) updates.sampler = meta.sampler;
-                                    if (meta.scheduler) updates.scheduler = meta.scheduler;
-                                    if (meta.model_path) updates.model_path = meta.model_path;
-                                    if (meta.width) updates.width = meta.width;
-                                    if (meta.height) updates.height = meta.height;
-                                    if (meta.prompt) updates.prompt = meta.prompt;
-                                    if (meta.negative_prompt) updates.negative_prompt = meta.negative_prompt;
-                                    const { setSettings, availableModels } = useStore.getState();
-                                    // warn if model is unknown locally
-                                    if (updates.model_path && !availableModels.find(m => m.path === updates.model_path)) {
-                                        console.warn('Imported model_path not available locally:', updates.model_path);
-                                    }
-                                    setSettings(updates);
-                                } catch (err) {
-                                    console.error('Failed to import metadata from image', err);
-                                    // lightweight feedback
-                                    // eslint-disable-next-line no-alert
-                                    alert('Failed to import settings from image');
-                                }
-                            }}
-                        >
-                            Import settings from image
-                        </Button>
-                    </Group>
-                )}
-
-                {isGenerating && (
-                    <Stack gap="xs" mt="md">
-                        <Group justify="space-between">
-                            <Text size="sm">{stepText || "Generating..."}</Text>
-                            <Text size="sm">{Math.round(progressValue)}%</Text>
-                        </Group>
-                        <Progress value={progressValue} animated striped size="lg" radius="xl" />
-                    </Stack>
-                )}
-            </Stack>
-        </Paper >
-    );
+      {feedback ? (
+        <p
+          className={cn(
+            'mt-3 text-sm',
+            feedback.tone === 'error'
+              ? 'text-clay-strong'
+              : feedback.tone === 'warning'
+                ? 'text-muted'
+                : 'text-clay',
+          )}
+        >
+          {feedback.text}
+        </p>
+      ) : null}
+    </section>
+  );
 }
-

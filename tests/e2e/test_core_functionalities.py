@@ -8,7 +8,7 @@ import pytest
 from pathlib import Path
 
 # Add the project root to the Python path
-project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 
 pytestmark = pytest.mark.slow
@@ -130,24 +130,31 @@ def test_img2img():
     )
 
 
+@pytest.mark.asyncio
 @pytest.mark.slow
-def test_api_endpoints(server_client):
-    """Tests the API endpoints using the in-process TestClient."""
-    print("Testing /health endpoint via TestClient...")
+async def test_api_endpoints(monkeypatch, async_server_client):
+    """Tests the API endpoints via the in-process ASGI transport."""
+    print("Testing /health endpoint via ASGI transport...")
+
+    async def fake_enqueue(_pending):
+        return {"image": "data:image/png;base64,xyz"}
+
+    import server
+    monkeypatch.setattr(server._generation_buffer, "enqueue", fake_enqueue)
 
     # Health endpoint
-    response = server_client.get("/health")
+    response = await async_server_client.get("/health")
     assert response.status_code == 200
 
     # Test generate endpoint with a tiny steps value
-    print("Testing /api/generate endpoint via TestClient...")
+    print("Testing /api/generate endpoint via ASGI transport...")
     payload = {
         "prompt": "a beautiful landscape",
         "width": 512,
         "height": 512,
         "steps": 1,
     }
-    response = server_client.post("/api/generate", json=payload)
+    response = await async_server_client.post("/api/generate", json=payload)
     assert response.status_code == 200
 
 

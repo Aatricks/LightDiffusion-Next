@@ -4,6 +4,7 @@ import base64
 from PIL import Image
 from pathlib import Path
 
+import pytest
 import server
 
 
@@ -23,22 +24,16 @@ def test_context_request_prefix_mapping():
     assert ctx.features.request_filename_prefix == 'LD-REQ-abc123'
 
 
-def test_generate_endpoint_finds_pipeline_written_file(monkeypatch, server_client, tmp_path):
-    """Test that /api/generate returns images when pipeline writes an output file with the request prefix."""
+@pytest.mark.asyncio
+async def test_generate_endpoint_accepts_img2img_request(monkeypatch, async_server_client):
+    """Test that /api/generate accepts img2img payloads and returns an image response."""
 
-    # Fake pipeline that writes a PNG file into output/Img2Img using the provided request_filename_prefix
-    def fake_pipeline(*args, request_filename_prefix=None, **kwargs):
-        out_dir = Path('output') / 'Img2Img'
-        out_dir.mkdir(parents=True, exist_ok=True)
-        # Use safe prefix
-        prefix = request_filename_prefix or 'LD-REQ-unknown'
-        fname = f"{prefix}_LD-I2I_00001_.png"
-        path = out_dir / fname
-        img = Image.new('RGB', (32, 32), color='purple')
-        img.save(path)
-        return {}
+    async def fake_enqueue(pending):
+        assert pending.req.img2img_mode is True
+        assert pending.req.img2img_image
+        return {'image': 'data:image/png;base64,xyz'}
 
-    monkeypatch.setattr(server, 'pipeline', fake_pipeline)
+    monkeypatch.setattr(server._generation_buffer, 'enqueue', fake_enqueue)
 
     data_uri, _ = _make_png_data()
     payload = {
@@ -50,20 +45,7 @@ def test_generate_endpoint_finds_pipeline_written_file(monkeypatch, server_clien
         'img2img_image': data_uri,
     }
 
-    res = server_client.post('/api/generate', json=payload)
+    res = await async_server_client.post('/api/generate', json=payload)
     assert res.status_code == 200, res.text
     j = res.json()
-    assert 'image' in j or 'images' in j
-
-    # Clean up any files created in output/Img2Img
-    out_dir = Path('output') / 'Img2Img'
-    if out_dir.exists():
-        for f in out_dir.iterdir():
-            try:
-                f.unlink()
-            except Exception:
-                pass
-        try:
-            out_dir.rmdir()
-        except Exception:
-            pass
+    assert j.get('image') == 'data:image/png;base64,xyz'

@@ -185,6 +185,11 @@ class AbstractModel(ABC):
             Decoded image tensor in [0, 1] range
         """
         pass
+
+    def set_vae_autotune(self, enabled: bool) -> None:
+        """Update the loaded VAE autotune preference if the model exposes one."""
+        if self.vae is not None and hasattr(self.vae, "set_autotune_enabled"):
+            self.vae.set_autotune_enabled(enabled)
     
     def apply_lora(
         self,

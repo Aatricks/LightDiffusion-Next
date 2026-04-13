@@ -101,6 +101,7 @@ def pipeline(
     controlnet_type: str = "canny",
     # torch.compile
     torch_compile: bool = False,
+    vae_autotune: bool = False,
     # Weight quantization
     weight_quantization: str | None = None,
     # FP8 quantization
@@ -210,6 +211,7 @@ def pipeline(
         controlnet_strength=controlnet_strength,
         controlnet_type=controlnet_type,
         torch_compile=torch_compile,
+        vae_autotune=vae_autotune,
         fp8_inference=fp8_inference,
         weight_quantization=weight_quantization,
     )
@@ -279,10 +281,11 @@ def pipeline(
         if ctx.features.controlnet_model:
             # ControlNet mode (uses input image for control, generates new content)
             pipeline_instance.run_controlnet(ctx)
+        elif ctx.is_batched:
+            # Batched requests must use the unified batched path even for img2img.
+            return pipeline_instance.run_batched(ctx, per_sample_info)
         elif ctx.features.img2img:
             pipeline_instance.run_img2img(ctx)
-        elif ctx.is_batched:
-            return pipeline_instance.run_batched(ctx, per_sample_info)
         else:
             pipeline_instance.run(ctx)
     

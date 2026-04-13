@@ -69,6 +69,10 @@ class Pipeline:
         self.model_factory = model_factory or create_model
         self.default_lora = default_lora
         self._model: Optional[AbstractModel] = None
+
+    def _apply_runtime_preferences(self, ctx: Context, model: AbstractModel) -> None:
+        """Apply request-scoped runtime preferences that should track reused models."""
+        model.set_vae_autotune(ctx.generation.vae_autotune)
     
     def run(self, ctx: Context) -> Context:
         """Run the full generation pipeline.
@@ -83,6 +87,7 @@ class Pipeline:
         
         # 1. Load base model
         model = self._load_model(ctx)
+        self._apply_runtime_preferences(ctx, model)
         
         # 2. Apply optimizations to base model
         mo = getattr(model, 'model', None)
@@ -592,6 +597,7 @@ class Pipeline:
         from src.Utilities import Latent
         from src.sample import sampling
         from src.hidiffusion import msw_msa_attention
+        from src.Processors import Img2Img
         
         self._check_interrupt()
         
@@ -611,11 +617,12 @@ class Pipeline:
         # Encode all prompts
         positive, negative = model.encode_prompt(prompts, negatives)
         
-        # Add batch routing
-        if isinstance(positive, list):
-            for i, entry in enumerate(positive):
-                if len(entry) > 1 and isinstance(entry[1], dict):
-                    entry[1]["batch_index"] = [i]
+        # Add batch routing so positive and negative conditioning stay aligned.
+        for cond_list in (positive, negative):
+            if isinstance(cond_list, list):
+                for i, entry in enumerate(cond_list):
+                    if len(entry) > 1 and isinstance(entry[1], dict):
+                        entry[1]["batch_index"] = [i]
         
         # Determine latent channels (SD1.5/SDXL=4, SD3/Flux1=16, Flux2=32)
         latent_channels = 4
@@ -647,13 +654,17 @@ class Pipeline:
                 patch_model = base_inner.clone() if hasattr(base_inner, 'clone') else base_inner
                 hidiff = msw_msa_attention.ApplyMSWMSAAttentionSimple()
                 opt_model = hidiff.go(model_type="auto", model=patch_model)[0]
+                if not hasattr(opt_model, "get_model_object") and hasattr(model, "get_model_object"):
+                    opt_model.get_model_object = model.get_model_object
+                if not hasattr(opt_model, "load_device") and hasattr(model, "load_device"):
+                    opt_model.load_device = model.load_device
             except Exception as e:
                 logger.warning(f"Failed to apply HiDiffusion: {e}")
-                opt_model = getattr(model, 'model', model)
+                opt_model = model
         else:
             if ctx.sampling.enable_multiscale and is_flux_or_flux2:
                 logger.info("HiDiffusion disabled: not compatible with Flux architecture")
-            opt_model = getattr(model, 'model', model)
+            opt_model = model
         
         # Determine if refiner is enabled (SDXL only)
         is_sdxl = getattr(model.capabilities, "uses_dual_clip", False)
@@ -675,35 +686,77 @@ class Pipeline:
             if ctx.sampling.sampler not in ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_sde", "uni_pc"]:
                 logger.info(f"Flux2 Klein detected: switching sampler to 'euler' for compatibility")
                 ctx.sampling.sampler = "euler"
+
+        batched_img2img_tensor = None
+        batched_img2img_denoise = ctx.features.img2img_denoise
+        if ctx.features.img2img and ctx.features.img2img_image:
+            from PIL import Image
+            import numpy as np
+
+            input_image = Image.open(ctx.features.img2img_image).convert("RGB")
+            target_size = (ctx.generation.width, ctx.generation.height)
+            if input_image.size != target_size:
+                input_image = input_image.resize(target_size, Image.Resampling.LANCZOS)
+
+            input_array = np.array(input_image)
+            batched_img2img_tensor = torch.from_numpy(input_array).float().cpu() / 255.0
+            batched_img2img_tensor = batched_img2img_tensor.unsqueeze(0).repeat(total_batch, 1, 1, 1)
+
+            if getattr(model.capabilities, "requires_size_conditioning", False):
+                for cond_list in (positive, negative):
+                    for cond_item in cond_list:
+                        if len(cond_item) > 1 and isinstance(cond_item[1], dict):
+                            cond_item[1].update({
+                                "width": ctx.generation.width,
+                                "height": ctx.generation.height,
+                                "crop_w": 0,
+                                "crop_h": 0,
+                                "target_width": ctx.generation.width,
+                                "target_height": ctx.generation.height,
+                            })
         
         if use_refiner:
             print(f"Batched Refiner enabled: {os.path.basename(ctx.generation.refiner_model_path)} (Switch at step {ctx.generation.refiner_switch_step})")
             
             # Stage 1: Base model generation
             print(f"Stage 1: Running Base model ({ctx.generation.refiner_switch_step}/{ctx.sampling.steps} steps)...")
-            batch_latents = ksampler.sample(
-                seed=None,
-                steps=ctx.sampling.steps,
-                cfg=ctx.sampling.cfg,
-                sampler_name=ctx.sampling.sampler,
-                scheduler=ctx.sampling.scheduler,
-                denoise=1.0,
-                pipeline=True,
-                model=opt_model,
-                positive=positive,
-                negative=negative,
-                latent_image=latent,
-                last_step=ctx.generation.refiner_switch_step,
-                enable_multiscale=ctx.sampling.enable_multiscale,
-                multiscale_factor=ctx.sampling.multiscale_factor,
-                multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
-                multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
-                cfg_free_enabled=ctx.sampling.cfg_free_enabled,
-                cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
-                flux=is_flux,
-                flux2=is_flux2,
-                callback=ctx.callback,
-            )
+            if batched_img2img_tensor is not None:
+                batch_latents = (
+                    Img2Img.simple_img2img(
+                        ctx,
+                        model,
+                        positive,
+                        negative,
+                        image_tensor=batched_img2img_tensor,
+                        denoise=batched_img2img_denoise,
+                        last_step=ctx.generation.refiner_switch_step,
+                        callback=ctx.callback,
+                    ),
+                )
+            else:
+                batch_latents = ksampler.sample(
+                    seed=None,
+                    steps=ctx.sampling.steps,
+                    cfg=ctx.sampling.cfg,
+                    sampler_name=ctx.sampling.sampler,
+                    scheduler=ctx.sampling.scheduler,
+                    denoise=1.0,
+                    pipeline=True,
+                    model=opt_model,
+                    positive=positive,
+                    negative=negative,
+                    latent_image=latent,
+                    last_step=ctx.generation.refiner_switch_step,
+                    enable_multiscale=ctx.sampling.enable_multiscale,
+                    multiscale_factor=ctx.sampling.multiscale_factor,
+                    multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
+                    multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
+                    cfg_free_enabled=ctx.sampling.cfg_free_enabled,
+                    cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                    flux=is_flux,
+                    flux2=is_flux2,
+                    callback=ctx.callback,
+                )
             
             self._check_interrupt()
             
@@ -788,28 +841,41 @@ class Pipeline:
             model = refiner_model 
         else:
             # Normal single-stage generation
-            batch_latents = ksampler.sample(
-                seed=None,
-                steps=ctx.sampling.steps,
-                cfg=ctx.sampling.cfg,
-                sampler_name=ctx.sampling.sampler,
-                scheduler=ctx.sampling.scheduler,
-                denoise=1.0,
-                pipeline=True,
-                model=opt_model,
-                positive=positive,
-                negative=negative,
-                latent_image=latent,
-                enable_multiscale=ctx.sampling.enable_multiscale,
-                multiscale_factor=ctx.sampling.multiscale_factor,
-                multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
-                multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
-                cfg_free_enabled=ctx.sampling.cfg_free_enabled,
-                cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
-                flux=is_flux,
-                flux2=is_flux2,
-                callback=ctx.callback,
-            )
+            if batched_img2img_tensor is not None:
+                batch_latents = (
+                    Img2Img.simple_img2img(
+                        ctx,
+                        model,
+                        positive,
+                        negative,
+                        image_tensor=batched_img2img_tensor,
+                        denoise=batched_img2img_denoise,
+                        callback=ctx.callback,
+                    ),
+                )
+            else:
+                batch_latents = ksampler.sample(
+                    seed=None,
+                    steps=ctx.sampling.steps,
+                    cfg=ctx.sampling.cfg,
+                    sampler_name=ctx.sampling.sampler,
+                    scheduler=ctx.sampling.scheduler,
+                    denoise=1.0,
+                    pipeline=True,
+                    model=opt_model,
+                    positive=positive,
+                    negative=negative,
+                    latent_image=latent,
+                    enable_multiscale=ctx.sampling.enable_multiscale,
+                    multiscale_factor=ctx.sampling.multiscale_factor,
+                    multiscale_fullres_start=ctx.sampling.multiscale_fullres_start,
+                    multiscale_fullres_end=ctx.sampling.multiscale_fullres_end,
+                    cfg_free_enabled=ctx.sampling.cfg_free_enabled,
+                    cfg_free_start_percent=ctx.sampling.cfg_free_start_percent,
+                    flux=is_flux,
+                    flux2=is_flux2,
+                    callback=ctx.callback,
+                )
         
         # Hires/Adetailer prompts - use refiner prompts if refiner was used
         if use_refiner:
@@ -1053,6 +1119,8 @@ class Pipeline:
 
     def _apply_optimizations(self, ctx: Context, model: AbstractModel) -> None:
         """Apply all configured optimizations to the model."""
+        self._apply_runtime_preferences(ctx, model)
+
         # LoRA - only if model supports it and matches default LoRA type
         # Default LoRA (add_detail) is SD1.5 (context_dim 768)
         is_sd15 = False
@@ -1125,3 +1193,15 @@ def get_default_pipeline() -> Pipeline:
     if _default_pipeline is None:
         _default_pipeline = Pipeline()
     return _default_pipeline
+
+
+def reset_default_pipeline() -> None:
+    """Release the singleton pipeline and any loaded model it still owns."""
+    global _default_pipeline
+    if _default_pipeline is not None:
+        try:
+            if _default_pipeline._model is not None and _default_pipeline._model.is_loaded:
+                _default_pipeline._model.unload()
+        except Exception:
+            pass
+        _default_pipeline = None

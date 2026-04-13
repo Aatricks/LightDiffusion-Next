@@ -1,5 +1,12 @@
 import axios from 'axios';
-import type { GenerationSettings, GenerationResponse, ModelInfo, SettingsSnapshot, ImageMetadata } from '../types';
+import type {
+    GenerationSettings,
+    GenerationResponse,
+    ImageMetadata,
+    ModelInfo,
+    SettingsPreferences,
+    SettingsSnapshot,
+} from '../types';
 
 const api = axios.create({
     baseURL: '/api', // Proxy handles redirection to localhost:7861
@@ -35,6 +42,16 @@ export const getSettingsHistory = async (): Promise<{ history: SettingsSnapshot[
     return res.data;
 };
 
+export const getSettingsPreferences = async (): Promise<SettingsPreferences> => {
+    const res = await api.get('/settings/preferences');
+    return res.data;
+};
+
+export const postSettingsPreferences = async (preferences: SettingsPreferences): Promise<SettingsPreferences> => {
+    const res = await api.post('/settings/preferences', preferences);
+    return res.data;
+};
+
 export const postSettingsSnapshot = async (settings: GenerationSettings, include_prompt: boolean = false): Promise<{ snapshot: SettingsSnapshot }> => {
     const res = await api.post('/settings/history', { settings, include_prompt });
     return res.data;
@@ -45,7 +62,7 @@ export const getImageMetadata = async (imageB64: string): Promise<{ metadata: Im
     return res.data;
 };
 
-export const getTelemetry = async (): Promise<any> => {
+export const getTelemetry = async (): Promise<Record<string, unknown>> => {
     const res = await api.get('/telemetry');
     return res.data;
 }
