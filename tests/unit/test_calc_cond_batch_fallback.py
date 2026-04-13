@@ -16,6 +16,16 @@ class DummyModel:
         return inp
 
 
+class RecordingDummyModel(DummyModel):
+    def __init__(self):
+        self.batch_sizes = []
+
+    def apply_model(self, *args, **kwargs):
+        inp = args[0] if args else kwargs.get("input")
+        self.batch_sizes.append(int(inp.shape[0]))
+        return inp
+
+
 def test_calc_cond_batch_fallback_on_transformer_options_mismatch(monkeypatch):
     called = {"flag": False}
 
@@ -45,3 +55,30 @@ def test_calc_cond_batch_fallback_on_transformer_options_mismatch(monkeypatch):
     assert isinstance(out, list) and len(out) == 2
     assert out[0].shape == x_in.shape
     assert out[1].shape == x_in.shape
+
+
+def test_calc_cond_batch_honors_batched_cfg_toggle():
+    x_in = torch.zeros((1, 4, 8, 8))
+    cond_dict = {"model_conds": {"c_crossattn": CONDRegular(torch.zeros((1, 1, 1, 1)))}}
+    conds = [[cond_dict], [cond_dict]]
+
+    batched_model = RecordingDummyModel()
+    calc_cond_batch(
+        batched_model,
+        conds,
+        x_in,
+        timestep=0,
+        model_options={"batched_cfg": True},
+    )
+
+    unbatched_model = RecordingDummyModel()
+    calc_cond_batch(
+        unbatched_model,
+        conds,
+        x_in,
+        timestep=0,
+        model_options={"batched_cfg": False},
+    )
+
+    assert batched_model.batch_sizes == [2]
+    assert unbatched_model.batch_sizes == [1, 1]

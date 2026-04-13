@@ -27,6 +27,8 @@ That's when the first version of LightDiffusion was born which only counted [300
 
 📚 Learn more in the [official documentation](https://aatricks.github.io/LightDiffusion-Next/)
 
+For a source-based breakdown of the optimization stack, see the [Implemented Optimizations Report](https://aatricks.github.io/LightDiffusion-Next/implemented-optimizations-report/).
+
 ---
 
 ## 🌟 Highlights
@@ -181,7 +183,7 @@ docker-compose build \
 Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `INSTALL_OLLAMA=1` to bake in the prompt enhancer runtime.
 
 > [!NOTE]
-> RTX 50 series (compute 12.0) GPUs currently only support SageAttention.
+> RTX 50 series (compute 12.0) GPUs currently use SageAttention when the SageAttention kernel is installed. SpargeAttn remains limited to earlier supported architectures.
 
 **Access the Web Interface:**
 - **Streamlit UI** (default): `http://localhost:8501`

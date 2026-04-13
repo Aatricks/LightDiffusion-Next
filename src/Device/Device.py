@@ -853,12 +853,6 @@ def get_autocast_device(dev) -> str:
 def sageattention_enabled() -> bool:
     if cpu_state != CPUState.GPU or is_intel_xpu() or directml_enabled or is_rocm():
         return False
-    if torch.cuda.is_available():
-        try:
-            if torch.cuda.get_device_capability()[0] >= 12:
-                return False
-        except:
-            pass
     return SAGEATTENTION_IS_AVAILABLE
 
 

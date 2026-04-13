@@ -12,7 +12,7 @@ This document describes three advanced optimizations for Classifier-Free Guidanc
 
 ### What It Does
 
-Instead of running two separate forward passes for conditional and unconditional predictions, this optimization combines them into a single batched forward pass.
+Instead of running two separate forward passes for conditional and unconditional predictions, this optimization can combine them into a single batched forward pass.
 
 **Before:**
 ```python
@@ -47,13 +47,15 @@ samples = sampling.sample1(
     steps=20,
     cfg=7.5,
     # ... other params ...
-    batched_cfg=True,  # Enable batched CFG (default: True)
+    batched_cfg=True,  # Joint cond/uncond batching (default: True)
 )
 ```
 
+In the current implementation, the heavy lifting still happens in the central conditioning packing path. `batched_cfg` controls whether conditional and unconditional branches are packed together into the same forward pass when possible. Conditioning chunks within each branch are still packed by the shared batching logic.
+
 ### When to Use
 
-- **Always recommended** - This is a pure speed optimization with no quality tradeoff
+- **Usually recommended** - This reduces duplicate cond/uncond forward passes when memory allows
 - Particularly beneficial for high-resolution images or batch generation
 - Compatible with all samplers and schedulers
 
@@ -232,7 +234,7 @@ samples = sampling.sample1(
 ### Batched CFG Issues
 
 **Problem**: Memory errors with batched CFG  
-**Solution**: System may not have enough VRAM. Disable with `batched_cfg=False`
+**Solution**: System may not have enough VRAM for joint cond/uncond batching. Disable it with `batched_cfg=False`, which keeps the conditioning path active but runs the two branches separately.
 
 ### Dynamic CFG Issues
 

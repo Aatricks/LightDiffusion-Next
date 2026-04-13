@@ -1,4 +1,4 @@
-## 1. Prompt Attention Caching
+# Prompt Attention Caching
 
 ### What It Does
 
@@ -29,10 +29,11 @@ print(f"Hit rate: {stats['hit_rate']:.1%}")
 ```
 
 **Cache Settings**:
-- Maximum entries: 128 prompts
-- Memory usage: ~50-200MB
-- Cache cleared on: restart or manual clear
-- Automatic pruning: removes oldest 25% when full
+- Maximum entries: 256 prompts before pruning
+- Cache structure: global dict keyed by prompt hash and CLIP identity
+- Memory usage: workload-dependent, estimated from cached embedding tensors
+- Cache cleared on: restart, disable, or manual clear
+- Automatic pruning: removes the oldest 25% of entries when the cache exceeds its limit
 
 ### Viewing Cache Stats
 
@@ -60,3 +61,4 @@ prompt_cache.print_cache_stats()
 2. **Monitor hit rate** - should be >50% in typical workflows
 3. **Clear cache** when switching models or major prompt changes
 4. **Batch similar prompts** to maximize cache hits
+5. **Expect global behavior** because the cache is shared across repeated prompt encodes rather than being scoped to a single generation session

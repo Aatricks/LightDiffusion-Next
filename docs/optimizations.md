@@ -2,6 +2,8 @@
 
 LightDiffusion-Next achieves its industry-leading inference speed through a layered stack of training-free optimizations that can be selectively enabled based on your hardware and quality requirements. This page provides an overview of each acceleration technique and links to detailed guides.
 
+For a detailed source-based report on what is implemented today, including server-side throughput optimizations and practical implementation notes, see the [Implemented Optimizations Report](implemented-optimizations-report.md).
+
 ## Optimization Stack Overview
 
 The pipeline orchestrates six primary acceleration paths:
@@ -113,10 +115,10 @@ Multi-Scale Diffusion optimizes performance by processing images at multiple res
 
 ### WaveSpeed Caching
 
-**What it does:** Exploits temporal redundancy in diffusion processes by caching high-level features in the UNet/Transformer architecture and reusing them across multiple denoising steps. Includes two strategies:
+**What it does:** Exploits temporal redundancy in diffusion processes by reusing work across denoising steps. In the current project stack this primarily means DeepCache on supported UNet models, with additional Flux-oriented cache groundwork present in the codebase.
 
-1. **DeepCache** — Caches middle/output block activations in UNet models (SD1.5, SDXL)
-2. **First Block Cache (FBCache)** — Caches initial Transformer block outputs in Flux models
+1. **DeepCache** — Reuses prior denoiser outputs on selected steps in UNet models (SD1.5, SDXL)
+2. **First Block Cache (FBCache)** — Flux-oriented cache machinery available for specialized integration work
 
 **When to use:**
 - Any workflow where you can tolerate slight smoothing in exchange for 2-3x speedup
@@ -177,9 +179,9 @@ steps: 10  # Reduced from 15 (same quality with AYS)
 stable_fast: false  # not supported
 sageattention: auto
 prompt_cache_enabled: true
-fbcache:
+deepcache:
   enabled: true
-  residual_threshold: 0.01  # strict caching
+  interval: 2
 ```
 **Expected:** ~2x speedup with minimal quality impact
 
