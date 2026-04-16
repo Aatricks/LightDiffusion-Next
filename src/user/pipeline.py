@@ -24,6 +24,7 @@ import torch
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+_assets_ready = False
 
 
 def resolve_checkpoint_path(realistic_model: bool = False) -> str:
@@ -31,9 +32,22 @@ def resolve_checkpoint_path(realistic_model: bool = False) -> str:
     return "./include/checkpoints/DreamShaper_8_pruned.safetensors"
 
 
-# Initialize downloader check once at module load
 from src.FileManaging import Downloader
-Downloader.CheckAndDownload()
+
+
+def _ensure_runtime_assets() -> None:
+    """Download default runtime assets the first time generation is used.
+
+    This intentionally runs lazily instead of at module import time so API
+    startup, health checks, and unrelated imports remain lightweight and do not
+    fail just because model assets are not present yet.
+    """
+    global _assets_ready
+    if _assets_ready:
+        return
+
+    Downloader.CheckAndDownload()
+    _assets_ready = True
 
 # Module-level cache for the last-used seed; load lazily to avoid
 # import-time circular dependencies with Core modules.
@@ -147,6 +161,7 @@ def pipeline(
         Dictionary with generation results
     """
     global _last_seed
+    _ensure_runtime_assets()
     
     # Clear interrupt flag
     from src.user import app_instance

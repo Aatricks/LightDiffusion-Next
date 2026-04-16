@@ -18,7 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.Device.ModelCache import get_model_cache
-from src.Device.ModelCache import get_model_cache
 from src.Core.Models.ModelFactory import list_available_models, list_available_controlnets
 from src.FileManaging.ImageSaver import pop_image_bytes
 
@@ -1693,8 +1692,12 @@ if __name__ == "__main__":
     import signal
 
     parser = argparse.ArgumentParser(description="LightDiffusion Server")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=7861, help="Port to bind to")
+    try:
+        default_port = int(os.environ.get("PORT") or os.environ.get("UVICORN_PORT") or 7861)
+    except Exception:
+        default_port = 7861
+    parser.add_argument("--host", type=str, default=os.environ.get("HOST", "0.0.0.0"), help="Host to bind to")
+    parser.add_argument("--port", type=int, default=default_port, help="Port to bind to")
     parser.add_argument("--frontend", action="store_true", help="Launch the frontend development server")
     args = parser.parse_args()
 

@@ -10,3 +10,4 @@ frontend/node_modules/
 .history_backups
 include/last_seed.txt
 include/settings_store.json
+docs/ai/

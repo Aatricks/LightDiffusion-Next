@@ -5,6 +5,7 @@ App instance for managing UI state and real-time previews
 import os
 import threading
 import time
+import tempfile
 from typing import List, Any
 from PIL import Image
 
@@ -14,7 +15,8 @@ class AppInstance:
 
     def __init__(self):
         self.previewer_var = PreviewerVar()
-        self.preview_dir = os.path.join(".", "output", "preview")
+        requested_preview_dir = os.getenv("LD_PREVIEW_DIR") or os.path.join(".", "output", "preview")
+        self.preview_dir = requested_preview_dir
         self.preview_lock = threading.Lock()
         self.preview_files = []
         self.preview_images = []  # Store PIL images directly
@@ -25,8 +27,14 @@ class AppInstance:
         self.progress = ProgressTracker()
         self._interrupt_event = threading.Event()
 
-        # Create preview directory
-        os.makedirs(self.preview_dir, exist_ok=True)
+        # Prefer the configured preview directory, but fall back to a temp
+        # location when the working tree is not writable (for example, during
+        # constrained test runs or read-only deployments).
+        try:
+            os.makedirs(self.preview_dir, exist_ok=True)
+        except OSError:
+            self.preview_dir = os.path.join(tempfile.gettempdir(), "lightdiffusion-preview")
+            os.makedirs(self.preview_dir, exist_ok=True)
 
         # Preview rendering/config options (tunable)
         self.preview_srgb = True  # apply sRGB curve to previews

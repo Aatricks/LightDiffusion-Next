@@ -1,15 +1,10 @@
-# LightDiffusion-Next source package
-from . import AutoDetailer
-from . import user
-from . import Core
-from . import FileManaging
-from . import Device
-from . import clip
-from . import AutoEncoders
-from . import Utilities
-from . import sample
-from . import Model
-from . import NeuralNetwork
-from . import hidiffusion
-from . import AutoHDR
-from . import Processors
+"""LightDiffusion-Next source package.
+
+Keep package initialization lightweight.
+
+Historically this module eagerly imported large parts of the application,
+which pulled the generation pipeline into unrelated imports such as tests
+that only needed `src.FileManaging.ImageSaver`. A Docker Space only needs the
+package namespace to resolve submodules; it does not need this eager import
+fan-out.
+"""

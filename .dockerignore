@@ -70,6 +70,8 @@ Thumbs.db
 *.md
 !docker/
 docs/
+!frontend/dist/
+!frontend/dist/**
 
 # Large model files (these should be downloaded at runtime)
 *.safetensors

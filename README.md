@@ -1,3 +1,12 @@
+---
+title: LightDiffusion-Next
+emoji: 🚀
+colorFrom: blue
+colorTo: gray
+sdk: docker
+app_port: 7860
+---
+
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
@@ -123,9 +132,11 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 python server.py --frontend
 ```
 
-**Alternative UIs:**
-- **Streamlit UI**: Run `streamlit run streamlit_app.py` for the legacy clean interface.
-- **Gradio UI**: Run `python app.py` to use the original Gradio interface (mainly for HuggingFace Spaces).
+**Production-style local run:**
+```bash
+# Serve the built React UI from FastAPI on a single port
+python server.py --port 7860
+```
 
 ### 🌌 Flux Support
 
@@ -139,22 +150,21 @@ This will download approximately 16GB of weights into the `include/` directory.
 
 ### 🐳 Docker Setup
 
-Run LightDiffusion-Next in a containerized environment with GPU acceleration:
+Run LightDiffusion-Next in a containerized environment with GPU acceleration.
+This repository is configured for **Hugging Face Docker Spaces** and serves the
+built React frontend from the FastAPI backend on port `7860`.
 
 > [!IMPORTANT]
 > Confirm you have Docker Desktop configured with the NVIDIA Container Toolkit and at least 12-16GB of memory. Builds expect an NVIDIA GPU with compute capability 8.0 or higher and CUDA 12.0+ support for SageAttention/SpargeAttn.
 
 **Quick Start with Docker:**
 ```bash
-# Build and run with docker-compose (recommended - uses Streamlit by default)
+# Build and run with docker-compose
 docker-compose up --build
 
-# Or build and run manually with Streamlit
+# Or build and run manually
 docker build -t lightdiffusion-next .
-docker run --gpus all -p 8501:8501 -e UI_FRAMEWORK=streamlit -v ./output:/app/output lightdiffusion-next
-
-# To use Gradio instead:
-docker run --gpus all -p 7860:7860 -e UI_FRAMEWORK=gradio -v ./output:/app/output lightdiffusion-next
+docker run --gpus all -p 7860:7860 -e PORT=7860 -v ./output:/app/output lightdiffusion-next
 ```
 
 **Custom GPU Architecture (Optional):**
@@ -166,7 +176,7 @@ docker-compose build --build-arg TORCH_CUDA_ARCH_LIST="12.0"
 ```
 
 **Built-in Optimizations:**
-The Docker image can build the following acceleration paths:
+The Docker image can optionally build the following acceleration paths:
 - ✨ **SageAttention** - 15% speedup with INT8 quantization (all supported GPUs)
 - 🚀 **SpargeAttn** - 40-60% speedup with sparse attention (compute 8.0-9.0 only)
 - ⚡ **Stable-Fast** - Optional UNet compilation for up to 70% faster SD1.5 inference
@@ -176,25 +186,27 @@ Control them through build arguments (defaults shown below):
 ```bash
 docker-compose build \
   --build-arg TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0" \
+  --build-arg INSTALL_SAGEATTENTION=0 \
+  --build-arg INSTALL_SPARGEATTN=0 \
   --build-arg INSTALL_STABLE_FAST=1 \
   --build-arg INSTALL_OLLAMA=0
 ```
 
-Set `INSTALL_STABLE_FAST=1` to enable the compilation step for stable-fast, or `INSTALL_OLLAMA=1` to bake in the prompt enhancer runtime.
+Set `INSTALL_STABLE_FAST=1` to enable stable-fast, `INSTALL_SAGEATTENTION=1`
+or `INSTALL_SPARGEATTN=1` to opt into the heavier attention-kernel builds, and
+`INSTALL_OLLAMA=1` to bake in the prompt enhancer runtime.
 
 > [!NOTE]
 > RTX 50 series (compute 12.0) GPUs currently use SageAttention when the SageAttention kernel is installed. SpargeAttn remains limited to earlier supported architectures.
 
 **Access the Web Interface:**
-- **Streamlit UI** (default): `http://localhost:8501`
-- **Gradio UI**: `http://localhost:7860` (set `UI_FRAMEWORK=gradio` in docker-compose.yml)
+- **FastAPI + React UI**: `http://localhost:7860`
 
 **Volume Mounts:**
 - `./output:/app/output` - Persist generated images
 - `./checkpoints:/app/include/checkpoints` - Store model files
 - `./loras:/app/include/loras` - Store LoRA files
 - `./embeddings:/app/include/embeddings` - Store embeddings
-
 
 ### Advanced Setup
 
