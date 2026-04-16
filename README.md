@@ -1,12 +1,3 @@
----
-title: LightDiffusion-Next
-emoji: 🚀
-colorFrom: blue
-colorTo: gray
-sdk: docker
-app_port: 7860
----
-
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
