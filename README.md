@@ -8,8 +8,7 @@
 </br>
 </br>
   <a href="https://github.com/LightDiffusion/LightDiffusion-Next">
-    <img src="https://github.com/user-attachments/assets/b994fe0d-3a2e-44ff-93a4-46919cf865e3" alt="Logo">
-
+    <img src="./HomeImage.png" alt="Logo">
   </a>
 </br>
 </div>
@@ -147,7 +146,7 @@ This will download approximately 16GB of weights into the `include/` directory.
 
 ### 🤗 ZeroGPU / Gradio Space
 
-This repository now includes a Gradio `app.py` entrypoint for Hugging Face
+This repository includes a Gradio `app.py` entrypoint for Hugging Face
 **ZeroGPU**. ZeroGPU is only supported for Gradio SDK Spaces, and the
 GPU-bound generation function is wrapped with `@spaces.GPU`.
 

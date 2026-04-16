@@ -1,13 +1,18 @@
 import unittest
 import torch
 from PIL import Image
+from unittest import mock
 
 from src.Utilities import color
 from src.user.app_instance import AppInstance
 from src.AutoEncoders import taesd
+from src.Device.ModelCache import get_model_cache
 
 
 class TestPreviewQuality(unittest.TestCase):
+    def setUp(self):
+        get_model_cache().clear_cache()
+
     def test_linear_to_srgb_values(self):
         # Known values across the transfer function
         vals = torch.tensor([0.0, 0.0031308, 0.04, 0.5, 1.0], dtype=torch.float32)
@@ -27,8 +32,16 @@ class TestPreviewQuality(unittest.TestCase):
         # to trigger downsampling, and monkeypatch Image.fromarray to capture
         # the resample argument passed to thumbnail.
         orig_decode = taesd.TAESD.decode
+        orig_init = taesd.TAESD.__init__
         orig_fromarray = Image.fromarray
         called = {}
+
+        def fake_init(self, encoder_path=None, decoder_path=None, latent_channels=4):
+            torch.nn.Module.__init__(self)
+            self.vae_shift = torch.nn.Parameter(torch.zeros(1))
+            self.vae_scale = torch.nn.Parameter(torch.ones(1))
+            self.taesd_encoder = torch.nn.Identity()
+            self.taesd_decoder = torch.nn.Identity()
 
         def fake_decode(self, x):
             # Return a [B, C, H, W] tensor in [-1, 1] so that after .add(1).mul(0.5)
@@ -53,6 +66,7 @@ class TestPreviewQuality(unittest.TestCase):
             return FakeImage()
 
         try:
+            taesd.TAESD.__init__ = fake_init
             taesd.TAESD.decode = fake_decode
             Image.fromarray = fake_fromarray
 
@@ -63,6 +77,7 @@ class TestPreviewQuality(unittest.TestCase):
             self.assertIn('resample', called)
             self.assertEqual(called['resample'], Image.Resampling.LANCZOS)
         finally:
+            taesd.TAESD.__init__ = orig_init
             taesd.TAESD.decode = orig_decode
             Image.fromarray = orig_fromarray
 
@@ -75,19 +90,27 @@ class TestPreviewQuality(unittest.TestCase):
 
     def test_decode_applies_srgb_when_enabled(self):
         # Monkeypatch TAESD.decode to return constant zero (-> 0.5 after norm)
-        orig_decode = taesd.TAESD.decode
-        try:
-            def fake_decode(self, x):
-                return torch.zeros((1, 3, 4, 4), dtype=x.dtype, device=x.device)
-            taesd.TAESD.decode = fake_decode
+        def fake_init(self, encoder_path=None, decoder_path=None, latent_channels=4):
+            torch.nn.Module.__init__(self)
+            self.vae_shift = torch.nn.Parameter(torch.zeros(1))
+            self.vae_scale = torch.nn.Parameter(torch.ones(1))
+            self.taesd_encoder = torch.nn.Identity()
+            self.taesd_decoder = torch.nn.Identity()
 
-            # Ensure preview_srgb enabled
-            from src.user.app_instance import app as global_app
-            old_flag = global_app.preview_srgb
+        def fake_decode(self, x):
+            return torch.zeros((1, 3, 4, 4), dtype=x.dtype, device=x.device)
+
+        # Ensure preview_srgb enabled
+        from src.user.app_instance import app as global_app
+        old_flag = global_app.preview_srgb
+
+        try:
             global_app.preview_srgb = True
 
-            latent = torch.zeros((1, 4, 4, 4), dtype=torch.float32)
-            imgs = taesd.decode_latents_to_images(latent)
+            with mock.patch.object(taesd.TAESD, "__init__", fake_init), mock.patch.object(taesd.TAESD, "decode", fake_decode):
+                latent = torch.zeros((1, 4, 4, 4), dtype=torch.float32)
+                imgs = taesd.decode_latents_to_images(latent)
+
             self.assertTrue(len(imgs) > 0)
             img = imgs[0]
             r, g, b = img.getpixel((0, 0))
@@ -102,7 +125,6 @@ class TestPreviewQuality(unittest.TestCase):
             self.assertEqual(b, expect)
 
         finally:
-            taesd.TAESD.decode = orig_decode
             global_app.preview_srgb = old_flag
 
     def test_server_callback_uses_preview_format(self):
