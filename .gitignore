@@ -3,6 +3,7 @@
 *.pt
 *.safetensors
 *.png
+stable_fast-*.whl
 .venv
 node_modules/
 frontend/node_modules/

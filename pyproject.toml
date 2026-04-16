@@ -100,7 +100,7 @@ dependencies = [
     "urllib3",
     "yarl",
     "gguf",
-    "gradio>=3.50.2",
+    "gradio>=5.0.0,<6",
     "spaces",
     "fastapi",
     "uvicorn",

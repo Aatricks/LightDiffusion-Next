@@ -1,12 +1,3 @@
----
-title: LightDiffusion-Next
-emoji: 🚀
-colorFrom: blue
-colorTo: gray
-sdk: docker
-app_port: 7860
----
-
 <div align="center">
 
 # Say hi to LightDiffusion-Next 👋
@@ -17,7 +8,7 @@ app_port: 7860
 </br>
 </br>
   <a href="https://github.com/LightDiffusion/LightDiffusion-Next">
-    <img src="./HomeImage.png" alt="Logo">
+    <img src="https://github.com/user-attachments/assets/b994fe0d-3a2e-44ff-93a4-46919cf865e3" alt="Logo">
 
   </a>
 </br>
@@ -138,6 +129,12 @@ python server.py --frontend
 python server.py --port 7860
 ```
 
+**ZeroGPU / Gradio launch:**
+```bash
+# Launch the Hugging Face ZeroGPU-compatible Gradio UI
+python app.py
+```
+
 ### 🌌 Flux Support
 
 LightDiffusion-Next now features first-class support for **Flux2 Klein**. To get started, you need to download the required model components (Diffusion Model, Text Encoder, and VAE).
@@ -148,11 +145,23 @@ python download_flux.py
 ```
 This will download approximately 16GB of weights into the `include/` directory.
 
+### 🤗 ZeroGPU / Gradio Space
+
+This repository now includes a Gradio `app.py` entrypoint for Hugging Face
+**ZeroGPU**. ZeroGPU is only supported for Gradio SDK Spaces, and the
+GPU-bound generation function is wrapped with `@spaces.GPU`.
+
+Recommended defaults for ZeroGPU:
+- keep `Keep Models Loaded` disabled
+- use 512x512 or 768x768 resolutions
+- generate 1 image at a time
+- prefer 10-25 steps with `ays`
+
 ### 🐳 Docker Setup
 
 Run LightDiffusion-Next in a containerized environment with GPU acceleration.
-This repository is configured for **Hugging Face Docker Spaces** and serves the
-built React frontend from the FastAPI backend on port `7860`.
+The Docker path remains available for local or dedicated GPU deployments and
+serves the built React frontend from the FastAPI backend on port `7860`.
 
 > [!IMPORTANT]
 > Confirm you have Docker Desktop configured with the NVIDIA Container Toolkit and at least 12-16GB of memory. Builds expect an NVIDIA GPU with compute capability 8.0 or higher and CUDA 12.0+ support for SageAttention/SpargeAttn.
