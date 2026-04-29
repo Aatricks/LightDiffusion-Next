@@ -102,7 +102,7 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 ## 🛠 Installation
 
 > [!NOTE]
-> **Platform Support:** LightDiffusion-Next supports NVIDIA GPUs (CUDA), AMD GPUs (ROCm), and Apple Silicon (Metal/MPS). For AMD and Apple Silicon setup instructions, see the [ROCm and Metal/MPS Support Guide](https://aatricks.github.io/LightDiffusion/rocm-metal-support/).
+> **Platform Support:** LightDiffusion-Next supports NVIDIA GPUs (CUDA), AMD GPUs (ROCm), and Apple Silicon (Metal/MPS). For AMD and Apple Silicon setup instructions, see the [ROCm and Metal/MPS Support Guide](https://aatricks.github.io/LightDiffusion-Next/rocm-metal-support/).
 
 > [!WARNING]
 > **Disclaimer:** On Linux, the fastest way to get started is with the Docker setup below. Windows users often encounter an `EOF` build error when using Docker; if that happens, set up a local virtual environment instead and install SageAttention inside it.
