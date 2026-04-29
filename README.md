@@ -22,7 +22,7 @@ As a refactored and improved version of the original [LightDiffusion repository]
 
 **LightDiffusion** was originally meant to be made in Rust, but due to the lack of support for the Rust language in the AI community, it was made in Python with the goal of being the simplest and fastest AI image generation tool.
 
-That's when the first version of LightDiffusion was born which only counted [3000 lines of code](https://github.com/LightDiffusion/LightDiffusion-original), only using Pytorch. With time, the [project](https://github.com/Aatrick/LightDiffusion) grew and became more complex, and the need for a refactor was evident. This is where **LightDiffusion-Next** comes in, with a more modular and maintainable codebase, and a plethora of new features and optimizations.
+That's when the first version of LightDiffusion was born which only counted [3000 lines of code](https://github.com/LightDiffusion/LightDiffusion-original), only using Pytorch. With time, the [project](https://github.com/Aatricks/LightDiffusion) grew and became more complex, and the need for a refactor was evident. This is where **LightDiffusion-Next** comes in, with a more modular and maintainable codebase, and a plethora of new features and optimizations.
 
 📚 Learn more in the [official documentation](https://aatricks.github.io/LightDiffusion-Next/)
 
@@ -56,7 +56,7 @@ Here’s what makes LightDiffusion-Next stand out:
   Save and resume your progress with saved states, ensuring seamless transitions between sessions.
 
 - **Integration-Ready**:
-  Collaborate and create directly in Discord with [Boubou](https://github.com/Aatrick/Boubou), or preview images dynamically with the optional **TAESD preview mode**.
+  Collaborate and create directly in Discord with [Boubou](https://github.com/Aatricks/Boubou), or preview images dynamically with the optional **TAESD preview mode**.
 
 - **Image Previewing**:
   Get a real-time preview of your generated images with TAESD, allowing for user-friendly and interactive workflows.
@@ -102,7 +102,7 @@ With its unmatched speed and efficiency, LightDiffusion-Next sets the benchmark 
 ## 🛠 Installation
 
 > [!NOTE]
-> **Platform Support:** LightDiffusion-Next supports NVIDIA GPUs (CUDA), AMD GPUs (ROCm), and Apple Silicon (Metal/MPS). For AMD and Apple Silicon setup instructions, see the [ROCm and Metal/MPS Support Guide](https://aatrick.github.io/LightDiffusion/rocm-metal-support/).
+> **Platform Support:** LightDiffusion-Next supports NVIDIA GPUs (CUDA), AMD GPUs (ROCm), and Apple Silicon (Metal/MPS). For AMD and Apple Silicon setup instructions, see the [ROCm and Metal/MPS Support Guide](https://aatricks.github.io/LightDiffusion/rocm-metal-support/).
 
 > [!WARNING]
 > **Disclaimer:** On Linux, the fastest way to get started is with the Docker setup below. Windows users often encounter an `EOF` build error when using Docker; if that happens, set up a local virtual environment instead and install SageAttention inside it.
@@ -272,14 +272,7 @@ or `INSTALL_SPARGEATTN=1` to opt into the heavier attention-kernel builds, and
   In Docker builds, set `--build-arg INSTALL_OLLAMA=1` (or update `docker-compose.yml`) to install Ollama and pre-pull the model automatically. You can override the runtime model/prefix with the `PROMPT_ENHANCER_MODEL` and `PROMPT_ENHANCER_PREFIX` environment variables. See the [Ollama guide](https://github.com/ollama/ollama?tab=readme-ov-file) for details.
 
 - **🤖 Discord Integration**:
-  Set up the Discord bot by following the [Boubou installation guide](https://github.com/Aatrick/Boubou).
+  Set up the Discord bot by following the [Boubou installation guide](https://github.com/Aatricks/Boubou).
 
 ### Third-Party Licenses
 - This project distributes builds that depend on third-party open source components. For attribution details and the full license text, refer to `THIRD_PARTY_LICENSES.md`.
-
----
-
-🎨 Enjoy exploring the powerful features of LightDiffusion-Next!
-
-> [!TIP]
-> ⭐ If this project helps you, please give it a star! It helps others discover it too.
